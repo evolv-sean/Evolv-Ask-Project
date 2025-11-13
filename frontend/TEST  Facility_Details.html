@@ -1,0 +1,1572 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Facility Details</title>
+<style>
+  :root{
+    --ink:#0f172a; --muted:#64748b; --line:#e5e7eb; --line2:#e2e8f0;
+    --primary:#2563eb; --primary-600:#1e4fdc; --success:#10b981; --warn:#b00020;
+    --card:#ffffff; --bg:#f8fafc;
+	
+    --rail:#dbeafe;        /* soft blue line */
+    --chip-border:#bfdbfe; /* soft blue border */
+    --chip-bg:#f8fbff;     /* whisper blue background */
+
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.45}
+  .wrap{max-width:1100px;margin:20px auto;padding:0 16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .header{padding:18px;margin-bottom:16px;position:relative}
+  h1{margin:0 0 6px;font-size:24px}
+  .muted{color:var(--muted)}
+
+  /* Buttons */
+  .btn{border:1px solid transparent;border-radius:12px;padding:10px 14px;font-weight:600;cursor:pointer;background:#111827;color:#fff}
+  .btn:disabled{opacity:.6;cursor:not-allowed}
+  .btn-secondary{background:#fff;color:#111827;border-color:var(--line)}
+  .btn-primary{background:var(--primary);border-color:var(--primary)}
+  .btn-primary:hover{background:var(--primary-600);border-color:var(--primary-600)}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+
+  /* Sticky top facility bar */
+  .sticky-top{position:sticky;top:0;z-index:10;background:linear-gradient(#fff,#fff)}
+  .topgrid{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:end}
+  @media (max-width:760px){ .topgrid{grid-template-columns:1fr} .toolbar{justify-content:flex-start} }
+  label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+  .ipt, textarea, select{
+    width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;min-height:42px
+  }
+  .ipt:focus, textarea:focus, select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+  textarea{resize:vertical;min-height:80px}
+
+  /* Section blocks */
+  .section{margin-bottom:14px;overflow:hidden}
+  .sec-head{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);cursor:pointer;background:#fbfdff}
+  .sec-title{font-weight:700}
+  .check{width:20px;height:20px;border-radius:999px;border:2px solid var(--line);display:inline-flex;align-items:center;justify-content:center;font-size:14px}
+  .check.done{border-color:var(--success);background:var(--success);color:#fff}
+  .chev{margin-left:auto;transition:transform .2s ease}
+  .sec-body{padding:16px;display:none}
+  .section.open .sec-body{display:block}
+  .section.open .chev{transform:rotate(180deg)}
+
+  /* Inner field grid */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media (max-width:900px){.grid2{grid-template-columns:1fr}}
+
+  /* Progress rail with connected chips */
+  .progress-wrap{display:flex;justify-content:center;margin-top:8px;position:relative}
+  .progress-rail{position:relative;padding:16px 18px}
+  .rail-line{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:min(760px,80vw);
+    height:3px;                 /* was 2px: a touch thicker for separation */
+    background:var(--rail);     /* was var(--line2) */
+    border-radius:2px;
+    z-index:0
+  }
+  .chips{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;position:relative;z-index:1}
+  .chip{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:8px 14px;
+    border:2px solid var(--chip-border);  /* was 1px var(--line2) */
+    border-radius:999px;
+    background:var(--chip-bg);            /* was #fff */
+    font-size:13px;color:#334155;
+    box-shadow:0 1px 2px rgba(0,0,0,.03)
+  }
+  .chip .dot{width:8px;height:8px;border-radius:999px;background:var(--chip-border)}
+  .chip.done{
+    border-color:var(--success);
+    color:var(--success);
+    background:#f6fffb; /* subtle success tint */
+  }
+  .chip.done .dot{background:var(--success)}
+
+  .error{color:var(--warn);font-size:13px;margin-top:6px}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:8px 12px;border-radius:999px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.2);z-index:9999}
+  
+  /* Radio chips */
+  .chips-wrap{display:flex;gap:8px;flex-wrap:wrap}
+  .chip-radio{position:relative}
+  .chip-radio input{position:absolute;opacity:0;pointer-events:none}
+  .chip-radio label{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:8px 12px;border:1px solid var(--line2);border-radius:999px;background:#fff;
+    font-size:13px;color:#334155;cursor:pointer;user-select:none
+  }
+  .chip-radio input:checked + label{
+    border-color:var(--primary); color:var(--primary);
+    box-shadow:0 0 0 3px rgba(37,99,235,.12)
+  }
+  
+  /* Full-width row inside the 2-col grid */
+  .colspan { grid-column: 1 / -1; }
+
+  /* Subhead pill with a faint blue line */
+  .grouphead { 
+    display:flex; align-items:center; gap:10px; margin:6px 0 8px;
+  }
+  .grouphead .tag {
+    display:inline-flex; align-items:center; gap:8px;
+    padding:6px 12px;
+    border:1px solid var(--chip-border);  /* changed to match progress chips */
+    border-radius:999px;
+    background:var(--chip-bg);            /* same soft background */
+    font-size:13px; font-weight:600; color:#334155;
+    box-shadow:0 1px 2px rgba(0,0,0,.03);
+  }
+  .grouphead .line { 
+    flex:1; height:1px;
+    background:var(--chip-border);        /* changed to same blue */
+  }
+
+  /* Simple partial divider (centered) */
+  .hr-partial {
+    width:60%; height:1px;
+    background:var(--chip-border);        /* changed to same blue */
+    margin:6px auto 10px auto; border-radius:1px;
+  }
+  
+  label .req { color:#ef4444; margin-left:2px; }
+  
+  /* When a section scrolls into view, leave room for the sticky top bar */
+  .section { scroll-margin-top: 96px; }
+
+  /* Additional Services (array) */
+  .as-wrap{display:grid;gap:10px}
+  .as-presets{display:flex;flex-wrap:wrap;gap:8px}
+  .as-pill,.as-chip{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:8px 12px;border:2px solid var(--chip-border, #e5e7eb);
+    border-radius:999px;background:var(--chip-bg, #f8fafc);
+    font-size:13px;color:#334155;cursor:pointer;user-select:none;
+    box-shadow:0 1px 2px rgba(0,0,0,.03)
+  }
+  .as-pill:hover{box-shadow:0 0 0 3px rgba(37,99,235,.10)}
+  .as-pill.active{border-color:var(--primary, #2563eb);color:var(--primary, #2563eb);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+  .as-addrow{display:flex;gap:8px}
+  .as-addrow input{flex:1}
+  .as-list{display:flex;flex-wrap:wrap;gap:8px}
+  .as-chip .as-x{
+    font-weight:700;line-height:1;cursor:pointer;border:1px solid var(--chip-border, #e5e7eb);
+    width:18px;height:18px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center
+  }
+  .as-chip .as-x:hover{border-color:var(--primary, #2563eb);color:var(--primary, #2563eb)}
+
+  /* ===== Contacts widget ===== */
+  .ct-wrap{display:block}
+  .ct-types{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+  .ct-pill{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:8px 12px;border:2px solid var(--chip-border);
+    border-radius:999px;background:var(--chip-bg);
+    font-size:13px;color:#334155;cursor:pointer;user-select:none;
+    box-shadow:0 1px 2px rgba(0,0,0,.03)
+  }
+  .ct-pill:hover{box-shadow:0 0 0 3px rgba(37,99,235,.10)}
+  .ct-pill.active{border-color:var(--primary);color:var(--primary);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+
+  .ct-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}
+  @media (max-width:900px){.ct-row{grid-template-columns:1fr}}
+  .ct-pref{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px 0}
+
+  .ct-list{display:flex;flex-wrap:wrap;gap:8px}
+  .ct-chip{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:8px 12px;border:2px solid var(--chip-border);
+    border-radius:999px;background:var(--chip-bg);
+    font-size:13px;color:#334155
+  }
+  .ct-chip .ct-x{font-weight:700;line-height:1;cursor:pointer;border:1px solid var(--chip-border);
+    width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px}
+  .ct-chip .ct-type{font-weight:700}
+
+  /* --- Align the small "×" button inside removable chips --- */
+  .ct-list .ct-chip{
+    display: inline-flex;
+    align-items: center;            /* vertically center text + x */
+    gap: 8px;                       /* space before the x */
+  }
+
+  .ct-list .ct-chip .ct-x{
+    display: inline-grid;           /* perfect centering */
+    place-items: center;
+    width: 18px;
+    height: 18px;                   /* make it a square */
+    line-height: 1;                 /* avoid vertical drift from fonts */
+    margin-left: 4px;
+    border-radius: 50%;
+    border: 1px solid #cbd5e1;      /* subtle ring; adjust to your palette */
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .ct-list .ct-chip .ct-x:hover{
+    background: rgba(0,0,0,0.06);
+  }
+
+  /* Nudge the removable "×" circle down a touch */
+  .ct-list .ct-chip .ct-x {
+    transform: translateY(1px);   /* try 2px if you prefer */
+}
+
+
+/* Keep the X centered; nudge only the circle outline */
+.ct-list .ct-chip .ct-x{
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  line-height: 1;          /* keep glyph stable */
+  margin-left: 4px;
+  border: 0;               /* border now drawn by ::before */
+  cursor: pointer;
+  user-select: none;
+}
+
+.ct-list .ct-chip .ct-x::before{
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid #cbd5e1;     /* circle */
+  transform: translateY(1px);    /* <-- nudge the CIRCLE only */
+}
+
+.ct-list .ct-chip .ct-x:hover::before{
+  background: rgba(0,0,0,0.06);
+}
+
+ /* Busy overlay */
+ #busy[hidden] { display:none; }
+ #busy{
+   position:fixed; inset:0; z-index:9999;
+   background:rgba(16,18,27,0.58); /* soft translucent backdrop */
+   display:flex; align-items:center; justify-content:center;
+   backdrop-filter: blur(3px);
+ }
+ #busy .busy-card{
+   background:#fff; border-radius:16px; padding:20px 24px;
+   box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+   display:flex; align-items:center; gap:12px; max-width:90%;
+   font-size:16px; line-height:1.35;
+ }
+ .busy-spinner{
+   width:18px; height:18px; border-radius:50%;
+   border:3px solid rgba(0,0,0,.15); border-top-color:rgba(0,0,0,.6);
+   animation: spin 0.8s linear infinite;
+ }
+ @keyframes spin { to { transform: rotate(360deg); } }
+ .busy-text{ font-weight:600; }
+
+ /* Small logo in the header (top-right) */
+ .fd-logo{
+   position:absolute;
+   top:12px;
+   right:12px;
+   display:inline-block;
+   opacity:.85;
+   transition:opacity .15s ease, transform .15s ease;
+ }
+ .fd-logo:hover{ opacity:1; transform:translateY(-1px); }
+ .fd-logo img{
+   height:40px;           /* adjust as you like */
+   width:auto;
+   display:block;
+ }
+
+
+
+</style>
+
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Header -->
+  <div class="card header">
+    <h1>Facility Details</h1>
+    <div class="muted" style="font-size:14px">Please complete the sections below for your facility.</div>
+    
+    <!-- Top-right logo -->
+    <span class="fd-logo" aria-hidden="true">
+      <img src="https://static.wixstatic.com/shapes/7616ec_4b46b0c9f38a4167861e1360aba67df6.svg"
+           alt="Evolv Logo">
+    </span>
+
+    <!-- Progress -->
+    <div class="progress-wrap">
+      <div class="progress-rail">
+        <div class="rail-line"></div>
+        <div class="chips" id="progressBar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sticky facility name bar -->
+  <div class="card sticky-top" style="padding:14px 16px;margin-bottom:14px">
+    <div class="topgrid">
+      <div>
+        <label>Facility Name <span style="color:#ef4444">*</span></label>
+        <input id="facility_name" name="facility_name" class="ipt" placeholder="Required every time you add or update information on this form..." required />
+        <div id="facility_err" class="error" style="display:none">Facility Name is required.</div>
+      </div>
+      <div class="toolbar">
+        <button class="btn btn-primary" id="submitBtn" type="button">Submit</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Debug ribbon (collapsible) -->
+  <div id="dbg" class="card" style="padding:10px 12px; margin-bottom:12px; display:none;">
+    <div style="font-size:12px; color:#334155;">
+      <b>Debug</b> —
+      PUBLIC_MODE: <span id="dbgPub"></span> •
+      facility_id: <span id="dbgF"></span> •
+      token: <span id="dbgT"></span> •
+      URL: <span id="dbgU" style="word-break:break-all;"></span>
+    </div>
+  </div>
+
+  <!-- Sections -->
+  <div id="form" class="card" style="padding:0"><!-- rendered by JS --></div>
+
+</div>
+
+<script>
+// Prevent restoring a stale DOM from the back/forward cache
+if ("scrollRestoration" in history) { history.scrollRestoration = "manual"; }
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted) location.reload();
+});
+
+/* ===== EDIT THIS: your API base ===== */
+  const API_BASE = window.location.origin;
+
+
+function urlWithFT(path){
+  // Ensure f & t are always on every request
+  const u = new URL(API_BASE + path);
+  if (!u.searchParams.has("f") && FAC_ID)    u.searchParams.set("f", FAC_ID);
+  if (!u.searchParams.has("t") && FAC_TOKEN) u.searchParams.set("t", FAC_TOKEN);
+  // keep your ngrok header bypass as query if needed
+  if (!u.searchParams.has("ngrok-skip-browser-warning")) {
+    u.searchParams.set("ngrok-skip-browser-warning", "true");
+  }
+  return u.toString();
+}
+
+async function apiIntake(path, opts = {}){
+  const res = await fetch(urlWithFT(path), {
+    method: opts.method || "GET",
+    headers: {
+      "ngrok-skip-browser-warning": "true",
+      ...(opts.headers || {})
+    },
+    body: opts.body || null
+  });
+  if (!res.ok){
+    const txt = await res.text().catch(()=> "");
+    throw new Error(`HTTP ${res.status} on ${path}\n${txt}`);
+  }
+  return res.json();
+}
+
+/* ===== EDIT THIS: add ALL spreadsheet fields =====
+   - name: EXACTLY your Row 1 header in Client_Info_Spreadsheet.csv
+   - label: what users see
+   - sec: which section
+   - type: "text" (default) | "textarea" | "select" | "radio"
+   - placeholder / default: optional strings
+   - required: optional boolean
+*/
+const RAW_FIELD_DEFS = [
+  // Facility Info
+  {sec:"Facility Info", name:"legal_name", label:"Legal Name", placeholder:""},
+  {sec:"Facility Info", name:"corporate_group", label:"Corporate Group/Affiliation", placeholder:""},
+  {sec:"Facility Info", name:"address_line1", label:"Address Line 1", placeholder:""},
+  {sec:"Facility Info", name:"address_line2", label:"Address Line 2", placeholder:"Suite / Floor (optional)"},
+  {sec:"Facility Info", name:"city", label:"City", placeholder:""},
+  {sec:"Facility Info", name:"state", label:"State", placeholder:""},
+  {sec:"Facility Info", name:"zip", label:"ZIP", placeholder:""},
+  {sec:"Facility Info", name:"county", label:"County", placeholder:""},
+
+  // General Details
+  {sec:"General Details", type:"subhead", label:"Services"},
+  {sec:"General Details", name:"avg_dcs", label:"Average Monthly Discharges", placeholder:""},
+  {sec:"General Details", name:"short_beds", label:"Short Term Rehab Beds", placeholder:""},
+  {sec:"General Details", name:"ltc_beds", label:"Long Term Beds", placeholder:""},
+  {sec:"General Details", name:"outpatient_pt", label:"Do you have Outpatient PT?",
+   type:"radio", options:["Yes","No"], default:"No", required:false},
+  {sec:"General Details", name:"additional_services", label:"Additional Services",
+   type:"array_addl_services"},
+  {sec:"General Details", type:"subhead", label:"Medical Records"},
+  {sec:"General Details", name:"emr", label:"What EMR do you use?",
+   type:"radio", options:["PCC","Matrix","Sigma Care","Other"], default:"No", required:false},
+  {sec:"General Details", name:"emr_other", label:"Please provide name if EMR not listed...", placeholder:""},
+  {sec:"General Details", name:"pt_emr", label:"Do you use a separate system for therapy?", placeholder:"Provider therapy system name..."},
+  {sec:"General Details", type:"subhead", label:"Home Health & DME Orders"},
+  {sec:"General Details", name:"orders", label:"How do your providers sign Home Health and DME orders currently?",
+   type:"radio", options:["Facility EMR","Paper Scripts","Through their external office","Other"], default:"No", required:false},
+  {sec:"General Details", name:"orders_other", label:"Please describe other process if not listed...", placeholder:""},
+  {sec:"General Details", type:"divider", width:"90%"},
+
+  // Contacts (new compact widget)
+  {sec:"Contacts", type:"subhead", label:"Select a contact type and add each staff member we will be interacting with in your facility."},
+  {sec:"Contacts", type:"array_contacts", name:"contacts", label:""},
+  {sec:"Contacts", type:"divider", width:"90%"},
+
+
+  
+  // Providers
+  {sec:"Providers", type:"subhead", label:"Medical Director"},
+  {sec:"Providers", name:"md_name", label:"Medical Director Name", placeholder:""},
+  {sec:"Providers", name:"md_email", label:"Medical Director Email", placeholder:""},
+  {sec:"Providers", name:"md_phone", label:"Medical Director Phone", placeholder:"(###) ###-####"},
+  {sec:"Providers", name:"md_pref", label:"What is your Medical Director's Contact Preference?",
+   type:"radio", options:["Email","Call Office","Call Cell","Text Cell"], default:"", required:false},
+  {sec:"Providers", name:"esignmd_pref", label:"Will this provider be using our E-Sign app for HH and DME orders?",
+   type:"radio", options:["Yes","No","Maybe"], default:"", required:false},
+  //{sec:"Providers", type:"divider", width:"50%"},
+  
+  {sec:"Providers", type:"subhead", label:"Rounding Providers"},
+  {sec:"Providers", type:"subhead", label:"1"},
+  {sec:"Providers", name:"mdnp1_name", label:"MD/NP 1 Name", placeholder:""},
+  {sec:"Providers", name:"mdnp1_email", label:"MD/NP 1 Email", placeholder:""},
+  {sec:"Providers", name:"mdnp1_phone", label:"MD/NP 1 Phone", placeholder:"(###) ###-####"},
+  {sec:"Providers", name:"mdnp1_pref", label:"What is this MD/NP's Contact Preference?",
+   type:"radio", options:["Email","Call Office","Call Cell","Text Cell"], default:"", required:false},
+  {sec:"Providers", name:"esign1_pref", label:"Will this provider be using our E-Sign app for HH and DME orders?",
+   type:"radio", options:["Yes","No","Maybe"], default:"", required:false},
+  //{sec:"Providers", type:"divider", width:"50%"},
+  
+  {sec:"Providers", type:"subhead", label:"2"},
+  {sec:"Providers", name:"mdnp2_name", label:"MD/NP 2 Name", placeholder:""},
+  {sec:"Providers", name:"mdnp2_email", label:"MD/NP 2 Email", placeholder:""},
+  {sec:"Providers", name:"mdnp2_phone", label:"MD/NP 2 Phone", placeholder:"(###) ###-####"},
+  {sec:"Providers", name:"mdnp2_pref", label:"What is this MD/NP's Contact Preference?",
+   type:"radio", options:["Email","Call Office","Call Cell","Text Cell"], default:"", required:false},
+  {sec:"Providers", name:"esign2_pref", label:"Will this provider be using our E-Sign app for HH and DME orders?",
+   type:"radio", options:["Yes","No","Maybe"], default:"", required:false},
+  //{sec:"Providers", type:"divider", width:"50%"},
+  
+  {sec:"Providers", type:"subhead", label:"3"},
+  {sec:"Providers", name:"mdnp3_name", label:"MD/NP 3 Name", placeholder:""},
+  {sec:"Providers", name:"mdnp3_email", label:"MD/NP 3 Email", placeholder:""},
+  {sec:"Providers", name:"mdnp3_phone", label:"MD/NP 3 Phone", placeholder:"(###) ###-####"},
+  {sec:"Providers", name:"mdnp3_pref", label:"What is this MD/NP's Contact Preference?",
+   type:"radio", options:["Email","Call Office","Call Cell","Text Cell"], default:"", required:false},
+  {sec:"Providers", name:"esign3_pref", label:"Will this provider be using our E-Sign app for HH and DME orders?",
+   type:"radio", options:["Yes","No","Maybe"], default:"", required:false},
+  //{sec:"Providers", type:"divider", width:"50%"},
+  
+  {sec:"Providers", type:"subhead", label:"4"},
+  {sec:"Providers", name:"mdnp4_name", label:"MD/NP 4 Name", placeholder:""},
+  {sec:"Providers", name:"mdnp4_email", label:"MD/NP 4 Email", placeholder:""},
+  {sec:"Providers", name:"mdnp4_phone", label:"MD/NP 4 Phone", placeholder:"(###) ###-####"},
+  {sec:"Providers", name:"mdnp4_pref", label:"What is this MD/NP's Contact Preference?",
+   type:"radio", options:["Email","Call Office","Call Cell","Text Cell"], default:"", required:false},
+  {sec:"Providers", name:"esign4_pref", label:"Will this provider be using our E-Sign app for HH and DME orders?",
+   type:"radio", options:["Yes","No","Maybe"], default:"", required:false},
+  //{sec:"Providers", type:"divider", width:"50%"},
+  
+  {sec:"Providers", type:"subhead", label:"5"},
+  {sec:"Providers", name:"mdnp5_name", label:"MD/NP 5 Name", placeholder:""},
+  {sec:"Providers", name:"mdnp5_email", label:"MD/NP 5 Email", placeholder:""},
+  {sec:"Providers", name:"mdnp5_phone", label:"MD/NP 5 Phone", placeholder:"(###) ###-####"},
+  {sec:"Providers", name:"mdnp5_pref", label:"What is this MD/NP's Contact Preference?",
+   type:"radio", options:["Email","Call Office","Call Cell","Text Cell"], default:"", required:false},
+  {sec:"Providers", name:"esign5_pref", label:"Will this provider be using our E-Sign app for HH and DME orders?",
+   type:"radio", options:["Yes","No","Maybe"], default:"", required:false},
+  {sec:"Providers", type:"divider", width:"50%"},
+
+  // Insurance Details
+  {sec:"Insurance Details", type:"subhead", label:"Accepted Plans"},
+  {sec:"Insurance Details", name:"insurance_plans", label:"Select the plans accepted at your facility.", type:"array_ins_plans"},
+  {sec:"Insurance Details", type:"subhead", label:"Insurance Specific Providers"},
+  {sec:"Insurance Details", name:"mdnp_ins", label:"Let us know if any of your attending providers only specifically see certain insurance patients.",
+   type:"textarea", placeholder:"e.g., Dr. Federer, Humana; Dr. Nadal, United Healthcare; etc...", default:""},
+
+  // Community Partners (new compact widget)
+  {sec:"Community Partners", type:"subhead", label:"Add your preferred or high volume post-discharge agencies."},
+  {sec:"Community Partners", type:"array_partners", name:"community_partners", label:""},
+  {sec:"Community Partners", type:"divider", width:"90%"},
+];
+
+// Remove the old per-provider inputs (we're replacing with the new Contacts widget)
+const FIELD_DEFS = RAW_FIELD_DEFS.filter(f => f.sec !== "Providers");
+
+/* ===== UI scaffolding ===== */
+const SECTIONS = Array.from(new Set(FIELD_DEFS.map(f=>f.sec)));
+const state = { open: SECTIONS[0], values: {}, completed: {} };
+
+// Read URL facility first (must come before STORAGE_KEY so we can namespace it)
+const _params   = new URLSearchParams(window.location.search);
+const FAC_ID    = _params.get("f") || "";
+const FAC_TOKEN = _params.get("t") || "";
+
+// If we have both f & t, we are in public, tokenized intake mode
+const PUBLIC_MODE = Boolean(FAC_ID && FAC_TOKEN);
+
+
+function $(s,el=document){return el.querySelector(s)}
+function $all(s,el=document){return [...el.querySelectorAll(s)]}
+
+function toast(msg){
+  const t=document.createElement("div");
+  t.className="toast"; t.textContent=msg; document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1300);
+}
+
+function showDebug({publicMode, fid, tok, url}){
+  const box = document.getElementById("dbg");
+  if (!box) return;
+  document.getElementById("dbgPub").textContent = String(publicMode);
+  document.getElementById("dbgF").textContent = fid || "(none)";
+  document.getElementById("dbgT").textContent = tok ? tok.slice(0,6)+"…"+tok.slice(-4) : "(none)";
+  document.getElementById("dbgU").textContent = url || "(none)";
+  box.style.display = "block";
+}
+
+function sectionDone(sec){
+  const fields = FIELD_DEFS.filter(f=>f.sec===sec && !isLayout(f));
+  return fields.every(f=>{
+    if (f.type === "radio") {
+      return !!document.querySelector(`[name="${f.name}"]:checked`);
+    }
+    const el = document.querySelector(`[name="${f.name}"]`);
+    return !!(el && String(el.value||"").trim().length);
+  });
+}
+
+function markCompletion(){
+  SECTIONS.forEach(sec=>{
+    const done = sectionDone(sec);
+    state.completed[sec] = done;
+    const sEl = document.querySelector(`.section[data-sec="${sec}"] .check`);
+    if(sEl){ sEl.classList.toggle("done", !!done); sEl.innerHTML = done ? "✓" : ""; }
+  });
+  // progress chips
+  $("#progressBar").innerHTML = SECTIONS.map(sec=>{
+    const done = !!state.completed[sec];
+    return `<span class="chip ${done?'done':''}"><span class="dot"></span>${sec}</span>`;
+  }).join("");
+}
+function toggleSection(sec){
+  state.open = sec;
+
+  const all = document.querySelectorAll(".section");
+  let targetEl = null;
+
+  all.forEach(s=>{
+    const isTarget = s.dataset.sec === sec;
+    s.classList.toggle("open", isTarget);
+    if (isTarget) targetEl = s;
+  });
+
+  markCompletion();
+
+  // Smooth scroll the new section into view (top-aligned).
+  // The CSS scroll-margin-top above handles the sticky header offset.
+  if (targetEl) {
+    // Wait a tick so the browser has applied 'open' layout before scrolling
+    requestAnimationFrame(()=>{
+      targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+}
+
+/* === NEW: placeholder + default-aware renderer === */
+function fieldControl(f){
+  const required = f.required ? "required" : "";
+  const ph = f.placeholder ? ` placeholder="${escapeAttr(f.placeholder)}"` : "";
+  const def = (f.default ?? ""); // default value if provided
+
+  // textarea
+  if (f.type === "textarea") {
+    return `<textarea class="ipt" name="${f.name}" rows="3"${ph} ${required}>${escapeHtml(def)}</textarea>`;
+  }
+
+  // Additional Services = special array widget
+  if (f.type === "array_addl_services") {
+    return `
+      <div class="as-wrap" data-as name="${f.name}">
+        <div class="as-presets" id="asPresets"></div>
+        <div class="as-addrow">
+          <input class="ipt" id="asCustom" placeholder="Additional Services (One at a time, then +)"/>
+          <button class="btn btn-secondary" type="button" id="asAddBtn" title="Add">+</button>
+        </div>
+        <div class="as-list" id="asList"></div>
+        <input type="hidden" class="ipt" name="${f.name}" id="asHidden" value="[]"/>
+      </div>`;
+  }
+  
+  
+  // Community Partners array widget
+  if (f.type === "array_partners") {
+    return `
+      <div class="ct-wrap" data-cp name="${f.name}">
+        <label>Agency Type</label>
+        <div class="ct-types" id="cpTypes"></div>
+
+        <div class="ct-row" style="grid-template-columns:1fr">
+          <input class="ipt" id="cpAgency" placeholder="Agency Name"/>
+        </div>
+
+        <label>Is this a provider only for a specific Insurance?</label>
+        <div class="ct-pref" id="cpPref">
+          <span class="chip-radio"><input type="radio" id="cp_yes" name="cp_ins_only" value="Yes"><label for="cp_yes">Yes</label></span>
+          <span class="chip-radio"><input type="radio" id="cp_no"  name="cp_ins_only" value="No"><label for="cp_no">No</label></span>
+        </div>
+
+        <div class="ct-row" style="grid-template-columns:1fr">
+          <input class="ipt" id="cpInsName" placeholder="If so, which insurance?"/>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <button class="btn btn-secondary" type="button" id="cpAddBtn" title="Add">Add</button>
+        </div>
+
+        <div class="ct-list" id="cpList"></div>
+        <input type="hidden" class="ipt" name="${f.name}" id="cpHidden" value="[]"/>
+      </div>`;
+  }
+
+  
+  
+  // Contacts array widget
+  if (f.type === "array_contacts") {
+    return `
+      <div class="ct-wrap" data-ct name="${f.name}">
+        <label>Contact Type</label>
+        <div class="ct-types" id="ctTypes"></div>
+
+        <div class="ct-row">
+          <input class="ipt" id="ctName"  placeholder="Name"/>
+          <input class="ipt" id="ctEmail" placeholder="Email"/>
+          <input class="ipt" id="ctPhone" placeholder="Phone"/>
+        </div>
+
+        <label>Contact Preference</label>
+        <div class="ct-pref" id="ctPref">
+          <span class="chip-radio"><input type="radio" id="ctp_e" name="ct_pref" value="Email"><label for="ctp_e">Email</label></span>
+          <span class="chip-radio"><input type="radio" id="ctp_co" name="ct_pref" value="Call Office"><label for="ctp_co">Call Office</label></span>
+          <span class="chip-radio"><input type="radio" id="ctp_cc" name="ct_pref" value="Call Cell"><label for="ctp_cc">Call Cell</label></span>
+          <span class="chip-radio"><input type="radio" id="ctp_tc" name="ct_pref" value="Text Cell"><label for="ctp_tc">Text Cell</label></span>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <button class="btn btn-secondary" type="button" id="ctAddBtn" title="Add">Add</button>
+        </div>
+
+        <div class="ct-list" id="ctList"></div>
+        <input type="hidden" class="ipt" name="${f.name}" id="ctHidden" value="[]"/>
+      </div>`;
+  }
+
+  // Insurance Plans = special array widget (same UX as Additional Services)
+  if (f.type === "array_ins_plans") {
+    return `
+      <div class="as-wrap" data-ip name="${f.name}">
+        <div class="as-presets" id="ipPresets"></div>
+        <div class="as-addrow">
+          <input class="ipt" id="ipCustom" placeholder="Insurance plan (One at a time, then +)"/>
+          <button class="btn btn-secondary" type="button" id="ipAddBtn" title="Add">+</button>
+        </div>
+        <div class="as-list" id="ipList"></div>
+        <input type="hidden" class="ipt" name="${f.name}" id="ipHidden" value="[]"/>
+      </div>`;
+  }
+
+  
+  // select
+  if (f.type === "select" && Array.isArray(f.options)) {
+    const opts = f.options.map(o => {
+      const selected = (def && def === o) ? " selected" : "";
+      return `<option value="${escapeAttr(o)}"${selected}>${escapeHtml(o)}</option>`;
+    }).join("");
+    const lead = def ? "" : `<option value="">Select…</option>`;
+    return `<select class="ipt" name="${f.name}" ${required}>${lead}${opts}</select>`;
+  }
+
+  // radio chips
+  if (f.type === "radio" && Array.isArray(f.options)) {
+    const group = f.name;
+    const items = f.options.map((o,i)=>{
+      const id = `${group}_${i}`;
+      const checked = (def && def === o) ? " checked" : "";
+      return `<span class="chip-radio">
+                <input type="radio" id="${id}" name="${group}" value="${escapeAttr(o)}"${checked} ${required}>
+                <label for="${id}">${escapeHtml(o)}</label>
+              </span>`;
+    }).join("");
+    return `<div class="chips-wrap" role="radiogroup" aria-label="${escapeAttr(f.label)}">${items}</div>`;
+  }
+
+  // default: single-line text
+  return `<input class="ipt" name="${f.name}" value="${escapeAttr(def)}"${ph} ${required}/>`;
+}
+
+// helpers
+function escapeHtml(x){ return String(x).replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m])); }
+function escapeAttr(x){ return String(x).replace(/"/g,"&quot;"); }
+
+function isLayout(f){
+  return f.type === "subhead" || f.type === "divider" || f.type === "spacer";
+}
+function layoutControl(f){
+  if (f.type === "subhead") {
+    const text = f.label || f.title || "Group";
+    return `
+      <div class="grouphead">
+        <span class="tag">${escapeHtml(text)}</span>
+        <span class="line"></span>
+      </div>`;
+  }
+  if (f.type === "divider") {
+    // optional width: e.g., { type:"divider", width: "70%" }
+    const w = f.width || "60%";
+    return `<div class="hr-partial" style="width:${escapeAttr(w)}"></div>`;
+  }
+  // spacer: vertical gap (e.g., { type:"spacer", size:"12px" })
+  if (f.type === "spacer") {
+    const size = f.size || "10px";
+    return `<div style="height:${escapeAttr(size)}"></div>`;
+  }
+  return "";
+}
+
+
+function renderForm(){
+  const host = $("#form");
+  host.innerHTML = SECTIONS.map(sec=>{
+    const fields = FIELD_DEFS.filter(f=>f.sec===sec);
+    const rows = fields.map(f=>{
+      return (typeof isLayout === "function" && isLayout(f))
+        ? `<div class="colspan">${layoutControl(f)}</div>`
+        : `<div>${labelHtml(f.label, f.name, !!f.required)}${fieldControl(f)}</div>`;
+    }).join("");
+
+    return `
+      <div class="section ${sec===state.open?'open':''}" data-sec="${sec}">
+        <div class="sec-head" onclick="toggleSection('${sec}')">
+          <div class="check" aria-hidden="true"></div>
+          <div class="sec-title">${sec}</div>
+          <svg class="chev" width="20" height="20" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" fill="none" stroke="#64748b" stroke-width="2"/></svg>
+        </div>
+        <div class="sec-body">
+          <div class="grid2">${rows}</div>
+          <div style="display:flex;justify-content:space-between;margin-top:12px;gap:10px">
+            ${navButtons(sec)}
+          </div>
+        </div>
+      </div>`;
+  }).join("");
+  // input listeners
+  $all("input, textarea, select").forEach(el=>{
+    el.addEventListener("input", markCompletion);
+  });
+}
+function labelHtml(text, forName, required=false){
+  return `<label for="${forName}">${escapeHtml(text)}${required ? ' <span class="req">*</span>' : ''}</label>`;
+}
+function navButtons(sec){
+  const idx = SECTIONS.indexOf(sec);
+  const prev = idx>0 ? `<button class="btn btn-secondary" type="button" onclick="toggleSection('${SECTIONS[idx-1]}')">Back</button>` : "";
+  const next = idx<SECTIONS.length-1 ? `<button class="btn btn-primary" type="button" onclick="toggleSection('${SECTIONS[idx+1]}')">Next</button>` : "";
+  return `${prev}${next}`;
+}
+
+function asArray(x){
+  if (Array.isArray(x)) return x;
+  if (x == null) return [];
+  if (typeof x === "string"){
+    try {
+      const v = JSON.parse(x);
+      if (Array.isArray(v)) return v;
+    } catch {}
+    // fallback: CSV
+    return x.split(",").map(s=>s.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function pick(...candidates){
+  for (const c of candidates){
+    if (c !== undefined && c !== null && c !== "") return c;
+  }
+  return undefined;
+}
+
+
+/* ===== Additional Services presets & widget ===== */
+const ADDL_SERVICE_PRESETS = [
+  "Trach Care",
+  "In-House Dialysis",
+  "CCM Post-DC",
+  "Wound Care",
+  "Respiratory Therapy"
+];
+
+function initAdditionalServices(initial){
+  const root = document.querySelector('[data-as][name="additional_services"]');
+  if (!root) return;
+
+  // ---- guard to avoid double-binding ----
+  const already = root.dataset.bound === "1";
+  root.dataset.bound = "1";
+
+
+  const elPresets = root.querySelector("#asPresets");
+  const elList    = root.querySelector("#asList");
+  const elCustom  = root.querySelector("#asCustom");
+  const elAddBtn  = root.querySelector("#asAddBtn");
+  const elHidden  = root.querySelector("#asHidden");
+
+  function getArr(){
+    try { return JSON.parse(elHidden.value || "[]"); } catch { return []; }
+  }
+  function setArr(arr){
+    const uniq = [...new Set(arr.filter(Boolean).map(s=>s.trim()).filter(Boolean))];
+    elHidden.value = JSON.stringify(uniq);
+    renderSelected();
+    markPresetActive();
+  }
+  function addItem(text){
+    const t = (text||"").trim();
+    if (!t) return;
+    const cur = getArr();
+    if (!cur.includes(t)) cur.push(t);
+    setArr(cur);
+  }
+  function removeItem(text){
+    const cur = getArr().filter(x=>x!==text);
+    setArr(cur);
+  }
+
+  function renderPresets(){
+    elPresets.innerHTML = ADDL_SERVICE_PRESETS
+      .map(s=>`<span class="as-pill" data-val="${escapeAttr(s)}">${escapeHtml(s)}</span>`)
+      .join("");
+    elPresets.querySelectorAll(".as-pill").forEach(p=>{
+      p.addEventListener("click", ()=>{
+        const val = p.getAttribute("data-val");
+        const cur = getArr();
+        if (cur.includes(val)) setArr(cur.filter(x=>x!==val));
+        else setArr([...cur, val]);
+      });
+    });
+  }
+  function markPresetActive(){
+    const cur = getArr();
+    elPresets.querySelectorAll(".as-pill").forEach(p=>{
+      const val = p.getAttribute("data-val");
+      p.classList.toggle("active", cur.includes(val));
+    });
+  }
+  function renderSelected(){
+    const cur = getArr();
+    elList.innerHTML = cur.map(s=>`
+      <span class="as-chip">
+        ${escapeHtml(s)}
+        <span class="as-x" role="button" aria-label="Remove" data-val="${escapeAttr(s)}">×</span>
+      </span>`).join("");
+    elList.querySelectorAll(".as-x").forEach(x=>{
+      x.addEventListener("click", ()=> removeItem(x.getAttribute("data-val")));
+    });
+  }
+
+  // If we were already bound, only (re)seed and render, then exit early
+  if (already) {
+    renderPresets();
+    setArr(Array.isArray(initial) ? initial : getArr());
+    return;
+  }
+
+  elAddBtn.addEventListener("click", ()=>{
+    addItem(elCustom.value);
+    elCustom.value = "";
+    elCustom.focus();
+  });
+  elCustom.addEventListener("keydown", (e)=>{
+    if (e.key === "Enter"){
+      e.preventDefault();
+      addItem(elCustom.value);
+      elCustom.value = "";
+    }
+  });
+
+  renderPresets();
+  setArr(Array.isArray(initial) ? initial : []);
+}
+
+/* ===== Insurance Plans presets & widget ===== */
+const INSURANCE_PRESETS = [
+  "Medicare",
+  "Humana",
+  "United Healthcare",
+  "BlueCross",
+  "Aetna",
+  "CarePlus"
+];
+
+function initInsurancePlans(initial){
+  const root = document.querySelector('[data-ip][name="insurance_plans"]');
+  if (!root) return;
+
+  // ---- guard to avoid double-binding ----
+  const already = root.dataset.bound === "1";
+  root.dataset.bound = "1";
+  const elPresets = root.querySelector("#ipPresets");
+  const elList    = root.querySelector("#ipList");
+  const elCustom  = root.querySelector("#ipCustom");
+  const elAddBtn  = root.querySelector("#ipAddBtn");
+  const elHidden  = root.querySelector("#ipHidden");
+
+  function getArr(){
+    try { return JSON.parse(elHidden.value || "[]"); } catch { return []; }
+  }
+  function setArr(arr){
+    const uniq = [...new Set(arr.filter(Boolean).map(s=>s.trim()).filter(Boolean))];
+    elHidden.value = JSON.stringify(uniq);
+    renderSelected();
+    markPresetActive();
+  }
+  function addItem(text){
+    const t = (text||"").trim();
+    if (!t) return;
+    const cur = getArr();
+    if (!cur.includes(t)) cur.push(t);
+    setArr(cur);
+  }
+  function removeItem(text){
+    const cur = getArr().filter(x=>x!==text);
+    setArr(cur);
+  }
+
+  function renderPresets(){
+    elPresets.innerHTML = INSURANCE_PRESETS
+      .map(s=>`<span class="as-pill" data-val="${escapeAttr(s)}">${escapeHtml(s)}</span>`)
+      .join("");
+    elPresets.querySelectorAll(".as-pill").forEach(p=>{
+      p.addEventListener("click", ()=>{
+        const val = p.getAttribute("data-val");
+        const cur = getArr();
+        if (cur.includes(val)) setArr(cur.filter(x=>x!==val));
+        else setArr([...cur, val]);
+      });
+    });
+  }
+  function markPresetActive(){
+    const cur = getArr();
+    elPresets.querySelectorAll(".as-pill").forEach(p=>{
+      const val = p.getAttribute("data-val");
+      p.classList.toggle("active", cur.includes(val));
+    });
+  }
+  function renderSelected(){
+    const cur = getArr();
+    elList.innerHTML = cur.map(s=>`
+      <span class="as-chip">
+        ${escapeHtml(s)}
+        <span class="as-x" role="button" aria-label="Remove" data-val="${escapeAttr(s)}">×</span>
+      </span>`).join("");
+    elList.querySelectorAll(".as-x").forEach(x=>{
+      x.addEventListener("click", ()=> removeItem(x.getAttribute("data-val")));
+    });
+  }
+
+  // If we were already bound, only (re)seed and render, then exit early
+  if (already) {
+    renderPresets();
+    setArr(Array.isArray(initial) ? initial : getArr());
+    return;
+  }
+
+  elAddBtn.addEventListener("click", ()=>{
+    addItem(elCustom.value);
+    elCustom.value = "";
+    elCustom.focus();
+  });
+  elCustom.addEventListener("keydown", (e)=>{
+    if (e.key === "Enter"){
+      e.preventDefault();
+      addItem(elCustom.value);
+      elCustom.value = "";
+    }
+  });
+
+  renderPresets();
+  setArr(Array.isArray(initial) ? initial : []);
+}
+
+/* ===== Contacts presets & widget ===== */
+const CONTACT_TYPES = [
+  "Administrator",
+  "Social Services",
+  "Nursing",
+  "Therapy",
+  "Admissions",
+  "Physician/NP",
+  "Other Staff"
+];
+
+function initContacts(initialJson){
+  const root = document.querySelector('[data-ct][name="contacts"]');
+  if (!root) return;
+
+  // ---- guard to avoid double-binding ----
+  const already = root.dataset.bound === "1";
+  root.dataset.bound = "1";
+  const elTypes  = root.querySelector("#ctTypes");
+  const elName   = root.querySelector("#ctName");
+  const elEmail  = root.querySelector("#ctEmail");
+  const elPhone  = root.querySelector("#ctPhone");
+  const elAdd    = root.querySelector("#ctAddBtn");
+  const elHidden = root.querySelector("#ctHidden");
+  const elList   = root.querySelector("#ctList");
+
+  let selectedType = CONTACT_TYPES[0];
+
+  function getArr(){
+    try { return JSON.parse(elHidden.value || "[]"); } catch { return []; }
+  }
+  function setArr(arr){
+    const clean = arr.filter(x => x && x.type && x.name).map(x => ({
+      type: String(x.type).trim(),
+      name: String(x.name).trim(),
+      email: String(x.email||"").trim(),
+      phone: String(x.phone||"").trim(),
+      pref: String(x.pref||"").trim(),
+    }));
+    elHidden.value = JSON.stringify(clean);
+    renderList();
+    markTypeActive();
+  }
+
+  function renderTypes(){
+    elTypes.innerHTML = CONTACT_TYPES
+      .map(t => `<span class="ct-pill" data-val="${escapeAttr(t)}">${escapeHtml(t)}</span>`)
+      .join("");
+    elTypes.addEventListener("click", (e)=>{
+      const pill = e.target.closest(".ct-pill");
+      if (!pill) return;
+      selectedType = pill.getAttribute("data-val");
+      markTypeActive();
+    });
+  }
+
+  function markTypeActive(){
+    elTypes.querySelectorAll(".ct-pill").forEach(p=>{
+      p.classList.toggle("active", p.getAttribute("data-val") === selectedType);
+    });
+  }
+
+  function renderList(){
+    const arr = getArr();
+    elList.innerHTML = arr.map((c, i) => {
+      const summary = [
+        `<span class="ct-type">${escapeHtml(c.type)}</span>`,
+        escapeHtml(c.name),
+        c.email ? `• ${escapeHtml(c.email)}` : "",
+        c.phone ? `• ${escapeHtml(c.phone)}` : "",
+        c.pref  ? `• ${escapeHtml(c.pref)}`  : "",
+      ].filter(Boolean).join(" ");
+      return `<span class="ct-chip" data-idx="${i}">
+                ${summary}
+                <span class="ct-x" title="Remove" aria-label="Remove">×</span>
+              </span>`;
+    }).join("");
+
+    elList.querySelectorAll(".ct-x").forEach(x=>{
+      x.addEventListener("click", ()=>{
+        const idx = Number(x.parentElement.getAttribute("data-idx"));
+        const cur = getArr();
+        cur.splice(idx, 1);
+        setArr(cur);
+      });
+    });
+  }
+
+  function addCurrent(){
+    const name = (elName.value||"").trim();
+    if (!name) {
+      toast("Enter a name first"); 
+      elName.focus(); 
+      return;
+    }
+    if (!name) { elName.focus(); return; }
+    const email = (elEmail.value||"").trim();
+    const phone = (elPhone.value||"").trim();
+    const prefEl = root.querySelector('input[name="ct_pref"]:checked');
+    const pref = prefEl ? prefEl.value : "";
+
+    const cur = getArr();
+    cur.push({ type: selectedType, name, email, phone, pref });
+    setArr(cur);
+
+    // clear line inputs, keep selectedType
+    elName.value = "";
+    elEmail.value = "";
+    elPhone.value = "";
+    const checked = root.querySelector('input[name="ct_pref"]:checked');
+    if (checked) checked.checked = false;
+    elName.focus();
+  }
+
+  // If we were already bound, only (re)seed and render, then exit early
+  if (already) {
+    if (initialJson) {
+      try {
+        const parsed = Array.isArray(initialJson) ? initialJson : JSON.parse(initialJson);
+        setArr(parsed || []);
+      } catch { setArr([]); }
+    } else {
+      setArr(getArr());
+    }
+    renderTypes();
+    markTypeActive();
+    return;
+  }
+
+
+  elAdd.addEventListener("click", addCurrent);
+
+  // Seed from existing JSON (when returning to the form)
+  if (initialJson) {
+    try {
+      const parsed = Array.isArray(initialJson) ? initialJson : JSON.parse(initialJson);
+      setArr(parsed || []);
+    } catch { setArr([]); }
+  } else {
+    setArr(getArr());
+  }
+
+  renderTypes();
+  markTypeActive();
+}
+
+/* ===== Community Partners presets & widget ===== */
+const PARTNER_TYPES = [
+  "Home Health",
+  "DME",
+  "Oxygen",
+  "Wound Vac",
+  "Tube Feeding Supplies",
+  "Other"
+];
+
+function initCommunityPartners(initialJson){
+  const root = document.querySelector('[data-cp][name="community_partners"]');
+  if (!root) return;
+
+  // ---- guard to avoid double-binding ----
+  const already = root.dataset.bound === "1";
+  root.dataset.bound = "1";
+
+  const elTypes   = root.querySelector("#cpTypes");
+  const elAgency  = root.querySelector("#cpAgency");
+  const elYes     = root.querySelector("#cp_yes");
+  const elNo      = root.querySelector("#cp_no");
+  const elInsName = root.querySelector("#cpInsName");
+  const elAdd     = root.querySelector("#cpAddBtn");
+  const elHidden  = root.querySelector("#cpHidden");
+  const elList    = root.querySelector("#cpList");
+
+  let selectedType = PARTNER_TYPES[0];
+
+  function getArr(){
+    try { return JSON.parse(elHidden.value || "[]"); } catch { return []; }
+  }
+  function setArr(arr){
+    const clean = arr.filter(x => x && x.type && x.name).map(x => ({
+      type: String(x.type).trim(),
+      name: String(x.name).trim(),
+      ins_only: String(x.ins_only||"").trim(),     // "Yes" | "No" | ""
+      insurance: String(x.insurance||"").trim(),   // free text
+    }));
+    elHidden.value = JSON.stringify(clean);
+    renderList();
+    markTypeActive();
+  }
+
+  function renderTypes(){
+    elTypes.innerHTML = PARTNER_TYPES
+      .map(t => `<span class="ct-pill" data-val="${escapeAttr(t)}">${escapeHtml(t)}</span>`)
+      .join("");
+    elTypes.addEventListener("click", (e)=>{
+      const pill = e.target.closest(".ct-pill");
+      if (!pill) return;
+      selectedType = pill.getAttribute("data-val");
+      markTypeActive();
+    });
+  }
+  function markTypeActive(){
+    elTypes.querySelectorAll(".ct-pill").forEach(p=>{
+      p.classList.toggle("active", p.getAttribute("data-val") === selectedType);
+    });
+  }
+
+  function renderList(){
+    const arr = getArr();
+    elList.innerHTML = arr.map((c, i) => {
+      const bits = [
+        `<span class="ct-type">${escapeHtml(c.type)}</span>`,
+        escapeHtml(c.name),
+      ];
+      if (c.ins_only === "Yes" && c.insurance) bits.push(`• Only for: ${escapeHtml(c.insurance)}`);
+      if (c.ins_only === "No") bits.push("• All insurances");
+      return `<span class="ct-chip" data-idx="${i}">
+                ${bits.join(" ")}
+                <span class="ct-x" title="Remove" aria-label="Remove">×</span>
+              </span>`;
+    }).join("");
+
+    elList.querySelectorAll(".ct-x").forEach(x=>{
+      x.addEventListener("click", ()=>{
+        const idx = Number(x.parentElement.getAttribute("data-idx"));
+        const cur = getArr();
+        cur.splice(idx, 1);
+        setArr(cur);
+      });
+    });
+  }
+
+  function addCurrent(){
+    const agency = (elAgency.value||"").trim();
+    if (!agency){
+      toast("Enter an agency name first");
+      elAgency.focus(); 
+      return;
+    }
+
+
+    const insOnlyEl = root.querySelector('input[name="cp_ins_only"]:checked');
+    const insOnly = insOnlyEl ? insOnlyEl.value : "";
+    const insName = (elInsName.value||"").trim();
+
+    const cur = getArr();
+    cur.push({ type: selectedType, name: agency, ins_only: insOnly, insurance: insName });
+    setArr(cur);
+
+    // clear line inputs but keep selectedType
+    elAgency.value = "";
+    elInsName.value = "";
+    if (insOnlyEl) insOnlyEl.checked = false;
+    elAgency.focus();
+  }
+
+  // If we were already bound, only (re)seed and render, then exit early
+  if (already) {
+    if (initialJson) {
+      try {
+        const parsed = Array.isArray(initialJson) ? initialJson : JSON.parse(initialJson);
+        setArr(parsed || []);
+      } catch { setArr([]); }
+    } else {
+      setArr(getArr());
+    }
+    renderTypes();
+    markTypeActive();
+    return;
+  }
+
+  elAdd.addEventListener("click", addCurrent);
+
+  // seed from existing JSON (when returning to the form)
+  if (initialJson) {
+    try {
+      const parsed = Array.isArray(initialJson) ? initialJson : JSON.parse(initialJson);
+      setArr(parsed || []);
+    } catch { setArr([]); }
+  } else {
+    setArr(getArr());
+  }
+
+  renderTypes();
+  markTypeActive();
+}
+
+/* ===== Data handling & submit ===== */
+function collectValues(){
+  const out = {};
+  out["facility_name"] = $("#facility_name").value.trim();
+
+  FIELD_DEFS.forEach(f=>{
+    if (isLayout(f) || !f.name) return; // ← skip subhead/divider/spacer
+
+    // SPECIAL: Additional Services array widget
+    if (f.name === "additional_services") {
+      const hid = document.getElementById("asHidden");
+      try { out[f.name] = JSON.parse(hid?.value || "[]"); }
+      catch { out[f.name] = []; }
+      return;
+    }
+
+    // SPECIAL: Insurance Plans array widget
+    if (f.name === "insurance_plans") {
+      const hid = document.getElementById("ipHidden");
+      try { out[f.name] = JSON.parse(hid?.value || "[]"); }
+      catch { out[f.name] = []; }
+      return;
+    }
+
+    // SPECIAL: Contacts array widget  ← NEW
+    if (f.name === "contacts") {
+      const hid = document.getElementById("ctHidden");
+      try { out[f.name] = JSON.parse(hid?.value || "[]"); }
+      catch { out[f.name] = []; }
+      return;
+    }
+
+    // SPECIAL: Community Partners array widget  ← NEW
+    if (f.name === "community_partners") {
+      const hid = document.getElementById("cpHidden");
+      try { out[f.name] = JSON.parse(hid?.value || "[]"); }
+      catch { out[f.name] = []; }
+      return;
+    }
+
+    if (f.type === "radio") {
+      const checked = document.querySelector(`[name="${f.name}"]:checked`);
+      out[f.name] = checked ? checked.value.trim() : "";
+      return;
+    }
+    const el = document.querySelector(`[name="${f.name}"]`);
+    out[f.name] = el ? (el.value||"").trim() : "";
+  });
+
+  return out;
+}
+
+
+
+function validate(){
+  const name = $("#facility_name").value.trim();
+  const err = $("#facility_err");
+  if(!name){
+    err.style.display="block";
+    toast("Facility Name is required");
+    $("#facility_name").focus();
+    return false;
+  }
+  err.style.display="none";
+  return true;
+}
+function tagTemplate(v){
+  const name = (v.facility_name||"").trim();
+  const base = [`f-${name}`.replace(/\s+/g," ").trim()];
+  return base.filter(Boolean).join(", ");
+}
+
+function showBusy(text="Working…"){
+  const el = document.getElementById("busy");
+  const t  = el?.querySelector(".busy-text");
+  if (t) t.textContent = text;
+  if (el) el.hidden = false;
+}
+function hideBusy(){
+  const el = document.getElementById("busy");
+  if (el) el.hidden = true;
+}
+
+async function submitForm(){
+  const btn = document.getElementById("submitBtn");
+  console.log("Submit clicked");
+  if(!validate()) return;
+  
+  if (!FAC_ID || !FAC_TOKEN) {
+  alert("Missing facility id or intake token in the URL. Please open this page using the Admin 'Open' button.");
+  return;
+  }
+
+  // Guard: prevent double clicks
+  if (btn?.disabled) return;
+
+  // UI: show overlay + disable button
+  showBusy("Shipping your pixels to HQ… hang tight 🚀");
+  if (btn){
+    btn.dataset._label = btn.textContent;
+    btn.textContent = "Submitting…";
+    btn.disabled = true;
+  }
+
+  const payload = collectValues();
+  payload.__tag_hint = tagTemplate(payload);
+  
+  // NEW: carry URL params in the payload too (helps your backend and logging)
+  payload.facility_id = FAC_ID;
+  payload.token       = FAC_TOKEN;
+
+  try{
+    const submitUrl = `${API_BASE}/intake/submit`
+      + `?f=${encodeURIComponent(FAC_ID)}`
+      + `&t=${encodeURIComponent(FAC_TOKEN)}`
+      + `&ngrok-skip-browser-warning=true`;
+
+    const res = await fetch(submitUrl, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json","ngrok-skip-browser-warning":"true" },
+      body: JSON.stringify(payload)
+    });
+    if(!res.ok){
+      const t = await res.text().catch(()=> "");
+      throw new Error(`HTTP ${res.status}\n${t}`);
+    }
+
+    toast("Submitted!");
+    markCompletion();
+  }catch(e){
+    alert("Submit failed: " + e.message);
+  }finally{
+    // UI: restore button + hide overlay
+    if (btn){
+      btn.textContent = btn.dataset._label || "Submit";
+      btn.disabled = false;
+      delete btn.dataset._label;
+    }
+    hideBusy();
+  }
+}
+
+async function preloadFacility() {
+  if (!FAC_ID || !FAC_TOKEN) {
+    console.warn("Missing f or t in URL — not loading from DB");
+    return;
+  }
+  const url = `${API_BASE}/intake/f/${encodeURIComponent(FAC_ID)}?t=${encodeURIComponent(FAC_TOKEN)}&ngrok-skip-browser-warning=true`;
+  showDebug({ publicMode: PUBLIC_MODE, fid: FAC_ID, tok: FAC_TOKEN, url });
+
+  try {
+    console.log("[FD] Fetching:", url);
+    const res = await fetch(url, {
+      headers: { "ngrok-skip-browser-warning":"true" },
+      // avoid cached preflight weirdness
+      cache: "no-store",
+    });
+
+    // If it failed, surface the *actual* status and body text
+    if (!res.ok) {
+      let body = "";
+      try { body = await res.text(); } catch {}
+      console.error("[FD] Fetch failed", res.status, body);
+      alert(`Load failed (HTTP ${res.status})\n${body || "(no response body)"}`);
+      return;
+    }
+
+    // Parse and sanity-check payload
+    const data = await res.json();
+    console.log("[FD] Raw JSON:", data);
+    if (!data || !data.ok) {
+      console.error("[FD] Unexpected JSON:", data);
+      alert("Load failed: unexpected response JSON from server.");
+      return;
+    }
+
+    const fac = data.facility || {};
+    console.log("[FD] Facility data:", fac);
+
+    // Set sticky header name immediately
+    const nameEl = document.querySelector("#facility_name");
+    if (nameEl) nameEl.value = fac.facility_name || "";
+
+    // 1) Fill simple inputs and radios by name.
+    //    Accept value from fac[f.name] or (if your API nests) data.facility_details?.[f.name]
+    FIELD_DEFS.forEach(f => {
+      if (!f.name || isLayout(f)) return;
+      if (["array_addl_services","array_ins_plans","array_contacts","array_partners"].includes(f.type)) return;
+
+      const raw = pick(
+        fac[f.name],
+        data?.facility_details?.[f.name]   // <- optional secondary nesting fallback
+      );
+      const val = raw == null ? "" : String(raw);
+
+      if (f.type === "radio") {
+        document.querySelectorAll(`[name="${f.name}"][type="radio"]`)
+          .forEach(r => { r.checked = (r.value === val); });
+      } else {
+        const el = document.querySelector(`[name="${f.name}"]`);
+        if (el) el.value = val;
+      }
+    });
+
+    // 2) Seed array widgets.
+    //    Accept: array, JSON string (e.g. '["A","B"]'), or CSV string ("A,B")
+    const addl = asArray(pick(
+      fac.additional_services, fac.additional_services_json, data.additional_services
+    ));
+    const plans = asArray(pick(
+      fac.insurance_plans, fac.insurance_plans_json, data.insurance_plans
+    ));
+    // Contacts/community partners may be at root or inside facility or stored as *_json
+    const contactsSeed = asArray(pick(
+      data.contacts, fac.contacts, fac.contacts_json
+    ));
+    const partnersSeed = asArray(pick(
+      data.community_partners, fac.community_partners, fac.community_partners_json
+    ));
+
+    initAdditionalServices(addl);
+    initInsurancePlans(plans);
+    initContacts(contactsSeed);
+    initCommunityPartners(partnersSeed);
+
+
+    markCompletion();
+  } catch (err) {
+    console.error("[FD] Exception while loading facility:", err);
+    alert("Could not load this facility link. See console for details.");
+  }
+}
+
+
+
+/* ===== Wire-up ===== */
+window.toggleSection = toggleSection;
+window.addEventListener("DOMContentLoaded", ()=>{
+  renderForm();
+
+  // Reduce browser autofill/projected values
+  document.querySelectorAll('input, textarea, select').forEach(el => {
+    el.setAttribute('autocomplete', 'off');
+    el.setAttribute('autocapitalize', 'off');
+    el.setAttribute('autocorrect', 'off');
+    el.setAttribute('spellcheck', 'false');
+  });
+
+  // Always wire widgets
+  initAdditionalServices();
+  initInsurancePlans();
+  initContacts();
+  initCommunityPartners();
+
+  // Always load from DB if tokenized; otherwise just render empty form
+  if (PUBLIC_MODE) {
+    preloadFacility();     // fetches /intake/f/{f}?t={t}
+  }
+  markCompletion();
+
+  // Wire the buttons
+  document.getElementById("submitBtn")?.addEventListener("click", submitForm);
+
+});
+
+
+
+</script>
+<!-- Loading overlay -->
+<div id="busy" hidden>
+  <div class="busy-card" role="status" aria-live="polite">
+    <div class="busy-spinner"></div>
+    <div class="busy-text">Shipping your pixels to HQ… hang tight 🚀</div>
+  </div>
+</div>
+
+</body>
+</html>

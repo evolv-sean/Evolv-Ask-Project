@@ -1,0 +1,456 @@
+<div style="max-width:1100px;margin:24px auto;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.45;color:#0f172a">
+  <!-- Header -->
+  <div class="card" style="padding:18px;margin-bottom:16px;display:flex;gap:14px;align-items:center;">
+    <div>
+      <h2 style="margin:0 0 4px;font-weight:700">Evolv Training Copilot</h2>
+      <div class="muted" style="font-size:14px">Ask training questions with a section hint for sharper answers.</div>
+    </div>
+    <!-- Admin link (top-right, subtle) -->
+    <a href="/admin"
+       class="admin-link"
+       aria-label="Open Admin"
+       title="Admin"
+       target="_blank" rel="noopener noreferrer">
+      <!-- lock icon (SVG) -->
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+        <path d="M7 10V8a5 5 0 0 1 10 0v2m-9 0h8a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z"
+              fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </a>
+  </div>
+
+  <div id="err" style="color:#b00020;margin:8px 0;"></div>
+
+  <style>
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+    .toolbar{display:flex;gap:12px;flex-wrap:wrap}
+    .ipt, textarea, select{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;background:#fff}
+    .ipt:focus, textarea:focus, select:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+    .btn{padding:10px 16px;border-radius:999px;border:1px solid transparent;cursor:pointer;font-weight:600}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .btn-primary{background:#2563eb;border-color:#2563eb;color:#fff}
+    .btn-primary:hover{background:#1e4fdc;border-color:#1e4fdc}
+    .btn-primary:focus{box-shadow:0 0 0 4px rgba(37,99,235,.2)}
+    .btn-secondary{background:#fff;color:#111827;border-color:#d1d5db}
+    .seg{display:flex;gap:8px;flex-wrap:wrap}
+    .seg input{display:none}
+    .seg label{padding:8px 12px;border:1px solid #d1d5db;border-radius:999px;cursor:pointer;background:#fff}
+    .seg input:checked+label{background:#111827;color:#fff;border-color:#111827}
+    .muted{color:#6b7280}
+    .answer{font-size:16px}
+    .answer h4{margin:0 0 6px}
+    .answer .precise{font-size:17px;font-weight:600;margin-bottom:8px}
+    .divider{height:1px;background:#e5e7eb;margin:12px 0}
+    .small{font-size:13px}
+    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;}
+    details summary{cursor:pointer;list-style: none}
+    details summary::-webkit-details-marker {display:none}
+    .chip{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid #e5e7eb;border-radius:999px;background:#f8fafc;font-size:12px;color:#334155}
+    .row-actions{display:flex;align-items:center;gap:8px}
+    .right{margin-left:auto}
+    .center{justify-content:center}
+
+    /* Match Facility Details button corners on Ask/Clear */
+    #askBtn, #clearBtn { border-radius:12px; }
+
+    /* Admin link (subtle, top-right of header) */
+    .admin-link{
+      margin-left:auto;              /* push to far right in the header flex row */
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:28px; height:28px;
+      border-radius:999px;
+      color:#64748b;                 /* slate-500-ish */
+      opacity:.45;                   /* inconspicuous by default */
+      text-decoration:none;
+      border:1px solid transparent;  /* for consistent hover focus ring */
+      outline:none;
+      transition:opacity .15s, box-shadow .15s, border-color .15s, background-color .15s;
+    }
+    .admin-link:hover,
+    .admin-link:focus{
+      opacity:.95;
+      background:#f8fafc;            /* faint background on hover/focus */
+      border-color:#e5e7eb;
+      box-shadow:0 0 0 3px rgba(59,130,246,.15); /* soft focus ring */
+    }
+    .admin-link svg{
+      display:block;
+    }
+  </style>
+
+  <style>
+    /* Thumb rating pills (outline, no fill) */
+    .thumb-pill{
+      display:inline-flex; align-items:center; justify-content:center;
+      width:40px; height:36px; border-radius:999px;
+      border:1px solid #d1d5db; background:#fff; cursor:pointer;
+      padding:0; transition:box-shadow .15s,border-color .15s;
+    }
+    .thumb-pill:hover{ background:#f8fafc; }
+    .thumb-pill svg{ width:18px; height:18px; stroke:#334155; fill:none; }
+    .thumb-pill.active{
+      border-color:#2563eb; box-shadow:0 0 0 3px rgba(37,99,235,.12);
+    }
+    .thumb-pill.active svg{ stroke:#2563eb; }
+  </style>
+  
+  <!-- Ask card -->
+  <div class="card" style="padding:16px;margin:0 0 18px">
+    <form id="askForm" style="display:grid;gap:12px">
+      <div>
+        <label class="muted">Your Question</label>
+        <textarea id="q" rows="4" class="ipt" placeholder="Ask a training question…" required></textarea>
+      </div>
+
+      <!-- ✅ Topics (multi-select) -->
+      <div>
+        <label class="muted" style="display:block;margin-bottom:6px">Topics (choose any)</label>
+        <div id="topicSeg" class="seg"></div>
+      </div>
+
+
+      <!-- Ask bar: slightly lower, centered, blue button -->
+      <div class="toolbar center" style="margin-top:10px">
+        <button id="askBtn" class="btn btn-primary" type="submit">Ask</button>
+        <button id="clearBtn" class="btn btn-secondary" type="button">Clear</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Loading/status row (playful rotating messages) -->
+  <div id="loadingRow" style="display:none;margin:12px 0;">
+    <div id="loadingText" class="muted" style="font-size:14px;">Thinking…</div>
+  </div>
+
+  <!-- Answer card -->
+  <div class="card" style="padding:16px">
+    <div id="out" class="muted small">Answer Details…</div>
+  </div>
+
+  <script>
+    // ▼▼ Render Base ▼▼
+    const API_BASE = window.location.origin;
+
+    // Topics list (adjust as you like)
+    const TOPICS = ["Sensys","Facility Details","List/Group","UR Calls","DME Confirmation","HH Start of Care","Closing Case Call"];
+
+    const qs = (s,el=document)=>el.querySelector(s);
+    const qsa = (s, el=document) => Array.from(el.querySelectorAll(s));
+
+    // Build multi-select Topic pills (checkboxes)
+    function buildTopicPills(container){
+      container.innerHTML = "";
+      TOPICS.forEach((label, i)=>{
+        const id = `topic_${i}`;
+        container.insertAdjacentHTML("beforeend",
+          `<input id="${id}" type="checkbox" value="${label}" style="display:none">
+           <label for="${id}">${label}</label>`);
+      });
+    }
+
+    // Read selected topics as an array
+    function getSelectedTopics(){
+      return Array.from(
+        document.querySelectorAll('#topicSeg input[type="checkbox"]:checked')
+      ).map(el => el.value);
+    }
+
+
+    // Call API
+    async function ask(question, section_hint){
+      const payload = {
+        question,
+        top_k: /Sensys|UR Calls|DME Confirmation|HH Start of Care|Closing Case Call/i.test(section_hint||"") ? 6 : 4
+      };
+      if(section_hint) payload.section_hint = section_hint;
+      const res = await fetch(API_BASE + "/ask?ngrok-skip-browser-warning=true", {
+        method: "POST",
+        headers: { "Content-Type":"application/json","ngrok-skip-browser-warning":"true" },
+        body: JSON.stringify(payload)
+      });
+      if(!res.ok){
+        const text = await res.text().catch(()=> "");
+        throw new Error(`HTTP ${res.status}\n${text}`);
+      }
+      return res.json();
+    }
+
+    // Render answer card
+    function renderAnswer(raw, askedQuestion){
+      const box = qs("#out");
+
+      const answer = raw.answer || raw.output || raw.text || "";
+      const bullets = raw.supporting_points || raw.bullets || raw.highlights || [];
+      const sources = raw.sources || raw.docs || raw.context || [];
+      const sectionUsed = raw.section_used || raw.section || "";
+
+      // Make supporting bullets if not provided
+      let sup = Array.isArray(bullets) && bullets.length ? bullets
+               : String(raw.support || raw.rationale || "")
+                 .split(/\n+/).map(s=>s.trim()).filter(Boolean);
+      if(!sup.length){
+        const parts = String(answer).split(/\n- |\n• /);
+        if(parts.length>1) sup = parts.slice(1).map(x=>x.trim());
+      }
+      const srcList = Array.isArray(sources) ? sources : [];
+
+      const precise = escapeHtml(firstLine(answer));
+      const rest = answerMore(answer);
+
+      box.innerHTML = `
+        <div class="row-actions" style="margin-bottom:6px">
+          <div class="chip">${sectionUsed ? "Section: "+escapeHtml(sectionUsed) : "Best match"}</div>
+          <div class="right" style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-secondary small" onclick="copyAnswer()">Copy</button>
+
+            <!-- Outlined thumb pills -->
+            <button class="thumb-pill" id="thumbUpBtn" title="Thumbs up" aria-pressed="false"
+                    onclick="rateThumb('up', this)">
+              <!-- Thumb up outline (no fill) -->
+              <svg viewBox="0 0 24 24" stroke-width="2" aria-hidden="true">
+                <path d="M7 10v10H4a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2h3Z"></path>
+                <path d="M7 10c3-1 5-4 6-7 1 0 2 .5 2 2v3h4a3 3 0 0 1 3 3c0 .6-.1 1.2-.3 1.7l-2.1 6a3 3 0 0 1-2.8 2.3H7"></path>
+              </svg>
+            </button>
+
+            <button class="thumb-pill" id="thumbDownBtn" title="Thumbs down" aria-pressed="false"
+                    onclick="rateThumb('down', this)">
+              <!-- Thumb down outline (no fill) -->
+              <svg viewBox="0 0 24 24" stroke-width="2" aria-hidden="true">
+                <path d="M7 14V4H4A2 2 0 0 0 2 6v6a2 2 0 0 0 2 2h3Z"></path>
+                <path d="M7 14c3 1 5 4 6 7 1 0 2-.5 2-2v-3h4a3 3 0 0 0 3-3c0-.6-.1-1.2-.3-1.7l-2.1-6A3 3 0 0 0 17.8 3H7"></path>
+              </svg>
+            </button>
+          </div>
+
+        </div>
+
+        <div class="small muted" style="margin-bottom:6px"><strong>Question:</strong> ${escapeHtml(askedQuestion || "")}</div>
+        <div class="answer">
+          <div class="precise">${precise || "No answer provided."}</div>
+          ${rest}
+          <div class="divider"></div>
+          <details open>
+            <summary class="small"><strong>Supporting details</strong></summary>
+            ${sup.length ? `<ul style="margin:8px 0 0 18px">${sup.slice(0,8).map(li=>`<li>${escapeHtml(li)}</li>`).join("")}</ul>` : `<div class="muted small">No additional details provided.</div>`}
+          </details>
+        </div>
+      `;
+
+      // Save for "Copy"
+      window.__lastAnswerForCopy = {
+        question: askedQuestion || "",
+        answer: answer || "",
+        details: sup,
+        sources: srcList
+      };
+    }
+
+    // Copy-to-clipboard
+    function copyAnswer(){
+      const a = window.__lastAnswerForCopy || {};
+      const lines = [];
+      if(a.question) lines.push(`Q: ${a.question}`);
+      if(a.answer) {
+        const first = firstLine(a.answer);
+        const rest = a.answer.slice(first.length).trim();
+        lines.push(`A: ${first}`);
+        if(rest) lines.push(rest);
+      }
+      if(Array.isArray(a.details) && a.details.length){
+        lines.push("\nSupporting details:");
+        a.details.forEach(d => lines.push(`- ${d}`));
+      }
+      if(Array.isArray(a.sources) && a.sources.length){
+        lines.push("\nSources:");
+        a.sources.forEach(s=>{
+          if(typeof s === "string"){ lines.push(`- ${s}`); }
+          else{
+            const title = s.title || s.id || s.name || "Source";
+            const url = s.url || s.link || "";
+            lines.push(`- ${title}${url ? " — " + url : ""}`);
+          }
+        });
+      }
+      const txt = lines.join("\n");
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(txt).then(()=> { toast("Copied to clipboard"); })
+                                          .catch(()=> fallbackCopy(txt));
+      }else{
+        fallbackCopy(txt);
+      }
+    }
+    async function submitQuality(which){
+      const id = window.__lastLogId;
+      if(!id){ return toast("No recent answer to rate."); }
+      try{
+        const fd = new URLSearchParams();
+        fd.append("id", String(id));
+        fd.append("quality", which);   // "up" or "down"
+        const res = await fetch(API_BASE + "/ulog/quality?ngrok-skip-browser-warning=true", {
+          method: "POST",
+          headers: { "ngrok-skip-browser-warning":"true" },
+          body: fd
+        });
+        if(!res.ok){
+          const t = await res.text().catch(()=> "");
+          throw new Error(`HTTP ${res.status}${t?": "+t:""}`);
+        }
+        toast(which==="up" ? "Thanks for the 👍" : "Thanks for the 👎");
+      }catch(err){
+        toast("Could not record feedback");
+        console.error(err);
+      }
+    }
+
+
+    function setThumbUI(which){
+      const up = document.getElementById("thumbUpBtn");
+      const dn = document.getElementById("thumbDownBtn");
+      if(!up || !dn) return;
+      up.classList.toggle("active", which === "up");
+      dn.classList.toggle("active", which === "down");
+      up.setAttribute("aria-pressed", which === "up" ? "true" : "false");
+      dn.setAttribute("aria-pressed", which === "down" ? "true" : "false");
+    }
+
+    async function rateThumb(which, el){
+      // UI first for responsiveness
+      setThumbUI(which);
+      // persist to backend
+      await submitQuality(which);
+    }
+
+    
+    
+    function fallbackCopy(text){
+      const ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta);
+      ta.select(); document.execCommand("copy");
+      document.body.removeChild(ta);
+      toast("Copied to clipboard");
+    }
+    function toast(msg){
+      let t = document.createElement("div");
+      t.textContent = msg;
+      t.style.cssText = "position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:8px 12px;border-radius:999px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.2);z-index:9999";
+      document.body.appendChild(t);
+      setTimeout(()=>t.remove(), 1200);
+    }
+
+    // Helpers
+    function firstLine(t){
+      const s = String(t||"").trim();
+      const idx = s.indexOf("\n");
+      return idx>0 ? s.slice(0, idx) : s;
+    }
+    function answerMore(t){
+      const s = String(t||"").trim();
+      const idx = s.indexOf("\n");
+      if(idx<=0) return "";
+      const rest = s.slice(idx+1).trim();
+      return rest ? `<div class="small" style="margin-top:4px;white-space:pre-wrap">${escapeHtml(rest)}</div>` : "";
+    }
+    function escapeHtml(x){ return String(x).replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m])); }
+
+    /* ===== Rotating loading messages (straight quotes only) ===== */
+    const LOADING_MESSAGES = [
+      "Almost there… or maybe I’m just being dramatic.",
+      "Asking the AI within the AI for advice.",
+      "Calculating… or procrastinating? Hard to say.",
+      "Carefully managing my care management data…",
+      "Consulting the Care Management Crystal Ball 🔮",
+      "Great question! Let’s see if I have a great answer…",
+      "Hold on — I need to care-manage my own tasks first.",
+      "I swear I left that answer here somewhere.",
+      "Just juggling a few client files… hold tight.",
+      "Just updating my empathy algorithms…",
+      "Loading… because good things take time (and processing power).",
+      "Ok ok ok. I got this!",
+      "One sec, I’m still onboarding myself.",
+      "Organizing roles… alphabetically… backwards.",
+      "Plot twist: I am the task you’re looking for.",
+      "Running diagnostics on my coffee levels…",
+      "Searching every corner of the careverse…",
+      "Searching the care continuum... and the internet.",
+      "The data elves are doing their thing…",
+      "Welp... I thought I had it.",
+      "Sometimes I ask myself the same question.",
+      "Somewhere, a tiny AI hamster is sprinting on a data wheel for this answer.",
+      "Loading… because apparently instant brilliance takes a second.",
+      "I’d tell you the answer now, but then I’d have to retrain myself.",
+      "Give me a sec — I’m deep in conversation with your tasks about who’s in charge."
+    ];
+    let loadingTimer = null;
+    function startLoadingMessages() {
+      const row = document.getElementById("loadingRow");
+      const textEl = document.getElementById("loadingText");
+      if (!row || !textEl) return;
+      let i = 0;
+      textEl.textContent = LOADING_MESSAGES[i];
+      row.style.display = "block";
+      loadingTimer = setInterval(() => {
+        i = (i + 1) % LOADING_MESSAGES.length;
+        textEl.textContent = LOADING_MESSAGES[i];
+      }, 2500);
+    }
+    function stopLoadingMessages() {
+      const row = document.getElementById("loadingRow");
+      if (loadingTimer) { clearInterval(loadingTimer); loadingTimer = null; }
+      if (row) row.style.display = "none";
+    }
+
+    // Form handlers
+    window.addEventListener("DOMContentLoaded", ()=>{
+      // Build Topics (multi-select) pills into the same container
+      buildTopicPills(qs("#topicSeg"));
+
+      qs("#askForm").addEventListener("submit", async (e)=>{
+        e.preventDefault();
+        const q = qs("#q").value.trim();
+        if(!q){ return; }
+
+        // Collect selected Topics -> comma list for backend (section_hint)
+        const topics = getSelectedTopics();
+        const section_hint = topics.join(", ");
+
+        // make it feel like a new thread
+        qs("#q").value = "";
+
+        // reset output to placeholder for the new question
+        qs("#out").innerHTML = `<div class="muted small">Answer Details…</div>`;
+        window.__lastAnswerForCopy = null;
+
+        qs("#askBtn").disabled = true;
+        startLoadingMessages();
+
+        try{
+          const data = await ask(q, section_hint);
+          if (!data || typeof data !== "object") {
+            throw new Error("Empty reply from server");
+          }
+          window.__lastLogId = data.log_id || null;   // safe now
+          renderAnswer(data, q);
+        }catch(err){
+          qs("#out").innerHTML = `<div class="small" style="color:#b00020">Error: ${escapeHtml(err.message)}</div>`;
+        }finally{
+          stopLoadingMessages();
+          qs("#askBtn").disabled = false;
+        }
+      });
+
+      qs("#clearBtn").addEventListener("click", (e)=>{
+        e.preventDefault();
+        stopLoadingMessages();
+        qs("#q").value = "";
+        qs("#out").innerHTML = `<div class="muted small">Answer Details…</div>`;
+        // Optional: clear topic selections
+        qsa('#topicSeg input[type="checkbox"]').forEach(cb => cb.checked = false);
+        qs("#q").focus();
+      });
+    });
+
+  </script>
+</div>

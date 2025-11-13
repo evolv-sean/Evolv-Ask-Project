@@ -1,0 +1,2318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Evolv — Admin Portal (Tabs + v2 Admin UI)</title>
+
+<!-- ===== v1: shell styles (namespaced e-*) ===== -->
+<style>
+  .e-wrap{max-width:1100px;margin:20px auto;padding:0 16px;box-sizing:border-box}
+  .e-card{background:#fff;border:1px solid #e5e7eb;border-radius:18px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .e-header{padding:18px;margin-bottom:16px}
+  .e-h1{margin:0 0 6px;font-size:24px;font-weight:700;color:#0f172a}
+  .e-muted{color:#64748b}
+  body{margin:0;background:#f8fafc;color:#0f172a;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.45}
+
+  /* Tabs */
+  .e-tabs-wrap{margin:0 0 12px}
+  .e-tabs{display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-bottom:0px solid #e5e7eb;padding:0 0px 0px 0px}
+  .e-tab-btn{appearance:none;background:#fff;border:1px solid #e5e7eb;border-radius:999px;padding:8px 14px;font-weight:600;cursor:pointer;color:#334155;transition:all .15s;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+  .e-tab-btn:hover{background:#f8fafc}
+  .e-tab-btn.e-active{border-color:#2563eb;color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+  .e-tab-rail{width:100%;height:3px;background:#dbeafe;border-radius:2px;margin-top:10px}
+
+  .e-tab-panel{display:none}
+  .e-tab-panel.e-active{display:block}
+
+  .e-sp{height:12px}
+</style>
+
+<!-- ===== Q&A (v2) UI: guardrails so its CSS stays inside #tab-qa ===== -->
+<style>
+  /* Strong scoping for legacy/v2 UI */
+  #tab-qa .legacy-scope * { box-sizing: border-box !important; }
+
+  /* prevent horizontal overflow & grid sanity */
+  #tab-qa .legacy-scope .card { overflow-x: hidden !important; width: 100% !important; }
+  #tab-qa .legacy-scope form { width: 100% !important; max-width: 100% !important; }
+  #tab-qa .legacy-scope .row { display:grid !important; grid-template-columns: 1fr 1fr !important; column-gap:16px !important; row-gap:16px !important; align-items:start !important; }
+  #tab-qa .legacy-scope .row > * { min-width:0 !important; }
+  #tab-qa .legacy-scope input.ipt,
+  #tab-qa .legacy-scope textarea.ipt,
+  #tab-qa .legacy-scope select,
+  #tab-qa .legacy-scope input[type="text"],
+  #tab-qa .legacy-scope input[type="search"] { width:100% !important; max-width:100% !important; display:block !important; }
+  #tab-qa .legacy-scope textarea { max-width:100% !important; resize:vertical !important; }
+  #tab-qa .legacy-scope .seg { margin-top:16px !important; display:block !important; clear:both !important; }
+  @media (max-width: 900px) { #tab-qa .legacy-scope .row { grid-template-columns:1fr !important; } }
+
+  /* Also apply the same “inside-card” guards for elements not wrapped with .legacy-scope */
+  #tab-qa .card, #tab-qa .card * { box-sizing: border-box; }
+  #tab-qa .card .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start; }
+  @media (max-width: 900px){ #tab-qa .card .row { grid-template-columns:1fr; } }
+  #tab-qa .card .ipt,
+  #tab-qa .card textarea,
+  #tab-qa .card select,
+  #tab-qa .card input[type="text"],
+  #tab-qa .card input[type="search"] { width:100%; max-width:100%; display:block; }
+  #tab-qa .card textarea { resize:vertical; }
+  #tab-qa .card .filters { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  #tab-qa .card .filters > * { min-width:0; }
+  #tab-qa .card .filters .seg { flex:0 0 auto; }
+  #tab-qa .card #search { width:100%; }
+</style>
+
+<style>
+  /* ULog — promoted badge + row accent */
+  #tab-ulog .ulog-cellwrap{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  #tab-ulog .ulog-flag{
+    display:inline-flex;align-items:center;gap:6px;padding:4px 8px;
+    border-radius:999px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;
+    font-weight:600;font-size:12px;line-height:1;
+  }
+  #tab-ulog .ulog-flag svg{width:14px;height:14px}
+  #tab-ulog tr.ulog-row--promoted{
+    box-shadow: inset 3px 0 0 #2563eb;
+    background-image: linear-gradient(to right, rgba(37,99,235,0.06), transparent);
+  }
+</style>
+
+<style>
+  /* ULog quality badge (outlined pill) */
+  #tab-ulog .thumb-pill{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:32px; height:28px; border-radius:999px;
+    border:1px solid #d1d5db; background:#fff; margin-left:2px;
+    cursor:pointer;
+  }
+  #tab-ulog .thumb-pill svg{ width:16px; height:16px; stroke:#334155; fill:none; }
+  #tab-ulog .thumb-pill.active{ border-color:#2563eb; box-shadow:0 0 0 2px rgba(37,99,235,.12); }
+  #tab-ulog .thumb-pill.active svg{ stroke:#2563eb; }
+</style>
+
+<style>
+  /* Facility tab scoped styles */
+  #tab-fac .fac-row{
+    display:flex; align-items:center; justify-content:space-between;
+    border:1px solid #e5e7eb; border-radius:12px; padding:10px 12px;
+    background:#fff;
+  }
+  #tab-fac .fac-main{
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  }
+  #tab-fac .fac-name{ font-weight:700; }
+  #tab-fac .fac-dot{ color:#94a3b8; }
+  #tab-fac .pill{
+    display:inline-flex; align-items:center; gap:6px; padding:6px 10px;
+    border-radius:999px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;
+    font-weight:600;font-size:12px;line-height:1;
+  }
+  #tab-fac .pill code{font-size:12px}
+  #tab-fac .actions{ display:flex; gap:8px; }
+  #tab-fac .icon-btn{
+    display:inline-flex; align-items:center; gap:6px; padding:8px 10px;
+    border:1px solid #d1d5db; background:#fff; border-radius:8px; cursor:pointer;
+  }
+  #tab-fac .icon-btn:hover{ background:#f8fafc }
+  #tab-fac .icon-btn svg{ width:16px; height:16px; stroke:#334155; fill:none; }
+  /* highlight a bad input in the Facility tab */
+  #tab-fac .field-error{
+    outline: 2px solid #e11d48;  /* rose */
+    outline-offset: 1px;
+    border-radius: 8px;
+}
+</style>
+<style>
+.icon-btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  gap:6px; width:auto; height:34px; border-radius:10px; border:1px solid var(--line);
+  background:#fff; cursor:pointer; padding:0 10px
+}
+.icon-btn:hover{box-shadow:0 0 0 3px rgba(37,99,235,.12);border-color:var(--primary)}
+.icon-btn svg{width:18px;height:18px}
+</style>
+
+<style>
+  /* ---- Facility Create form layout fixes ---- */
+  #tab-fac .create-grid{
+    display:grid;
+    grid-template-columns: minmax(280px, 2fr) minmax(220px, 1.2fr) auto;
+    gap:12px;
+    align-items:end;
+  }
+  /* Make inputs fill their grid cell and avoid overflow */
+  #tab-fac .create-grid .ipt{
+    width:100%;
+    box-sizing:border-box;
+  }
+  /* Labels should not wrap oddly into the next column */
+  #tab-fac .create-grid label.muted{
+    display:block;
+    margin-bottom:4px;
+    white-space:nowrap;
+  }
+  /* Responsive: stack on narrow screens */
+  @media (max-width: 980px){
+    #tab-fac .create-grid{
+      grid-template-columns: 1fr;
+      align-items:stretch;
+    }
+    #tab-fac .create-grid .btn{
+      width:100%;
+    }
+  }
+</style>
+
+
+<style>
+  /* Abv tab: dialog/modal layout guards */
+  #tab-abv dialog .modal,
+  #tab-abv dialog .modal * { box-sizing: border-box; }
+
+  #tab-abv dialog .modal{
+    padding: 20px;
+    width: min(720px, 92vw);
+    max-width: 100%;
+    overflow-x: hidden;       /* prevents any horizontal spill */
+  }
+
+  /* Two-column grid for Abbreviation + Meaning; collapses on small screens */
+  #tab-abv dialog .row{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    align-items: start;
+  }
+  @media (max-width: 900px){
+    #tab-abv dialog .row{ grid-template-columns: 1fr; }
+  }
+
+  /* Inputs in the modal should fill their columns and never exceed the box */
+  #tab-abv dialog input.ipt,
+  #tab-abv dialog textarea.ipt,
+  #tab-abv dialog select,
+  #tab-abv dialog input[type="text"]{
+    width: 100%;
+    max-width: 100%;
+    display: block;
+  }
+  #tab-abv dialog textarea.ipt{
+    resize: vertical;
+    max-width: 100%;
+    overflow-wrap: anywhere;  /* long words/URLs won’t push outside */
+  }
+</style>
+
+<style>
+  /* Q&A filters: keep pills in-line and vertically centered */
+  #tab-qa .legacy-scope .filters .seg{
+    margin-top: 0 !important;
+    display: flex !important;
+    clear: none !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+</style>
+
+<style>
+  /* ULog layout guards */
+  #tab-ulog .e-card, #tab-ulog .e-card * { box-sizing:border-box; }
+  #tab-ulog .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start; }
+  @media (max-width:900px){ #tab-ulog .row { grid-template-columns:1fr; } }
+  #tab-ulog .tbl th, #tab-ulog .tbl td { word-wrap: break-word; overflow-wrap:anywhere; }
+  #tab-ulog dialog .modal { padding:20px; width:min(900px, 92vw); max-width:100%; overflow-x:hidden; }
+</style>
+
+
+<style>
+  /* --- Promote modal layout guards --- */
+  #tab-ulog dialog .modal * { box-sizing: border-box; }
+  #tab-ulog dialog .modal .row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; align-items:start; }
+  @media (max-width: 900px){ #tab-ulog dialog .modal .row { grid-template-columns:1fr; } }
+  #tab-ulog dialog .modal input.ipt, 
+  #tab-ulog dialog .modal textarea, 
+  #tab-ulog dialog .modal select { width:100%; max-width:100%; }
+  #tab-ulog dialog .modal textarea { overflow-wrap:anywhere; word-break:break-word; }
+</style>
+
+<!-- NEW: facility pill styling -->
+<style>
+  /* apply dashed style + hover to BOTH rec tags areas */
+  #recTags .rec-facility,
+  #ulogRecTags .rec-facility {
+    border-style: dashed;
+    border-width: 2px;          /* a bit thicker so the dashes read clearly */
+    border-color: #93c5fd;      /* light blue (Tailwind sky-300) */
+  }
+
+  #recTags .rec-facility:hover,
+  #ulogRecTags .rec-facility:hover {
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+  }
+
+  /* Match Topics pill spacing for both areas */
+  #recTags,
+  #ulogRecTags{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;            /* same as .seg pills */
+    row-gap: 8px;        /* explicit for older flex implementations */
+    column-gap: 8px;
+  }
+  #recTags .rec-pill,
+  #ulogRecTags .rec-pill{
+    margin: 0;           /* ensure label margins don’t collapse the gap */
+  }
+</style>
+
+<style>
+  /* [FACTS] keep the textbox inside the modal */
+  #facFactsDlg input[type="text"],
+  #facFactsDlg textarea {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;  /* include padding/border in width calc */
+  }
+</style>
+
+
+</head>
+
+<body>
+<div class="e-wrap">
+
+  <!-- Header -->
+  <div class="e-card e-header">
+    <div class="e-h1">Admin Portal</div>
+    <div class="e-muted" style="font-size:14px">Manage Q&amp;A, abbreviations, and user activity logs.</div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="e-tabs-wrap">
+    <div class="e-tabs" role="tablist" aria-label="Admin sections">
+      <button class="e-tab-btn e-active"data-tab="fac"  role="tab" aria-selected="false" id="e-tabbtn-fac">Facility Details</button>
+      <button class="e-tab-btn"         data-tab="qa"   role="tab" aria-selected="true"  id="e-tabbtn-qa">Q&amp;A</button>
+      <button class="e-tab-btn"         data-tab="abv"  role="tab" aria-selected="false" id="e-tabbtn-abv">Dictionary</button>
+      <button class="e-tab-btn"         data-tab="ulog" role="tab" aria-selected="false" id="e-tabbtn-ulog">User Q&amp;A Log</button>
+    </div>
+    <div class="e-tab-rail"></div>
+  </div>
+
+  <!-- ========== Panels ========== -->
+
+  <!-- Q&A (full v2 UI, wrapped & scoped) -->
+  <section id="tab-qa" class="e-tab-panel e-active">
+    <div id="qa-legacy" class="legacy-scope">
+      <div id="err" style="color:#b00020;margin:8px 0;"></div>
+
+      <!-- ===== v2 styles (intentionally generic selectors, but safely scoped via .legacy-scope guards above) ===== -->
+      <style>
+        .card{background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+        .toolbar{display:flex;gap:12px;flex-wrap:wrap}
+        .ipt, textarea, select{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;background:#fff}
+        .ipt:focus, textarea:focus, select:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+        .btn{padding:10px 14px;border-radius:10px;border:1px solid #d1d5db;background:#111827;color:#fff;border-color:#111827;cursor:pointer}
+        .btn:disabled{opacity:.6;cursor:not-allowed}
+        .btn-secondary{background:#fff;color:#111827;border-color:#d1d5db}
+        .seg{display:flex;gap:8px;flex-wrap:wrap}
+        .seg input{display:none}
+        .seg label{padding:8px 12px;border:1px solid #d1d5db;border-radius:999px;cursor:pointer;background:#fff}
+        .seg input:checked+label{background:#111827;color:#fff;border-color:#111827}
+        .tbl{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border-radius:14px;border:1px solid #e5e7eb}
+        .tbl thead th{background:#f3f4f6;text-align:left;padding:12px 14px;font-weight:600;border-bottom:1px solid #e5e7eb}
+        .tbl tbody td{padding:14px;border-bottom:1px solid #f1f5f9;vertical-align:top}
+        .tbl tbody tr:nth-child(even){background:#fbfdff}
+        .tbl tbody tr:hover{background:#eef6ff}
+        .muted{color:#6b7280}
+        .actions{display:flex;gap:6px}
+        .iconbtn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;cursor:pointer}
+        .iconbtn:hover{background:#f3f4f6}
+        .icon{width:18px;height:18px;display:block}
+        dialog{border:0;border-radius:16px;padding:0}
+        .modal{padding:20px;min-width:min(720px,92vw)}
+        .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+        @media (max-width:800px){.row{grid-template-columns:1fr}}
+        .filters{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+        .filters .seg label{font-size:14px;padding:7px 12px}
+        .pill-muted{border-color:#e5e7eb;background:#f8fafc;color:#334155}
+        .count-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #e5e7eb;border-radius:999px;background:#fff}
+        .subtle{font-size:12px;color:#64748b}
+        .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;}
+          /* standout form labels for key fields */
+        .qs-label{
+          display:block;
+          margin:2px 0 6px;
+          font-weight:800;
+          font-size:15px;
+          color:#0f172a;
+          letter-spacing:.1px;
+        }
+        /* small helper text under headings */
+        .qs-help{
+          display:block;
+          margin:4px 0 8px;
+          font-size:12px;
+          color:#64748b;
+        }
+      </style>
+      
+      <style>
+        .qs-label{ ... }
+        .qs-help{ ... }
+
+        /* subtle divider line */
+        .qs-divider{
+          border-top:1px solid #e2e8f0;   /* light gray (Tailwind slate-200 tone) */
+          margin:16px 0 8px;              /* space above and below the line */
+        }
+      </style>
+      
+      <style>
+        #recTags label.rec-pill:hover{
+          background:#2563eb; color:#fff; border-color:#2563eb;
+        }
+      </style>
+
+      
+      <style>
+       /* ===== Dictionary tab layout fixes ===== */
+       #tab-abv .e-card, 
+       #tab-abv .e-card * { box-sizing: border-box; }
+
+       /* keep inputs inside cards and prevent horizontal overflow */
+       #tab-abv .e-card { overflow-x: hidden; }
+
+       /* 2-col grid for Abbreviation / Meaning and for edit dialog;
+          collapses to 1 col on small screens */
+       #tab-abv .row { 
+         display: grid; 
+         grid-template-columns: 1fr 1fr; 
+         gap: 12px; 
+         align-items: start;
+       }
+       @media (max-width: 900px){
+         #tab-abv .row { grid-template-columns: 1fr; }
+       }
+
+       /* make all inputs truly full-width and stay within card */
+       #tab-abv input.ipt,
+       #tab-abv textarea.ipt,
+       #tab-abv select,
+       #tab-abv input[type="text"],
+       #tab-abv input[type="search"] {
+         width: 100%;
+         max-width: 100%;
+         display: block;
+       }
+       #tab-abv textarea { resize: vertical; max-width: 100%; }
+
+       /* search bar + pill: allow wrapping and avoid bumping */
+       #tab-abv .filters { 
+         display: flex; 
+         gap: 12px; 
+         align-items: center; 
+         flex-wrap: wrap; 
+       }
+       #tab-abv .filters > * { min-width: 0; }
+       #tab-abv #abvSearch { flex: 1 1 300px; min-width: 220px; }
+       #tab-abv .count-chip { flex: 0 0 auto; }
+
+       /* table should not push outside its card */
+       #tab-abv table.tbl { width: 100%; table-layout: fixed; }
+       #tab-abv table.tbl th, 
+       #tab-abv table.tbl td { word-wrap: break-word; overflow-wrap: anywhere; }
+     </style>
+
+
+      <!-- ===== v2 script (unchanged, plus pagination additions you had) ===== -->
+      <script>
+        // ▼▼ EDIT THESE TWO ▼▼
+        const API_BASE = window.location.origin;
+        const ADMIN_TOKEN = "9dZSJMFVLGEU2o4am6BR7ruhWfslITN5OPiejbyvCYzpnckqtgAwQ301HxK8XD";
+        // ▲▲ EDIT THESE TWO ▲▲
+        
+        // Wix intake page base
+        const WIX_INTAKE_BASE = "https://www.startevolv.com/facility-details";
+        
+        // Where the Facility Details page now lives
+        const RENDER_BASE = window.location.origin;
+        
+        function facilityDetailsUrl(fid, token){
+          // always include both f (facility id) and t (intake token)
+          return `${RENDER_BASE}/facility?f=${encodeURIComponent(fid)}&t=${encodeURIComponent(token)}`;
+        }
+
+        // Pull the "t" (intake_token) out of whatever URL the backend returns
+        function getTokenFromUrl(u){
+          try{
+            const p = new URL(u);
+            return p.searchParams.get("t") || "";
+          }catch(_){ return ""; }
+        }
+
+        // Build the final Wix URL for copying
+        function buildWixUrl(fid, backendUrlFull){
+          const tok = getTokenFromUrl(backendUrlFull);
+          if(!fid || !tok) return "";
+          return `${WIX_INTAKE_BASE}?f=${encodeURIComponent(fid)}&t=${encodeURIComponent(tok)}`;
+        }
+
+
+        // NOTE: These are "Sections" for the Q&A filter pills (not the top-level tabs)
+        const SECTIONS = ["Closing Case Call","HH Start of Care","DME Confirmation","UR Calls","Facility Details"];
+
+        const qs = (s,el=document)=>el.querySelector(s);
+        const qsa = (s,el=document)=>[...el.querySelectorAll(s)];
+        const url = (path) => {
+          const join = path.includes("?") ? "&" : "?";
+          return API_BASE + path + join + "ngrok-skip-browser-warning=true&token=" + encodeURIComponent(ADMIN_TOKEN);
+        };
+        async function api(path, opts = {}) {
+          const res = await fetch(url(path), {
+            method: opts.method || "GET",
+            headers: {
+              "ngrok-skip-browser-warning": "true",
+              "x-admin-token": ADMIN_TOKEN,
+              ...(opts.headers || {})
+            },
+            body: opts.body || null
+          });
+          if (!res.ok) {
+            const t = await res.text().catch(() => "");
+            throw new Error(`HTTP ${res.status} on ${path}\n${t}`);
+          }
+          return res.json();
+        }
+
+
+        // ===== Facility Admin (create/list/edit/copy) =====
+
+        async function loadFacilities(q = ""){
+          const list = qs("#facList");
+          if (!list) return;
+          list.innerHTML = `<div class="muted">Loading…</div>`;
+          try{
+            const res = await api(`/admin/facilities${q ? ("?q=" + encodeURIComponent(q)) : ""}`);
+            if (!res.ok) throw new Error("List failed");
+            const items = res.items || [];
+            if (!items.length){
+              list.innerHTML = `<div class="muted">No facilities yet. Create one above.</div>`;
+              return;
+            }
+            list.innerHTML = items.map(renderFacilityRow).join("");
+          }catch(err){
+            console.error(err);
+            list.innerHTML = `<div class="muted">Could not load facilities.</div>`;
+          }
+        }
+
+        function renderFacilityRow(it){
+          const fid = it.facility_id;
+          const name = it.facility_name || "";
+          const grp  = it.corporate_group || "";
+          const urlf = it.url_full || "";               // backend-returned URL (ngrok or prod)
+          const wix  = buildWixUrl(fid, urlf);          // final Wix URL with ?f= & ?t=
+          const render = facilityDetailsUrl(fid, getTokenFromUrl(urlf)); // ← NEW: Render URL
+
+          return `
+            <div class="fac-row" data-fid="${fid}" data-url="${urlf}" data-wix="${wix}" data-render="${render}">
+              <div class="fac-main">
+                <span class="fac-name">${escapeHtml(name)}</span>
+                ${grp ? `<span class="fac-dot">•</span><span class="muted">${escapeHtml(grp)}</span>` : ""}
+                <span class="pill" title="Facility ID"><code>${escapeHtml(fid)}</code></span>
+              </div>
+              <div class="actions" style="display:flex;gap:8px;align-items:center">
+                <!-- NEW: Facts button (opens modal) -->
+                <button class="icon-btn" onclick="facOpenFacts('${fid}')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M4 19.5V5a2 2 0 0 1 2-2h9l5 5v11.5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/>
+                    <path d="M14 3v4a1 1 0 0 0 1 1h4"/>
+                    <path d="M8 13h8M8 17h8M8 9h4"/>
+                  </svg>
+                  <span>Facts</span>
+                </button>
+
+                <button class="icon-btn" onclick="facOpenEdit('${fid}')">
+                  ${pencilSvg()} <span>Edit</span>
+                </button>
+
+                <button class="icon-btn" onclick="facCopyUrl(this)" ${render ? "" : "disabled"}>
+                  ${linkSvg()} <span>Copy URL</span>
+                </button>
+
+                <button class="icon-btn" onclick="facOpenUrl(this)" ${render ? "" : "disabled"} aria-label="Open intake link">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                    <path d="M15 3h6v6"/>
+                    <path d="M10 14L21 3"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          `;
+        }
+
+
+        async function facCreate(ev){
+          ev.preventDefault();
+
+          const nameEl = document.querySelector("#facCreateName");
+          const idEl   = document.querySelector("#facCreateId");
+          const name   = nameEl?.value?.trim();
+          const fid    = idEl?.value?.trim();
+
+          // clear previous error state
+          nameEl?.classList.remove("field-error");
+          idEl?.classList.remove("field-error");
+
+          // client-side checks
+          if (!name){ nameEl?.classList.add("field-error"); alert("Facility Name is required."); return; }
+          if (!fid){  idEl?.classList.add("field-error");   alert("Facility ID is required.");   return; }
+          if (!/^[a-z0-9-]+$/.test(fid)){
+            idEl?.classList.add("field-error");
+            alert("Facility ID can only contain lowercase letters, numbers, and hyphens.");
+            return;
+          }
+
+          try{
+            const form = new FormData();
+            form.append("facility_name", name);
+            form.append("facility_id", fid);
+
+            // call backend directly so we can read HTTP status
+            const resp = await fetch(url("/admin/facilities/create"), {
+              method: "POST",
+              headers: {
+                "x-admin-token": ADMIN_TOKEN,
+                "ngrok-skip-browser-warning": "true"
+              },
+              body: form
+            });
+
+            // try to decode JSON either way
+            let data = {};
+            try { data = await resp.json(); } catch(_) {}
+
+            // specific UX per status
+            if (resp.status === 409){
+              idEl?.classList.add("field-error");
+              alert(data.detail || "Facility ID already exists. Choose a different ID.");
+              return;
+            }
+            if (resp.status === 400){
+              idEl?.classList.add("field-error");
+              // If backend suggested a slug, auto-fill it
+              const m = String(data.detail || "").match(/Suggested:\s*'([^']+)'/i);
+              if (m && m[1]) idEl.value = m[1];
+              alert(data.detail || "Invalid Facility ID.");
+              return;
+            }
+            if (!resp.ok){
+              alert((data && (data.detail || data.message)) || "Create failed.");
+              return;
+            }
+
+            // success: prepend new row in the list
+            const list = document.querySelector("#facList");
+            const html = renderFacilityRow(data.facility);
+            list.innerHTML = html + list.innerHTML;
+
+            // clear inputs
+            nameEl.value = "";
+            idEl.value   = "";
+
+            // copy Wix URL if available
+            if (data.facility?.url_full && data.facility?.facility_id) {
+              const wix = buildWixUrl(data.facility.facility_id, data.facility.url_full);
+              if (wix){
+                try { await navigator.clipboard.writeText(wix); } catch(_){}
+                toast("Facility created. URL copied to clipboard.");
+              } else {
+                toast("Facility created.");
+              }
+            } else {
+              toast("Facility created.");
+            }
+          }catch(err){
+            console.error(err);
+            alert("Could not create facility.");
+          }
+        }
+
+
+
+
+        async function facOpenEdit(fid){
+          try{
+            const res = await api(`/admin/facilities/${encodeURIComponent(fid)}`);
+            if (!res.ok) throw new Error("Fetch failed");
+            const f = res.facility;
+            qs("#facEditId").value    = f.facility_id;
+            qs("#facEditName").value  = f.facility_name || "";
+            qs("#facEditGroup").value = f.corporate_group || "";
+            qs("#facEditStatus").value = f.intake_status || "not-started";
+            qs("#facEditDlg").showModal();
+          }catch(e){
+            console.error(e);
+            alert("Could not load facility.");
+          }
+        }
+
+        async function facSaveEdit(ev){
+          ev.preventDefault();
+          const fid  = qs("#facEditId").value;
+          const name = qs("#facEditName").value.trim();
+          const grp  = qs("#facEditGroup").value.trim();
+          const sts  = qs("#facEditStatus").value;
+          try{
+            const form = new FormData();
+            form.append("facility_id", fid);
+            if (name) form.append("facility_name", name);
+            form.append("corporate_group", grp);
+            form.append("intake_status", sts);
+            const res = await api("/admin/facilities/update", { method:"POST", body: form });
+            if (!res.ok) throw new Error("Update failed");
+            qs("#facEditDlg").close();
+            // Update the row in-place
+            const row = document.querySelector(`.fac-row[data-fid="${CSS.escape(fid)}"]`);
+            if (row){
+              const detail = await api(`/admin/facilities/${encodeURIComponent(fid)}`);
+              if (detail.ok){
+                row.outerHTML = renderFacilityRow(detail.facility);
+              }
+            }
+            toast("Saved.");
+          }catch(e){
+            console.error(e);
+            alert("Could not save changes.");
+          }
+        }
+
+        async function facCopyUrl(btn){
+          const row = btn.closest(".fac-row");
+          if (!row){ alert("No row found."); return; }
+
+          const fid = row.dataset.fid || "";
+          const backendUrl = row.dataset.url || "";
+          let wix = row.dataset.wix || "";
+          const render = row.dataset.render || "";
+
+          // If Wix not precomputed (older rows), compute now
+          if (!wix) {
+            wix = buildWixUrl(fid, backendUrl);
+          }
+
+          const finalUrl = render || wix || backendUrl;  // ← prefer Render, then Wix, then backend
+          if (!finalUrl){
+            alert("No URL yet for this facility.");
+            return;
+          }
+
+          try{
+            await navigator.clipboard.writeText(finalUrl);
+            toast(render ? "Render URL copied." : (wix ? "Wix URL copied." : "Backend URL copied."));
+          }catch(e){
+            console.error(e);
+            alert("Could not copy.");
+          }
+        }
+
+        function facOpenUrl(btn){
+          const row = btn.closest(".fac-row");
+          if (!row){ alert("No row found."); return; }
+          // Prefer Render, then Wix, then backend
+          const url = row.dataset.render || row.dataset.wix || row.dataset.url || "";
+          if (!url){ alert("No URL yet for this facility."); return; }
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
+
+        // ===== NEW: Quick Facts modal logic =====
+        async function facOpenFacts(fid){
+          try{
+            // remember which facility we're editing facts for
+            document.getElementById("factsFacilityId").value = fid;
+
+            // load list
+            const res = await api(`/admin/facilities/${encodeURIComponent(fid)}/facts`);
+            if (!res.ok) throw new Error("Load failed");
+            renderFactsList(res.items || []);
+
+            document.getElementById("facFactsDlg").showModal();
+          }catch(e){
+            console.error(e);
+            alert("Could not load facts.");
+          }
+        }
+
+        function renderFactsList(items){
+          const host = document.getElementById("factsList");
+          if (!host) return;
+          if (!items.length){
+            host.innerHTML = `<div class="muted">No facts yet. Add your first one above.</div>`;
+            return;
+          }
+          host.innerHTML = items.map(it => `
+            <div class="e-card" style="padding:12px;display:flex;justify-content:space-between;align-items:start;gap:10px">
+              <div>
+                <div style="font-weight:600">${escapeHtml(it.fact_text)}</div>
+                ${it.tags ? `<div class="muted" style="font-size:12px;margin-top:3px">tags: ${escapeHtml(it.tags)}</div>` : ""}
+                <div class="muted" style="font-size:12px;margin-top:3px">${escapeHtml(it.created_at || "")}</div>
+              </div>
+              <button class="icon-btn" title="Delete" onclick="facDeleteFact(${Number(it.id)})">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 6h18" />
+                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  <path d="M10 11v6M14 11v6"/>
+                </svg>
+              </button>
+            </div>
+          `).join("");
+        }
+
+        async function facAddFact(ev){
+          ev.preventDefault();
+          const fid  = document.getElementById("factsFacilityId").value.trim();
+          const text = document.getElementById("factsText").value.trim();
+          const tags = document.getElementById("factsTags").value.trim();
+
+          if (!fid || !text){ alert("Facility and fact are required."); return; }
+
+          const fd = new FormData();
+          fd.append("facility_id", fid);
+          fd.append("fact_text", text);
+          fd.append("tags", tags);
+          fd.append("token", ADMIN_TOKEN);
+
+          try{
+            const res = await api("/admin/facilities/facts/add", { method:"POST", body: fd });
+            if (!res.ok) throw new Error("Add failed");
+
+            // clear form & reload list
+            document.getElementById("factsText").value = "";
+            // keep tags so you can add a few in a row
+            const list = await api(`/admin/facilities/${encodeURIComponent(fid)}/facts`);
+            renderFactsList(list.items || []);
+            toast("Added.");
+          }catch(e){
+            console.error(e);
+            alert("Could not add fact.");
+          }
+        }
+
+        async function facDeleteFact(id){
+          if (!confirm("Delete this fact?")) return;
+          const fid = document.getElementById("factsFacilityId").value.trim();
+          const fd = new FormData();
+          fd.append("id", String(id));
+          fd.append("token", ADMIN_TOKEN);
+          try{
+            await api("/admin/facilities/facts/delete", { method:"POST", body: fd });
+            // refresh list
+            const list = await api(`/admin/facilities/${encodeURIComponent(fid)}/facts`);
+            renderFactsList(list.items || []);
+            toast("Deleted.");
+          }catch(e){
+            console.error(e);
+            alert("Could not delete.");
+          }
+        }
+
+
+        // Tiny helpers
+
+        function toast(msg){
+          const t = document.createElement("div");
+          t.className = "toast";
+          t.textContent = msg;
+          Object.assign(t.style, {
+            position:"fixed", bottom:"16px", right:"16px",
+            background:"#0f172a", color:"#fff",
+            padding:"10px 14px", borderRadius:"12px",
+            boxShadow:"0 6px 20px rgba(0,0,0,.15)", zIndex: 9999
+          });
+          document.body.appendChild(t);
+          setTimeout(()=> t.remove(), 1500);
+        }
+        function escapeHtml(s){
+          return (s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+        }
+        function pencilSvg(){
+          return `<svg viewBox="0 0 24 24" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+        }
+        function linkSvg(){
+          return `<svg viewBox="0 0 24 24" stroke-width="2"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7L12.5 20"/></svg>`;
+        }
+
+        // Optional: initial load if the tab is already active
+        window.addEventListener("DOMContentLoaded", ()=>{
+          const panel = document.querySelector("#tab-fac");
+          if (panel && panel.classList.contains("e-active")){
+            loadFacilities("");
+          }
+          const form = document.querySelector("#facCreateForm");
+          if (form) form.addEventListener("submit", facCreate);
+        });
+
+
+        // Local cache + filters + pagination
+        let CACHE = [];
+        let PAGE_SIZE = 10;
+        let CURRENT_PAGE = 1;
+        let FILTER_TOPIC = "";
+        let FILTER_QUERY = "";
+
+        function idNumber(id){
+          const m = (id||"").match(/(\d+)/g);
+          return m ? parseInt(m.join(""),10) : 0;
+        }
+        function sortRowsDescById(rows){
+          return [...rows].sort((a,b)=> idNumber(b.id) - idNumber(a.id));
+        }
+        function applyFilters(rows){
+          const q = (FILTER_QUERY || "").trim().toLowerCase();
+          const t = (FILTER_TOPIC || "").trim().toLowerCase();
+
+          return rows.filter(r=>{
+            // Topic substring match (comma-separated string)
+            const topics = String(r.topics || "").toLowerCase();
+            if (t && !topics.includes(t)) return false;
+
+            if (!q) return true;
+            const hay = ((r.question||"") + " " + (r.answer||"")).toLowerCase();
+            return hay.includes(q);
+          });
+        }
+        function rowHTML(r){
+          const ansPreview = (r.answer||"").length>160 ? (r.answer||"").slice(0,160)+"…" : (r.answer||"");
+          return `
+            <tr data-id="${r.id}">
+              <td><strong>${r.id||""}</strong></td>
+              <td>${r.topics ||""}</td>
+              <td>${r.question||""}</td>
+              <td class="muted">${(ansPreview||"").replace(/</g,"&lt;")}</td>
+              <td>
+                <div class="actions">
+                  <button class="iconbtn" title="Edit" onclick="editItem('${r.id}')">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 20h9" />
+                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+                    </svg>
+                  </button>
+                  <button class="iconbtn" title="Delete" onclick="delItem('${r.id}')">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M3 6h18" />
+                      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                      <path d="M10 11v6M14 11v6"/>
+                    </svg>
+                  </button>
+                </div>
+              </td>
+            </tr>`;
+        }
+        function renderRows(rows){
+          const tbody = qs("#rows");
+          const totalPages = Math.ceil(rows.length / PAGE_SIZE) || 1;
+          if (CURRENT_PAGE > totalPages) CURRENT_PAGE = totalPages;
+          if (CURRENT_PAGE < 1) CURRENT_PAGE = 1;
+          const start = (CURRENT_PAGE - 1) * PAGE_SIZE;
+          const visible = rows.slice(start, start + PAGE_SIZE);
+
+          tbody.innerHTML = visible.map(rowHTML).join("") || `<tr><td colspan="5" class="muted" style="padding:18px">No results.</td></tr>`;
+          qs("#count").textContent = CACHE.length;
+          qs("#filteredCount").textContent = rows.length;
+
+          const pager = qs("#pager");
+          pager.innerHTML = `
+            <div style="display:flex;justify-content:center;align-items:center;gap:8px;padding:12px;flex-wrap:wrap">
+              <button class="btn btn-secondary" ${CURRENT_PAGE<=1?"disabled":""} onclick="changePage(${CURRENT_PAGE-1})">Prev</button>
+              <span>Page ${CURRENT_PAGE} of ${totalPages}</span>
+              <button class="btn btn-secondary" ${CURRENT_PAGE>=totalPages?"disabled":""} onclick="changePage(${CURRENT_PAGE+1})">Next</button>
+            </div>`;
+        }
+        function changePage(p){
+          CURRENT_PAGE = p;
+          renderRows(applyFilters(CACHE));
+        }
+
+        async function refresh(){
+          try{
+            qs("#err").textContent = "";
+            const data = await api("/admin/list");
+            const rows = sortRowsDescById(data.rows || []);
+            CACHE = rows;
+            renderRows(applyFilters(CACHE));
+          }catch(e){
+            qs("#rows").innerHTML = `<tr><td colspan="5">Error loading: ${e.message.replace(/</g,'&lt;')}</td></tr>`;
+            qs("#err").textContent = "Check token, API URL, and that your API is running.";
+          }
+        }
+
+        // CRUD
+        async function addItem(ev){
+          ev.preventDefault();
+          const f = ev.target;
+
+          const fd = new URLSearchParams();
+          // DO NOT append id — server will assign it
+          fd.append("question", f.question.value.trim());
+          fd.append("answer", f.answer.value.trim());
+          fd.append("tags", f.tags.value.trim());
+
+          // (optional) topics
+          const topics = getSelectedTopicsUnder(document.getElementById("admTopics"));
+          fd.append("topics", topics.join(", "));
+          fd.append("token", ADMIN_TOKEN);
+
+          // call API; expect it to return the created row including the server-made id
+          const res = await api("/admin/add", { method:"POST", body: fd });
+
+          // res.row should contain the full saved row; fallback if API returns {id: "..."} instead
+          const created = res?.row ?? {
+            id: res?.id,
+            question: f.question.value.trim(),
+            answer: f.answer.value.trim(),
+            tags: f.tags.value.trim(),
+            topics: topics.join(", ")
+          };
+
+          // Prepend the newly-created row (with server ID) to CACHE and re-render
+          CACHE.unshift(created);
+          renderRows(applyFilters(CACHE));
+
+          // Reset form and keep the page in sync with server (optional)
+          f.reset();
+          refresh();
+          loadRecommendedTags(); // <— refresh the pills
+        }
+
+        async function delItem(id){
+          if(!confirm(`Delete ${id}?`)) return;
+          const fd = new URLSearchParams();
+          fd.append("id", id);
+          fd.append("token", ADMIN_TOKEN);
+          await api("/admin/delete", { method:"POST", body: fd });
+          CACHE = CACHE.filter(r => String(r.id) !== String(id));
+          renderRows(applyFilters(CACHE));
+          loadRecommendedTags(); // <— refresh the pills
+        }
+        function openEdit(r){
+          const dlg = qs("#editdlg");
+          qs('[name="eid"]').value = r.id || "";
+          qs('[name="equestion"]').value = r.question || "";
+          qs('[name="eanswer"]').value = r.answer || "";
+          qs('[name="etags"]').value = r.tags || "";
+
+          // === NEW: pre-check Topics in the edit modal ===
+          const editTopicsEl = document.getElementById("admTopicsEdit");
+          if (editTopicsEl) {
+            // ensure topic pills exist (DOM is already built on DOMContentLoaded, but safe to guard)
+            if (!editTopicsEl.querySelector('input[type="checkbox"]')) {
+              buildTopicPills(editTopicsEl);
+            }
+            // parse existing topics on the row (comma-separated)
+            const existing = String(r.topics || "")
+              .split(",")
+              .map(s => s.trim())
+              .filter(Boolean);
+
+            // tick boxes that match
+            const boxes = [...editTopicsEl.querySelectorAll('input[type="checkbox"]')];
+            boxes.forEach(cb => { cb.checked = existing.includes(cb.value); });
+          }
+          // === END NEW ===
+
+          dlg.showModal();
+        }
+        function editItem(id){
+          const r = CACHE.find(x=> String(x.id) === String(id));
+          if(!r){ alert("Row not found in cache. Reloading…"); return refresh(); }
+          openEdit(r);
+        }
+        async function saveEdit(ev){
+          ev.preventDefault();
+          const f = ev.target;
+          const id = f.eid.value.trim();
+          const fd = new URLSearchParams();
+          fd.append("id", id);
+          fd.append("question", f.equestion.value.trim());
+          fd.append("answer", f.eanswer.value.trim());
+          fd.append("tags", f.etags.value.trim());
+
+          // NEW: Topics from the edit modal’s pills (if present)
+          const topicsEdit = getSelectedTopicsUnder(document.getElementById("admTopicsEdit"));
+          if (topicsEdit.length) {
+            fd.append("topics", topicsEdit.join(", "));
+          }
+
+          fd.append("token", ADMIN_TOKEN);
+
+
+          let ok = true;
+          try{
+            await api("/admin/update", { method:"POST", body: fd });
+          }catch(e){
+            ok = false;
+          }
+          if(!ok){
+            try{
+              const del = new URLSearchParams(); del.append("id", id);
+              await api("/admin/delete", { method:"POST", body: del });
+              await api("/admin/add", { method:"POST", body: fd });
+            }catch(e2){
+              alert("Update failed: " + e2.message);
+              return;
+            }
+          }
+          qs("#editdlg").close();
+          const idx = CACHE.findIndex(r=>String(r.id)===id);
+          if(idx>=0){
+            CACHE[idx] = {
+              id,
+              question: f.equestion.value.trim(),
+              answer: f.eanswer.value.trim(),
+              tags: f.etags.value.trim(),
+              topics: topicsEdit.join(", ")
+            };
+
+          }
+          renderRows(applyFilters(CACHE));
+          loadRecommendedTags(); // <— refresh the pills 
+        }
+
+        // Helpers: section pills, debounce, filters
+        function buildSectionPills(container, namePrefix, withAll=true){
+          if (!container) return [];
+          container.innerHTML = "";
+          const pills = [];
+          if(withAll){
+            const id = `${namePrefix}_all`;
+            container.insertAdjacentHTML("beforeend",
+              `<input id="${id}" type="radio" name="${namePrefix}" value="All" checked>
+               <label for="${id}" class="pill-muted">All</label>`);
+            pills.push({id, value:"All"});
+          }
+          SECTIONS.forEach((label, i)=>{
+            const id = `${namePrefix}_${i}`;
+            container.insertAdjacentHTML("beforeend",
+              `<input id="${id}" type="radio" name="${namePrefix}" value="${label}">
+               <label for="${id}">${label}</label>`);
+            pills.push({id, value:label});
+          });
+          return pills;
+        }
+
+        
+        // ===== Topics (multi-select) helpers =====
+        const TOPICS = [
+          "Sensys App",
+          "Facility Details",
+          "List/Group",
+          "UR Calls",
+          "DME Confirmation",
+          "HH Start of Care",
+          "Closing Case Call"
+        ];
+        window.TOPICS = TOPICS; // <-- ADD THIS LINE
+
+        // Build topic checkboxes into a container (same pill style as sections)
+        function buildTopicPills(container){
+          if(!container) return;
+          container.innerHTML = "";
+          TOPICS.forEach((label, i)=>{
+            const id = `${container.id}_topic_${i}`;
+            container.insertAdjacentHTML("beforeend",
+              `<input id="${id}" type="checkbox" value="${label}" style="display:none">
+               <label for="${id}">${label}</label>`);
+          });
+        }
+
+        // Read selected topics under a container -> array of strings
+        function getSelectedTopicsUnder(container){
+          if(!container) return [];
+          return [...container.querySelectorAll('input[type="checkbox"]:checked')].map(i=>i.value);
+        }
+        // =========================================
+
+        
+        function debounce(fn, ms=160){
+          let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); };
+        }
+        const onQueryInput = debounce(()=> {
+          FILTER_QUERY = qs("#search").value || "";
+          CURRENT_PAGE = 1;
+          renderRows(applyFilters(CACHE));
+        }, 160);
+
+
+        // ==== Recommended Tags (reusable: can target any container/input) ====
+        async function loadRecommendedTags(targetBoxId = "recTags", targetInputSelector = "input[name='tags']"){
+          const box = document.getElementById(targetBoxId);
+          if(!box) return;
+
+          function renderPills(tags, showEmptyMsg){
+            box.innerHTML = "";
+            if (showEmptyMsg) {
+              box.insertAdjacentHTML("beforeend",
+                `<div class="muted" style="font-size:12px;padding:4px 0">
+                   No tag data yet — add some tags to your Q&amp;A rows and this will auto-populate.
+                 </div>`);
+            }
+            // helper to strip a single leading "<letters>-" prefix for display only
+            function displayNoPrefix(tag){
+              return String(tag).replace(/^[a-z]+-/i, "");
+            }
+
+            tags.forEach(tag=>{
+              const safe = tag.replace(/"/g,"&quot;");
+              const disp = displayNoPrefix(tag);
+              box.insertAdjacentHTML("beforeend",
+                `<label class="pill-muted rec-pill" data-tag="${safe}" style="cursor:pointer">${disp}</label>`);
+            });
+
+            // Facility helper pill: show without "f-" but still insert f-<name> when clicked
+            box.insertAdjacentHTML("beforeend",
+              `<label class="pill-muted rec-pill rec-facility" data-role="facility-pill"
+                      title="Insert as f-[facility_name]" style="cursor:pointer">
+                 [facility_name]
+               </label>`);
+
+
+            // click handling attaches to the specified input
+            box.querySelectorAll(".rec-pill").forEach(el=>{
+              el.addEventListener("click", ()=>{
+                const inp = document.querySelector(targetInputSelector);
+                if(!inp) return;
+
+                // special facility pill → prompt then toggle f-<name>
+                if (el.dataset.role === "facility-pill") {
+                  const name = prompt("Facility name to tag (we’ll insert it as f-<name>):");
+                  const clean = (name || "").trim();
+                  if (!clean) return;
+                  const val = `f-${clean}`;
+                  const cur = inp.value.split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+                  inp.value = cur.includes(val)
+                    ? cur.filter(t => t !== val).join(", ")
+                    : [...cur, val].join(", ");
+                  return;
+                }
+
+                const cur = inp.value.split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+                const val = el.dataset.tag;
+                inp.value = cur.includes(val)
+                  ? cur.filter(t=>t!==val).join(", ")
+                  : [...cur, val].join(", ");
+              });
+            });
+          }
+
+          try{
+            const res = await fetch(url("/admin/top_tags"), {
+              headers: {
+                "x-admin-token": ADMIN_TOKEN,
+                "ngrok-skip-browser-warning": "true"
+              }
+            });
+            const data = await res.json();
+            const tags = data.tags || [];
+            if (tags.length === 0) {
+              renderPills(["f-Aspire Transitional Care","g-emr","t-staff","g-dme","q-preferred home health"], true);
+            } else {
+              renderPills(tags, false);
+            }
+          }catch(e){
+            console.warn("Tag suggestion load failed:", e);
+            renderPills(["f-Aspire Transitional Care","g-emr","t-staff","g-dme","q-preferred home health"], true);
+          }
+        }
+        window.loadRecommendedTags = loadRecommendedTags;  // NEW (make it callable globally)
+
+
+        window.addEventListener("DOMContentLoaded", ()=>{
+          // Safely build Section pills only if those containers exist
+          const seg = qs("#sectionSeg");
+          if (seg) buildSectionPills(seg, "section", false);
+
+          const editSeg = qs("#editSectionSeg");
+          if (editSeg) buildSectionPills(editSeg, "esection", false);
+
+          const tf = qs("#topicFilter");
+          if (tf) {
+            // ensure we start unfiltered
+            tf.value = "";
+            FILTER_TOPIC = "";
+
+            const onTopicInput = debounce(()=>{ FILTER_TOPIC = tf.value || ""; CURRENT_PAGE = 1; renderRows(applyFilters(CACHE)); }, 160);
+            tf.addEventListener("input", onTopicInput);
+            tf.addEventListener("keydown", (e)=>{ 
+              if(e.key==="Escape"){ tf.value=""; FILTER_TOPIC=""; CURRENT_PAGE=1; renderRows(applyFilters(CACHE)); } 
+            });
+          }
+
+          // Use the global implementation (has header + fallback)
+          loadRecommendedTags();
+
+          const s = qs("#search");
+          if (s) {
+            s.addEventListener("input", onQueryInput);
+            s.addEventListener("keydown", (e)=>{
+              if(e.key === "Escape"){
+                s.value=""; FILTER_QUERY=""; CURRENT_PAGE = 1; renderRows(applyFilters(CACHE));
+              }
+            });
+          }
+          buildTopicPills(document.getElementById("admTopics"));
+          buildTopicPills(document.getElementById("admTopicsEdit"));
+
+
+          refresh();
+        });
+
+        
+        // ✅ paste the following snippet right here ↓↓↓
+        window.qaRefresh = refresh;
+        window.qaFlashRow = function(id){
+          const row = document.querySelector(`#rows tr[data-id="${CSS.escape(String(id))}"]`);
+          if(!row) return;
+          row.style.outline = '2px solid #2563eb';
+          row.style.transition = 'outline-color .8s ease';
+          setTimeout(()=>{ row.style.outlineColor = 'transparent'; }, 1200);
+        };
+        
+      </script>
+
+      <!-- ===== v2: Add form (re-ordered) ===== -->
+      <div class="card" style="padding:16px;margin:0 0 18px">
+        <h3 style="margin:0 0 8px;font-weight:700">Add New Q&amp;A</h3>
+        <form onsubmit="addItem(event)" style="display:grid;gap:12px">
+
+          <!-- 1) Question / Statement -->
+          <div>
+            <label class="qs-label">Question / Statement</label>
+            <textarea name="question" rows="3" class="ipt" placeholder="Type the question / statement here…" required></textarea>
+          </div>
+
+          <!-- 2) Topics (multi-select) -->
+          <div>
+            <label class="muted" style="display:block;margin-bottom:6px">Question Topics</label>
+            <div id="admTopics" class="seg"></div>
+          </div>
+
+          <!-- 3) Answer -->
+          <div>
+            <div class="qs-divider"></div>
+            <label class="qs-label">Answer</label>
+            <textarea name="answer" rows="5" class="ipt" placeholder="Type the answer…" required></textarea>
+          </div>
+
+          <!-- 4) Popular Groups (prefixless pill labels + helper text) -->
+          <div>
+            <label class="muted">Popular Groups</label>
+            <span class="qs-help">Does this answer belong in a group of other answers? (E.g. “List all preferred HH for…”, “Show me all users for…”)</span>
+            <div id="recTags" class="seg"></div>
+          </div>
+
+          <!-- 5) Tags input -->
+          <div class="row">
+            <div>
+              <label class="muted">Other Groups</label>
+              <input class="ipt" name="tags" placeholder="comma,separated,tags">
+            </div>
+          </div>
+
+          <!-- 6) Toolbar -->
+          <div class="toolbar">
+            <button class="btn" type="submit">Add</button>
+            <button class="btn btn-secondary" type="button" onclick="refresh()">Refresh</button>
+          </div>
+        </form>
+      </div>
+
+
+
+      <!-- ===== v2: Filters ===== -->
+      <div class="card" style="padding:14px;margin:0 0 10px">
+        <div class="filters">
+          <div style="flex:1;min-width:220px">
+            <input id="search" class="ipt" placeholder="Search questions & answers… (Esc to clear)" aria-label="Search Questions and Answers">
+          </div>
+          <input id="topicFilter" class="ipt" placeholder="Filter by Topics… (Sensys App, Facility Details, List, Group, UR Calls, DME Confirmation, HH Start of Care, Closing Case Calls)" style="max-width:340px">
+          <span class="count-chip"><strong><span id="filteredCount">0</span></strong> shown • <span class="muted"><span id="count">0</span> total</span></span>
+        </div>
+      </div>
+
+      <!-- ===== v2: Table ===== -->
+      <div class="card">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th style="width:110px">ID</th>
+              <th style="width:220px">Topics</th>
+              <th>Question</th>
+              <th>Answer (preview)</th>
+              <th style="width:100px">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="rows"><tr><td colspan="5" class="muted" style="padding:18px">Loading…</td></tr></tbody>
+        </table>
+        <div id="pager"></div>
+      </div>
+
+      <!-- ===== v2: Edit modal ===== -->
+      <dialog id="editdlg">
+        <div class="modal">
+          <h3 style="margin:0 0 10px;font-weight:700">Edit row</h3>
+          <form onsubmit="saveEdit(event)" style="display:grid;gap:12px">
+            <div class="row">
+              <div>
+                <label class="muted">ID</label>
+                <input class="ipt" name="eid" readonly>
+              </div>
+              <div>
+                <label class="muted">Tags</label>
+                <input class="ipt" name="etags">
+              </div>
+            </div>
+            <!-- Topics (multi-select) -->
+            <div>
+              <label class="muted" style="display:block;margin-bottom:6px">Topics</label>
+              <div id="admTopicsEdit" class="seg"></div>
+            </div>
+
+            <div>
+              <label class="muted">Question</label>
+              <textarea class="ipt" name="equestion" rows="3" required></textarea>
+            </div>
+            <div>
+              <label class="muted">Answer</label>
+              <textarea class="ipt" name="eanswer" rows="5" required></textarea>
+            </div>
+
+            <div class="toolbar" style="justify-content:flex-end">
+              <button type="button" class="btn btn-secondary" onclick="document.querySelector('#editdlg').close()">Cancel</button>
+              <button type="submit" class="btn">Save</button>
+            </div>
+          </form>
+        </div>
+      </dialog>
+    </div>
+  </section>
+
+  <!-- Dictionary tab (placeholder; wire to your CSV/back-end when ready) -->
+  
+  <!-- Dictionary (Step 2 — FULL CRUD) -->
+  <section id="tab-abv" class="e-tab-panel">
+  <div class="e-card" style="padding:16px;margin-bottom:12px">
+    <h3 style="margin:0 0 8px">Dictionary</h3>
+    <div class="e-muted" style="margin-bottom:10px">
+      Manage a single, unified dictionary for aliases, synonyms, abbreviations, service names, payers, roles, etc.
+      Fields: <strong>key</strong> (unique), <strong>canonical</strong>, <strong>kind</strong> (abbr|alias|service|payer|role|other),
+      <strong>match_mode</strong> (exact|word), <strong>notes</strong>.
+    </div>
+    <form onsubmit="dictAdd(event)" style="display:grid;gap:12px">
+      <div class="row">
+        <div>
+          <label class="muted">Key</label>
+          <input class="ipt" name="key" placeholder="e.g., soc, hum" required>
+        </div>
+        <div>
+          <label class="muted">Canonical</label>
+          <input class="ipt" name="canonical" placeholder="e.g., Start of Care, Humana" required>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label class="muted">Kind</label>
+          <select class="ipt" name="kind">
+            <option value="abbr">abbr</option>
+            <option value="alias">alias</option>
+            <option value="service">service</option>
+            <option value="payer">payer</option>
+            <option value="role">role</option>
+            <option value="other">other</option>
+          </select>
+        </div>
+        <div>
+          <label class="muted">Match Mode</label>
+          <select class="ipt" name="match_mode">
+            <option value="exact">exact</option>
+            <option value="word">word</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label class="muted">Notes (optional)</label>
+        <textarea class="ipt" name="notes" rows="2" placeholder="Context, usage, examples…"></textarea>
+      </div>
+
+      <div class="toolbar">
+        <button class="btn" type="submit">Add</button>
+        <button class="btn btn-secondary" type="button" onclick="dictRefresh()">Refresh</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="e-card" style="padding:14px">
+    <div class="filters">
+      <div style="flex:1;min-width:220px">
+        <input id="dictSearch" class="ipt" placeholder="Search dictionary… (Esc to clear)">
+      </div>
+      <span class="count-chip"><strong><span id="dictFiltered">0</span></strong> shown • <span class="muted"><span id="dictTotal">0</span> total</span></span>
+    </div>
+  </div>
+
+  <div class="e-card" style="margin-top:10px">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th style="width:200px">Key</th>
+          <th style="width:280px">Canonical</th>
+          <th style="width:140px">Kind</th>
+          <th style="width:120px">Match</th>
+          <th>Notes</th>
+          <th style="width:120px">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="dictRows"><tr><td colspan="6" class="muted" style="padding:18px">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
+  <!-- Edit modal -->
+  <dialog id="dictEditDlg">
+    <div class="modal">
+      <h3 style="margin:0 0 10px;font-weight:700">Edit dictionary entry</h3>
+      <form onsubmit="dictSaveEdit(event)" style="display:grid;gap:12px">
+        <div class="row">
+          <div>
+            <label class="muted">Key</label>
+            <input class="ipt" name="ekey" readonly>
+          </div>
+          <div>
+            <label class="muted">Canonical</label>
+            <input class="ipt" name="ecanonical" required>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label class="muted">Kind</label>
+            <select class="ipt" name="ekind">
+              <option value="abbr">abbr</option>
+              <option value="alias">alias</option>
+              <option value="service">service</option>
+              <option value="payer">payer</option>
+              <option value="role">role</option>
+              <option value="other">other</option>
+            </select>
+          </div>
+          <div>
+            <label class="muted">Match Mode</label>
+            <select class="ipt" name="ematch_mode">
+              <option value="exact">exact</option>
+              <option value="word">word</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="muted">Notes</label>
+          <textarea class="ipt" name="enotes" rows="3"></textarea>
+        </div>
+        <div class="toolbar" style="justify-content:flex-end">
+          <button type="button" class="btn btn-secondary" onclick="document.querySelector('#dictEditDlg').close()">Cancel</button>
+          <button type="submit" class="btn">Save</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+</section>
+
+
+
+  <!-- User Q&A Log tab (placeholder) -->
+  
+  <!-- User Q&A Log (Step 3 — FULL UI) -->
+  <section id="tab-ulog" class="e-tab-panel">
+    <div class="e-card" style="padding:16px;margin-bottom:12px">
+      <h3 style="margin:0 0 8px">User Q&amp;A Log</h3>
+      <div class="e-muted" style="margin-bottom:10px">
+        View questions asked on the Copilot page and the returned answers. Filter by date range, topics, and search.
+      </div>
+      <div class="row" style="align-items:end">
+        <div>
+          <label class="e-muted">From</label>
+          <input id="ulogFrom" type="date" class="ipt">
+        </div>
+        <div>
+          <label class="e-muted">To</label>
+          <input id="ulogTo" type="date" class="ipt">
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px;align-items:end">
+        <div>
+          <label class="e-muted">Topics</label>
+          <select id="ulogTopics" class="ipt">
+            <option value="">All</option>
+          </select>
+        </div>
+        <div>
+          <label class="e-muted">Search</label>
+          <input id="ulogSearch" class="ipt" placeholder="Search question/answer… (Esc to clear)">
+        </div>
+        <div>
+          <label class="e-muted">Quality</label>
+          <select id="ulogQuality" class="ipt">
+            <option value="">All</option>
+            <option value="up">👍 Thumbs up</option>
+            <option value="down">👎 Thumbs down</option>
+          </select>
+        </div>
+      </div>
+      <div class="toolbar" style="margin-top:12px">
+        <button class="btn" type="button" onclick="ulogRefresh()">Apply</button>
+        <button class="btn btn-secondary" type="button" onclick="ulogClearFilters()">Clear</button>
+        <span class="e-muted" id="ulogMsg"></span>
+      </div>
+    </div>
+
+    <div class="e-card">
+      <table class="tbl" style="width:100%">
+        <thead>
+          <tr>
+            <th style="width:160px">Time</th>
+            <th style="width:180px">Topics</th>
+            <th>Question</th>
+            <th>Answer (preview)</th>
+            <th style="width:140px">Quality</th>   <!-- NEW -->
+            <th style="width:120px">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="ulogRows"><tr><td colspan="5" class="muted" style="padding:18px">Loading…</td></tr></tbody>
+      </table>
+      <div id="ulogPager"></div>
+    </div>
+
+    <!-- View modal -->
+    <dialog id="ulogViewDlg">
+      <div class="modal">
+        <h3 style="margin:0 0 10px;font-weight:700">Entry details</h3>
+        <div style="display:grid;gap:8px">
+          <div class="e-muted"><strong>Time:</strong> <span id="vTs"></span></div>
+          <div class="e-muted"><strong>Topics:</strong> <span id="vTopics"></span></div>
+          <div><strong>Question</strong><div id="vQ" class="mono" style="white-space:pre-wrap"></div></div>
+          <div><strong>Answer</strong><div id="vA" style="white-space:pre-wrap"></div></div>
+        </div>
+        <div class="toolbar" style="justify-content:flex-end;margin-top:12px">
+          <button type="button" class="btn btn-secondary" onclick="document.querySelector('#ulogViewDlg').close()">Close</button>
+        </div>
+      </div>
+    </dialog>
+
+<!-- Promote modal -->
+    <dialog id="ulogPromoteDlg">
+      <div class="modal">
+        <h3 style="margin:0 0 10px;font-weight:700">Promote to Q&amp;A</h3>
+        <form id="ulogPromoteForm" onsubmit="ulogPromoteSubmit(event)" style="display:grid;gap:12px">
+
+          <!-- Recommended Tags (pills) -->
+          <div>
+            <label class="e-muted">Recommended Tags</label>
+            <div id="ulogRecTags" class="seg"></div>
+          </div>
+
+          <!-- Tags (free text) -->
+          <div class="row">
+            <div>
+              <label class="e-muted">Tags</label>
+              <input class="ipt" name="tags" placeholder="comma,separated,tags">
+            </div>
+          </div>
+
+          <!-- Topics (pills) -->
+          <div>
+            <label class="e-muted" style="display:block;margin-bottom:6px">Topics</label>
+            <div id="ulogPromoteTopics" class="seg"></div>
+            <!-- Hidden CSV mirror for submit -->
+            <input type="hidden" id="ulogPromoteTopicsHidden" name="topics" value="">
+          </div>
+
+          <!-- Q & A -->
+          <div>
+            <label class="e-muted">Question</label>
+            <textarea class="ipt" name="q" rows="4" required></textarea>
+          </div>
+          <div>
+            <label class="e-muted">Answer</label>
+            <textarea class="ipt" name="a" rows="6" required></textarea>
+          </div>
+
+          <div class="toolbar" style="justify-content:flex-end">
+            <button type="button" class="btn btn-secondary" onclick="document.querySelector('#ulogPromoteDlg').close()">Cancel</button>
+            <button type="submit" class="btn">Promote</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+
+  </section>
+  
+  <!-- Facility Details tab -->
+  <section id="tab-fac" class="e-tab-panel">
+    <div class="e-card" style="padding:16px;margin-bottom:12px">
+      <h3 style="margin:0 0 8px">Facility Details</h3>
+      <div class="e-muted" style="margin-bottom:10px">
+        Create a new facility to generate a unique <code>facility_id</code> and a client-facing intake URL. You can copy the URL and send it to clients.
+      </div>
+      <!-- Create form -->
+      <form id="facCreateForm" style="display:grid;gap:10px;margin-bottom:12px">
+        <div class="row create-grid">
+          <div>
+            <label class="muted">Facility Name <span style="color:#ef4444">*</span></label>
+            <input id="facCreateName" class="ipt" type="text" required placeholder="Enter facility's display name" autocomplete="off"/>
+          </div>
+          <div>
+            <label class="muted">Facility ID <span class="muted">(lowercase, hyphens)</span></label>
+            <input id="facCreateId" class="ipt" type="text" required placeholder="name-snf" pattern="[a-z0-9\-]+" autocomplete="off"/>
+          </div>
+          <div>
+            <label class="muted" style="visibility:hidden">Create</label>
+            <button class="btn" type="submit">Create</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="e-card" style="padding:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h3 style="margin:0">Existing Facilities</h3>
+        <input id="facSearch" class="ipt" type="search" placeholder="Search by name or corporate group" 
+               oninput="loadFacilities(this.value.trim())" style="max-width:320px"/>
+      </div>
+
+      <div id="facList" style="display:grid;gap:10px">
+        <div class="muted">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Edit modal (lightweight for now: name + group + status) -->
+    <dialog id="facEditDlg">
+      <div class="modal" style="padding:20px;min-width:min(720px,92vw)">
+        <h3 style="margin:0 0 10px;font-weight:700">Edit Facility</h3>
+        <form id="facEditForm" onsubmit="facSaveEdit(event)" style="display:grid;gap:12px">
+          <input type="hidden" id="facEditId"/>
+
+          <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div>
+              <label class="muted">Facility Name</label>
+              <input id="facEditName" class="ipt" type="text" required/>
+            </div>
+            <div>
+              <label class="muted">Corporate Group</label>
+              <input id="facEditGroup" class="ipt" type="text"/>
+            </div>
+          </div>
+
+          <div>
+            <label class="muted">Intake Status</label>
+            <select id="facEditStatus" class="ipt">
+              <option value="not-started">not-started</option>
+              <option value="in-progress">in-progress</option>
+              <option value="submitted">submitted</option>
+              <option value="approved">approved</option>
+            </select>
+          </div>
+
+          <div class="toolbar" style="justify-content:flex-end">
+            <button type="button" class="btn btn-secondary" onclick="document.querySelector('#facEditDlg').close()">Cancel</button>
+            <button type="submit" class="btn">Save</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+    
+    <!-- NEW: Facility Facts modal -->
+    <dialog id="facFactsDlg">
+      <div class="modal" style="padding:20px;min-width:min(720px,92vw)">
+        <h3 style="margin:0 0 10px;font-weight:700">Facility Quick Facts</h3>
+
+        <form onsubmit="facAddFact(event)" style="display:grid;gap:12px">
+          <input type="hidden" id="factsFacilityId">
+
+          <div>
+            <label class="muted">Add a new fact</label>
+            <textarea id="factsText" class="ipt" rows="3"
+              placeholder='e.g., "Use One at Home HH for Humana patients"'
+              required></textarea>
+          </div>
+
+          <div class="row">
+            <div>
+              <label class="muted">Optional tags (comma-separated)</label>
+              <input id="factsTags" class="ipt" placeholder="humana, home health">
+            </div>
+          </div>
+
+          <div class="toolbar" style="justify-content:flex-end">
+            <button type="button" class="btn btn-secondary" onclick="document.querySelector('#facFactsDlg').close()">Close</button>
+            <button type="submit" class="btn">Add Fact</button>
+          </div>
+        </form>
+
+        <div class="hr-partial" style="width:90%;margin:14px auto"></div>
+
+        <div>
+          <label class="muted">Existing facts</label>
+          <div id="factsList" style="display:grid;gap:10px;margin-top:6px"></div>
+        </div>
+      </div>
+    </dialog>
+
+    
+  </section>
+
+
+  <div class="e-sp"></div>
+</div>
+
+<!-- ===== Tabs controller (hash-aware) ===== -->
+<script>
+(function(){
+  const btns = Array.from(document.querySelectorAll('.e-tab-btn'));
+  const panels = {
+    qa:   document.getElementById('tab-qa'),
+    abv:  document.getElementById('tab-abv'),
+    ulog: document.getElementById('tab-ulog'),
+    fac:  document.getElementById('tab-fac')     // ← NEW
+  };
+
+  function activate(tab){
+    if(!panels[tab]) tab = 'qa';
+    btns.forEach(b=>{
+      const on = (b.dataset.tab === tab);
+      b.classList.toggle('e-active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    Object.entries(panels).forEach(([key, el])=>{
+      el && el.classList.toggle('e-active', key === tab);
+    });
+
+    // lazy-load the facilities list when opening the tab
+    if (tab === 'fac' && typeof loadFacilities === 'function') {
+      const q = (document.getElementById('facSearch')?.value || '').trim();
+      loadFacilities(q);
+    }
+
+    if(location.hash !== '#'+tab){ history.replaceState(null, '', '#'+tab); }
+  }
+
+  btns.forEach(b=> b.addEventListener('click', ()=> activate(b.dataset.tab)));
+  const initial = (location.hash||'').replace('#','') || 'fac';
+  activate(initial);
+})();
+</script>
+
+
+<script>
+// ======= Dictionary CRUD (uses API_BASE & ADMIN_TOKEN) =======
+(function(){
+  const D = { cache: [] };
+
+  function dictUrl(path){
+    const join = path.includes("?") ? "&" : "?";
+    return API_BASE + path + join + "ngrok-skip-browser-warning=true&token=" + encodeURIComponent(ADMIN_TOKEN);
+  }
+  async function dictApi(path, opts={}){
+    const res = await fetch(dictUrl(path), {
+      method: opts.method || "GET",
+      headers: { "ngrok-skip-browser-warning":"true", "x-admin-token": ADMIN_TOKEN, ...(opts.headers||{}) },
+      body: opts.body || null
+    });
+    if(!res.ok){
+      const t = await res.text().catch(()=> ""); throw new Error("HTTP "+res.status+" on "+path+"\n"+t);
+    }
+    return res.json();
+  }
+
+  function rowHTML(r){
+    const esc = s => (s||"").replace(/</g,"&lt;");
+    return `<tr data-key="${esc(r.key)}">
+      <td><strong>${esc(r.key)}</strong></td>
+      <td>${esc(r.canonical)}</td>
+      <td>${esc(r.kind)}</td>
+      <td>${esc(r.match_mode||'exact')}</td>
+      <td class="muted">${esc(r.notes||'')}</td>
+      <td>
+        <div class="actions">
+          <button class="iconbtn" title="Edit" onclick="dictEdit('${esc(r.key)}')">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+            </svg>
+          </button>
+          <button class="iconbtn" title="Delete" onclick="dictDelete('${esc(r.key)}')">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18" />
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6M14 11v6"/>
+            </svg>
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }
+
+  function applyFilter(rows){
+    const q = (document.getElementById("dictSearch").value||"").toLowerCase();
+    if(!q) return rows;
+    return rows.filter(r=> ((r.key||"")+" "+(r.canonical||"")+" "+(r.kind||"")+" "+(r.notes||"")).toLowerCase().includes(q));
+  }
+
+  function render(){
+    const rows = applyFilter(D.cache);
+    const tb = document.getElementById("dictRows");
+    tb.innerHTML = rows.map(rowHTML).join("") || `<tr><td colspan="6" class="muted" style="padding:18px">No results.</td></tr>`;
+    document.getElementById("dictTotal").textContent = D.cache.length;
+    document.getElementById("dictFiltered").textContent = rows.length;
+  }
+
+  async function dictRefresh(){
+    try{
+      const data = await dictApi("/admin/dictionary/list");
+      D.cache = data.items || [];
+      render();
+    }catch(e){
+      const tb = document.getElementById("dictRows");
+      tb.innerHTML = `<tr><td colspan="6">Error loading: ${e.message.replace(/</g,"&lt;")}</td></tr>`;
+    }
+  }
+  window.dictRefresh = dictRefresh;
+
+  async function dictAdd(ev){
+    ev.preventDefault();
+    const f = ev.target;
+    const fd = new FormData();
+    fd.append("key",        f.key.value.trim());
+    fd.append("canonical",  f.canonical.value.trim());
+    fd.append("kind",       f.kind.value.trim() || "abbr");
+    fd.append("match_mode", f.match_mode.value.trim() || "exact");
+    fd.append("notes",      f.notes.value.trim());
+
+    await dictApi("/admin/dictionary/upsert", { method:"POST", body: fd });
+    f.reset();
+    dictRefresh();
+  }
+  window.dictAdd = dictAdd;   // ← expose so onsubmit can find it
+
+
+  function openEdit(r){
+    const dlg = document.getElementById("dictEditDlg");
+    dlg.querySelector('[name="ekey"]').value = r.key || "";
+    dlg.querySelector('[name="ecanonical"]').value = r.canonical || "";
+    dlg.querySelector('[name="ekind"]').value = r.kind || "abbr";
+    dlg.querySelector('[name="ematch_mode"]').value = r.match_mode || "exact";
+    dlg.querySelector('[name="enotes"]').value = r.notes || "";
+    dlg.showModal();
+  }
+
+  window.dictEdit = function(key){
+    const r = D.cache.find(x=> String(x.key) === String(key));
+    if(!r){ alert("Row not found."); return; }
+    openEdit(r);
+  };
+
+  window.dictSaveEdit = async function(ev){
+    ev.preventDefault();
+    const f = ev.target;
+    const fd = new FormData();
+    fd.append("key",        f.ekey.value.trim());
+    fd.append("canonical",  f.ecanonical.value.trim());
+    fd.append("kind",       f.ekind.value.trim() || "abbr");
+    fd.append("match_mode", f.ematch_mode.value.trim() || "exact");
+    fd.append("notes",      f.enotes.value.trim());
+
+    await dictApi("/admin/dictionary/upsert", { method:"POST", body: fd });
+    document.getElementById("dictEditDlg").close();
+    dictRefresh();
+  };
+
+  window.dictDelete = async function(key){
+    if(!confirm(`Delete "${key}"?`)) return;
+    const fd = new FormData();
+    fd.append("key", key);
+    await dictApi("/admin/dictionary/delete", { method:"POST", body: fd });
+    dictRefresh();
+  };
+
+  // Wire up search + initial load
+  window.addEventListener("DOMContentLoaded", ()=>{
+    const s = document.getElementById("dictSearch");
+    if (s){
+      const debounce = (fn,ms=160)=>{ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms);} };
+      const onInput = debounce(()=>{ render(); }, 160);
+      s.addEventListener("input", onInput);
+      s.addEventListener("keydown", (e)=>{ if(e.key==="Escape"){ s.value=""; render(); }});
+    }
+    dictRefresh();
+  });
+
+})();
+
+</script>
+
+
+<script>
+// ===== Step 3: User Q&A Log (UI + calls) =====
+(function(){
+  const U = { cache: [], page: 1, size: 10 };
+
+  // Track which log-row is being promoted
+  let U_PROMOTE_ID = null;
+
+  function ulogUrl(path){
+    const join = path.includes("?") ? "&" : "?";
+    return API_BASE + path + join + "ngrok-skip-browser-warning=true&token=" + encodeURIComponent(ADMIN_TOKEN);
+  }
+  async function ulogApi(path){
+    const res = await fetch(ulogUrl(path), { headers: { "ngrok-skip-browser-warning":"true", "x-admin-token": ADMIN_TOKEN }});
+    if(!res.ok){
+      const t = await res.text().catch(()=> ""); throw new Error("HTTP "+res.status+" on "+path+"\n"+t);
+    }
+    return res.json();
+  }
+
+  function esc(s){ return (s||"").replace(/</g,"&lt;"); }
+  function preview(s, n=160){ s = s||""; return s.length>n ? s.slice(0,n)+"…" : s; }
+
+  function ulogBuildTopicFilterOptions(){
+    const sel = document.getElementById("ulogTopics");
+    if(!sel) return;
+    sel.innerHTML = "";
+    const optAll = document.createElement("option");
+    optAll.value = ""; optAll.textContent = "All";
+    sel.appendChild(optAll);
+
+    const list = Array.isArray(window.TOPICS) ? window.TOPICS : [];
+    list.forEach(label=>{
+      const opt = document.createElement("option");
+      opt.value = label; opt.textContent = label;
+      sel.appendChild(opt);
+    });
+  }
+
+
+  function ulogRowHTML(r){
+    const esc = s => (s||"").replace(/</g,"&lt;");
+    const preview = (s, n=160)=>{ s = s||""; return s.length>n ? s.slice(0,n)+"…" : s; };
+
+    const ts = r.ts || "";
+    const promoted = !!(r.promoted === true ||
+                        r.promoted === 1 ||
+                        r.promoted === "1" ||
+                        String(r.promoted).toLowerCase() === "true" ||
+                        r.is_promoted ||
+                        r.promoted_at);
+
+    const flag = promoted ? `
+      <span class="ulog-flag" title="Promoted to Q&amp;A">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M12 2l3 7h7l-5.5 4 2.5 7-7-4.5L5.5 20 8 13 2 9h7z"></path>
+        </svg>
+        Promoted
+      </span>` : ``;
+
+    const aq = (r.a_quality || "").toLowerCase();
+    // badge only (read-only) – we’ll show it in the Quality cell along with buttons
+    const aqText = aq ? esc(aq) : "&nbsp;";
+
+    return `<tr data-id="${r.id}" class="${promoted ? 'ulog-row--promoted' : ''}">
+      <td class="ulog-time">
+        <div class="ulog-cellwrap">
+          ${flag}
+          <span>${esc(ts.replace("T"," ").replace("Z",""))}</span>
+        </div>
+      </td>
+      <td>${esc(r.topics||"")}</td>
+      <td class="mono">${esc(preview(r.q))}</td>
+      <td class="muted">${esc(preview(r.a))}</td>
+
+      <!-- NEW: Quality cell -->
+      <td>
+        <div class="ulog-cellwrap">
+          <div id="ql_${r.id}" class="pill pill--outline" style="padding:2px 8px; border:1px solid #bcd; border-radius:999px; font-size:12px; min-width:48px; text-align:center">
+            ${aqText}
+          </div>
+          <button class="thumb-pill" title="Thumbs up" onclick="setQuality(${r.id}, 'up')">
+            <svg viewBox="0 0 24 24" stroke-width="2" aria-hidden="true">
+              <path d="M7 10v10H4a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2h3Z"></path>
+              <path d="M7 10c3-1 5-4 6-7 1 0 2 .5 2 2v3h4a3 3 0 0 1 3 3c0 .6-.1 1.2-.3 1.7l-2.1 6a3 3 0 0 1-2.8 2.3H7"></path>
+            </svg>
+          </button>
+          <button class="thumb-pill" title="Thumbs down" onclick="setQuality(${r.id}, 'down')">
+            <svg viewBox="0 0 24 24" stroke-width="2" aria-hidden="true">
+              <path d="M7 14V4H4A2 2 0 0 0 2 6v6a2 2 0 0 0 2 2h3Z"></path>
+              <path d="M7 14c3 1 5 4 6 7 1 0 2-.5 2-2v-3h4a3 3 0 0 0 3-3c0-.6-.1-1.2-.3-1.7l-2.1-6A3 3 0 0 0 17.8 3H7"></path>
+            </svg>
+          </button>
+          <button class="thumb-pill" title="Clear" onclick="setQuality(${r.id}, '')">
+            <svg viewBox="0 0 24 24" stroke-width="2" aria-hidden="true">
+              <path d="M18 6L6 18M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+      </td>
+
+      <td>
+        <div class="actions">
+          <button class="iconbtn" title="View" onclick="ulogView('${r.id}')">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"></path>
+            </svg>
+          </button>
+          <button class="iconbtn" type="button" title="Promote to Q&amp;A" onclick="ulogPromote('${r.id}')">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2l3 7h7l-5.5 4 2.5 7-7-4.5L5.5 20 8 13 2 9h7z"></path>
+            </svg>
+          </button>
+          <button class="iconbtn" title="Delete" onclick="ulogDelete('${r.id}')">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18" />
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6M14 11v6"/>
+            </svg>
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }
+
+
+
+
+  function ulogRender(){
+    const tbody = document.getElementById("ulogRows");
+    const size = U.size;
+    const totalPages = Math.ceil(U.cache.length / size) || 1;
+    if(U.page > totalPages) U.page = totalPages;
+    if(U.page < 1) U.page = 1;
+    const start = (U.page - 1) * size;
+    const visible = U.cache.slice(start, start + size);
+    tbody.innerHTML = visible.map(ulogRowHTML).join("") || `<tr><td colspan="5" class="muted" style="padding:18px">No results.</td></tr>`;
+
+    const pager = document.getElementById("ulogPager");
+    pager.innerHTML = `
+      <div style="display:flex;justify-content:center;align-items:center;gap:8px;padding:12px;flex-wrap:wrap">
+        <button class="btn btn-secondary" ${U.page<=1?"disabled":""} onclick="ulogPage(${U.page-1})">Prev</button>
+        <span>Page ${U.page} of ${totalPages}</span>
+        <button class="btn btn-secondary" ${U.page>=totalPages?"disabled":""} onclick="ulogPage(${U.page+1})">Next</button>
+      </div>`;
+  }
+
+  function ulogPage(p){ U.page = p; ulogRender(); }
+
+  async function ulogRefresh(){
+    try{
+      const params = new URLSearchParams();
+      const from = document.getElementById("ulogFrom").value || "";
+      const to = document.getElementById("ulogTo").value || "";
+      const sec = document.getElementById("ulogTopics").value || "";
+      const q = document.getElementById("ulogSearch").value || "";
+      const qual = document.getElementById("ulogQuality").value || "";
+      if(from) params.append("from", from);
+      if(to) params.append("to", to);
+      if(sec) params.append("topics", sec);
+      if(q) params.append("q", q);
+      if(qual) params.append("quality", qual);
+      const path = "/admin/ulog/list" + (params.toString()? ("?"+params.toString()) : "");
+      const data = await ulogApi(path);
+      U.cache = (data.rows || []).sort((a,b)=> (b.id||0)-(a.id||0));
+      U.page = 1;
+      ulogRender();
+      document.getElementById("ulogMsg").textContent = "";
+    }catch(e){
+      document.getElementById("ulogRows").innerHTML = `<tr><td colspan="5">Error: ${e.message.replace(/</g,"&lt;")}</td></tr>`;
+      document.getElementById("ulogMsg").textContent = "Check API URL/token and that endpoints exist.";
+    }
+  }
+
+  function ulogClearFilters(){
+    document.getElementById("ulogFrom").value = "";
+    document.getElementById("ulogTo").value = "";
+    document.getElementById("ulogTopics").value = "";
+    document.getElementById("ulogSearch").value = "";
+    document.getElementById("ulogQuality").value = "";   // ← add this
+    ulogRefresh();
+  }
+
+  async function setQuality(id, quality){
+  try{
+    const body = new URLSearchParams({ id: String(id), quality });
+    const res = await fetch(ulogUrl("/ulog/quality"), {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "x-admin-token": ADMIN_TOKEN }
+      ,body
+    });
+    const data = await res.json();
+
+    // Update the badge inline
+    const badge = document.getElementById(`ql_${id}`);
+    if (badge){
+      badge.textContent = quality || "";
+      badge.style.transition = "background 250ms";
+      badge.style.background = "#e6f6ff";
+      setTimeout(()=> badge.style.background = "transparent", 280);
+    }
+  }catch(err){
+    console.error("setQuality failed", err);
+    alert("Failed to set quality. Check API logs.");
+  }
+}
+
+// make callable from onclick
+window.setQuality = setQuality;
+
+
+
+  function ulogView(id){
+    const r = U.cache.find(x=> String(x.id)===String(id));
+    if(!r) return;
+    document.getElementById("vTs").textContent = (r.ts||"").replace("T"," ").replace("Z","");
+    document.getElementById("vTopics").textContent = r.topics || "";
+    document.getElementById("vQ").textContent = r.q || "";
+    document.getElementById("vA").textContent = r.a || "";
+    document.getElementById("ulogViewDlg").showModal();
+  }
+
+  async function ulogDelete(id){
+    if(!confirm("Delete this entry?")) return;
+    const params = new URLSearchParams(); params.append("id", id);
+    await fetch(ulogUrl("/admin/ulog/delete"), { method:"POST", headers: { "x-admin-token": ADMIN_TOKEN }, body: params });
+    U.cache = U.cache.filter(x=> String(x.id)!==String(id));
+    ulogRender();
+  }
+
+  document.addEventListener("DOMContentLoaded", ()=>{
+    ulogBuildTopicFilterOptions();
+    const btn = document.getElementById("e-tabbtn-ulog");
+    if(btn){ btn.addEventListener("click", ()=> ulogRefresh()); }
+    if(location.hash==="#ulog"){ ulogRefresh(); }
+
+    const s = document.getElementById("ulogSearch");
+    s.addEventListener("keydown", (e)=>{ if(e.key==="Escape"){ s.value=""; } });
+  });
+
+  window.ulogRefresh = ulogRefresh;
+  window.ulogClearFilters = ulogClearFilters;
+  window.ulogPage = ulogPage;
+  window.ulogView = ulogView;
+  
+  
+    // Open Promote modal + prefill from the selected log row
+  function ulogPromote(id){
+    // remember which log row we’re promoting
+    U_PROMOTE_ID = id;
+
+    const row = (U.cache || []).find(x => String(x.id) === String(id));
+    const dlg  = document.getElementById("ulogPromoteDlg");
+    const form = document.getElementById("ulogPromoteForm");
+    if(!dlg || !form) return;
+
+    // Build Topics pills inside the modal and pre-check from existing row topics/section
+    const topicsBox = document.getElementById("ulogPromoteTopics");
+    const hiddenCsv = document.getElementById("ulogPromoteTopicsHidden");
+    if (topicsBox && hiddenCsv) {
+      const csv = (row && (row.topics || row.section)) ? String(row.topics || row.section) : "";
+      buildTopicPills(topicsBox, csv);
+
+      // keep hidden CSV updated whenever pills change
+      const boxes = [...topicsBox.querySelectorAll('input[type="checkbox"]')];
+      const syncHidden = ()=>{
+        const values = boxes.filter(cb=>cb.checked).map(cb=>cb.value);
+        hiddenCsv.value = values.join(", ");
+      };
+      boxes.forEach(cb => cb.addEventListener("change", syncHidden));
+      syncHidden();
+    }
+
+    // Render Recommended Tags inside this modal and wire to this form’s tags input
+    loadRecommendedTags("ulogRecTags", "#ulogPromoteForm input[name='tags']");
+
+    // Prefill Q/A and clear Tags
+    if(form.q)    form.q.value   = (row && row.q) || "";
+    if(form.a)    form.a.value   = (row && row.a) || "";
+    if(form.tags) form.tags.value= "";
+
+    // open modal
+    if(dlg.showModal) dlg.showModal();
+    else dlg.setAttribute("open","");
+  }
+
+  
+  // Promote to Q&A — UI handlers
+  async function ulogPromoteSubmit(e){
+    e.preventDefault();
+    const form = e.target;
+    const dlg  = document.getElementById("ulogPromoteDlg");
+
+    // Ensure hidden CSV mirrors the pill selections
+    const topicsBox = document.getElementById("ulogPromoteTopics");
+    const hid = document.getElementById("ulogPromoteTopicsHidden");
+    if (topicsBox && hid) {
+      const values = [...topicsBox.querySelectorAll('input[type="checkbox"]:checked')].map(cb=>cb.value);
+      hid.value = values.join(", ");
+    }
+
+    const fd = new FormData();
+    fd.append("id", U_PROMOTE_ID || "");
+    // No new_id → let backend auto-generate the Q&A ID
+    fd.append("topics", (form.topics && form.topics.value) || "");
+    fd.append("question", (form.q && form.q.value || "").trim());
+    fd.append("answer", (form.a && form.a.value || "").trim());
+    fd.append("tags", (form.tags && form.tags.value || "").trim());
+
+    try{
+      const res = await fetch(ulogUrl("/admin/ulog/promote"), {
+        method: "POST",
+        headers: { "x-admin-token": ADMIN_TOKEN },
+        body: fd
+      });
+      if(!res.ok){
+        const t = await res.text().catch(()=> "");
+        alert("Promote failed: HTTP " + res.status + (t ? ("\n" + t) : "")); return;
+      }
+
+      // Locally mark row as promoted for instant feedback
+      try{
+        const idx = U.cache.findIndex(x => String(x.id) === String(U_PROMOTE_ID));
+        if (idx >= 0) {
+          U.cache[idx] = { ...U.cache[idx], promoted: true, promoted_at: (new Date()).toISOString() };
+          ulogRender();
+        }
+      }catch(_){}
+
+      dlg && dlg.close();
+
+      // Refresh both tables and flash the new Q&A row if possible
+      try { await ulogRefresh(); } catch(_) {}
+      try { if (window.qaRefresh) await window.qaRefresh(); } catch(_) {}
+      alert("Promoted! The Q&A was added and both tables refreshed.");
+    }catch(err){
+      alert("Network error while promoting: " + (err && err.message ? err.message : err));
+    }
+  }
+
+
+  window.ulogDelete = ulogDelete; window.ulogPromote = ulogPromote; window.ulogPromoteSubmit = ulogPromoteSubmit; })();
+</script>
+
+</body>
+</html>
