@@ -121,16 +121,27 @@ ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 CSV_PATH = os.path.join("data", "qa.csv")
 
 # === SQLite target (we'll migrate into this) ===
-DB_PATH = os.path.join("data", "evolv.db")
+# Locally: falls back to data/evolv.db
+# On Render: override with DB_PATH env var
+DB_PATH = os.getenv("DB_PATH", os.path.join("data", "evolv.db"))
 
-# Toggle: read from SQLite instead of CSV (writes still go to CSV in Step 2)
+# Toggle: read from SQLite instead of CSV
 USE_SQLITE_READ = os.getenv("USE_SQLITE_READ", "0") == "1"
 
-# Toggle: also mirror all writes into SQLite (safe, Step 3)
+# Toggle: also mirror all writes into SQLite
 MIRROR_SQLITE_WRITES = os.getenv("MIRROR_SQLITE_WRITES", "1") == "1"
 
-# (For Step 4) Toggle: write to SQLite instead of CSV (off for Step 3)
+# Toggle: write to SQLite instead of CSV
 USE_SQLITE_WRITE = os.getenv("USE_SQLITE_WRITE", "0") == "1"
+
+print(
+    f"[startup] DB_PATH={DB_PATH} "
+    f"USE_SQLITE_READ={USE_SQLITE_READ} "
+    f"USE_SQLITE_WRITE={USE_SQLITE_WRITE} "
+    f"MIRROR_SQLITE_WRITES={MIRROR_SQLITE_WRITES}",
+    flush=True,
+)
+
 
 
 
@@ -5564,7 +5575,6 @@ def admin_dictionary_delete(request: Request, key: str = Form(...)):
     _exec_write("DELETE FROM dictionary WHERE key = ?", (key.strip().lower(),))
     clear_dictionary_caches()
     return {"ok": True}
-
 
 
 
