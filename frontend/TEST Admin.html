@@ -468,7 +468,7 @@
         const qsa = (s,el=document)=>[...el.querySelectorAll(s)];
         const url = (path) => {
           const join = path.includes("?") ? "&" : "?";
-          return API_BASE + path + join + "ngrok-skip-browser-warning=true&token=" + encodeURIComponent(ADMIN_TOKEN);
+          return API_BASE + path + join + "token=" + encodeURIComponent(ADMIN_TOKEN);
         };
         async function api(path, opts = {}) {
           const res = await fetch(url(path), {
@@ -1826,12 +1826,12 @@
 
   function dictUrl(path){
     const join = path.includes("?") ? "&" : "?";
-    return API_BASE + path + join + "ngrok-skip-browser-warning=true&token=" + encodeURIComponent(ADMIN_TOKEN);
+    return API_BASE + path + join + "token=" + encodeURIComponent(ADMIN_TOKEN);
   }
   async function dictApi(path, opts={}){
     const res = await fetch(dictUrl(path), {
       method: opts.method || "GET",
-      headers: { "ngrok-skip-browser-warning":"true", "x-admin-token": ADMIN_TOKEN, ...(opts.headers||{}) },
+      headers: { "x-admin-token": ADMIN_TOKEN, ...(opts.headers||{}) },
       body: opts.body || null
     });
     if(!res.ok){
@@ -1978,10 +1978,10 @@
 
   function ulogUrl(path){
     const join = path.includes("?") ? "&" : "?";
-    return API_BASE + path + join + "ngrok-skip-browser-warning=true&token=" + encodeURIComponent(ADMIN_TOKEN);
+    return API_BASE + path + join + "token=" + encodeURIComponent(ADMIN_TOKEN);
   }
   async function ulogApi(path){
-    const res = await fetch(ulogUrl(path), { headers: { "ngrok-skip-browser-warning":"true", "x-admin-token": ADMIN_TOKEN }});
+    const res = await fetch(ulogUrl(path), { headers: { "x-admin-token": ADMIN_TOKEN }});
     if(!res.ok){
       const t = await res.text().catch(()=> ""); throw new Error("HTTP "+res.status+" on "+path+"\n"+t);
     }
