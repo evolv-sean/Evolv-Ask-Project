@@ -374,11 +374,13 @@ import sqlite3
 def _db():
     import sqlite3, os
     from pathlib import Path
-    DB_PATH = Path(DB_PATH)
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    # Use a *local* variable name so we don't shadow the global DB_PATH
+    db_path = Path(DB_PATH)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
 
     # NOTE: check_same_thread=False allows reuse in the same process/thread pool
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10.0)
+    conn = sqlite3.connect(db_path, check_same_thread=False, timeout=10.0)
 
     # If DB is on a cloud-synced drive, WAL can fail. Allow disabling via env.
     use_wal = (os.environ.get("USE_SQLITE_WAL", "1") == "1")
@@ -397,6 +399,7 @@ def _db():
     # Avoid lock stalls
     conn.execute("PRAGMA busy_timeout=3000;")
     return conn
+
 
 # ---- Facilities helpers -------------------------------------------------------
 def _gen_token(n: int = 24) -> str:
@@ -5561,6 +5564,7 @@ def admin_dictionary_delete(request: Request, key: str = Form(...)):
     _exec_write("DELETE FROM dictionary WHERE key = ?", (key.strip().lower(),))
     clear_dictionary_caches()
     return {"ok": True}
+
 
 
 
