@@ -1232,7 +1232,9 @@ def qa_search_fts(question: str, section_hint: str | None, top_k: int = 12):
                 """,
                 (match_query, int(top_k)),
             )
-            rows = [dict(r) for r in cur.fetchall()]
+            # Build dicts using column names from cur.description
+            cols = [c[0] for c in cur.description]
+            rows = [dict(zip(cols, row)) for row in cur.fetchall()]
         except Exception:
             # Fallback to LIKE if FTS not available
             like = f"%{q}%"
@@ -1245,7 +1247,8 @@ def qa_search_fts(question: str, section_hint: str | None, top_k: int = 12):
                 """,
                 (like, like, like, like, int(top_k)),
             )
-            rows = [dict(r) for r in cur.fetchall()]
+            cols = [c[0] for c in cur.description]
+            rows = [dict(zip(cols, row)) for row in cur.fetchall()]
 
     return rows
 
