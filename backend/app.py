@@ -374,7 +374,7 @@ import sqlite3
 def _db():
     import sqlite3, os
     from pathlib import Path
-    DB_PATH = Path("data/evolv.db")
+    DB_PATH = Path(DB_PATH)
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     # NOTE: check_same_thread=False allows reuse in the same process/thread pool
@@ -5561,6 +5561,7 @@ def admin_dictionary_delete(request: Request, key: str = Form(...)):
     _exec_write("DELETE FROM dictionary WHERE key = ?", (key.strip().lower(),))
     clear_dictionary_caches()
     return {"ok": True}
+
 
 
 
