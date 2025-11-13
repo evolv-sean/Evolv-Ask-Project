@@ -6,3 +6,5 @@ pandas
 python-dotenv
 pypdf
 python-docx
+jinja2
+python-multipart
