@@ -59,6 +59,7 @@ from dotenv import load_dotenv
 import chromadb
 from openai import OpenAI
 
+
 import re
 
 
@@ -525,6 +526,65 @@ def _init_db():
         tags TEXT
     );
     """)
+
+    # --- FTS5 for qa (standalone, stores original id in UNINDEXED column) ---
+    cur.execute("""
+    CREATE VIRTUAL TABLE IF NOT EXISTS qa_fts USING fts5(
+      question,
+      answer,
+      topics,
+      tags,
+      section,
+      orig_id UNINDEXED,
+      tokenize = 'porter'
+    );
+    """)
+
+    # --- Keep FTS in sync with qa ---
+    cur.executescript("""
+    DROP TRIGGER IF EXISTS qa_ai;
+    DROP TRIGGER IF EXISTS qa_au;
+    DROP TRIGGER IF EXISTS qa_ad;
+
+    CREATE TRIGGER qa_ai AFTER INSERT ON qa BEGIN
+      INSERT INTO qa_fts(orig_id, section, topics, question, answer, tags)
+      VALUES (new.id,
+              ifnull(new.section,''),
+              ifnull(new.topics,''),
+              ifnull(new.question,''),
+              ifnull(new.answer,''),
+              ifnull(new.tags,''));
+    END;
+
+    CREATE TRIGGER qa_au AFTER UPDATE ON qa BEGIN
+      UPDATE qa_fts
+         SET section  = ifnull(new.section,''),
+             topics   = ifnull(new.topics,''),
+             question = ifnull(new.question,''),
+             answer   = ifnull(new.answer,''),
+             tags     = ifnull(new.tags,'')
+       WHERE orig_id = old.id;
+    END;
+
+    CREATE TRIGGER qa_ad AFTER DELETE ON qa BEGIN
+      DELETE FROM qa_fts WHERE orig_id = old.id;
+    END;
+    """)
+
+    # --- One-time backfill if FTS is empty ---
+    empty = cur.execute("SELECT 1 FROM qa_fts LIMIT 1;").fetchone() is None
+    if empty:
+        cur.execute("""
+        INSERT INTO qa_fts(orig_id, section, topics, question, answer, tags)
+        SELECT id,
+               ifnull(section,''),
+               ifnull(topics,''),
+               ifnull(question,''),
+               ifnull(answer,''),
+               ifnull(tags,'')
+          FROM qa;
+        """)
+
 
 
     # NEW: facility quick facts table (row-per-fact)
@@ -1117,6 +1177,66 @@ def _facility_details_answer_from_db(fac_query: str) -> tuple[str, dict]:
 # ------------------------------------------------------------------------------
 # [S5.2] SQLITE helpers (read-only for Step 2)
 # ------------------------------------------------------------------------------
+
+
+from contextlib import closing
+
+def qa_search_fts(question: str, section_hint: str | None, top_k: int = 12):
+    """
+    Full-text search on qa_fts, lightly biased by section/topics if provided.
+    Falls back to LIKE on qa if FTS returns nothing.
+    Returns rows as dicts: {orig_id, question, answer, section, tags, topics, rank?}
+    """
+    q = (question or "").strip()
+    sh = (section_hint or "").strip()
+
+    if not q:
+        return []
+
+    # Build MATCH query: quote the main question to avoid syntax issues.
+    match_terms = [f'"{q}"']
+    if sh:
+        # Split on commas (your UI sends multi-select topics as "A, B, C")
+        extras = [t.strip() for t in sh.split(",") if t.strip()]
+        for t in extras:
+            match_terms.append(f'section:"{t}"')
+            match_terms.append(f'topics:"{t}"')
+
+    match_query = " OR ".join(match_terms)
+
+    rows = []
+    with closing(_db()) as conn, closing(conn.cursor()) as cur:
+        try:
+            cur.execute(
+                """
+                SELECT orig_id, question, answer, section, tags, topics,
+                       bm25(qa_fts) AS rank
+                  FROM qa_fts
+                 WHERE qa_fts MATCH ?
+                 ORDER BY rank ASC
+                 LIMIT ?
+                """,
+                (match_query, int(top_k)),
+            )
+            rows = [dict(r) for r in cur.fetchall()]
+        except Exception:
+            # Fallback to LIKE if FTS not available
+            like = f"%{q}%"
+            cur.execute(
+                """
+                SELECT id AS orig_id, question, answer, section, tags, topics
+                  FROM qa
+                 WHERE question LIKE ? OR answer LIKE ? OR topics LIKE ? OR tags LIKE ?
+                 LIMIT ?
+                """,
+                (like, like, like, like, int(top_k)),
+            )
+            rows = [dict(r) for r in cur.fetchall()]
+
+    return rows
+
+
+
 def db_fetchall(query, params=()):
     conn = _db()
     cur  = conn.cursor()
@@ -4045,15 +4165,26 @@ def ask(payload: AskPayload):
     if cached:
         return cached
 
-    # Use section-aware retrieval
-    ctx_docs = retrieve(q_norm, payload.top_k, section=section_pref)
+    # Use DB FTS for Q&A retrieval (bias by section/topics if provided)
+    hits = qa_search_fts(q_norm, section_pref, top_k=max(12, int(payload.top_k or 6)))
 
-    # If it's a list/directory/staff/team intent, pull a larger pool once
-    try:
-        if "_list_intent" in globals() and _list_intent(q):
-            ctx_docs = retrieve(q_norm, max(payload.top_k, 60), section=section_pref)
-    except Exception as e:
-        print("list intent pool bump skipped:", e)
+    # Convert to ctx_docs in the same shape the rest of the code expects
+    ctx_docs = []
+    for r in hits:
+        ctx_docs.append({
+            "kind": "qa",
+            "id":   r.get("orig_id") or r.get("id") or "",
+            "meta": {
+                "question": r.get("question", ""),
+                "answer":   r.get("answer", ""),
+                "tags":     r.get("tags", ""),
+                "section":  r.get("section", ""),
+                "topics":   r.get("topics", "")
+            },
+            # Optional scoring field so your preview/debug UI still works
+            "score": float(r.get("rank", 0.0)) if r.get("rank") is not None else 0.0
+        })
+
 
     # Debug: return top candidates with component scores
     if payload.debug:
@@ -5430,5 +5561,6 @@ def admin_dictionary_delete(request: Request, key: str = Form(...)):
     _exec_write("DELETE FROM dictionary WHERE key = ?", (key.strip().lower(),))
     clear_dictionary_caches()
     return {"ok": True}
+
 
 
