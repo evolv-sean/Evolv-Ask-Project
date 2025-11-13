@@ -1,6 +1,8 @@
 fastapi
 uvicorn[standard]
-python-multipart
-jinja2
-pandas
+openai
 chromadb
+pandas
+python-dotenv
+pypdf
+python-docx
