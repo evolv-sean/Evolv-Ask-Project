@@ -123,7 +123,7 @@ CSV_PATH = os.path.join("data", "qa.csv")
 # === SQLite target (we'll migrate into this) ===
 # Locally: falls back to data/evolv.db
 # On Render: override with DB_PATH env var
-DB_PATH = os.getenv("DB_PATH", os.path.join("data", "evolv.db"))
+DB_PATH = os.getenv("DB_PATH", "/opt/render/project/data/evolv.db")
 
 # Toggle: read from SQLite instead of CSV
 USE_SQLITE_READ = os.getenv("USE_SQLITE_READ", "0") == "1"
@@ -5575,7 +5575,6 @@ def admin_dictionary_delete(request: Request, key: str = Form(...)):
     _exec_write("DELETE FROM dictionary WHERE key = ?", (key.strip().lower(),))
     clear_dictionary_caches()
     return {"ok": True}
-
 
 
 
