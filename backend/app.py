@@ -5376,6 +5376,7 @@ def send_intake_email(facility_id: str, payload: dict) -> None:
     lines.extend([
         "",
         "You can review this facility in the Admin portal under Facilities.",
+        "https://ask.startevolv.com/admin#fac",
     ])
 
     # NEW: include direct link back to the Facility Details page
