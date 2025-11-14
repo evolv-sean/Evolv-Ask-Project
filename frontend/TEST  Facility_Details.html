@@ -290,7 +290,7 @@
 
   <!-- Header -->
   <div class="card header">
-    <h1>New Client Information Packet</h1>
+    <h1>Facility Details</h1>
     <div class="muted" style="font-size:14px">Please complete the sections below for your facility.</div>
     
     <!-- Top-right logo -->
@@ -319,17 +319,6 @@
       <div class="toolbar">
         <button class="btn btn-primary" id="submitBtn" type="button">Submit</button>
       </div>
-    </div>
-  </div>
-
-  <!-- Debug ribbon (collapsible) -->
-  <div id="dbg" class="card" style="padding:10px 12px; margin-bottom:12px; display:none;">
-    <div style="font-size:12px; color:#334155;">
-      <b>Debug</b> —
-      PUBLIC_MODE: <span id="dbgPub"></span> •
-      facility_id: <span id="dbgF"></span> •
-      token: <span id="dbgT"></span> •
-      URL: <span id="dbgU" style="word-break:break-all;"></span>
     </div>
   </div>
 
@@ -523,15 +512,6 @@ function toast(msg){
   setTimeout(()=>t.remove(),1300);
 }
 
-function showDebug({publicMode, fid, tok, url}){
-  const box = document.getElementById("dbg");
-  if (!box) return;
-  document.getElementById("dbgPub").textContent = String(publicMode);
-  document.getElementById("dbgF").textContent = fid || "(none)";
-  document.getElementById("dbgT").textContent = tok ? tok.slice(0,6)+"…"+tok.slice(-4) : "(none)";
-  document.getElementById("dbgU").textContent = url || "(none)";
-  box.style.display = "block";
-}
 
 function sectionDone(sec){
   const fields = FIELD_DEFS.filter(f=>f.sec===sec && !isLayout(f));
@@ -1440,7 +1420,6 @@ async function preloadFacility() {
     return;
   }
   const url = `${API_BASE}/intake/f/${encodeURIComponent(FAC_ID)}?t=${encodeURIComponent(FAC_TOKEN)}&ngrok-skip-browser-warning=true`;
-  showDebug({ publicMode: PUBLIC_MODE, fid: FAC_ID, tok: FAC_TOKEN, url });
 
   try {
     console.log("[FD] Fetching:", url);
@@ -1570,4 +1549,3 @@ window.addEventListener("DOMContentLoaded", ()=>{
 
 </body>
 </html>
-
