@@ -59,10 +59,7 @@ from dotenv import load_dotenv
 import chromadb
 from openai import OpenAI
 
-
 import re
-
-
 import math
 from collections import OrderedDict
 
@@ -70,10 +67,16 @@ import time
 from functools import lru_cache
 
 from fastapi.responses import JSONResponse, Response, FileResponse, HTMLResponse
-import threading  # <-- add this
+import threading  # <-- existing
 
 from pathlib import Path   # <-- needed for FACILITY_HTML path
 import logging
+
+# NEW: email / SMTP imports for intake notifications
+import smtplib
+import ssl
+from email.message import EmailMessage
+
 
 
 # ==============================================================================
@@ -134,6 +137,16 @@ MIRROR_SQLITE_WRITES = os.getenv("MIRROR_SQLITE_WRITES", "1") == "1"
 # Toggle: write to SQLite instead of CSV
 USE_SQLITE_WRITE = os.getenv("USE_SQLITE_WRITE", "0") == "1"
 
+# NEW: Email / SMTP configuration for Facility Details intake notifications
+INTAKE_EMAIL_FROM = os.getenv("INTAKE_EMAIL_FROM", "")
+INTAKE_EMAIL_TO   = os.getenv("INTAKE_EMAIL_TO", "")
+SMTP_HOST         = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT         = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER         = os.getenv("SMTP_USER", INTAKE_EMAIL_FROM or "")
+SMTP_PASSWORD     = os.getenv("SMTP_PASSWORD", "")
+
+FACILITY_FORM_BASE_URL = os.getenv("FACILITY_FORM_BASE_URL", "")
+
 print(
     f"[startup] DB_PATH={DB_PATH} "
     f"USE_SQLITE_READ={USE_SQLITE_READ} "
@@ -141,6 +154,7 @@ print(
     f"MIRROR_SQLITE_WRITES={MIRROR_SQLITE_WRITES}",
     flush=True,
 )
+
 
 
 
@@ -5173,6 +5187,9 @@ def _fetch_contact_from_sqlite(fac_query: str, role_query: str) -> tuple[str, st
     return None
 
 
+
+
+
 # ==============================================================================
 # [S17] INTAKE SUBMIT — Generate QAs & upsert index
 # ==============================================================================
@@ -5310,8 +5327,94 @@ def _build_tags_from_payload(payload: dict) -> str:
 
 from fastapi import Body
 
+
+
+# NEW: [FN:send_intake_email] ----------------------------------------------------
+def send_intake_email(facility_id: str, payload: dict) -> None:
+    """
+    Fire-and-forget email notification for Facility Details submissions.
+    Uses Google Workspace SMTP credentials from environment variables.
+    """
+    # If any critical piece is missing, just log and skip email (don't break intake)
+    if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD and INTAKE_EMAIL_TO):
+        print("[intake-email] Missing SMTP config; skipping email.")
+        return
+
+    facility_name = (payload.get("facility_name") or "").strip() or "(blank)"
+    legal_name    = (payload.get("legal_name") or "").strip() or "(blank)"
+    city          = (payload.get("city") or "").strip()
+    state         = (payload.get("state") or "").strip()
+
+    # Pull the token that was used for this intake (JS sends it in the payload)
+    token = (payload.get("token") or "").strip()
+
+    # Build the public Facility Details URL using env + facility_id + token
+    facility_link = ""
+    if FACILITY_FORM_BASE_URL and facility_id and token:
+        facility_link = f"{FACILITY_FORM_BASE_URL}?f={facility_id}&t={token}"
+
+    location = ""
+    if city and state:
+        location = f"{city}, {state}"
+    elif city:
+        location = city
+    elif state:
+        location = state
+
+    subject = f"New Facility Details submission: {facility_name}"
+    lines = [
+        "A Facility Details form has been submitted.",
+        "",
+        f"Facility ID: {facility_id or '(unknown)'}",
+        f"Facility Name: {facility_name}",
+        f"Legal Name: {legal_name}",
+    ]
+    if location:
+        lines.append(f"Location: {location}")
+
+    # Optional: include a hint that they can view details in Admin
+    lines.extend([
+        "",
+        "You can review this facility in the Admin portal under Facilities.",
+    ])
+
+    # NEW: include direct link back to the Facility Details page
+    if facility_link:
+        lines.extend([
+            "",
+            "Open this Facility Details form:",
+            facility_link,
+        ])
+
+    body = "\n".join(lines)
+
+    try:
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
+        msg["To"] = INTAKE_EMAIL_TO
+        msg.set_content(body)
+
+        context = ssl.create_default_context()
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls(context=context)
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(msg)
+
+        print("[intake-email] Notification sent.")
+    except Exception as e:
+        # Log but do not raise; never break the intake flow for email issues
+        print("[intake-email] Failed:", e)
+
+
+from fastapi import Body
+
+
+
+from fastapi import Body
+
 @app.post("/intake/submit")
-async def intake_submit(payload: dict = Body(...)):
+async def intake_submit(payload: dict = Body(.)):
     """
     Public facility intake submit.
     On Render we *always* save into SQLite (evolv.db).
@@ -5354,12 +5457,23 @@ async def intake_submit(payload: dict = Body(...)):
         # Non-fatal: log and keep going
         print("CSV mirror failed:", e)
 
+    # --- fire-and-forget email notification (non-blocking) ---
+    try:
+        threading.Thread(
+            target=send_intake_email,
+            args=(fac_id, payload),
+            daemon=True,
+        ).start()
+    except Exception as e:
+        print("[intake-email] thread spawn failed:", e)
+
     # --- response to the frontend ---
     return {
         "ok": True,
         "facility_id": fac_id,
         "csv_mirrored": csv_mirrored,
     }
+
 
 
 
