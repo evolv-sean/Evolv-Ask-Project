@@ -4355,8 +4355,16 @@ def admin_list(request: Request):
 
 
 @app.get("/debug/schema")
-def debug_schema():
-    conn = get_db()
+def debug_schema(request: Request):
+    """
+    Return a JSON view of the SQLite schema (tables + columns).
+    Protected by the same admin token as the other /admin tools.
+    """
+    # Re-use your existing admin check
+    require_admin(request)
+
+    # Use your actual SQLite helper
+    conn = _db()
     cursor = conn.cursor()
 
     # Get table names
@@ -4376,12 +4384,15 @@ def debug_schema():
                 "type": col[2],
                 "notnull": col[3],
                 "default": col[4],
-                "pk": col[5]
+                "pk": col[5],
             }
             for col in columns
         ]
 
+    conn.close()
     return schema
+
+
 
 
 # [FN:admin_top_tags] ----------------------------------------------------
