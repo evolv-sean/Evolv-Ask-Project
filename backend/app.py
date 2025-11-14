@@ -5414,7 +5414,7 @@ from fastapi import Body
 from fastapi import Body
 
 @app.post("/intake/submit")
-async def intake_submit(payload: dict = Body(.)):
+async def intake_submit(payload: dict = Body(...)):
     """
     Public facility intake submit.
     On Render we *always* save into SQLite (evolv.db).
