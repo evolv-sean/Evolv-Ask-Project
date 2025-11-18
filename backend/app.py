@@ -5478,6 +5478,26 @@ async def intake_submit(payload: dict = Body(...)):
 
 
 
+from fastapi.responses import FileResponse
+
+@app.get("/admin/download-db")
+def download_db(token: str):
+    # Security: require your admin token
+    if token != os.getenv("ADMIN_TOKEN"):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    db_path = os.path.join(BASE_DIR, "evolv.db")
+    if not os.path.exists(db_path):
+        raise HTTPException(status_code=500, detail="DB not found")
+
+    return FileResponse(
+        path=db_path,
+        filename="evolv.db",
+        media_type="application/octet-stream"
+    )
+
+
+
 
 # ==============================================================================
 # [S18] MAIN ENTRYPOINT (__main__)
