@@ -77,6 +77,9 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 
+import os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 
 
 # ==============================================================================
@@ -5479,6 +5482,9 @@ async def intake_submit(payload: dict = Body(...)):
 
 
 from fastapi.responses import FileResponse
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 @app.get("/admin/download-db")
 def download_db(token: str):
@@ -5486,15 +5492,18 @@ def download_db(token: str):
     if token != os.getenv("ADMIN_TOKEN"):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    db_path = os.path.join(BASE_DIR, "evolv.db")
+    # DB is stored one level above backend/
+    db_path = os.path.join(os.path.dirname(BASE_DIR), "evolv.db")
+
     if not os.path.exists(db_path):
-        raise HTTPException(status_code=500, detail="DB not found")
+        raise HTTPException(status_code=500, detail=f"DB not found at {db_path}")
 
     return FileResponse(
         path=db_path,
         filename="evolv.db",
         media_type="application/octet-stream"
     )
+
 
 
 
