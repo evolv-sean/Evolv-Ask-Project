@@ -5483,8 +5483,10 @@ async def intake_submit(payload: dict = Body(...)):
 
 from fastapi.responses import FileResponse
 import os
+from pathlib import Path
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# BASE_DIR is already defined near the top of the file, so we don't need to
+# redefine it here. We just reuse DB_PATH for the actual SQLite file.
 
 @app.get("/admin/download-db")
 def download_db(token: str):
@@ -5492,17 +5494,18 @@ def download_db(token: str):
     if token != os.getenv("ADMIN_TOKEN"):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    # DB is stored one level above backend/
-    db_path = os.path.join(os.path.dirname(BASE_DIR), "evolv.db")
+    # Use the same DB file the app uses everywhere else
+    db_path = Path(DB_PATH)
 
-    if not os.path.exists(db_path):
+    if not db_path.exists():
         raise HTTPException(status_code=500, detail=f"DB not found at {db_path}")
 
     return FileResponse(
-        path=db_path,
+        path=str(db_path),
         filename="evolv.db",
-        media_type="application/octet-stream"
+        media_type="application/octet-stream",
     )
+
 
 
 
