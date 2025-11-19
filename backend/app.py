@@ -61,7 +61,7 @@ from openai import OpenAI
 
 import re
 import math
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 
 import time
 from functools import lru_cache
@@ -162,12 +162,12 @@ print(
 
 
 
+# [S3] DICTIONARY + legacy abbreviation CSV helpers
 # ==============================================================================
-# [S3] ABBREVIATIONS — Paths & CSV helpers
-# ==============================================================================
-# ---- Abbreviation file path (single source of truth) ----
-# === Dictionary (unified) ===
+# The *dictionary* table is the canonical source of truth.
+# CSV files are only used as a legacy mirror / fallback when tables are empty.
 DICT_CSV_PATH = os.path.join("data", "dictionary.csv")
+
 
 def _ensure_dict_csv():
     os.makedirs(os.path.dirname(DICT_CSV_PATH), exist_ok=True)
@@ -557,6 +557,9 @@ def _init_db():
         tags TEXT
     );
     """)
+    # Helpful indexes for section/topic filtering
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_qa_section ON qa(section);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_qa_topics ON qa(topics);")
 
     # --- FTS5 for qa (standalone, stores original id in UNINDEXED column) ---
     cur.execute("""
@@ -629,6 +632,24 @@ def _init_db():
       FOREIGN KEY (facility_id) REFERENCES facilities(facility_id) ON DELETE CASCADE
     );
     """)
+    # Index for per-facility fact lookups
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_fac_facts_facility ON fac_facts(facility_id);")
+
+
+    # NEW: facility quick facts table (row-per-fact)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS fac_facts (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      facility_id  TEXT NOT NULL,
+      fact_text    TEXT NOT NULL,
+      tags         TEXT DEFAULT '',
+      created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (facility_id) REFERENCES facilities(facility_id) ON DELETE CASCADE
+    );
+    """)
+    # Helpful index for per-facility facts lookups
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_fac_facts_facility ON fac_facts(facility_id);")
+
 
 
     # --- client_info submissions (optional, stores latest snapshot per facility+field) ---
@@ -686,10 +707,13 @@ def _init_db():
         a_quality TEXT DEFAULT ''
     );
     """)
+    # Index for analytics by section + recency
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_userlog_section_ts ON user_qa_log(section, ts);")
 
     # --- facilities (core master record for each facility) ---
     cur.execute("""
     CREATE TABLE IF NOT EXISTS facilities (
+
         facility_id     TEXT PRIMARY KEY,          -- stable slug/ID
         facility_name   TEXT NOT NULL,             -- display name
         legal_name      TEXT,
@@ -769,8 +793,60 @@ def _init_db():
     GROUP BY facility_id, type;
     """)
 
+    # Unified facility knowledge view (facts + services + partners + insurance)
+    cur.execute("DROP VIEW IF EXISTS v_facility_knowledge;")
+    cur.execute("""
+    CREATE VIEW v_facility_knowledge AS
+    SELECT
+      f.facility_id,
+      f.facility_name,
+      'fact' AS kind,
+      ff.fact_text AS text,
+      ff.tags      AS tags,
+      ff.created_at AS created_at
+    FROM fac_facts ff
+    JOIN facilities f ON f.facility_id = ff.facility_id
+
+    UNION ALL
+
+    SELECT
+      f.facility_id,
+      f.facility_name,
+      'service' AS kind,
+      fas.service AS text,
+      '' AS tags,
+      NULL AS created_at
+    FROM facility_additional_services fas
+    JOIN facilities f ON f.facility_id = fas.facility_id
+
+    UNION ALL
+
+    SELECT
+      f.facility_id,
+      f.facility_name,
+      'partner' AS kind,
+      fp.name AS text,
+      COALESCE(fp.insurance, '') AS tags,
+      NULL AS created_at
+    FROM facility_partners fp
+    JOIN facilities f ON f.facility_id = fp.facility_id
+
+    UNION ALL
+
+    SELECT
+      f.facility_id,
+      f.facility_name,
+      'insurance' AS kind,
+      fi.plan AS text,
+      '' AS tags,
+      NULL AS created_at
+    FROM facility_insurance_plans fi
+    JOIN facilities f ON f.facility_id = fi.facility_id;
+    """)
+
     conn.commit()
     conn.close()
+
 
 
 def _migrate_facilities_columns(cur):
@@ -931,67 +1007,113 @@ def _detect_facility_from_question(q: str) -> str | None:
 def _contact_answer_from_db(facility_name: str, role: str) -> tuple[str | None, dict]:
     """
     Returns (markdown, meta) for a contact role at a facility from SQLite.
+    Supports multiple contacts per role and respects contact preferences.
     """
     if not facility_name or not role:
         return None, {}
 
-    # Resolve facility_id by name or id (simple match)
+    fac_q = facility_name.strip()
+    role_q = role.strip()
+    if not fac_q or not role_q:
+        return None, {}
+
     conn = _db()
     cur  = conn.cursor()
-    cur.execute("SELECT facility_id, facility_name FROM facilities;")
-    rows = cur.fetchall()
-    fid = None
-    for f_id, f_name in rows:
-        if facility_name.strip().lower() in {(f_id or '').lower(), (f_name or '').lower()}:
-            fid = f_id
-            break
-    if not fid:
-        # try fuzzy: token overlap
-        txt = re.sub(r"[^a-z0-9]+", " ", facility_name.lower())
-        best, best_score = None, 0
+    try:
+        # Resolve facility_id by name or id (simple match first, then fuzzy)
+        cur.execute("SELECT facility_id, facility_name FROM facilities;")
+        rows = cur.fetchall()
+        fid = None
+        fac_display = fac_q
+
+        fac_lc = fac_q.lower()
         for f_id, f_name in rows:
-            score = sum(1 for t in re.sub(r"[^a-z0-9]+"," ", (f_name or '').lower()).split() if t in txt.split())
-            if (f_id or "").lower() in txt.split():
-                score += 2
-            if score > best_score:
-                best, best_score = f_id, score
-        fid = best
+            if fac_lc in {(f_id or "").lower(), (f_name or "").lower()}:
+                fid = f_id
+                fac_display = f_name or fac_q
+                break
 
-    if not fid:
-        return None, {}
+        if not fid:
+            # Fuzzy: token overlap with facility_name
+            txt = re.sub(r"[^a-z0-9]+", " ", fac_lc)
+            best, best_score = None, 0
+            best_name = None
+            for f_id, f_name in rows:
+                fname = (f_name or "").lower()
+                score = sum(
+                    1
+                    for t in re.sub(r"[^a-z0-9]+", " ", fname).split()
+                    if t in txt.split()
+                )
+                if (f_id or "").lower() in txt.split():
+                    score += 2
+                if score > best_score:
+                    best, best_score = f_id, score
+                    best_name = f_name
+            fid = best
+            if best_name:
+                fac_display = best_name
 
-    # Pull the matching contact
-    cur.execute("""
-        SELECT type, name, email, phone, pref
-        FROM facility_contacts
-        WHERE facility_id = ?
-          AND LOWER(type) = LOWER(?)
-        ORDER BY id ASC
-        LIMIT 1;
-    """, (fid, role))
-    row = cur.fetchone()
-    if not row:
-        # allow loose contains match
-        cur.execute("""
+        if not fid:
+            return None, {}
+
+        # Pull ALL matching contacts for this role, ordered by preference
+        cur.execute(
+            """
             SELECT type, name, email, phone, pref
-            FROM facility_contacts
-            WHERE facility_id = ?
-              AND LOWER(type) LIKE '%' || LOWER(?) || '%'
-            ORDER BY id ASC
-            LIMIT 1;
-        """, (fid, role))
-        row = cur.fetchone()
+              FROM facility_contacts
+             WHERE facility_id = ?
+               AND LOWER(type) LIKE '%' || LOWER(?) || '%'
+             ORDER BY
+               -- exact-type matches first
+               (LOWER(type) = LOWER(?)) DESC,
+               -- then contact preference
+               CASE LOWER(pref)
+                   WHEN 'email' THEN 0
+                   WHEN 'phone' THEN 1
+                   WHEN 'either' THEN 2
+                   ELSE 3
+               END,
+               id ASC;
+            """,
+            (fid, role_q, role_q),
+        )
+        rows = cur.fetchall()
+        if not rows:
+            return None, {}
 
-    if not row:
-        return None, {}
+        heading_role = role_q.strip().title()
+        lines: list[str] = []
+        lines.append(f"**{heading_role} contacts for {fac_display}**")
+        lines.append("")
 
-    ctype, name, email, phone, pref = row
-    md = f"""**{ctype} for {facility_name.title()}**  
-- Name: {name or '—'}  
-- Email: {email or '—'}  
-- Phone: {phone or '—'}  
-- Contact preference: {pref or '—'}"""
-    return md.strip(), {"facility_id": fid, "role": role}
+        for ctype, name, email, phone, pref in rows:
+            label_type = (ctype or heading_role).strip()
+            pref_txt = ""
+            p = (pref or "").strip().lower()
+            if p == "email":
+                pref_txt = " (prefers email)"
+            elif p == "phone":
+                pref_txt = " (prefers phone)"
+            elif p == "either":
+                pref_txt = " (email or phone okay)"
+            elif p:
+                pref_txt = f" (preference: {pref})"
+
+            parts = [
+                f"_{label_type}_".strip("_ "),
+                name or "—",
+                f"email: {email}" if email else "",
+                f"phone: {phone}" if phone else "",
+            ]
+            line_core = " | ".join([part for part in parts if part])
+            lines.append(f"- {line_core}{pref_txt}")
+
+        md = "\n".join(lines).strip()
+        return md, {"facility_id": fid, "role": role_q}
+    finally:
+        conn.close()
+
 
 
 # [FN:_facility_details_answer_from_db] ----------------------------------------
@@ -1088,13 +1210,40 @@ def _facility_details_answer_from_db(fac_query: str) -> tuple[str, dict]:
     except Exception:
         partners = []
 
+
+
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_qa_section ON qa(section);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_qa_topics ON qa(topics);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_userlog_section_ts ON user_qa_log(section, ts);")
+
+
+
+
     # 6) facts (if the table exists)
+    # Use the fac_facts table that the Admin "Quick Facts" UI writes to.
     facts = []
     try:
-        cur.execute("SELECT statement, tag FROM facility_facts WHERE facility_id = ? ORDER BY created_at DESC, id DESC;", (fid,))
-        facts = [{"statement": r[0] or "", "tag": r[1] or ""} for r in cur.fetchall()]
+        cur.execute(
+            """
+            SELECT fact_text, tags
+            FROM fac_facts
+            WHERE facility_id = ?
+            ORDER BY created_at DESC, id DESC;
+            """,
+            (fid,),
+        )
+        facts = [
+            {
+                "statement": (r[0] or ""),
+                # We store tags as one string; treat it as a label suffix for now.
+                "tag": (r[1] or ""),
+            }
+            for r in cur.fetchall()
+        ]
     except Exception:
-        pass
+        # If the table doesn't exist or another error occurs, just skip facts.
+        facts = []
+
 
 
     # 6.1) additional services (if the table exists)
@@ -1162,24 +1311,62 @@ def _facility_details_answer_from_db(fac_query: str) -> tuple[str, dict]:
     # contacts
     if contacts:
         lines.append("\n**Key Contacts**")
+
+        # Group contacts by type (Administrator, DON, etc.)
+        by_type = defaultdict(list)
         for c in contacts:
-            line = " - " + " | ".join([p for p in [
-               f"_{c['type']}_".strip("_ "),
-               c["name"], c["email"], c["phone"],
-               f"pref: {c['pref']}" if c["pref"] else ""
-            ] if p])
-            lines.append(line)
+            ctype = (c.get("type") or "Other").strip() or "Other"
+            by_type[ctype].append(c)
+
+        for ctype, group in by_type.items():
+            lines.append(f"- _{ctype}_")
+            for c in group:
+                pref_txt = ""
+                p = (c.get("pref") or "").strip().lower()
+                if p == "email":
+                    pref_txt = " (prefers email)"
+                elif p == "phone":
+                    pref_txt = " (prefers phone)"
+                elif p == "either":
+                    pref_txt = " (email or phone okay)"
+                elif p:
+                    pref_txt = f" (preference: {c.get('pref')})"
+
+                parts = [
+                    c.get("name") or "",
+                    c.get("email") or "",
+                    c.get("phone") or "",
+                ]
+                detail = " | ".join([x for x in parts if x])
+                if not detail:
+                    detail = "—"
+                lines.append(f"  - {detail}{pref_txt}")
+
 
     # partners
     if partners:
         lines.append("\n**Community Partners**")
+
+        by_type = defaultdict(list)
         for p in partners:
             tag = ""
-            if p["ins_only"] and p["insurance"]:
+            if p.get("ins_only") and p.get("insurance"):
                 tag = f" (only for {p['insurance']})"
-            elif p["ins_only"]:
+            elif p.get("ins_only"):
                 tag = " (insurance-specific)"
-            lines.append(f" - _{p['type']}_ — {p['name']}{tag}")
+
+            name = (p.get("name") or "").strip()
+            if not name:
+                continue
+            label = name + tag
+
+            ptype = (p.get("type") or "Other").strip() or "Other"
+            by_type[ptype].append(label)
+
+        for ptype, labels in by_type.items():
+            joined = "; ".join(labels)
+            lines.append(f"- _{ptype}_ — {joined}")
+
 
     # additional services
     if additional_services:
@@ -1210,9 +1397,183 @@ def _facility_details_answer_from_db(fac_query: str) -> tuple[str, dict]:
 # ------------------------------------------------------------------------------
 
 
+def _build_how_we_handle_answer(question: str, section_hint: str | None = None) -> tuple[str, list]:
+    """
+    For questions like "how do we handle X at Y", combine:
+      - Facility Quick Facts (fac_facts)
+      - Related Q&A rows (qa_fts)
+    Returns (markdown_answer, sources) or ("", []) if not applicable.
+    """
+    import re
+
+    q = (question or "").strip()
+    if not q:
+        return "", []
+
+    q_lower = q.lower()
+
+    # Simple trigger phrases to detect "how we handle" style questions
+    trigger_phrases = [
+        "how do we handle",
+        "how we handle",
+        "how does evolv handle",
+        "what is our process for",
+        "what's our process for",
+        "what is the process for",
+        "what's the process for",
+    ]
+    if not any(p in q_lower for p in trigger_phrases):
+        return "", []
+
+    # Try to resolve the facility from the question
+    fac_query = _detect_facility_from_question(q)
+    if not fac_query:
+        return "", []
+
+    # Resolve facility_id and facility_name similar to _facility_details_answer_from_db
+    conn = _db()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT facility_id, facility_name FROM facilities;")
+        rows = cur.fetchall()
+
+        def _canon(s: str) -> str:
+            s = (s or "").strip().lower()
+            s = re.sub(r"[^a-z0-9]+", " ", s)
+            return " ".join(s.split())
+
+        c_q = _canon(fac_query)
+        fid = None
+        fac_name = None
+
+        # First try exact-ish matches
+        for f_id, f_name in rows:
+            if c_q in {_canon(f_id), _canon(f_name)}:
+                fid, fac_name = f_id, f_name
+                break
+
+        # Fuzzy match by token overlap if needed
+        if not fid:
+            best = None
+            best_score = 0
+            for f_id, f_name in rows:
+                tokens_name = set(_canon(f_name).split())
+                tokens_q    = set(c_q.split())
+                score = len(tokens_name & tokens_q)
+                if (f_id or "").lower() in c_q:
+                    score += 2
+                if score > best_score:
+                    best_score = score
+                    best = (f_id, f_name)
+            if best and best_score > 0:
+                fid, fac_name = best
+
+        if not fid:
+            return "", []
+
+        # --- Pull Quick Facts for this facility (if any) ----------------------
+        facts = []
+        try:
+            cur.execute(
+                """
+                SELECT fact_text, tags
+                  FROM fac_facts
+                 WHERE facility_id = ?
+                 ORDER BY created_at DESC, id DESC;
+                """,
+                (fid,),
+            )
+            facts = cur.fetchall()
+        except Exception:
+            facts = []
+
+        # --- Pull related Q&A from FTS, biased to Facility Details -----------
+        qa_rows = qa_search_fts(q, section_hint or "Facility Details", top_k=8)
+
+        # Keep Q&A entries that mention the facility id or name anywhere
+        fac_lc = (fac_name or "").lower()
+        fid_lc = (fid or "").lower()
+        filtered_qa = []
+        for r in qa_rows:
+            blob = " ".join([
+                str(r.get("question") or ""),
+                str(r.get("answer") or ""),
+                str(r.get("topics") or ""),
+                str(r.get("tags") or ""),
+            ]).lower()
+            if (fac_lc and fac_lc in blob) or (fid_lc and fid_lc in blob):
+                filtered_qa.append(r)
+
+        # If filtering removed everything but we had some hits, keep top 3 raw hits
+        if not filtered_qa and qa_rows:
+            filtered_qa = qa_rows[:3]
+        else:
+            filtered_qa = filtered_qa[:3]
+
+        # If nothing at all, bail out and let normal flow handle it
+        if not facts and not filtered_qa:
+            return "", []
+
+        lines: list[str] = []
+        title_fac = fac_name or fid or "this facility"
+        lines.append(f"**How we handle this at {title_fac}**")
+
+        # Optionally show the first line of the top Q&A result as a summary
+        if filtered_qa:
+            first_ans = (filtered_qa[0].get("answer") or "").strip()
+            if first_ans:
+                first_line = first_ans.splitlines()[0].strip()
+                if first_line:
+                    lines.append("")
+                    lines.append(first_line)
+
+        # Quick Facts section
+        if facts:
+            lines.append("")
+            lines.append("**Relevant Quick Facts**")
+            for fact_text, tags in facts[:6]:
+                fact_text = (fact_text or "").strip()
+                if not fact_text:
+                    continue
+                tag_label = f" [{tags}]" if tags else ""
+                lines.append(f"- {fact_text}{tag_label}")
+
+        # Related Q&A bullets
+        if filtered_qa:
+            lines.append("")
+            lines.append("**Related Q&A**")
+            for r in filtered_qa:
+                q_text = (r.get("question") or "").strip()
+                a_text = (r.get("answer") or "").strip()
+                if not (q_text and a_text):
+                    continue
+                q_short = q_text if len(q_text) <= 140 else q_text[:137] + "..."
+                a_first = a_text.splitlines()[0].strip()
+                lines.append(f"- **Q:** {q_short}")
+                if a_first:
+                    lines.append(f"  **A:** {a_first}")
+
+        md = "\n".join(lines).strip()
+
+        # Build sources list for the UI
+        sources: list[str] = []
+        if facts:
+            sources.append(f"DB:facility_facts:{fid}")
+        for r in filtered_qa:
+            oid = r.get("orig_id") or r.get("id")
+            if oid:
+                sources.append(f"Q&A:{oid}")
+
+        return md, sources
+
+    finally:
+        conn.close()
+
+
 from contextlib import closing
 
 def qa_search_fts(question: str, section_hint: str | None, top_k: int = 12):
+
     """
     Full-text search on qa_fts, lightly biased by section/topics if provided.
     Falls back to LIKE on qa if FTS returns nothing.
@@ -1459,6 +1820,16 @@ def upsert_dictionary_sqlite(row: dict):
 
 
 def upsert_abbrev_sqlite(row: dict):
+    """
+    Primary store for abbreviations is still the `abbreviations` table,
+    but we *also* mirror into the `dictionary` table so all query-time
+    normalization comes from a single, unified source.
+    """
+    abbr = str(row.get("abbr", "")).strip()
+    meaning = str(row.get("meaning", "")).strip()
+    notes = str(row.get("notes", "")).strip()
+
+    # 1) Write/update in abbreviations table
     _exec_write("""
         INSERT INTO abbreviations (abbr, meaning, notes)
         VALUES (?, ?, ?)
@@ -1466,10 +1837,22 @@ def upsert_abbrev_sqlite(row: dict):
           meaning = excluded.meaning,
           notes   = excluded.notes
     """, (
-        str(row.get("abbr","")).strip(),
-        str(row.get("meaning","")).strip(),
-        str(row.get("notes","")).strip(),
+        abbr,
+        meaning,
+        notes,
     ))
+
+    # 2) Mirror into dictionary as an 'abbr' entry (canonical = meaning)
+    # Keys in dictionary are stored lowercased.
+    if abbr and meaning:
+        upsert_dictionary_sqlite({
+            "key": abbr,
+            "canonical": meaning,
+            "kind": "abbr",
+            "notes": notes,
+            "match_mode": "exact",
+        })
+
 
 def _next_log_id_sqlite():
     row = db_fetchall("SELECT COALESCE(MAX(id), 0) AS mx FROM user_qa_log")[0]
@@ -4170,6 +4553,25 @@ def ask(payload: AskPayload):
             + "\n- For Sensys topics, answer in numbered, concise step-by-step instructions."
         )
 
+    # === Special case: How we handle X at Y (facility-specific) ===============
+    how_md, how_sources = _build_how_we_handle_answer(q, section_pref)
+    if how_md:
+        log_id = None
+        try:
+            log_id = _append_user_qa_log("Facility HowWeHandle", q, how_md)
+        except Exception as e:
+            print("log append error (how-we-handle):", e)
+
+        payload_out = {
+            "answer": how_md,
+            "sources": how_sources,
+            "section_used": "Facility Details",
+            "log_id": log_id or None,
+        }
+        cache_key = (normalize_abbrev_query(q), "Facility Details")
+        _ask_cache_put(cache_key, payload_out)
+        return payload_out
+
     # === Special case: Facility Details → go straight to SQLite ===============
     fd_name = _extract_facility_name_from_query(q) or _detect_facility_from_question(q)
     fd_topic_selected = bool(section_pref and "facility details" in (section_pref or "").lower())
@@ -4194,6 +4596,7 @@ def ask(payload: AskPayload):
     # ==========================================================================
 
     # --- TTL cache: same question + section -----------------------------------
+
     cache_key = (q_norm, section_pref or "")
     cached = _ask_cache_get(cache_key)
     if cached:
@@ -5698,6 +6101,16 @@ def admin_abv_delete(
                 _exec_write("DELETE FROM abbreviations WHERE abbr = ?", (abbr_s,))
             except Exception as e:
                 print("mirror abv delete->sqlite failed:", e)
+                
+    # Keep dictionary in sync: delete matching key there as well
+    try:
+        _exec_write(
+            "DELETE FROM dictionary WHERE key = ?",
+            (abbr_s.strip().lower(),),
+        )
+        clear_dictionary_caches()
+    except Exception as e:
+        print("mirror abv delete->dictionary failed:", e)
 
     return {"ok": True}
 
