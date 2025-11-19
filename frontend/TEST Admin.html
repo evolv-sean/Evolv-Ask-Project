@@ -536,13 +536,14 @@
                   <span>Facts</span>
                 </button>
 
-                <button class="icon-btn" onclick="facOpenEdit('${fid}')">
-                  ${pencilSvg()} <span>Edit</span>
+                <button class="icon-btn" onclick="facOpenAliases('${fid}')">
+                  ${pencilSvg()} <span>Aliases</span>
                 </button>
 
                 <button class="icon-btn" onclick="facCopyUrl(this)" ${render ? "" : "disabled"}>
                   ${linkSvg()} <span>Copy URL</span>
                 </button>
+
 
                 <button class="icon-btn" onclick="facOpenUrl(this)" ${render ? "" : "disabled"} aria-label="Open intake link">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -647,51 +648,105 @@
 
 
 
-        async function facOpenEdit(fid){
+async function facOpenAliases(fid){
+  try{
+    // remember which facility we're editing aliases for
+    const idInput = document.getElementById("aliasFacilityId");
+    if (idInput) idInput.value = fid;
+
+    const res = await api(`/admin/facilities/${encodeURIComponent(fid)}/aliases`);
+    if (!res.ok) throw new Error("Load failed");
+    renderAliasList(res.items || []);
+
+    const dlg = document.getElementById("facAliasesDlg");
+    if (dlg) dlg.showModal();
+  }catch(e){
+    console.error(e);
+    alert("Could not load aliases.");
+  }
+}
+
+function renderAliasList(items){
+  const host = document.getElementById("aliasList");
+  if (!host) return;
+  if (!items.length){
+    host.innerHTML = `<div class="muted">No aliases yet. Add your first one above.</div>`;
+    return;
+  }
+  host.innerHTML = items.map(it => `
+    <div class="e-card alias-row" data-alias="${escapeHtml(it.key || '')}"
+         style="padding:12px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div>
+        <div style="font-weight:600">${escapeHtml(it.key || '')}</div>
+        <div class="muted" style="font-size:12px;margin-top:3px">
+          canonical: ${escapeHtml(it.canonical || '')}
+        </div>
+      </div>
+      <button class="icon-btn" title="Delete alias" onclick="facDeleteAlias(this)">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 6h18" />
+          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+          <path d="M10 11v6M14 11v6"/>
+        </svg>
+      </button>
+    </div>
+  `).join("");
+}
+
+        async function facAddAlias(ev){
+          ev.preventDefault();
+          const fid  = document.getElementById("aliasFacilityId").value.trim();
+          const text = document.getElementById("aliasText").value.trim();
+          if (!fid || !text){
+            alert("Facility and alias are required.");
+            return;
+          }
+          const fd = new FormData();
+          fd.append("facility_id", fid);
+          fd.append("alias", text);
+          fd.append("token", ADMIN_TOKEN);
+
           try{
-            const res = await api(`/admin/facilities/${encodeURIComponent(fid)}`);
-            if (!res.ok) throw new Error("Fetch failed");
-            const f = res.facility;
-            qs("#facEditId").value    = f.facility_id;
-            qs("#facEditName").value  = f.facility_name || "";
-            qs("#facEditGroup").value = f.corporate_group || "";
-            qs("#facEditStatus").value = f.intake_status || "not-started";
-            qs("#facEditDlg").showModal();
+            const res = await api("/admin/facilities/aliases/add", { method:"POST", body: fd });
+            if (!res.ok) throw new Error("Add failed");
+            document.getElementById("aliasText").value = "";
+            const list = await api(`/admin/facilities/${encodeURIComponent(fid)}/aliases`);
+            renderAliasList(list.items || []);
+            toast("Alias added.");
           }catch(e){
             console.error(e);
-            alert("Could not load facility.");
+            alert("Could not add alias.");
           }
         }
 
-        async function facSaveEdit(ev){
-          ev.preventDefault();
-          const fid  = qs("#facEditId").value;
-          const name = qs("#facEditName").value.trim();
-          const grp  = qs("#facEditGroup").value.trim();
-          const sts  = qs("#facEditStatus").value;
+        async function facDeleteAlias(btn){
+          const row = btn.closest(".alias-row");
+          if (!row){ alert("No alias row found."); return; }
+          const fid = document.getElementById("aliasFacilityId").value.trim();
+          const key = row.dataset.alias || "";
+          if (!fid || !key){
+            alert("Missing facility or alias.");
+            return;
+          }
+          if (!confirm(`Delete alias "${key}"?`)) return;
+
+          const fd = new FormData();
+          fd.append("facility_id", fid);
+          fd.append("alias", key);
+          fd.append("token", ADMIN_TOKEN);
+
           try{
-            const form = new FormData();
-            form.append("facility_id", fid);
-            if (name) form.append("facility_name", name);
-            form.append("corporate_group", grp);
-            form.append("intake_status", sts);
-            const res = await api("/admin/facilities/update", { method:"POST", body: form });
-            if (!res.ok) throw new Error("Update failed");
-            qs("#facEditDlg").close();
-            // Update the row in-place
-            const row = document.querySelector(`.fac-row[data-fid="${CSS.escape(fid)}"]`);
-            if (row){
-              const detail = await api(`/admin/facilities/${encodeURIComponent(fid)}`);
-              if (detail.ok){
-                row.outerHTML = renderFacilityRow(detail.facility);
-              }
-            }
-            toast("Saved.");
+            await api("/admin/facilities/aliases/delete", { method:"POST", body: fd });
+            const list = await api(`/admin/facilities/${encodeURIComponent(fid)}/aliases`);
+            renderAliasList(list.items || []);
+            toast("Alias deleted.");
           }catch(e){
             console.error(e);
-            alert("Could not save changes.");
+            alert("Could not delete alias.");
           }
         }
+
 
         async function facCopyUrl(btn){
           const row = btn.closest(".fac-row");
@@ -1701,44 +1756,42 @@
       </div>
     </div>
 
-    <!-- Edit modal (lightweight for now: name + group + status) -->
-    <dialog id="facEditDlg">
+    <!-- Facility Aliases modal -->
+    <dialog id="facAliasesDlg">
       <div class="modal" style="padding:20px;min-width:min(720px,92vw)">
-        <h3 style="margin:0 0 10px;font-weight:700">Edit Facility</h3>
-        <form id="facEditForm" onsubmit="facSaveEdit(event)" style="display:grid;gap:12px">
-          <input type="hidden" id="facEditId"/>
+        <h3 style="margin:0 0 10px;font-weight:700">Facility Aliases</h3>
 
-          <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div>
-              <label class="muted">Facility Name</label>
-              <input id="facEditName" class="ipt" type="text" required/>
-            </div>
-            <div>
-              <label class="muted">Corporate Group</label>
-              <input id="facEditGroup" class="ipt" type="text"/>
-            </div>
-          </div>
+        <form onsubmit="facAddAlias(event)" style="display:grid;gap:12px">
+          <input type="hidden" id="aliasFacilityId">
 
           <div>
-            <label class="muted">Intake Status</label>
-            <select id="facEditStatus" class="ipt">
-              <option value="not-started">not-started</option>
-              <option value="in-progress">in-progress</option>
-              <option value="submitted">submitted</option>
-              <option value="approved">approved</option>
-            </select>
+            <label class="muted">Add a new alias</label>
+            <input id="aliasText" class="ipt" type="text"
+              placeholder='e.g., "Aspire Rehab", "Aspire SNF"'
+              required/>
+          </div>
+
+          <div class="muted" style="font-size:13px">
+            Aliases are stored in the Dictionary table as <code>kind="facility_alias"</code>
+            pointing to this facility ID.
           </div>
 
           <div class="toolbar" style="justify-content:flex-end">
-            <button type="button" class="btn btn-secondary" onclick="document.querySelector('#facEditDlg').close()">Cancel</button>
-            <button type="submit" class="btn">Save</button>
+            <button type="button" class="btn btn-secondary" onclick="document.querySelector('#facAliasesDlg').close()">Close</button>
+            <button type="submit" class="btn">Add</button>
           </div>
         </form>
+
+        <div style="margin-top:16px">
+          <div class="muted" style="margin-bottom:6px">Existing aliases</div>
+          <div id="aliasList" style="display:grid;gap:10px;margin-top:6px"></div>
+        </div>
       </div>
     </dialog>
-    
+
     <!-- NEW: Facility Facts modal -->
     <dialog id="facFactsDlg">
+
       <div class="modal" style="padding:20px;min-width:min(720px,92vw)">
         <h3 style="margin:0 0 10px;font-weight:700">Facility Quick Facts</h3>
 
