@@ -3223,6 +3223,71 @@ def admin_facility_facts_delete(
     con.close()
     return {"ok": True}
 
+# ===== Facility Aliases (Admin) =====
+
+@app.get("/admin/facilities/{fid}/aliases")
+def admin_facility_aliases_list(request: Request, fid: str):
+    """List dictionary rows that act as facility aliases for this facility."""
+    require_admin(request)
+    rows = db_fetchall(
+        """SELECT key, canonical, kind, notes,
+                   COALESCE(NULLIF(match_mode,''),'exact') AS match_mode
+               FROM dictionary
+              WHERE kind = 'facility_alias' AND canonical = ?
+              ORDER BY LOWER(key)""",
+        (fid,)
+    )
+    return {"ok": True, "items": rows}
+
+@app.post("/admin/facilities/aliases/add")
+def admin_facility_aliases_add(
+    request: Request,
+    facility_id: str = Form(...),
+    alias: str       = Form(...)
+):
+    """Add a facility_alias row into the dictionary for this facility."""
+    require_admin(request)
+    key = (alias or "").strip()
+    fid = (facility_id or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="Alias is required.")
+    if not fid:
+        raise HTTPException(status_code=400, detail="Facility id is required.")
+
+    conn = _db()
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO dictionary(key, canonical, kind, notes, match_mode)
+               VALUES (?, ?, 'facility_alias', '', 'exact')
+               ON CONFLICT(key) DO UPDATE SET
+                   canonical = excluded.canonical,
+                   kind      = excluded.kind,
+                   match_mode= excluded.match_mode""",
+        (key, fid)
+    )
+    conn.commit()
+    conn.close()
+    clear_dictionary_caches()
+    return {"ok": True}
+
+@app.post("/admin/facilities/aliases/delete")
+def admin_facility_aliases_delete(
+    request: Request,
+    facility_id: str = Form(...),
+    alias: str       = Form(...)
+):
+    """Delete a facility_alias row from the dictionary for this facility."""
+    require_admin(request)
+    key = (alias or "").strip()
+    fid = (facility_id or "").strip()
+    if not key or not fid:
+        raise HTTPException(status_code=400, detail="Alias and facility id are required.")
+    _exec_write(
+        "DELETE FROM dictionary WHERE key = ? AND canonical = ? AND kind = 'facility_alias';",
+        (key, fid)
+    )
+    clear_dictionary_caches()
+    return {"ok": True}
 
 
 
