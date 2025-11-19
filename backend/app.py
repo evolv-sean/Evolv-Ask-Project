@@ -276,6 +276,50 @@ def normalize_dictionary_query(text: str) -> str:
 def clear_dictionary_caches():
     _dictionary_maps.cache_clear()
 
+
+
+from functools import lru_cache  # you likely already have this; if not, add at top of file
+
+@lru_cache(maxsize=1)
+def _role_tokens_from_dict() -> list[tuple[str, list[str]]]:
+    """
+    Build a list of (canonical_role_label, [synonym tokens...]) from the Dictionary.
+
+    - Uses rows where kind='role'.
+    - Each Dictionary row's 'key' is treated as a synonym.
+    - Each unique 'canonical' is the role label we look up in facility_contacts.type.
+    """
+    rows = load_dictionary_unified()
+    buckets: dict[str, set[str]] = {}
+
+    for r in rows:
+        kind = (r.get("kind") or "").strip().lower()
+        if kind != "role":
+            continue
+
+        key_raw = (r.get("key") or "").strip()
+        canon_raw = (r.get("canonical") or "").strip()
+        if not key_raw or not canon_raw:
+            continue
+
+        k = key_raw.lower()
+        canon = canon_raw.strip()
+        # group by canonical (case-insensitive)
+        bucket = buckets.setdefault(canon.lower(), set())
+        bucket.add(k)
+        bucket.add(canon.lower())  # also match the canonical itself
+
+    # Convert to list[(canonical_label, [keys...])]
+    out: list[tuple[str, list[str]]] = []
+    for canon_lower, keys in buckets.items():
+        # Use a pretty label by capitalizing words
+        label = " ".join(part.capitalize() for part in canon_lower.split())
+        out.append((label, sorted(keys)))
+
+    return out
+
+
+
 # Hybrid search config
 EMBED_MODEL = "text-embedding-3-large"   # must match your index scripts
 DOCS_COLLECTION_NAME = "docs_main"       # created by build_docs_index.py
@@ -942,15 +986,28 @@ _init_db()
 def normalize_abbrev_query(s: str) -> str:
     """
     Lightweight normalizer used for cache keys and fuzzy compares.
-    Keeps it simple: lowercase + collapse whitespace + strip punctuation.
-    If you later want to expand abbreviations via your Dictionary table,
-    hook that logic in here (but keep it fast).
+
+    NOW ALSO:
+      - Runs the text through normalize_dictionary_query first so that all
+        abbreviations / aliases defined in your Dictionary table are expanded.
+      - Then lowercases + strips punctuation for stable cache keys.
     """
     import re
+
+    # 1) Let the Dictionary expand abbreviations/aliases, if available
+    try:
+        # normalize_dictionary_query already handles None/empty safely
+        s = normalize_dictionary_query(s or "")
+    except NameError:
+        # In case this function is called before normalize_dictionary_query is defined
+        s = (s or "")
+
+    # 2) Cheap normalization for cache keys / fuzzy compares
     s = (s or "").strip().lower()
     # Replace any non-alphanumeric with space, collapse spaces
     s = re.sub(r"[^a-z0-9]+", " ", s)
     return " ".join(s.split())
+
 
 # [FN:_detect_facility_from_question] ----------------------------------------
 def _detect_facility_from_question(q: str) -> str | None:
@@ -3223,6 +3280,10 @@ def admin_facility_facts_delete(
     con.close()
     return {"ok": True}
 
+
+
+
+
 # ===== Facility Aliases (Admin) =====
 
 @app.get("/admin/facilities/{fid}/aliases")
@@ -4501,41 +4562,57 @@ def ask(payload: AskPayload):
     Main Q&A endpoint used by the HTML Ask page.
 
     It:
-      - Normalizes the question
+      - Normalizes the question (including Dictionary aliases)
       - Applies optional topic hints (Sensys / List/Group / etc.)
-      - Tries a few fast-paths (contact lookup, facility details, list/group)
+      - Tries fast DB-first paths (contacts, facility details, list/group,
+        facility “How we handle X at Y”)
       - Falls back to retrieval + model answer
     """
+    # 1) Normalize the raw question using the Dictionary + cheap normalizer
     q = normalize_dictionary_query((payload.question or "").strip())
     q_norm = normalize_abbrev_query(q)
     if not q:
         raise HTTPException(status_code=400, detail="Empty question")
 
-    # Accept either 'section' or 'section_hint' from the client
+    # 2) Section/topic hints from the Ask.html “Topics” multi-select
     section_pref = (payload.section or payload.section_hint or "").strip() or None
-
-    # Topic flavor hints (multi-select via comma list)
     topics_lower = [t.strip().lower() for t in (section_pref or "").split(",") if t.strip()]
     HOWTO_MODE = any(t in ("sensys", "how-to", "how to") for t in topics_lower)
     LIST_MODE  = any(t in ("list/group", "list", "group") for t in topics_lower)
 
-    # ---- NEW: direct contact lookup (SQLite) ---------------------------------
-    # If the user asks for staff by role for a given facility, answer from DB first.
+    # ----------------------------------------------------------------------
+    # 3) Fast path: direct contact lookup using SQLite + Dictionary roles
+    # ----------------------------------------------------------------------
+    # Example user questions:
+    #   - "What is the contact info for the social worker at Aspire?"
+    #   - "Who are the e-sign physicians at Aspire?"
+    #
+    # Steps:
+    #   a) Guess the facility name from the question
+    #   b) Scan for any role keyword (from Dictionary kind='role')
+    #   c) If both are present, pull contacts from facility_contacts
+    # ----------------------------------------------------------------------
     ql = q.lower()
     fac_guess = _infer_facility_from_question(q) or _detect_facility_from_question(q) or ""
-    role_tokens = [
-        ("administrator", ["administrator", "admin"]),
-        ("director of nursing", ["director of nursing", "don"]),
-        ("admissions", ["admissions"]),
-        ("marketing", ["marketing"]),
-        ("social services", ["social services", "social worker"]),
-        ("therapy", ["therapy"]),
-        ("medical director", ["medical director"]),
-        ("physician/np", ["physician", "doctor", "md", "np"]),
-    ]
+
+    # Prefer roles defined in the Dictionary (kind='role'); fall back to a small default list
+    role_tokens = _role_tokens_from_dict()
+    if not role_tokens:
+        role_tokens = [
+            ("Administrator",        ["administrator", "admin"]),
+            ("Director Of Nursing",  ["director of nursing", "don"]),
+            ("Admissions",           ["admissions"]),
+            ("Marketing",            ["marketing"]),
+            ("Social Services",      ["social services", "social worker"]),
+            ("Therapy",              ["therapy"]),
+            ("Medical Director",     ["medical director"]),
+            ("UR",                   ["ur", "utilization review"]),
+        ]
+
     role_hit = None
     for label, keys in role_tokens:
-        if any(k in ql for k in keys):
+        # each role may have multiple keywords; if any are in the question, we treat it as a hit
+        if any(k.lower() in ql for k in keys if k):
             role_hit = label
             break
 
@@ -4545,25 +4622,25 @@ def ask(payload: AskPayload):
             role_label, value_text = got
             log_id = None
             try:
-                log_id = _append_user_qa_log("Ask", q, f"{role_label}: {value_text}")
+                log_id = _append_user_qa_log("Ask (contact fast-path)", q, f"{role_label}: {value_text}")
             except Exception as e:
                 print("log append error (contact fast-path):", e)
 
             payload_out = {
                 "answer": f"{role_label}: {value_text}",
                 "sources": [f"DB:facility_contacts:{fac_guess}:{role_label}"],
-                "section_used": section_pref or "",
+                "section_used": section_pref or "Contacts",
                 "log_id": log_id or None,
             }
             try:
-                cache_key = (normalize_abbrev_query(q), section_pref or "")
+                cache_key = (q_norm, section_pref or "Contacts")
                 _ask_cache_put(cache_key, payload_out)
             except Exception:
                 pass
             return payload_out
-    # --------------------------------------------------------------------------
+    # ----------------------------------------------------------------------
 
-    # === Contact lookup (DB-first, facility + role) ===========================
+    # 4) Contact lookup by sentence structure: "contact info for X at Y"
     fac_name = _extract_facility_name_from_query(q) or _detect_facility_from_question(q)
     role = _extract_contact_role(q)
     if fac_name and role:
@@ -4581,12 +4658,15 @@ def ask(payload: AskPayload):
                 "section_used": "Contacts",
                 "log_id": log_id or None,
             }
-            cache_key = (q_norm, section_pref or "")
+            cache_key = (q_norm, section_pref or "Contacts")
             _ask_cache_put(cache_key, payload_out)
             return payload_out
-    # --------------------------------------------------------------------------
+    # ----------------------------------------------------------------------
 
-    # ---- List/Group early-route (topic selected) -----------------------------
+    # 5) List/Group mode: facility lists, preferred partners, etc.
+    #    Example questions:
+    #      - "List all facilities in Facility Details"
+    #      - "List all preferred Home Health agencies for Aspire"
     if LIST_MODE:
         lg = build_list_group_answer(q)
         if lg and lg[0]:
@@ -4598,27 +4678,27 @@ def ask(payload: AskPayload):
 
             payload_out = {
                 "answer": lg[0],
-                "sources": [],
+                "sources": [],  # list/group is already distilled from DB/Q&A
                 "section_used": "List/Group",
                 "log_id": log_id or None,
             }
             try:
-                cache_key = (normalize_abbrev_query(q), "List/Group")
+                cache_key = (q_norm, "List/Group")
                 _ask_cache_put(cache_key, payload_out)
             except Exception as e:
                 print("ask cache skip:", e)
             return payload_out
-    # --------------------------------------------------------------------------
+    # ----------------------------------------------------------------------
 
-    # Optional: adjust system prompt for Sensys how-to style
-    system_prompt = SYSTEM_PROMPT  # start from the global base for this request only
+    # 6) Sensys how-to: tweak the system prompt so answers become step-by-step
+    system_prompt = SYSTEM_PROMPT
     if HOWTO_MODE:
         system_prompt = (
             SYSTEM_PROMPT
-            + "\n- For Sensys topics, answer in numbered, concise step-by-step instructions."
+            + "\n- For Sensys topics, answer in short, numbered step-by-step instructions."
         )
 
-    # === Special case: How we handle X at Y (facility-specific) ===============
+    # 7) Special case: "How we handle X at Y" (facility-specific guidance)
     how_md, how_sources = _build_how_we_handle_answer(q, section_pref)
     if how_md:
         log_id = None
@@ -4633,14 +4713,14 @@ def ask(payload: AskPayload):
             "section_used": "Facility Details",
             "log_id": log_id or None,
         }
-        cache_key = (normalize_abbrev_query(q), "Facility Details")
+        cache_key = (q_norm, "Facility Details")
         _ask_cache_put(cache_key, payload_out)
         return payload_out
 
-    # === Special case: Facility Details → go straight to SQLite ===============
+    # 8) Special case: Facility Details — go straight to SQLite
     fd_name = _extract_facility_name_from_query(q) or _detect_facility_from_question(q)
     fd_topic_selected = bool(section_pref and "facility details" in (section_pref or "").lower())
-    if fd_name and (fd_topic_selected or "facility details" in _norm(q)):
+    if fd_name and (fd_topic_selected or "facility details" in q.lower()):
         md, meta_used = _facility_details_answer_from_db(fd_name)
         if md:
             log_id = None
@@ -4655,174 +4735,61 @@ def ask(payload: AskPayload):
                 "section_used": "Facility Details",
                 "log_id": log_id or None,
             }
-            cache_key = (normalize_abbrev_query(q), "Facility Details")
+            cache_key = (q_norm, "Facility Details")
             _ask_cache_put(cache_key, payload_out)
             return payload_out
-    # ==========================================================================
 
-    # --- TTL cache: same question + section -----------------------------------
-
+    # ----------------------------------------------------------------------
+    # 9) TTL cache: same normalized question + section → reuse recent answer
+    # ----------------------------------------------------------------------
     cache_key = (q_norm, section_pref or "")
     cached = _ask_cache_get(cache_key)
     if cached:
         return cached
 
-    # Use DB FTS for Q&A retrieval (bias by section/topics if provided)
-    hits = qa_search_fts(q_norm, section_pref, top_k=max(12, int(payload.top_k or 6)))
+    # ----------------------------------------------------------------------
+    # 10) FTS Q&A retrieval + model answer (fallback)
+    # ----------------------------------------------------------------------
+    try:
+        retrieved_rows = qa_search_fts(
+            question=q,
+            section_hint=section_pref,
+            top_k=payload.top_k or 4,
+        )
+    except Exception as e:
+        print("qa_search_fts error:", e)
+        retrieved_rows = []
 
-    # Convert to ctx_docs in the same shape the rest of the code expects
-    ctx_docs = []
-    for r in hits:
-        ctx_docs.append({
-            "kind": "qa",
-            "id":   r.get("orig_id") or r.get("id") or "",
-            "meta": {
-                "question": r.get("question", ""),
-                "answer":   r.get("answer", ""),
-                "tags":     r.get("tags", ""),
-                "section":  r.get("section", ""),
-                "topics":   r.get("topics", "")
-            },
-            # Optional scoring field so your preview/debug UI still works
-            "score": float(r.get("rank", 0.0)) if r.get("rank") is not None else 0.0
-        })
-
-
-    # Debug: return top candidates with component scores
-    if payload.debug:
-        preview = []
-        for d in ctx_docs[:30]:
-            if d["kind"] != "qa":
-                continue
-            meta = d.get("meta", {}) or {}
-            preview.append({
-                "id": d.get("id", ""),
-                "kw": round(float(d.get("_kw", 0.0)), 3),
-                "tagb": round(float(d.get("_tagb", 0.0)), 3),
-                "pre": round(float(d.get("_pre", 0.0)), 3),
-                "score": round(float(d.get("score", 0.0)), 3),
-                "section": meta.get("section", ""),
-                "tags": (meta.get("tags", "") or "")[:160],
-                "question": (meta.get("question", "") or "")[:160],
-            })
-        return {
-            "answer": "Debug only — top candidates with scores",
-            "debug_candidates": preview,
-            "sources": [f"Q&A:{d.get('id', '')}" for d in ctx_docs[:30] if d["kind"] == "qa"],
-            "section_used": section_pref or "",
-        }
-
-    # ---- generic "list mode" (directory/contacts/staff/team) -----------------
-    fac_name = _extract_facility_name_from_query(q) or _detect_facility_from_question(q)
-    if "_list_intent" in globals() and _list_intent(q):
-        scoped = _filter_candidates_by_facility(ctx_docs, fac_name)
-        md, used_ids = _render_list_from_candidates(fac_name, scoped)
-        if md:
-            log_id = None
-            try:
-                log_id = _append_user_qa_log(section_pref or "", q, md)
-            except Exception as e:
-                print("log append error (list mode):", e)
-            return {
-                "answer": md,
-                "sources": [f"Q&A:{rid}" for rid in used_ids],
-                "section_used": section_pref or "",
-                "log_id": log_id or None,
-            }
-    # --------------------------------------------------------------------------
-
-    # Build context & readable sources
-    ctx_block_parts = []
-    readable_sources = []
-    for d in ctx_docs:
-        if d["kind"] == "qa":
-            q_text = d["meta"].get("question", "")
-            a_text = d["meta"].get("answer", "")
-            t_text = d["meta"].get("tags", "")
-            ctx_block_parts.append(f"[Q&A {d['id']}]\nQ: {q_text}\nA: {a_text}\nTags: {t_text}")
-            readable_sources.append(f"Q&A:{d['id']}")
-        else:
-            src = d["meta"].get("source", "doc")
-            ch = d["meta"].get("chunk", "?")
-            ctx_block_parts.append(f"[DOC {src} #{ch}]\n{d['text'][:2000]}")
-            readable_sources.append(f"DOC:{src}#{ch}")
-
-    ctx_block = "\n\n".join(ctx_block_parts) if ctx_block_parts else ""
-
-    # Try a quick deterministic extraction before calling the model
-    rb_answer = rule_based_extract(q, ctx_block)
-    if rb_answer:
-        return {"answer": rb_answer, "sources": readable_sources}
-
-    used_ids = ", ".join(readable_sources) if readable_sources else "none"
-    user_msg = (
-        f"User question: {q}\n\n"
-        f"Context Q&A/Docs:\n{ctx_block if ctx_block else '(no relevant context found)'}\n\n"
-        "Return:\n"
-        "- Direct answer ONLY.\n"
-        "- DO NOT include any citations, source IDs, or brackets like [Sources: ...] in the answer.\n"
-        f"- (For reference only, sources are: {used_ids})"
+    # run_qa_pipeline_and_answer will:
+    #   - Build a prompt that includes the retrieved Q&A rows
+    #   - Use the model to synthesize a natural answer
+    result = run_qa_pipeline_and_answer(
+        question=q,
+        rows=retrieved_rows,
+        system_prompt=system_prompt,
+        section_hint=section_pref,
     )
 
+    # Ensure we always have a simple dict payload out
+    answer_text = (result or {}).get("answer") or (result or {}).get("output") or ""
+    sources = (result or {}).get("sources") or []
+    section_used = (result or {}).get("section_used") or (result or {}).get("section") or (section_pref or "")
+
+    log_id = None
     try:
-        resp = client.responses.create(
-            model="gpt-4o-mini",
-            input=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_msg},
-            ],
-            max_output_tokens=350,
-        )
-        answer = (resp.output_text or "").strip()
-        print("DEBUG raw output_text repr:", repr(resp.output_text))
-
-        if not answer:
-            if ctx_docs and ctx_docs[0]["kind"] == "qa":
-                top = ctx_docs[0]
-                answer = f"{top['meta'].get('answer', '')}"
-            else:
-                answer = "I couldn't find anything relevant. Try rephrasing or add more entries."
-
-        log_id = None
-        try:
-            log_id = _append_user_qa_log(section_pref or "", q, answer)
-        except Exception as e:
-            print("log append error:", e)
-
-        payload_out = {
-            "answer": answer,
-            "sources": readable_sources,
-            "section_used": section_pref or "",
-            "log_id": log_id or None,
-        }
-        _ask_cache_put(cache_key, payload_out)
-        return payload_out
+        log_id = _append_user_qa_log(section_used or "Ask", q, answer_text)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"OpenAI error: {e}")
+        print("log append error (fallback):", e)
 
+    payload_out = {
+        "answer": answer_text,
+        "sources": sources,
+        "section_used": section_used,
+        "log_id": log_id or None,
+    }
+    _ask_cache_put(cache_key, payload_out)
+    return payload_out
 
-def _extract_contact_role(q: str) -> str | None:
-    """
-    Pull a contact role from a free-text question.
-    Returns the normalized label (e.g., 'Administrator', 'Director of Nursing', etc.)
-    or None if no role is detected.
-    """
-    ql = (q or "").lower()
-    role_tokens = [
-        ("Administrator", ["administrator", "admin"]),
-        ("Director of Nursing", ["director of nursing", "don"]),
-        ("Admissions", ["admissions"]),
-        ("Marketing", ["marketing"]),
-        ("Social Services", ["social services", "ss"]),
-        ("Therapy", ["therapy", "pt", "ot", "st"]),
-        ("Nursing", ["nursing"]),
-        ("Physician", ["physician", "doctor", "md", "do"]),
-        ("Medical Director", ["medical director"]),
-    ]
-    for label, keys in role_tokens:
-        if any(k in ql for k in keys):
-            return label
-    return None
 
 
 
