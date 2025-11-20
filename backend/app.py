@@ -1833,6 +1833,21 @@ async def intake_submit(payload: dict = Body(...)):
 # HTML routes & health check
 # ---------------------------------------------------------------------------
 
+def read_html(path: Path) -> str:
+    """
+    Small helper to load an HTML file from disk.
+    If the file doesn't exist, return a simple 404-style HTML snippet.
+    """
+    try:
+        if not path.exists():
+            # This avoids a crash if the file is missing and gives you a clear message.
+            return f"<html><body><h1>Missing file: {path.name}</h1></body></html>"
+        return path.read_text(encoding="utf-8")
+    except Exception as e:
+        # In case of any unexpected file I/O error, don't crash the app.
+        return f"<html><body><h1>Error loading {path.name}</h1><pre>{e}</pre></body></html>"
+
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
     # Default Ask page
