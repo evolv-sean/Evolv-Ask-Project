@@ -1340,7 +1340,7 @@ async def admin_facilities_facts_list(
 ):
     """
     List facility facts for the 'Facts' modal in Admin.
-    Returns: { items: [ { id, kind, text, tags, created_at } ] }
+    Returns: { items: [ { id, fact_text, tags, created_at } ] }
     """
     require_admin(request)
     conn = get_db()
@@ -1360,8 +1360,7 @@ async def admin_facilities_facts_list(
             items.append(
                 {
                     "id": r["id"],
-                    "kind": "fact",
-                    "text": r["fact_text"] or "",
+                    "fact_text": r["fact_text"] or "",
                     "tags": r["tags"] or "",
                     "created_at": r["created_at"],
                 }
@@ -1370,6 +1369,7 @@ async def admin_facilities_facts_list(
         return {"ok": True, "items": items}
     finally:
         conn.close()
+
 
 
 @app.post("/admin/facilities/facts/add")
@@ -1432,7 +1432,7 @@ async def admin_facilities_aliases_list(
 ):
     """
     List facility_alias entries for this facility.
-    Returns: { items: [ { id, key, canonical } ] }
+    Returns: { ok: True, items: [ { id, key, canonical } ] }
     """
     require_admin(request)
     conn = get_db()
@@ -1455,16 +1455,15 @@ async def admin_facilities_aliases_list(
         for r in cur.fetchall():
             items.append(
                 {
-                    # Use the alias text as a stable id for the row
                     "id": r["key"],
                     "key": r["key"] or "",
-                    # Show facility name if we have it, otherwise the canonical slug
                     "canonical": r["facility_name"] or (r["canonical"] or ""),
                 }
             )
-        return {"items": items}
+        return {"ok": True, "items": items}
     finally:
         conn.close()
+
 
 
 
