@@ -282,33 +282,63 @@ def clear_dictionary_caches():
 
 
 def normalize_question_text(question: str, abbrev_map: Dict[str, str]) -> str:
+    """
+    Expand abbreviations in the user question using the dictionary's abbrev_map.
+    Uses word boundaries so 'evolv?' still matches 'evolv'.
+    """
     if not question:
         return question
-    lower = question.lower()
+
     for abbr, full in abbrev_map.items():
-        token = f" {abbr} "
-        if token in f" {lower} ":
-            question = re.sub(
-                rf"\b{re.escape(abbr)}\b",
-                full,
-                question,
-                flags=re.IGNORECASE,
-            )
-            lower = question.lower()
+        pattern_abbr = rf"\b{re.escape(abbr)}\b"
+        if not re.search(pattern_abbr, question, flags=re.IGNORECASE):
+            continue
+
+        pattern_full = rf"\b{re.escape(full)}\b"
+        if re.search(pattern_full, question, flags=re.IGNORECASE):
+            continue
+
+        question = re.sub(pattern_abbr, full, question, flags=re.IGNORECASE)
+
     return question
+
+
+def _normalize_for_facility_match(text: str) -> str:
+    """
+    Soft-normalize text for facility matching:
+    - lowercase
+    - remove punctuation / special chars
+    - collapse whitespace
+    """
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
 
 
 def detect_facility_id(
     question: str, conn: sqlite3.Connection, facility_aliases: Dict[str, str]
 ) -> Optional[str]:
-    ql = question.lower()
+    """
+    Try to infer the facility id from the question using:
+      1) dictionary facility aliases
+      2) facility_name from the facilities table
 
-    # First: explicit aliases from dictionary
+    Uses a soft-normalized text form so small punctuation differences
+    ('St. Mary's' vs 'st marys') don't break matching.
+    """
+    q_norm = _normalize_for_facility_match(question)
+
+    # 1) Explicit aliases from dictionary
     for alias_text, fid in facility_aliases.items():
-        if alias_text and alias_text.lower() in ql:
+        if not alias_text:
+            continue
+        alias_norm = _normalize_for_facility_match(alias_text)
+        if alias_norm and alias_norm in q_norm:
             return fid
 
-    # Second: substring match on facility_name
+    # 2) Substring match on facility_name
     try:
         cur = conn.cursor()
         cur.execute("SELECT facility_id, facility_name FROM facilities")
@@ -316,12 +346,14 @@ def detect_facility_id(
             name = (row["facility_name"] or "").strip()
             if not name:
                 continue
-            if name.lower() in ql:
+            name_norm = _normalize_for_facility_match(name)
+            if name_norm and name_norm in q_norm:
                 return row["facility_id"]
     except sqlite3.Error:
         return None
 
     return None
+
 
 
 def get_facility_label(fid: Optional[str], conn: sqlite3.Connection) -> str:
