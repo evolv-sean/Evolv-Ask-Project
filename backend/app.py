@@ -4763,12 +4763,21 @@ def ask(payload: AskPayload):
     # run_qa_pipeline_and_answer will:
     #   - Build a prompt that includes the retrieved Q&A rows
     #   - Use the model to synthesize a natural answer
-    result = run_qa_pipeline_and_answer(
-        question=q,
-        rows=retrieved_rows,
-        system_prompt=system_prompt,
-        section_hint=section_pref,
-    )
+    try:
+        result = run_qa_pipeline_and_answer(
+            question=q,
+            rows=retrieved_rows,
+            system_prompt=system_prompt,
+            section_hint=section_pref,
+        )
+    except Exception as e:
+        # This is where OpenAI / network / model errors will show up
+        print("run_qa_pipeline_and_answer error:", repr(e))
+        # Optionally expose something saner to the UI:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Model error: {type(e).__name__}: {e}"
+        )
 
     # Ensure we always have a simple dict payload out
     answer_text = (result or {}).get("answer") or (result or {}).get("output") or ""
