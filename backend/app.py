@@ -36,9 +36,16 @@ else:
     # Local/dev fallback if you're running off the uploaded DB
     DB_PATH = str(BASE_DIR / "evolv(3).db")
 
-ASK_HTML = BASE_DIR / "TEST Ask.html"
-ADMIN_HTML = BASE_DIR / "TEST Admin.html"
-FACILITY_HTML = BASE_DIR / "TEST  Facility_Details.html"  # note double space
+    # ---------------------------------------------------------------------------
+    # HTML file paths – match repo layout: backend/app2.py + frontend/*.html
+    # ---------------------------------------------------------------------------
+    PROJECT_ROOT = BASE_DIR.parent          # backend/ -> repo root
+    FRONTEND_DIR = PROJECT_ROOT / "frontend"
+
+    ASK_HTML = FRONTEND_DIR / "TEST Ask.html"
+    ADMIN_HTML = FRONTEND_DIR / "TEST Admin.html"
+    FACILITY_HTML = FRONTEND_DIR / "TEST  Facility_Details.html"  # note double space
+
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("openai_api_key")
 if not OPENAI_API_KEY:
@@ -1827,19 +1834,21 @@ async def intake_submit(payload: dict = Body(...)):
 # HTML routes & health check
 # ---------------------------------------------------------------------------
 
-def read_html(path: Path) -> str:
-    if not path.exists():
-        return f"<html><body><h1>Missing file: {path.name}</h1></body></html>"
-    return path.read_text(encoding="utf-8")
-
-
 @app.get("/", response_class=HTMLResponse)
 async def root():
+    # Default Ask page
     return HTMLResponse(content=read_html(ASK_HTML))
 
 
 @app.get("/ask-ui", response_class=HTMLResponse)
 async def ask_ui():
+    # Alternate Ask URL
+    return HTMLResponse(content=read_html(ASK_HTML))
+
+
+@app.get("/ask-page", response_class=HTMLResponse)
+async def ask_page():
+    # Backwards-compatible URL your existing links use
     return HTMLResponse(content=read_html(ASK_HTML))
 
 
@@ -1856,6 +1865,7 @@ async def facility_ui():
 @app.get("/health")
 async def health():
     return {"ok": True, "db_path": DB_PATH}
+
 
 
 # ---------------------------------------------------------------------------
