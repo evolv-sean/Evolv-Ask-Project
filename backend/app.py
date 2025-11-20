@@ -1262,7 +1262,7 @@ async def admin_facilities_list(
                     "url_full": build_facility_url_full(fid, token),
                 }
             )
-        return {"items": items}
+        return {"ok": True, "items": items}
     finally:
         conn.close()
 
@@ -1367,7 +1367,7 @@ async def admin_facilities_facts_list(
                 }
             )
 
-        return {"items": items}
+        return {"ok": True, "items": items}
     finally:
         conn.close()
 
