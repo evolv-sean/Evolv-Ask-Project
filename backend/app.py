@@ -1688,6 +1688,53 @@ def qa_search_fts(question: str, section_hint: str | None, top_k: int = 12):
     return rows
 
 
+def run_qa_pipeline_and_answer(
+    question: str,
+    rows: list[dict] | None,
+    system_prompt: str | None = None,
+    section_hint: str | None = None,
+) -> dict:
+    """
+    Lightweight fallback "QA pipeline" that does NOT call OpenAI.
+
+    It:
+      - Uses the FTS-ranked rows from qa_search_fts (if any)
+      - Chooses the top row as the answer
+      - Returns a dict compatible with the /ask route's expectations:
+          { "answer": str, "sources": [..], "section_used": str }
+
+    You can later upgrade this to call the OpenAI client if desired.
+    """
+    rows = rows or []
+
+    # No matches at all -> friendly fallback
+    if not rows:
+        return {
+            "answer": (
+                "I don't have an answer for that yet in our Evolv training data. "
+                "Try rephrasing the question or narrowing it to a specific facility, topic, or workflow."
+            ),
+            "sources": [],
+            "section_used": section_hint or "",
+        }
+
+    # Take the top-ranked match from FTS
+    top = rows[0] or {}
+    answer = (top.get("answer") or "").strip()
+    section = (top.get("section") or "").strip()
+    orig_id = top.get("orig_id") or top.get("id") or ""
+
+    # Build a simple sources list for the UI
+    sources: list[str] = []
+    if orig_id:
+        sources.append(f"Q&A:{orig_id}")
+
+    return {
+        "answer": answer or "No answer text was stored for this Q&A row.",
+        "sources": sources,
+        "section_used": section or (section_hint or ""),
+    }
+
 
 def db_fetchall(query, params=()):
     conn = _db()
@@ -1697,6 +1744,7 @@ def db_fetchall(query, params=()):
     out = [dict(zip(cols, row)) for row in cur.fetchall()]
     conn.close()
     return out
+
 
 def qa_df_from_sqlite():
     rows = db_fetchall("""
