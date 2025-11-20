@@ -1454,6 +1454,107 @@ def _facility_details_answer_from_db(fac_query: str) -> tuple[str, dict]:
 # ------------------------------------------------------------------------------
 
 
+def qa_and_fac_facts_retrieval(
+    question: str,
+    section_hint: str | None,
+    top_k: int = 12,
+) -> list[dict]:
+    """
+    Combined retrieval for the /ask fallback:
+
+      - Normal Q&A FTS from qa_fts / qa
+      - PLUS facility quick facts from fac_facts if we can detect a facility
+
+    Returns a list of "rows" shaped like qa_search_fts output so
+    run_qa_pipeline_and_answer can use them as context.
+    """
+    # 1) Start with the existing Q&A retrieval
+    qa_rows = qa_search_fts(question, section_hint, top_k=top_k)
+
+    # 2) Try to detect a facility mentioned in the question
+    fac_query = _infer_facility_from_question(question) or _detect_facility_from_question(question)
+    if not fac_query:
+        return qa_rows  # no facility → nothing more to add
+
+    conn = _db()
+    cur = conn.cursor()
+    try:
+        # Map the inferred name to a facility_id + facility_name
+        cur.execute("SELECT facility_id, facility_name FROM facilities;")
+        rows = cur.fetchall()
+
+        def _canon_for_fac(s: str) -> str:
+            import re
+            s = (s or "").strip().lower()
+            s = re.sub(r"[^a-z0-9]+", " ", s)
+            return " ".join(s.split())
+
+        cq = _canon_for_fac(fac_query)
+        fid = None
+        fac_name = None
+
+        # First, try direct / close matches
+        for f_id, f_name in rows:
+            if _canon_for_fac(f_id) == cq or _canon_for_fac(f_name) == cq:
+                fid, fac_name = f_id, f_name
+                break
+
+        # Fuzzy fallback: overlap in tokens
+        if not fid:
+            best = None
+            best_score = 0
+            for f_id, f_name in rows:
+                tokens_name = set(_canon_for_fac(f_name).split())
+                tokens_q    = set(cq.split())
+                score = len(tokens_name & tokens_q)
+                if (f_id or "").lower() in cq:
+                    score += 2
+                if score > best_score:
+                    best_score = score
+                    best = (f_id, f_name)
+            if best and best_score > 0:
+                fid, fac_name = best
+
+        if not fid:
+            return qa_rows  # couldn't map facility name -> id
+
+        # 3) Pull recent quick facts for that facility
+        cur.execute(
+            """
+            SELECT id, fact_text, COALESCE(tags, '') AS tags
+              FROM fac_facts
+             WHERE facility_id = ?
+             ORDER BY created_at DESC, id DESC
+             LIMIT ?
+            """,
+            (fid, top_k),
+        )
+        facts = cur.fetchall()
+
+    finally:
+        conn.close()
+
+    fact_rows: list[dict] = []
+    for fact_id, fact_text, tags in facts:
+        txt = (fact_text or "").strip()
+        if not txt:
+            continue
+        # Shape this like a Q&A row so the model can use it as context
+        fact_rows.append({
+            "orig_id": f"fac_fact:{fact_id}",
+            "question": f"Facility quick fact for {fac_name or fid}",
+            "answer": txt,
+            "section": "Facility Details",
+            "tags": tags or "",
+            "topics": "facility fact",
+        })
+
+    # 4) Combine Q&A + facts
+    return qa_rows + fact_rows
+
+
+
+
 def _build_how_we_handle_answer(question: str, section_hint: str | None = None) -> tuple[str, list]:
     """
     For questions like "how do we handle X at Y", combine:
@@ -4903,13 +5004,14 @@ def ask(payload: AskPayload):
     # 10) FTS Q&A retrieval + model answer (fallback)
     # ----------------------------------------------------------------------
     try:
-        retrieved_rows = qa_search_fts(
+        # Use combined Q&A + facility quick facts retrieval
+        retrieved_rows = qa_and_fac_facts_retrieval(
             question=q,
             section_hint=section_pref,
             top_k=payload.top_k or 4,
         )
     except Exception as e:
-        print("qa_search_fts error:", e)
+        print("qa_and_fac_facts_retrieval error:", e)
         retrieved_rows = []
 
     # run_qa_pipeline_and_answer will:
