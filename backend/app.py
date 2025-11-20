@@ -21,7 +21,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent   # this is your /backend folder
+
+# Where the HTML files actually live, same as old app.py
+FRONTEND_DIR = BASE_DIR.parent / "frontend"
 
 # ---------------------------------------------------------------------------
 # DB PATH – wired for Render, but still overrideable via DB_PATH
@@ -36,15 +39,11 @@ else:
     # Local/dev fallback if you're running off the uploaded DB
     DB_PATH = str(BASE_DIR / "evolv(3).db")
 
-    # ---------------------------------------------------------------------------
-    # HTML file paths – match repo layout: backend/app2.py + frontend/*.html
-    # ---------------------------------------------------------------------------
-    PROJECT_ROOT = BASE_DIR.parent          # backend/ -> repo root
-    FRONTEND_DIR = PROJECT_ROOT / "frontend"
+# HTML files (mirror of your old app.py wiring)
+ASK_HTML = FRONTEND_DIR / "TEST Ask.html"
+ADMIN_HTML = FRONTEND_DIR / "TEST Admin.html"
+FACILITY_HTML = FRONTEND_DIR / "TEST  Facility_Details.html"  # note double space
 
-    ASK_HTML = FRONTEND_DIR / "TEST Ask.html"
-    ADMIN_HTML = FRONTEND_DIR / "TEST Admin.html"
-    FACILITY_HTML = FRONTEND_DIR / "TEST  Facility_Details.html"  # note double space
 
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("openai_api_key")
@@ -1842,19 +1841,19 @@ async def root():
 
 @app.get("/ask-ui", response_class=HTMLResponse)
 async def ask_ui():
-    # Alternate Ask URL
     return HTMLResponse(content=read_html(ASK_HTML))
 
 
+# Wix and your older links hit /ask-page, so keep this alias
 @app.get("/ask-page", response_class=HTMLResponse)
 async def ask_page():
-    # Backwards-compatible URL your existing links use
     return HTMLResponse(content=read_html(ASK_HTML))
 
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_ui():
     return HTMLResponse(content=read_html(ADMIN_HTML))
+
 
 
 @app.get("/facility", response_class=HTMLResponse)
