@@ -4386,6 +4386,37 @@ def _extract_facility_name_from_query(q: str) -> str | None:
     return _detect_facility_from_question(q)
 
 
+def _extract_contact_role(q: str) -> str | None:
+    """
+    Extract a contact role label from a natural-language question.
+
+    Uses the same Dictionary-driven role tokens as the contact fast-path.
+    Returns the canonical role label (e.g. "Director Of Nursing", "Admissions"),
+    or None if no role can be detected.
+    """
+    ql = (q or "").lower()
+
+    # Prefer roles defined in the Dictionary (kind='role'); fall back to defaults
+    role_tokens = _role_tokens_from_dict()
+    if not role_tokens:
+        role_tokens = [
+            ("Administrator",        ["administrator", "admin"]),
+            ("Director Of Nursing",  ["director of nursing", "don"]),
+            ("Admissions",           ["admissions"]),
+            ("Marketing",            ["marketing"]),
+            ("Social Services",      ["social services", "social worker"]),
+            ("Therapy",              ["therapy"]),
+            ("Medical Director",     ["medical director"]),
+            ("UR",                   ["ur", "utilization review"]),
+        ]
+
+    for label, keys in role_tokens:
+        if any((k or "").lower() in ql for k in keys if k):
+            return label
+
+    return None
+
+
 
 # [FN:upsert_facility_and_children] --------------------------------------------
 def upsert_facility_and_children(payload: dict):
