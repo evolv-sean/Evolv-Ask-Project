@@ -1695,20 +1695,43 @@ def run_qa_pipeline_and_answer(
     section_hint: str | None = None,
 ) -> dict:
     """
-    Lightweight fallback "QA pipeline" that does NOT call OpenAI.
+    Main QA pipeline for /ask.
 
-    It:
-      - Uses the FTS-ranked rows from qa_search_fts (if any)
-      - Chooses the top row as the answer
-      - Returns a dict compatible with the /ask route's expectations:
-          { "answer": str, "sources": [..], "section_used": str }
+    - Uses FTS-ranked rows from qa_search_fts as context
+    - Calls the OpenAI Responses API to synthesize a natural answer
+    - Returns a dict compatible with the /ask route:
+        { "answer": str, "sources": [..], "section_used": str }
 
-    You can later upgrade this to call the OpenAI client if desired.
+    If the model call fails for any reason, falls back to:
+      - Top Q&A row's answer, if available
+      - Or a friendly "I don't know yet" message
     """
     rows = rows or []
 
-    # No matches at all -> friendly fallback
-    if not rows:
+    # Build a compact context from the top Q&A rows
+    # (limit to 8 to keep the prompt from getting huge)
+    context_items = []
+    for i, r in enumerate(rows[:8], start=1):
+        sec = (r.get("section") or "").strip() or "General"
+        q = (r.get("question") or "").strip()
+        a = (r.get("answer") or "").strip()
+        tags = (r.get("tags") or "").strip()
+        if not (q or a):
+            continue
+
+        block_lines = [
+            f"[{i}] Section: {sec}",
+            f"Q: {q}",
+            f"A: {a}",
+        ]
+        if tags:
+            block_lines.append(f"Tags: {tags}")
+        context_items.append("\n".join(block_lines))
+
+    context_block = "\n\n".join(context_items).strip()
+
+    # If we have no rows at all, skip straight to a friendly "don't know"
+    if not context_block:
         return {
             "answer": (
                 "I don't have an answer for that yet in our Evolv training data. "
@@ -1718,22 +1741,72 @@ def run_qa_pipeline_and_answer(
             "section_used": section_hint or "",
         }
 
-    # Take the top-ranked match from FTS
-    top = rows[0] or {}
-    answer = (top.get("answer") or "").strip()
-    section = (top.get("section") or "").strip()
-    orig_id = top.get("orig_id") or top.get("id") or ""
+    # Use the provided system prompt, or fall back to global SYSTEM_PROMPT
+    sys_msg = system_prompt or SYSTEM_PROMPT
 
-    # Build a simple sources list for the UI
+    user_prompt = f"""
+You are helping answer an Evolv Health training question using ONLY the Q&A context below.
+
+Context Q&A (each item is one stored Q&A pair):
+{context_block}
+
+User question:
+{question}
+
+Instructions:
+- Prefer specific, concrete answers grounded in the context.
+- If multiple Q&A items are relevant, synthesize them into one clear answer.
+- If nothing clearly answers the question, say you don't know based on the current training data.
+- Do NOT mention Q&A numbers in your answer.
+- Do NOT include source IDs or citations in the answer text; the client UI will show sources separately.
+""".strip()
+
+    answer_text = ""
+    try:
+        resp = client.responses.create(
+            model="gpt-5-mini",
+            input=[
+                {"role": "system", "content": sys_msg},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_output_tokens=400,
+        )
+        # This is how your code reads other Responses API calls
+        answer_text = (resp.output_text or "").strip()
+    except Exception as e:
+        # Log but don't break the request; we'll fall back below
+        print("run_qa_pipeline_and_answer model error:", repr(e))
+
+    # If the model didn't return anything usable, fall back to top row
+    if not answer_text and rows:
+        top = rows[0] or {}
+        answer_text = (top.get("answer") or "").strip()
+
+    if not answer_text:
+        answer_text = (
+            "I wasn't able to generate an answer based on the current Evolv training data."
+        )
+
+    # Build a sources list from the Q&A rows we included in context
     sources: list[str] = []
-    if orig_id:
-        sources.append(f"Q&A:{orig_id}")
+    for r in rows[:8]:
+        oid = r.get("orig_id") or r.get("id")
+        if oid:
+            sources.append(f"Q&A:{oid}")
+
+    # Use the section from the top row, or the hint, or blank
+    top_section = ""
+    if rows:
+        top_section = (rows[0].get("section") or "").strip()
+
+    section_used = top_section or (section_hint or "")
 
     return {
-        "answer": answer or "No answer text was stored for this Q&A row.",
+        "answer": answer_text,
         "sources": sources,
-        "section_used": section or (section_hint or ""),
+        "section_used": section_used,
     }
+
 
 
 def db_fetchall(query, params=()):
