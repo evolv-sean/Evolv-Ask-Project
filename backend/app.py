@@ -167,12 +167,12 @@ def init_db():
             section    TEXT,
             q          TEXT,
             a          TEXT,
-            topics     TEXT,
             promoted   INTEGER DEFAULT 0,
             a_quality  TEXT
         )
         """
     )
+
 
     # AI settings (editable later via Admin)
     cur.execute(
@@ -845,7 +845,8 @@ async def admin_ulog_list(
             where.append("ts <= ?")
             params.append(to)
         if topics:
-            where.append("topics LIKE ?")
+            # we don't have a topics column in the table; filter on section instead
+            where.append("section LIKE ?")
             params.append(f"%{topics}%")
         if q:
             where.append("q LIKE ?")
@@ -854,7 +855,8 @@ async def admin_ulog_list(
             where.append("a_quality = ?")
             params.append(quality.lower())
 
-        sql = "SELECT id, ts, section, q, a, topics, promoted, a_quality FROM user_qa_log"
+        # NOTE: we no longer select 'topics' from the table
+        sql = "SELECT id, ts, section, q, a, promoted, a_quality FROM user_qa_log"
         if where:
             sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY id DESC LIMIT 500"
@@ -864,12 +866,14 @@ async def admin_ulog_list(
         rows = []
         for r in cur.fetchall():
             d = dict(r)
-            # Synthesize topics for the Admin UI (it expects this field)
+            # Admin UI expects a 'topics' field; synthesize from section
             d["topics"] = d.get("section", "") or ""
             rows.append(d)
         return {"rows": rows}
     finally:
         conn.close()
+
+
 
 
 @app.post("/admin/ulog/delete")
@@ -899,21 +903,24 @@ async def admin_ulog_promote(
     conn = get_db()
     try:
         cur = conn.cursor()
+        # NOTE: we do NOT select a topics column from user_qa_log (it doesn't exist)
         cur.execute(
-            "SELECT id, ts, section, q, a, topics FROM user_qa_log WHERE id=?",
+            "SELECT id, ts, section, q, a FROM user_qa_log WHERE id=?",
             (id,),
         )
         log_row = cur.fetchone()
         if not log_row:
             raise HTTPException(status_code=404, detail="log row not found")
 
-        topics_f = (topics or log_row["topics"] or "").strip()
+        # Use the provided form topics if present; otherwise fall back to the log's section
+        topics_f = (topics or log_row["section"] or "").strip()
         question_f = (question or log_row["q"] or "").strip()
         answer_f = (answer or log_row["a"] or "").strip()
         tags_f = (tags or "").strip()
         if not question_f or not answer_f:
             raise HTTPException(status_code=400, detail="question and answer are required")
 
+        # Generate next QID (Q0001, Q0002, ...)
         cur.execute("SELECT id FROM qa")
         existing_ids = {str(r["id"]) for r in cur.fetchall() if r["id"] is not None}
         i = 1
@@ -947,6 +954,8 @@ async def admin_ulog_promote(
         }
     finally:
         conn.close()
+
+
 
 
 
