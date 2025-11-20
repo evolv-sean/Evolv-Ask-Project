@@ -231,9 +231,16 @@ class AskResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 def load_dictionary_maps(conn: sqlite3.Connection) -> Dict[str, Dict[str, Any]]:
+    """
+    Load basic maps for:
+      - abbreviations  (kind='abbr')
+      - synonyms       (kind='synonym')
+      - facility_alias (kind='facility_alias', maps alias -> canonical name)
+    Uses the existing dictionary table: (key, canonical, kind, notes, match_mode).
+    """
     cur = conn.cursor()
     try:
-        cur.execute("SELECT kind, key, value, facility_id FROM dictionary")
+        cur.execute("SELECT key, canonical, kind FROM dictionary")
         rows = cur.fetchall()
     except sqlite3.Error:
         return {"abbrev": {}, "synonym": {}, "facility_aliases": {}}
@@ -245,22 +252,24 @@ def load_dictionary_maps(conn: sqlite3.Connection) -> Dict[str, Dict[str, Any]]:
     for r in rows:
         kind = (r["kind"] or "").strip().lower()
         key = (r["key"] or "").strip().lower()
-        val = (r["value"] or "").strip()
-        fid = r["facility_id"]
-        if not key:
+        val = (r["canonical"] or "").strip()
+        if not key or not val:
             continue
-        if kind == "abbrev":
+
+        if kind == "abbr":
             abbrev_map[key] = val
         elif kind == "synonym":
             synonym_map[key] = val
-        elif kind == "facility_alias" and fid:
-            facility_aliases[key] = str(fid)
+        elif kind == "facility_alias":
+            # Here we map alias text -> canonical facility *name*.
+            facility_aliases[key] = val
 
     return {
         "abbrev": abbrev_map,
         "synonym": synonym_map,
         "facility_aliases": facility_aliases,
     }
+
 
 
 def clear_dictionary_caches():
@@ -346,17 +355,15 @@ def _dictionary_rows_for_admin(conn: sqlite3.Connection) -> List[Dict[str, str]]
     """
     Return dictionary rows in the shape expected by the Admin Dictionary tab:
       { key, canonical, kind, notes, match_mode }
-    We mirror 'canonical' from the 'value' column.
-    match_mode is fixed to 'exact' for now.
-    Facility-specific aliases (kind='facility_alias') are managed separately
-    via the Facilities/Aliases tab and are excluded here.
+    Backed by the existing dictionary schema:
+      key, canonical, kind, notes, match_mode
     """
     cur = conn.cursor()
     cur.execute(
         """
-        SELECT id, key, value, kind, notes
+        SELECT key, canonical, kind, notes,
+               COALESCE(NULLIF(match_mode, ''), 'exact') AS match_mode
         FROM dictionary
-        WHERE facility_id IS NULL OR facility_id = ''
         ORDER BY LOWER(key)
         """
     )
@@ -365,13 +372,14 @@ def _dictionary_rows_for_admin(conn: sqlite3.Connection) -> List[Dict[str, str]]
         items.append(
             {
                 "key": r["key"] or "",
-                "canonical": r["value"] or "",
+                "canonical": r["canonical"] or "",
                 "kind": r["kind"] or "abbr",
                 "notes": r["notes"] or "",
-                "match_mode": "exact",
+                "match_mode": r["match_mode"] or "exact",
             }
         )
     return items
+
 
 
 @app.get("/admin/dictionary/list")
@@ -411,50 +419,43 @@ async def admin_dictionary_upsert(
     canonical: str = Form(...),
     kind: str = Form("abbr"),
     notes: str = Form(""),
-    match_mode: str = Form("exact"),  # accepted for UI compatibility (ignored for now)
+    match_mode: str = Form("exact"),
 ):
     """
-    Insert or update a dictionary row (non-facility_alias).
-    'canonical' is stored in the 'value' column.
+    Insert or update a dictionary row using the existing schema:
+      key PRIMARY KEY, canonical, kind, notes, match_mode
     """
     require_admin(request)
     k = (key or "").strip()
     v = (canonical or "").strip()
     kd = (kind or "abbr").strip()
     nt = (notes or "").strip()
+    mm = (match_mode or "exact").strip() or "exact"
+
     if not k or not v:
         raise HTTPException(status_code=400, detail="key and canonical are required")
 
     conn = get_db()
     try:
         cur = conn.cursor()
-        # find existing row (non facility_alias, no facility_id)
         cur.execute(
             """
-            SELECT id FROM dictionary
-            WHERE key = ? AND kind = ? AND (facility_id IS NULL OR facility_id = '')
+            INSERT INTO dictionary (key, canonical, kind, notes, match_mode)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                canonical = excluded.canonical,
+                kind      = excluded.kind,
+                notes     = excluded.notes,
+                match_mode= excluded.match_mode
             """,
-            (k, kd),
+            (k, v, kd, nt, mm),
         )
-        row = cur.fetchone()
-        if row:
-            cur.execute(
-                "UPDATE dictionary SET value = ?, notes = ? WHERE id = ?",
-                (v, nt, row["id"]),
-            )
-        else:
-            cur.execute(
-                """
-                INSERT INTO dictionary (kind, key, value, facility_id, notes)
-                VALUES (?, ?, ?, NULL, ?)
-                """,
-                (kd, k, v, nt),
-            )
         conn.commit()
         clear_dictionary_caches()
         return {"ok": True}
     finally:
         conn.close()
+
 
 
 @app.post("/admin/dictionary/delete")
@@ -463,7 +464,8 @@ async def admin_dictionary_delete(
     key: str = Form(...),
 ):
     """
-    Delete dictionary rows for this key (non facility_alias entries).
+    Delete dictionary rows for this key.
+    Uses the existing schema with key as PRIMARY KEY.
     """
     require_admin(request)
     k = (key or "").strip()
@@ -473,18 +475,13 @@ async def admin_dictionary_delete(
     conn = get_db()
     try:
         cur = conn.cursor()
-        cur.execute(
-            """
-            DELETE FROM dictionary
-            WHERE key = ? AND (facility_id IS NULL OR facility_id = '')
-            """,
-            (k,),
-        )
+        cur.execute("DELETE FROM dictionary WHERE key = ?", (k,))
         conn.commit()
         clear_dictionary_caches()
         return {"ok": True}
     finally:
         conn.close()
+
 
 
 
@@ -538,24 +535,24 @@ def fetch_facility_knowledge(
     try:
         cur.execute(
             """
-            SELECT kind, text, tags, weight
+            SELECT fact_text, tags
             FROM fac_facts
             WHERE facility_id=?
-            ORDER BY COALESCE(weight,1.0) DESC, id DESC
+            ORDER BY id DESC
             LIMIT ?
             """,
             (facility_id, limit),
         )
         for r in cur.fetchall():
-            kind = (r["kind"] or "").strip() or "fact"
             snippets.append(
                 {
-                    "text": r["text"],
-                    "source": f"DB:facility_facts:{kind}",
+                    "text": r["fact_text"],
+                    "source": "DB:facility_facts:fact",
                     "tags": r["tags"] or "",
-                    "weight": float(r["weight"] or 1.0),
+                    "weight": 1.0,
                 }
             )
+
     except sqlite3.Error:
         pass
 
@@ -750,13 +747,14 @@ def run_answer_pipeline(
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT INTO user_qa_log (ts, section, q, a, topics, promoted, a_quality)
-            VALUES (?, ?, ?, ?, ?, 0, '')
+            INSERT INTO user_qa_log (ts, section, q, a, promoted, a_quality)
+            VALUES (?, ?, ?, ?, 0, '')
             """,
-            (now_iso(), section_used, question, answer_text, section_hint or ""),
+            (now_iso(), section_used, question, answer_text),
         )
         log_id = cur.lastrowid
         conn.commit()
+
 
         return AskResponse(
             answer=answer_text,
@@ -863,7 +861,12 @@ async def admin_ulog_list(
 
         cur = conn.cursor()
         cur.execute(sql, params)
-        rows = [dict(r) for r in cur.fetchall()]
+        rows = []
+        for r in cur.fetchall():
+            d = dict(r)
+            # Synthesize topics for the Admin UI (it expects this field)
+            d["topics"] = d.get("section", "") or ""
+            rows.append(d)
         return {"rows": rows}
     finally:
         conn.close()
@@ -1295,7 +1298,7 @@ async def admin_facilities_facts_list(
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT id, kind, text, tags, created_at
+            SELECT id, fact_text, tags, created_at
             FROM fac_facts
             WHERE facility_id=?
             ORDER BY created_at DESC, id DESC
@@ -1307,12 +1310,13 @@ async def admin_facilities_facts_list(
             items.append(
                 {
                     "id": r["id"],
-                    "kind": r["kind"] or "fact",
-                    "text": r["text"] or "",
+                    "kind": "fact",
+                    "text": r["fact_text"] or "",
                     "tags": r["tags"] or "",
                     "created_at": r["created_at"],
                 }
             )
+
         return {"items": items}
     finally:
         conn.close()
@@ -1340,11 +1344,12 @@ async def admin_facilities_facts_add(
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT INTO fac_facts (facility_id, kind, text, tags, created_at)
-            VALUES (?, 'fact', ?, ?, ?)
+            INSERT INTO fac_facts (facility_id, fact_text, tags, created_at)
+            VALUES (?, ?, ?, ?)
             """,
             (facility_id, text, (tags or "").strip(), now_iso()),
         )
+
         new_id = cur.lastrowid
         conn.commit()
         return {"ok": True, "id": new_id}
