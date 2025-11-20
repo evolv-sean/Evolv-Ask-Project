@@ -14,7 +14,7 @@ from typing import List, Dict, Any, Optional
 
 from fastapi import FastAPI, HTTPException, Request, Form, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -1949,6 +1949,43 @@ async def facility_ui():
 async def health():
     return {"ok": True, "db_path": DB_PATH}
 
+@app.get("/health")
+async def health():
+    return {"ok": True, "db_path": DB_PATH}
+
+
+@app.get("/admin/download-db")
+async def download_db(token: str):
+    """
+    Download the SQLite DB used by this app.
+    Usage: GET /admin/download-db?token=YOUR_ADMIN_TOKEN
+    """
+    # Security: require your admin token
+    if token != os.getenv("ADMIN_TOKEN"):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    # Use the same DB file the app uses everywhere else
+    db_path = Path(DB_PATH)
+
+    if not db_path.exists():
+        raise HTTPException(status_code=500, detail=f"DB not found at {db_path}")
+
+    return FileResponse(
+        path=str(db_path),
+        filename="evolv.db",
+        media_type="application/octet-stream",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Entrypoint for Render
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    import uvicorn
+
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
 
 
 # ---------------------------------------------------------------------------
