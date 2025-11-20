@@ -195,9 +195,43 @@
         if(parts.length>1) sup = parts.slice(1).map(x=>x.trim());
       }
       const srcList = Array.isArray(sources) ? sources : [];
+      const primarySource = srcList[0] || null;
+
+      // Turn the first source entry into a short, readable label
+      function sourceToLabel(s) {
+        if (!s) return "";
+
+        // If it's a plain string like "Q&A:123" or "DB:facility_contacts:..."
+        if (typeof s === "string") {
+          if (s.startsWith("DB:facility_contacts:")) return "Facility Contacts (DB)";
+          if (s.startsWith("DB:facility_partners:")) return "Facility Partners (DB)";
+          if (s.startsWith("DB:facility_facts:")) return "Quick Facts (DB)";
+          if (s.startsWith("DB:facility_")) return "Facility Data (DB)";
+          if (s.startsWith("Q&A:")) return "Q&A Library";
+          if (s.startsWith("DOC:")) return "Reference Document";
+          // Fallback: just show the raw string
+          return s;
+        }
+
+        // If it's an object with metadata
+        if (s && typeof s === "object") {
+          if (s.title) return s.title;
+          if (s.section) return s.section + " (Q&A)";
+          try {
+            return JSON.stringify(s);
+          } catch (e) {
+            return "";
+          }
+        }
+
+        return "";
+      }
+
+      const sourceLabel = sourceToLabel(primarySource);
 
       const precise = escapeHtml(firstLine(answer));
       const rest = answerMore(answer);
+
 
       box.innerHTML = `
         <div class="row-actions" style="margin-bottom:6px">
@@ -227,7 +261,16 @@
 
         </div>
 
-        <div class="small muted" style="margin-bottom:6px"><strong>Question:</strong> ${escapeHtml(askedQuestion || "")}</div>
+        <div class="small muted" style="margin-bottom:2px">
+          <strong>Question:</strong> ${escapeHtml(askedQuestion || "")}
+        </div>
+
+        ${sourceLabel ? `
+        <div class="small" style="margin-bottom:8px;">
+          <span class="chip">Source: ${escapeHtml(sourceLabel)}</span>
+        </div>
+        ` : ""}
+
         <div class="answer">
           <div class="precise">${precise || "No answer provided."}</div>
           ${rest}
@@ -237,6 +280,8 @@
             ${sup.length ? `<ul style="margin:8px 0 0 18px">${sup.slice(0,8).map(li=>`<li>${escapeHtml(li)}</li>`).join("")}</ul>` : `<div class="muted small">No additional details provided.</div>`}
           </details>
         </div>
+      `;
+
       `;
 
       // Save for "Copy"
