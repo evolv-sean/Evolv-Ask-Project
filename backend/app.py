@@ -129,19 +129,19 @@ def init_db():
         """
     )
 
-    # Dictionary
+    # Dictionary (key → canonical term, plus kind/notes/match_mode)
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS dictionary (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            kind        TEXT NOT NULL,
-            key         TEXT,
-            value       TEXT,
-            facility_id TEXT,
-            notes       TEXT
+            key        TEXT PRIMARY KEY,
+            canonical  TEXT NOT NULL,
+            kind       TEXT DEFAULT 'abbr',
+            notes      TEXT DEFAULT '',
+            match_mode TEXT DEFAULT 'exact'
         )
         """
     )
+
 
     # Facility facts (link knowledge to specific facilities)
     cur.execute(
@@ -149,10 +149,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS fac_facts (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             facility_id TEXT NOT NULL,
-            kind        TEXT,
-            text        TEXT NOT NULL,
-            tags        TEXT,
-            weight      REAL DEFAULT 1.0,
+            fact_text   TEXT NOT NULL,
+            tags        TEXT DEFAULT '',
             created_at  TEXT
         )
         """
@@ -560,18 +558,19 @@ def fetch_facility_knowledge(
     try:
         cur.execute(
             """
-            SELECT kind, text, tags, source
+            SELECT kind, text, tags
             FROM v_facility_knowledge
-            WHERE facility_id=?
+            WHERE facility_id = ?
             LIMIT ?
             """,
             (facility_id, limit),
         )
         for r in cur.fetchall():
+            kind = (r["kind"] or "data")
             snippets.append(
                 {
                     "text": r["text"],
-                    "source": r["source"] or f"DB:facility_{r['kind'] or 'data'}",
+                    "source": f"DB:facility_{kind}",
                     "tags": r["tags"] or "",
                     "weight": 1.0,
                 }
@@ -579,27 +578,69 @@ def fetch_facility_knowledge(
     except sqlite3.Error:
         pass
 
+
     try:
         cur.execute(
             """
-            SELECT summary_text
+            SELECT facility_name, city, state, zip,
+                   emr, orders, orders_other,
+                   outpatient_pt, short_beds, ltc_beds, avg_dcs
             FROM v_facility_summary
-            WHERE facility_id=?
+            WHERE facility_id = ?
             """,
             (facility_id,),
         )
         row = cur.fetchone()
-        if row and row["summary_text"]:
-            snippets.append(
-                {
-                    "text": row["summary_text"],
-                    "source": "DB:facility_summary",
-                    "tags": "summary",
-                    "weight": 2.0,
-                }
+        if row:
+            parts = []
+
+            if row["emr"]:
+                parts.append(f"EMR: {row['emr']}")
+
+            orders_desc = " / ".join(
+                p for p in [row["orders"], row["orders_other"]] if p
             )
+            if orders_desc:
+                parts.append(f"Orders: {orders_desc}")
+
+            if row["outpatient_pt"]:
+                parts.append(f"Outpatient PT: {row['outpatient_pt']}")
+
+            beds = []
+            if row["short_beds"]:
+                beds.append(f"short-term beds: {row['short_beds']}")
+            if row["ltc_beds"]:
+                beds.append(f"LTC beds: {row['ltc_beds']}")
+            if beds:
+                parts.append("Beds: " + ", ".join(beds))
+
+            if row["avg_dcs"]:
+                parts.append(f"Average daily discharges: {row['avg_dcs']}")
+
+            summary_pieces = "; ".join(p for p in parts if p)
+            if summary_pieces:
+                loc = ", ".join(
+                    p for p in [row["city"], row["state"], row["zip"]] if p
+                )
+                header = row["facility_name"] or ""
+                if loc:
+                    header = f"{header} ({loc})" if header else loc
+
+                summary_text = (
+                    f"{header}: {summary_pieces}" if header else summary_pieces
+                )
+
+                snippets.append(
+                    {
+                        "text": summary_text,
+                        "source": "DB:facility_summary",
+                        "tags": "summary",
+                        "weight": 2.0,
+                    }
+                )
     except sqlite3.Error:
         pass
+
 
     return snippets
 
@@ -1399,10 +1440,13 @@ async def admin_facilities_aliases_list(
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT d.id, d.key, f.facility_name
+            SELECT d.key,
+                   d.canonical,
+                   f.facility_name
             FROM dictionary d
-            LEFT JOIN facilities f ON f.facility_id = d.facility_id
-            WHERE d.kind='facility_alias' AND d.facility_id=?
+            LEFT JOIN facilities f ON f.facility_id = d.canonical
+            WHERE d.kind = 'facility_alias'
+              AND d.canonical = ?
             ORDER BY d.key COLLATE NOCASE
             """,
             (facility_id,),
@@ -1411,14 +1455,17 @@ async def admin_facilities_aliases_list(
         for r in cur.fetchall():
             items.append(
                 {
-                    "id": r["id"],
+                    # Use the alias text as a stable id for the row
+                    "id": r["key"],
                     "key": r["key"] or "",
-                    "canonical": r["facility_name"] or "",
+                    # Show facility name if we have it, otherwise the canonical slug
+                    "canonical": r["facility_name"] or (r["canonical"] or ""),
                 }
             )
         return {"items": items}
     finally:
         conn.close()
+
 
 
 @app.post("/admin/facilities/aliases/add")
@@ -1440,18 +1487,22 @@ async def admin_facilities_aliases_add(
     conn = get_db()
     try:
         cur = conn.cursor()
+        # Avoid duplicates: same facility_id (canonical) + alias key
         cur.execute(
             """
-            SELECT 1 FROM dictionary
-            WHERE kind='facility_alias' AND facility_id=? AND key=?
+            SELECT 1
+            FROM dictionary
+            WHERE kind = 'facility_alias'
+              AND canonical = ?
+              AND key = ?
             """,
             (facility_id, key),
         )
         if not cur.fetchone():
             cur.execute(
                 """
-                INSERT INTO dictionary (kind, key, value, facility_id, notes)
-                VALUES ('facility_alias', ?, '', ?, '')
+                INSERT INTO dictionary (key, canonical, kind, notes, match_mode)
+                VALUES (?, ?, 'facility_alias', '', 'exact')
                 """,
                 (key, facility_id),
             )
@@ -1459,6 +1510,7 @@ async def admin_facilities_aliases_add(
         return {"ok": True}
     finally:
         conn.close()
+
 
 
 @app.post("/admin/facilities/aliases/delete")
@@ -1483,7 +1535,9 @@ async def admin_facilities_aliases_delete(
         cur.execute(
             """
             DELETE FROM dictionary
-            WHERE kind='facility_alias' AND facility_id=? AND key=?
+            WHERE kind = 'facility_alias'
+              AND canonical = ?
+              AND key = ?
             """,
             (facility_id, key),
         )
@@ -1491,6 +1545,7 @@ async def admin_facilities_aliases_delete(
         return {"ok": True}
     finally:
         conn.close()
+
 
 
 
