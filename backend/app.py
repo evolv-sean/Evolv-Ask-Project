@@ -577,6 +577,74 @@ async def admin_dictionary_delete(
 
 
 
+# ---------------------------------------------------------------------------
+# Admin: Analytics / Listing config (stored in ai_settings.analytics_config)
+# ---------------------------------------------------------------------------
+
+@app.get("/admin/analytics/config")
+async def admin_analytics_config_get(request: Request):
+    """
+    Return the analytics/listing rules config.
+
+    Shape:
+      { ok: True, config: { rules: [ { id, kind, name, triggers, scope,
+                                      sql, answer_prefix, answer_suffix }, ... ] } }
+    """
+    require_admin(request)
+    conn = get_db()
+    try:
+        cfg = load_analytics_config(conn)
+        return {"ok": True, "config": cfg}
+    finally:
+        conn.close()
+
+
+@app.post("/admin/analytics/config/save")
+async def admin_analytics_config_save(
+    request: Request,
+    config_json: str = Form(...),
+):
+    """
+    Save the analytics/listing rules config into ai_settings.analytics_config.
+
+    Accepts either:
+      - a full JSON object: { "rules": [ ... ] }
+      - or a bare list:      [ ... ]  (will be wrapped as { "rules": [...] })
+    """
+    require_admin(request)
+
+    try:
+        data = json.loads(config_json)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+
+    if isinstance(data, list):
+        cfg = {"rules": data}
+    elif isinstance(data, dict):
+        rules = data.get("rules", [])
+        if not isinstance(rules, list):
+            rules = []
+        cfg = {"rules": rules}
+    else:
+        cfg = {"rules": []}
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO ai_settings (key, value)
+            VALUES ('analytics_config', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (json.dumps(cfg),),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
 
 # ---------------------------------------------------------------------------
 # Retrieval from DB (Q&A + Facility knowledge)
@@ -1044,25 +1112,108 @@ def build_ranked_context(
 
 
 # ---------------------------------------------------------------------------
+# Analytics config storage (in ai_settings.analytics_config)
+# ---------------------------------------------------------------------------
+
+def load_analytics_config(conn: sqlite3.Connection) -> Dict[str, Any]:
+    """
+    Load analytics/listing rules from ai_settings.analytics_config.
+
+    The JSON shape is:
+      { "rules": [ { id, kind, name, triggers, scope, sql,
+                     answer_prefix, answer_suffix }, ... ] }
+
+    - kind:   "list" or "aggregate"
+    - scope:  "global" or "facility"
+    - triggers: list of substrings to look for in the question
+    - sql:    SQL to run; may include {{facility_id}} placeholder
+    """
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT value FROM ai_settings WHERE key='analytics_config'")
+        row = cur.fetchone()
+        if not row or not (row["value"] or "").strip():
+            return {"rules": []}
+
+        raw = row["value"]
+        data = json.loads(raw)
+
+        # Allow either { "rules": [...] } or bare [...]
+        if isinstance(data, dict):
+            rules = data.get("rules", [])
+            if not isinstance(rules, list):
+                rules = []
+            return {"rules": rules}
+        elif isinstance(data, list):
+            return {"rules": data}
+        else:
+            return {"rules": []}
+    except Exception:
+        # On any error, fall back to empty; detection will then use built-in heuristics.
+        return {"rules": []}
+
+
+
+# ---------------------------------------------------------------------------
 # Analytics / listing helpers (Layer F)
 # ---------------------------------------------------------------------------
 
-def detect_analytics_intent(question: str) -> Optional[Dict[str, Any]]:
+def detect_analytics_intent(
+    question: str,
+    config: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
     """
-    Very simple intent detector for:
-      - list queries, e.g. "list all contacts at The Pearl"
-      - average queries, e.g. "what is the average number of short term beds"
+    Config-driven analytics intent detector, with a simple fallback.
 
-    Returns a small intent dict or None, e.g.:
-      { "type": "list", "entity": "contacts" }
-      { "type": "list", "entity": "facilities" }
-      { "type": "aggregate", "operation": "avg", "metric": "short_beds" }
+    From config (ai_settings.analytics_config), expects:
+      { "rules": [
+          {
+            "id": "list_facilities",
+            "kind": "list",          # or "aggregate"
+            "name": "List all facilities",
+            "triggers": ["list all facilities", "list facilities"],
+            "scope": "global",       # or "facility"
+            "sql": "...",
+            "answer_prefix": "...",
+            "answer_suffix": "..."
+          },
+          ...
+      ] }
+
+    Returns:
+      { "type": "list", "rule": <rule_dict> }
+      { "type": "aggregate", "rule": <rule_dict> }
+      or None
     """
     if not question:
         return None
 
     q = question.lower().strip()
+    cfg = config or {}
+    rules = cfg.get("rules") or []
 
+    # 1) Config-driven rules (win first)
+    for rule in rules:
+        kind = (rule.get("kind") or "").strip().lower()
+        if kind not in ("list", "aggregate"):
+            continue
+
+        triggers = rule.get("triggers") or []
+        if isinstance(triggers, str):
+            triggers = [triggers]
+
+        for t in triggers:
+            t_norm = (t or "").strip().lower()
+            if not t_norm:
+                continue
+            # Very simple: substring match in the normalized question
+            if t_norm in q:
+                return {
+                    "type": kind,
+                    "rule": rule,
+                }
+
+    # 2) Fallback to your original simple heuristics
     # -------- LIST INTENT --------
     list_triggers = (
         "list ",
@@ -1097,6 +1248,7 @@ def detect_analytics_intent(question: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+
 def run_analytics_query(
     conn: sqlite3.Connection,
     intent: Dict[str, Any],
@@ -1111,9 +1263,106 @@ def run_analytics_query(
 
     This path intentionally does NOT call the LLM; it answers directly from
     the DB to avoid hallucinations for lists/totals.
+
+    Two modes:
+      1) Config-driven rules (ai_settings.analytics_config)
+      2) Built-in fallback logic (facilities list, contacts list, avg beds)
     """
     itype = intent.get("type")
 
+    # ------------------------------------------------
+    # 1) Config-driven rule (if present in the intent)
+    # ------------------------------------------------
+    rule = intent.get("rule")
+    if rule:
+        kind = (rule.get("kind") or "").strip().lower()
+        sql = (rule.get("sql") or "").strip()
+        scope = (rule.get("scope") or "global").strip().lower()
+        src = f"DB:analytics:{rule.get('id') or 'config'}"
+
+        if not sql or kind not in ("list", "aggregate"):
+            # Misconfigured rule; fall back to built-ins
+            pass
+        else:
+            # Simple placeholder: {{facility_id}} → ?
+            params: List[Any] = []
+            if "{{facility_id}}" in sql:
+                if not facility_id:
+                    # Can't satisfy a facility-scoped rule without a detected facility
+                    return None
+                sql = sql.replace("{{facility_id}}", "?")
+                params.append(facility_id)
+
+            cur = conn.cursor()
+            try:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+                col_names = [d[0] for d in cur.description] if cur.description else []
+            except sqlite3.Error as e:
+                return (f"I tried to run the configured analytics query but got a database error: {e}", [src])
+
+            # ------- LIST RULES -------
+            if kind == "list":
+                if not rows:
+                    msg = rule.get("empty_message") or "I couldn't find any results for that query in the database."
+                    msg = msg.replace("{{facility_label}}", facility_label or (facility_id or "this facility"))
+                    return (msg, [src])
+
+                lines: List[str] = []
+                for r in rows:
+                    # If there's a column named 'line', prefer it
+                    if "line" in col_names:
+                        val = r[col_names.index("line")]
+                    else:
+                        # Otherwise join all non-null columns
+                        vals = [str(r[i]) for i in range(len(r)) if r[i] is not None]
+                        val = " ".join(vals)
+                    val = str(val).strip()
+                    if val:
+                        lines.append(" - " + val)
+
+                prefix = (rule.get("answer_prefix") or "Here are the results:\n").replace(
+                    "{{facility_label}}",
+                    facility_label or (facility_id or "this facility"),
+                )
+                answer_text = prefix + "\n" + "\n".join(lines)
+                return (answer_text, [src])
+
+            # ------- AGGREGATE RULES -------
+            if kind == "aggregate":
+                if not rows:
+                    return ("I couldn't compute that metric because the query returned no rows.", [src])
+
+                row0 = rows[0]
+                value = None
+
+                # Common column names: value, val, avg_val, count, total
+                for cname in ("value", "val", "avg_val", "count", "total"):
+                    if cname in col_names:
+                        value = row0[col_names.index(cname)]
+                        break
+                if value is None and col_names:
+                    value = row0[0]
+
+                vnum = value
+                vround = value
+                try:
+                    vnum = float(value)
+                    vround = round(vnum, 1)
+                except Exception:
+                    # leave as-is if not numeric
+                    pass
+
+                prefix = rule.get("answer_prefix") or f"The value for {rule.get('name') or 'this metric'} is"
+                suffix = rule.get("answer_suffix") or ""
+                text = prefix.replace("{value_rounded}", str(vround)).replace("{value}", str(vnum))
+                if suffix:
+                    text = f"{text} {suffix}"
+                return (text, [src])
+
+    # ------------------------------------------------
+    # 2) Built-in fallback logic (your original code)
+    # ------------------------------------------------
     # ---------------- LIST QUERIES ----------------
     if itype == "list":
         entity = intent.get("entity")
@@ -1286,6 +1535,7 @@ def run_analytics_query(
     return None
 
 
+
 def get_system_prompt(conn: sqlite3.Connection) -> str:
     cur = conn.cursor()
     try:
@@ -1320,12 +1570,15 @@ def run_answer_pipeline(
         fac_id = detect_facility_id(normalized_q, conn, facility_aliases)
         fac_label = get_facility_label(fac_id, conn)
 
+        # Load analytics/listing configuration (if any)
+        analytics_config = load_analytics_config(conn)
+
         # -------------------------------------------------
         # 1) Try analytics/listing path (Layer F)
         #    e.g. "list all contacts at The Pearl",
         #         "what is the average number of short term beds"
         # -------------------------------------------------
-        analytics_intent = detect_analytics_intent(normalized_q)
+        analytics_intent = detect_analytics_intent(normalized_q, analytics_config)
         if analytics_intent:
             analytics_result = run_analytics_query(conn, analytics_intent, fac_id, fac_label)
             if analytics_result is not None:
@@ -1351,6 +1604,7 @@ def run_answer_pipeline(
                     section_used=section_used,
                     log_id=log_id,
                 )
+
         # -------------------------------------------------
         # 2) Normal retrieval + LLM path
         # -------------------------------------------------
