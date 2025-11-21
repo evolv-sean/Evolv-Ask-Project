@@ -602,13 +602,20 @@ def search_qa_candidates(
 def fetch_facility_knowledge(
     conn: sqlite3.Connection, facility_id: Optional[str], limit: int = 40
 ):
+    """
+    Gather facility-specific text snippets for retrieval:
+      - fac_facts rows
+      - facility_contacts (Administrator, UR, DON, etc.)
+      - v_facility_knowledge view (services, partners, insurance, extra facts)
+      - v_facility_summary (EMR, beds, avg dcs, etc.)
+    """
     if not facility_id:
         return []
 
     snippets: List[Dict[str, Any]] = []
     cur = conn.cursor()
 
-    # fac_facts (explicit snippets)
+    # 1) fac_facts (explicit snippets)
     try:
         cur.execute(
             """
@@ -629,34 +636,33 @@ def fetch_facility_knowledge(
                     "weight": 1.0,
                 }
             )
-
     except sqlite3.Error:
         pass
 
-    # NEW: facility_contacts — key roles like Administrator, Therapy, etc.
+    # 2) facility_contacts (Administrator, UR, DON, therapy, etc.)
     try:
         cur.execute(
             """
-            SELECT type, name, phone, email, pref
+            SELECT type, name, email, phone, pref
             FROM facility_contacts
             WHERE facility_id = ?
-            ORDER BY id DESC
+            ORDER BY id ASC
             LIMIT ?
             """,
             (facility_id, limit),
         )
         for r in cur.fetchall():
-            role = (r[0] or "").strip()   # type
-            name = (r[1] or "").strip()   # name
-            phone = (r[2] or "").strip()  # phone
-            email = (r[3] or "").strip()  # email
-            pref  = (r[4] or "").strip()  # pref
+            role = (r["type"] or "").strip()
+            name = (r["name"] or "").strip()
+            email = (r["email"] or "").strip()
+            phone = (r["phone"] or "").strip()
+            pref = (r["pref"] or "").strip()
 
-            # Need at least a role + name to be useful
+            # Need at least role + name to be useful
             if not (role and name):
                 continue
 
-            bits = [f"{role}: {name}"]
+            parts = [f"{role}: {name}"]
 
             contact_bits = []
             if phone:
@@ -664,50 +670,54 @@ def fetch_facility_knowledge(
             if email:
                 contact_bits.append(f"email {email}")
             if contact_bits:
-                bits.append("(" + ", ".join(contact_bits) + ")")
+                parts.append("(" + ", ".join(contact_bits) + ")")
 
             if pref:
-                bits.append(f"[prefers: {pref}]")
+                parts.append(f"[prefers: {pref}]")
 
-            text = " ".join(bits)
+            text = " ".join(parts)
 
             snippets.append(
                 {
                     "text": text,
                     "source": f"DB:facility_contacts:{role}",
                     "tags": "contacts",
-                    "weight": 2.0,  # slightly boosted vs generic data
+                    # Boosted so "who is the administrator..." sees this first
+                    "weight": 2.0,
                 }
             )
-
     except sqlite3.Error:
         pass
 
-    # Optional views from your existing schema, if present
+    # 3) v_facility_knowledge (services, partners, insurance, extra facts)
     try:
         cur.execute(
             """
             SELECT kind, text, tags
             FROM v_facility_knowledge
             WHERE facility_id = ?
+            ORDER BY created_at DESC
             LIMIT ?
             """,
             (facility_id, limit),
         )
         for r in cur.fetchall():
             kind = (r["kind"] or "data")
+            tags = r["tags"] or ""
+            # Slightly boost explicit "fact" rows if you want
+            base_weight = 1.2 if kind == "fact" else 1.0
             snippets.append(
                 {
                     "text": r["text"],
                     "source": f"DB:facility_{kind}",
-                    "tags": r["tags"] or "",
-                    "weight": 1.0,
+                    "tags": tags,
+                    "weight": base_weight,
                 }
             )
     except sqlite3.Error:
         pass
 
-    # Facility summary (beds, EMR, etc.)
+    # 4) v_facility_summary (headline EMR, beds, avg discharges, etc.)
     try:
         cur.execute(
             """
@@ -721,7 +731,7 @@ def fetch_facility_knowledge(
         )
         row = cur.fetchone()
         if row:
-            parts = []
+            parts: List[str] = []
 
             if row["emr"]:
                 parts.append(f"EMR: {row['emr']}")
@@ -735,7 +745,7 @@ def fetch_facility_knowledge(
             if row["outpatient_pt"]:
                 parts.append(f"Outpatient PT: {row['outpatient_pt']}")
 
-            beds = []
+            beds: List[str] = []
             if row["short_beds"]:
                 beds.append(f"short-term beds: {row['short_beds']}")
             if row["ltc_beds"]:
@@ -764,6 +774,7 @@ def fetch_facility_knowledge(
                         "text": summary_text,
                         "source": "DB:facility_summary",
                         "tags": "summary",
+                        # Boosted because this is high-value "profile" info
                         "weight": 2.0,
                     }
                 )
@@ -771,6 +782,7 @@ def fetch_facility_knowledge(
         pass
 
     return snippets
+
 
 
 
@@ -840,7 +852,7 @@ def build_ranked_context(question: str, qa_rows, fac_snippets, top_k: int):
     q_emb = embed_texts([question])[0]
     ctx_embs = embed_texts(ctx_texts)
 
-    scored = []
+    scored: List[tuple[float, Dict[str, Any]]] = []
     for c, emb in zip(candidates, ctx_embs):
         base_score = cosine_sim(q_emb, emb)
         w = float(c.get("weight", 1.0) or 1.0)
@@ -850,6 +862,7 @@ def build_ranked_context(question: str, qa_rows, fac_snippets, top_k: int):
     top = [c for _, c in scored[: max(top_k, 1)]]
     sources = [c["source"] for c in top]
     return top, sources
+
 
 
 
