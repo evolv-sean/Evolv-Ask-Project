@@ -79,6 +79,62 @@
 </style>
 
 <style>
+  /* Analytics / Lists layout guards */
+  #tab-analytics .e-card,
+  #tab-analytics .e-card *{
+    box-sizing:border-box;
+  }
+
+  #tab-analytics .e-card{
+    overflow-x:hidden;
+  }
+
+  #tab-analytics .ipt,
+  #tab-analytics textarea,
+  #tab-analytics select{
+    width:100%;
+    max-width:100%;
+    display:block;
+  }
+
+  #tab-analytics textarea{
+    resize:vertical;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+  }
+
+  /* Top row: Rule ID / Kind / Scope */
+  #tab-analytics .an-grid{
+    display:grid;
+    grid-template-columns:
+      minmax(160px,1.2fr)   /* Rule ID */
+      minmax(120px,1fr)     /* Kind */
+      minmax(140px,1.1fr);  /* Scope */
+    gap:12px;
+    margin-bottom:12px;
+    align-items:flex-start;
+  }
+
+  /* 2 columns on medium screens (Scope drops to next line) */
+  @media (max-width: 900px){
+    #tab-analytics .an-grid{
+      grid-template-columns:repeat(2,minmax(0,1fr));
+    }
+    #tab-analytics .an-grid > div:nth-child(3){
+      grid-column:1 / -1;
+    }
+  }
+
+  /* 1 column on narrow screens */
+  @media (max-width: 640px){
+    #tab-analytics .an-grid{
+      grid-template-columns:1fr;
+    }
+  }
+</style>
+
+
+<style>
   /* ULog quality badge (outlined pill) */
   #tab-ulog .thumb-pill{
     display:inline-flex; align-items:center; justify-content:center;
@@ -1609,7 +1665,7 @@ function renderAliasList(items){
         For aggregates, you can use <code>{value}</code> or <code>{value_rounded}</code> in the answer prefix.
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:12px">
+      <div class="an-grid">
         <div>
           <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">
             Rule ID (optional)
@@ -1674,7 +1730,7 @@ function renderAliasList(items){
       </div>
 
       <div style="display:flex;justify-content:flex-end;gap:8px">
-        <button type="button" class="btn-secondary" id="an-new-rule">New rule</button>
+        <button type="button" class="btn btn-secondary" id="an-new-rule">New rule</button>
         <button type="button" class="btn" id="an-save-rule">Save rule</button>
       </div>
     </div>
