@@ -939,27 +939,67 @@ def cosine_sim(u: List[float], v: List[float]) -> float:
     return dot / (nu * nv)
 
 
-def build_ranked_context(question: str, qa_rows, fac_snippets, top_k: int):
+def build_ranked_context(
+    question: str,
+    qa_rows,
+    fac_snippets,
+    top_k: int,
+    section_hint: Optional[str] = None,
+):
+    """
+    Build a ranked list of context chunks from:
+      - Q&A rows
+      - facility snippets
+
+    Scoring:
+      - base = cosine similarity between question and chunk
+      - multiplied by a 'weight' term:
+          * Q&A: boosted if section/topics/tags match section_hint
+          * Facility snippets: use their pre-assigned .weight (contacts, summary, etc.)
+    """
     candidates: List[Dict[str, Any]] = []
 
+    sh = (section_hint or "").strip().lower()
+
+    # ------------------------------
     # Q&A rows (default weight 1.0)
+    # ------------------------------
     for r in qa_rows:
+        section = (r["section"] or "").strip()
+        topics = (r["topics"] or "").strip()
+        tags = (r["tags"] or "").strip()
+
         text = (
             f"Q: {r['question']}\n"
             f"A: {r['answer']}\n"
-            f"Topics: {r['topics'] or ''}\n"
-            f"Tags: {r['tags'] or ''}"
+            f"Topics: {topics}\n"
+            f"Tags: {tags}"
         )
+
+        weight = 1.0
+        if sh:
+            # Exact section match gets a strong bump
+            if section.lower() == sh:
+                weight *= 1.5
+
+            # If the hint appears in topics or tags, give a smaller bump
+            topics_lower = topics.lower()
+            tags_lower = tags.lower()
+            if sh in topics_lower or sh in tags_lower:
+                weight *= 1.2
+
         candidates.append(
             {
                 "text": text,
                 "source": f"Q&A:{r['id']}",
                 "kind": "qa",
-                "weight": 1.0,
+                "weight": weight,
             }
         )
 
-    # Facility snippets (reuse their weight, default 1.0)
+    # --------------------------------------
+    # Facility snippets (reuse their weight)
+    # --------------------------------------
     for sn in fac_snippets:
         txt = sn["text"]
         tags = sn.get("tags") or ""
@@ -976,6 +1016,9 @@ def build_ranked_context(question: str, qa_rows, fac_snippets, top_k: int):
     if not candidates:
         return [], []
 
+    # --------------------------------------
+    # Embed and score with weight applied
+    # --------------------------------------
     ctx_texts = [c["text"] for c in candidates]
     q_emb = embed_texts([question])[0]
     ctx_embs = embed_texts(ctx_texts)
@@ -990,6 +1033,7 @@ def build_ranked_context(question: str, qa_rows, fac_snippets, top_k: int):
     top = [c for _, c in scored[: max(top_k, 1)]]
     sources = [c["source"] for c in top]
     return top, sources
+
 
 
 
@@ -1031,8 +1075,13 @@ def run_answer_pipeline(
         fac_snippets = fetch_facility_knowledge(conn, fac_id, limit=40)
 
         ranked_chunks, sources = build_ranked_context(
-            normalized_q, qa_rows, fac_snippets, top_k=top_k
+            normalized_q,
+            qa_rows,
+            fac_snippets,
+            top_k=top_k,
+            section_hint=section_hint,
         )
+
 
         context_lines = []
         for idx, c in enumerate(ranked_chunks, start=1):
