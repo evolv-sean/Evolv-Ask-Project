@@ -956,6 +956,9 @@ def build_ranked_context(
       - multiplied by a 'weight' term:
           * Q&A: boosted if section/topics/tags match section_hint
           * Facility snippets: use their pre-assigned .weight (contacts, summary, etc.)
+
+    Returns:
+      (top_chunks, sources, best_score)
     """
     candidates: List[Dict[str, Any]] = []
 
@@ -965,9 +968,9 @@ def build_ranked_context(
     # Q&A rows (default weight 1.0)
     # ------------------------------
     for r in qa_rows:
-        section = (r["section"] or "").strip()
-        topics = (r["topics"] or "").strip()
-        tags = (r["tags"] or "").strip()
+        section = (r.get("section") or "").strip()
+        topics = (r.get("topics") or "").strip()
+        tags = (r.get("tags") or "").strip()
 
         text = (
             f"Q: {r['question']}\n"
@@ -1014,7 +1017,8 @@ def build_ranked_context(
         )
 
     if not candidates:
-        return [], []
+        # no context found at all
+        return [], [], 0.0
 
     # --------------------------------------
     # Embed and score with weight applied
@@ -1024,15 +1028,21 @@ def build_ranked_context(
     ctx_embs = embed_texts(ctx_texts)
 
     scored: List[tuple[float, Dict[str, Any]]] = []
+    best_score = 0.0
+
     for c, emb in zip(candidates, ctx_embs):
         base_score = cosine_sim(q_emb, emb)
         w = float(c.get("weight", 1.0) or 1.0)
-        scored.append((base_score * w, c))
+        final_score = base_score * w
+        if final_score > best_score:
+            best_score = final_score
+        scored.append((final_score, c))
 
     scored.sort(key=lambda x: x[0], reverse=True)
     top = [c for _, c in scored[: max(top_k, 1)]]
     sources = [c["source"] for c in top]
-    return top, sources
+    return top, sources, best_score
+
 
 
 
@@ -1074,7 +1084,7 @@ def run_answer_pipeline(
         qa_rows = search_qa_candidates(conn, normalized_q, section_hint, limit=40)
         fac_snippets = fetch_facility_knowledge(conn, fac_id, limit=40)
 
-        ranked_chunks, sources = build_ranked_context(
+        ranked_chunks, sources, best_score = build_ranked_context(
             normalized_q,
             qa_rows,
             fac_snippets,
@@ -1082,29 +1092,56 @@ def run_answer_pipeline(
             section_hint=section_hint,
         )
 
+        # Simple low-confidence heuristic:
+        # - no chunks at all, or
+        # - best weighted similarity is very low
+        low_confidence = False
+        if not ranked_chunks or best_score < 0.15:
+            low_confidence = True
 
         context_lines = []
         for idx, c in enumerate(ranked_chunks, start=1):
             context_lines.append(f"[{idx}] {c['source']}\n{c['text']}\n")
-        context_block = "\n".join(context_lines) if context_lines else "(no DB snippets found)"
+        if context_lines:
+            context_block = "\n".join(context_lines)
+        else:
+            context_block = "(no meaningful internal snippets were found for this question)"
 
         section_used = section_hint or ("Facility Details" if fac_id else "General")
         system_prompt = get_system_prompt(conn)
 
+        confidence_label = "LOW" if low_confidence else "NORMAL"
+
         user_message = (
             f"User question:\n{question}\n\n"
-            f"Section hint (topics): {section_hint or 'n/a'}\n"
-            f"Detected facility: {fac_label or 'none'}\n\n"
-            f"Internal knowledge snippets (if any):\n{context_block}\n\n"
+            f"Detected facility: {fac_label or 'None'}\n"
+            f"Context match confidence: {confidence_label}\n\n"
+            f"Relevant internal snippets (Q&A + DB):\n{context_block}\n\n"
             "Instructions:\n"
-            "- Answer as Evolv's AI assistant.\n"
-            "- Prioritize the internal snippets over general knowledge.\n"
+            "- Use the internal snippets as your primary source of truth.\n"
+            "- If snippets conflict, prefer the most specific / facility-specific ones.\n"
+            "- You may use general medical knowledge only to fill small gaps.\n"
             "- If facility-specific details are present, be precise for that facility.\n"
-            "- If the DB doesn't cover something, say what you *can* infer and what "
-            "is unknown instead of guessing.\n"
+        )
+
+        if low_confidence:
+            user_message += (
+                "- The internal match is LOW confidence. If the snippets do not clearly "
+                "answer the question, explicitly say that Evolv's database does not yet "
+                "cover this, and avoid guessing. Suggest what information should be "
+                "added to the Q&A or Facility Facts.\n"
+            )
+        else:
+            user_message += (
+                "- The internal match is NORMAL confidence. Still avoid making up "
+                "facility-specific facts; rely on the snippets.\n"
+            )
+
+        user_message += (
             "- Begin with a concise, 1–3 sentence answer. Then, if useful, follow "
             "with bullet points for steps/nuances.\n"
         )
+
 
         chat = client.chat.completions.create(
             model="gpt-4.1-mini",
