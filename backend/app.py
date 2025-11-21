@@ -369,23 +369,38 @@ def detect_facility_id(
 ) -> Optional[str]:
     """
     Try to infer the facility id from the question using:
-      1) dictionary facility aliases
-      2) facility_name from the facilities table
+      1) dictionary facility aliases (kind='facility_alias')
+      2) direct facility_id matches (e.g. 'nsph-ml' in the text)
+      3) facility_name from the facilities table
 
     Uses a soft-normalized text form so small punctuation differences
-    ('St. Mary's' vs 'st marys') don't break matching.
+    ("St. Mary's" vs "st marys") don't break matching.
     """
     q_norm = _normalize_for_facility_match(question)
 
-    # 1) Explicit aliases from dictionary
+    # 1) Explicit aliases from dictionary (e.g. "nspire ml" -> "nsph-ml")
     for alias_text, fid in facility_aliases.items():
-        if not alias_text:
+        if not alias_text or not fid:
             continue
         alias_norm = _normalize_for_facility_match(alias_text)
         if alias_norm and alias_norm in q_norm:
             return fid
 
-    # 2) Substring match on facility_name
+    # 2) Direct facility_id mention in the question (e.g. "nsph-ml")
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT facility_id FROM facilities")
+        for row in cur.fetchall():
+            fid = (row["facility_id"] or "").strip()
+            if not fid:
+                continue
+            fid_norm = _normalize_for_facility_match(fid)
+            if fid_norm and fid_norm in q_norm:
+                return fid
+    except sqlite3.Error:
+        pass
+
+    # 3) Substring match on facility_name
     try:
         cur = conn.cursor()
         cur.execute("SELECT facility_id, facility_name FROM facilities")
@@ -400,6 +415,7 @@ def detect_facility_id(
         return None
 
     return None
+
 
 
 
@@ -608,6 +624,8 @@ def fetch_facility_knowledge(
       - facility_contacts (Administrator, UR, DON, etc.)
       - v_facility_knowledge view (services, partners, insurance, extra facts)
       - v_facility_summary (EMR, beds, avg dcs, etc.)
+      - facilities table profile (legal name, corporate group, address, etc.)
+      - client_info rows (key/value client metadata)
     """
     if not facility_id:
         return []
@@ -781,7 +799,117 @@ def fetch_facility_knowledge(
     except sqlite3.Error:
         pass
 
+    # 5) facilities table profile (legal name, corporate group, address, etc.)
+    try:
+        cur.execute(
+            """
+            SELECT facility_name, legal_name, corporate_group,
+                   address_line1, address_line2, city, state, zip, county,
+                   emr_other, pt_emr
+            FROM facilities
+            WHERE facility_id = ?
+            """,
+            (facility_id,),
+        )
+        row2 = cur.fetchone()
+        if row2:
+            parts2: List[str] = []
+
+            if row2["legal_name"]:
+                parts2.append(f"Legal name: {row2['legal_name']}")
+            if row2["corporate_group"]:
+                parts2.append(f"Corporate group: {row2['corporate_group']}")
+
+            addr_bits: List[str] = []
+            if row2["address_line1"]:
+                addr_bits.append(row2["address_line1"])
+            if row2["address_line2"]:
+                addr_bits.append(row2["address_line2"])
+
+            city_state_zip = ", ".join(
+                p for p in [row2["city"], row2["state"], row2["zip"]] if p
+            )
+            if city_state_zip:
+                addr_bits.append(city_state_zip)
+            if row2["county"]:
+                addr_bits.append(f"{row2['county']} County")
+
+            if addr_bits:
+                parts2.append("Address: " + "; ".join(addr_bits))
+
+            if row2["emr_other"]:
+                parts2.append(f"Other EMR details: {row2['emr_other']}")
+            if row2["pt_emr"]:
+                parts2.append(f"Therapy EMR: {row2['pt_emr']}")
+
+            profile_text = "; ".join(parts2)
+            if profile_text:
+                header2 = row2["facility_name"] or ""
+                profile_full = (
+                    f"{header2} profile: {profile_text}" if header2 else profile_text
+                )
+
+                snippets.append(
+                    {
+                        "text": profile_full,
+                        "source": "DB:facility_profile",
+                        "tags": "profile",
+                        "weight": 1.7,
+                    }
+                )
+    except sqlite3.Error:
+        pass
+
+    # 6) client_info rows for this facility (if any)
+    try:
+        # First resolve the facility_name used in client_info
+        cur.execute(
+            """
+            SELECT facility_name
+            FROM facilities
+            WHERE facility_id = ?
+            """,
+            (facility_id,),
+        )
+        name_row = cur.fetchone()
+        fac_name_for_client = (name_row["facility_name"] or "").strip() if name_row else ""
+
+        if fac_name_for_client:
+            cur.execute(
+                """
+                SELECT field_name, value
+                FROM client_info
+                WHERE facility_name = ?
+                ORDER BY updated_at DESC
+                LIMIT 20
+                """,
+                (fac_name_for_client,),
+            )
+            ci_rows = cur.fetchall()
+            if ci_rows:
+                ci_lines: List[str] = []
+                for r in ci_rows:
+                    field = (r["field_name"] or "").strip()
+                    val = (r["value"] or "").strip()
+                    if not field or not val:
+                        continue
+                    ci_lines.append(f"{field}: {val}")
+
+                if ci_lines:
+                    ci_text = "Client info: " + "; ".join(ci_lines)
+                    snippets.append(
+                        {
+                            "text": ci_text,
+                            "source": "DB:client_info",
+                            "tags": "client_info",
+                            "weight": 1.3,
+                        }
+                    )
+    except sqlite3.Error:
+        pass
+
     return snippets
+
 
 
 
