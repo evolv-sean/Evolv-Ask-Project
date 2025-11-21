@@ -281,26 +281,73 @@ def clear_dictionary_caches():
 
 
 
-def normalize_question_text(question: str, abbrev_map: Dict[str, str]) -> str:
+def normalize_question_text(
+    question: str,
+    abbrev_map: Dict[str, str],
+    synonym_map: Dict[str, str],
+) -> str:
     """
-    Expand abbreviations in the user question using the dictionary's abbrev_map.
-    Uses word boundaries so 'evolv?' still matches 'evolv'.
+    Normalize the user question so DB lookups and embeddings work better.
+
+    Steps:
+      - basic cleanup (lowercase, collapse whitespace)
+      - remove common "fluff" prefixes ("can you please", "who is", etc.)
+      - expand abbreviations from dictionary (kind='abbr')
+      - apply synonyms from dictionary (kind='synonym')
+
+    NOTE: This is only used for retrieval (search/embeddings), not for logging the
+    original question back to the user.
     """
     if not question:
         return question
 
+    text = question
+
+    # Normalize whitespace / newlines
+    text = re.sub(r"[\r\n\t]+", " ", text)
+
+    # Lowercase for matching; we don't need case for retrieval
+    text = text.lower().strip()
+
+    # Remove very common polite prefixes / wrappers
+    # ("can you please", "could you", "i was wondering", "what is", "who is", etc.)
+    fluff_prefixes = [
+        r"^(can you please|can you|could you please|could you|would you please|would you)\s+",
+        r"^(please|hey|hi|hello)\s+",
+        r"^(i was wondering( if)?|i wonder if)\s+",
+        r"^(do you know|do we know)\s+",
+        r"^(what is|what's|who is|who's|tell me|give me|show me)\s+",
+    ]
+    for pat in fluff_prefixes:
+        text = re.sub(pat, "", text).strip()
+
+    # Expand abbreviations (dictionary kind='abbr')
+    # e.g. "evolv" -> "evolv health", "nsph ml" -> "nspire miami lakes" (if you set it)
     for abbr, full in abbrev_map.items():
-        pattern_abbr = rf"\b{re.escape(abbr)}\b"
-        if not re.search(pattern_abbr, question, flags=re.IGNORECASE):
+        abbr_norm = abbr.lower().strip()
+        full_norm = full.lower().strip()
+        if not abbr_norm or not full_norm:
             continue
 
-        pattern_full = rf"\b{re.escape(full)}\b"
-        if re.search(pattern_full, question, flags=re.IGNORECASE):
+        pattern_abbr = rf"\b{re.escape(abbr_norm)}\b"
+        text = re.sub(pattern_abbr, full_norm, text)
+
+    # Apply synonyms (dictionary kind='synonym')
+    # e.g. "ur" -> "utilization review", "hh" -> "home health"
+    for src, canon in synonym_map.items():
+        src_norm = src.lower().strip()
+        canon_norm = canon.lower().strip()
+        if not src_norm or not canon_norm:
             continue
 
-        question = re.sub(pattern_abbr, full, question, flags=re.IGNORECASE)
+        pattern_syn = rf"\b{re.escape(src_norm)}\b"
+        text = re.sub(pattern_syn, canon_norm, text)
 
-    return question
+    # Collapse any extra spaces again
+    text = re.sub(r"\s+", " ", text).strip()
+
+    return text
+
 
 
 def _normalize_for_facility_match(text: str) -> str:
@@ -834,7 +881,7 @@ def run_answer_pipeline(
         abbrev = maps["abbrev"]
         facility_aliases = maps["facility_aliases"]
 
-        normalized_q = normalize_question_text(question, abbrev)
+        normalized_q = normalize_question_text(question, abbrev, synonym_map)
         fac_id = detect_facility_id(normalized_q, conn, facility_aliases)
         fac_label = get_facility_label(fac_id, conn)
 
