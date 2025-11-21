@@ -913,7 +913,6 @@ def fetch_facility_knowledge(
 
 
 
-
 # ---------------------------------------------------------------------------
 # Embeddings & ranking
 # ---------------------------------------------------------------------------
@@ -1044,8 +1043,247 @@ def build_ranked_context(
     return top, sources, best_score
 
 
+# ---------------------------------------------------------------------------
+# Analytics / listing helpers (Layer F)
+# ---------------------------------------------------------------------------
+
+def detect_analytics_intent(question: str) -> Optional[Dict[str, Any]]:
+    """
+    Very simple intent detector for:
+      - list queries, e.g. "list all contacts at The Pearl"
+      - average queries, e.g. "what is the average number of short term beds"
+
+    Returns a small intent dict or None, e.g.:
+      { "type": "list", "entity": "contacts" }
+      { "type": "list", "entity": "facilities" }
+      { "type": "aggregate", "operation": "avg", "metric": "short_beds" }
+    """
+    if not question:
+        return None
+
+    q = question.lower().strip()
+
+    # -------- LIST INTENT --------
+    list_triggers = (
+        "list ",
+        "list all ",
+        "show all ",
+        "show me all ",
+        "give me all ",
+        "what are all ",
+        "what are the ",
+    )
+    is_list = any(q.startswith(t) for t in list_triggers) or " list all " in q or " show all " in q
+
+    if is_list:
+        # Contacts
+        if any(w in q for w in ("contact", "contacts", "administrator", "admin", "don", "director of nursing", "ur ")):
+            return {"type": "list", "entity": "contacts"}
+
+        # Facilities
+        if any(w in q for w in ("facility", "facilities", "building", "buildings")):
+            return {"type": "list", "entity": "facilities"}
+
+    # -------- AGGREGATE INTENT (AVG) --------
+    if "average" in q or "avg" in q:
+        # short-term beds
+        if any(w in q for w in ("short term beds", "short-term beds", "short beds", "short_beds")):
+            return {"type": "aggregate", "operation": "avg", "metric": "short_beds"}
+
+        # LTC beds
+        if any(w in q for w in ("ltc beds", "long term beds", "long-term beds", "ltc_beds")):
+            return {"type": "aggregate", "operation": "avg", "metric": "ltc_beds"}
+
+    return None
 
 
+def run_analytics_query(
+    conn: sqlite3.Connection,
+    intent: Dict[str, Any],
+    facility_id: Optional[str],
+    facility_label: str,
+) -> Optional[tuple[str, List[str]]]:
+    """
+    Execute a simple analytics/listing query based on the parsed intent.
+
+    Returns:
+      (answer_text, sources)  or None if the intent can't be satisfied.
+
+    This path intentionally does NOT call the LLM; it answers directly from
+    the DB to avoid hallucinations for lists/totals.
+    """
+    itype = intent.get("type")
+
+    # ---------------- LIST QUERIES ----------------
+    if itype == "list":
+        entity = intent.get("entity")
+
+        # List all facilities
+        if entity == "facilities":
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT facility_id, facility_name, city, state, corporate_group
+                FROM facilities
+                ORDER BY facility_name COLLATE NOCASE
+                """
+            )
+            rows = cur.fetchall()
+            if not rows:
+                return ("There are no facilities in the database yet.", ["DB:analytics:facilities_list"])
+
+            lines = []
+            for r in rows:
+                name = r["facility_name"] or "(no name)"
+                city = r["city"] or ""
+                state = r["state"] or ""
+                fid = r["facility_id"] or ""
+                corp = r["corporate_group"] or ""
+
+                loc = ", ".join(p for p in (city, state) if p)
+                pieces = [name]
+                if loc:
+                    pieces.append(f"({loc})")
+                if corp:
+                    pieces.append(f"– {corp}")
+                if fid:
+                    pieces.append(f"[id: {fid}]")
+
+                lines.append(" - " + " ".join(pieces))
+
+            answer = "Here are the facilities currently in the database:\n" + "\n".join(lines)
+            return (answer, ["DB:analytics:facilities_list"])
+
+        # List contacts (optionally scoped to a single facility)
+        if entity == "contacts":
+            cur = conn.cursor()
+            if facility_id:
+                # contacts for a specific facility
+                cur.execute(
+                    """
+                    SELECT type, name, phone, email
+                    FROM facility_contacts
+                    WHERE facility_id = ?
+                    ORDER BY type COLLATE NOCASE, name COLLATE NOCASE
+                    """,
+                    (facility_id,),
+                )
+                rows = cur.fetchall()
+                if not rows:
+                    label = facility_label or facility_id or "this facility"
+                    return (
+                        f"I couldn't find any contacts in the database for {label}.",
+                        [f"DB:analytics:facility_contacts:{facility_id}"],
+                    )
+
+                label = facility_label or facility_id or "this facility"
+                lines = []
+                for r in rows:
+                    role = r["type"] or ""
+                    name = r["name"] or ""
+                    phone = r["phone"] or ""
+                    email = r["email"] or ""
+                    bits = [role, ":", name]
+                    contact = []
+                    if phone:
+                        contact.append(f"phone {phone}")
+                    if email:
+                        contact.append(f"email {email}")
+                    if contact:
+                        bits.append("(" + ", ".join(contact) + ")")
+                    lines.append(" - " + " ".join(b for b in bits if b))
+
+                answer = f"Here are the contacts we have on file for {label}:\n" + "\n".join(lines)
+                return (answer, [f"DB:analytics:facility_contacts:{facility_id}"])
+
+            else:
+                # contacts across all facilities
+                cur.execute(
+                    """
+                    SELECT c.facility_id, f.facility_name, c.type, c.name, c.phone, c.email
+                    FROM facility_contacts c
+                    LEFT JOIN facilities f ON f.facility_id = c.facility_id
+                    ORDER BY f.facility_name COLLATE NOCASE, c.type COLLATE NOCASE, c.name COLLATE NOCASE
+                    """
+                )
+                rows = cur.fetchall()
+                if not rows:
+                    return (
+                        "There are no contacts in the facility_contacts table yet.",
+                        ["DB:analytics:facility_contacts:all"],
+                    )
+
+                lines = []
+                current_fac = None
+                for r in rows:
+                    fac_name = r["facility_name"] or r["facility_id"] or "(unknown facility)"
+                    if fac_name != current_fac:
+                        lines.append(f"\n{fac_name}:")
+                        current_fac = fac_name
+
+                    role = r["type"] or ""
+                    name = r["name"] or ""
+                    phone = r["phone"] or ""
+                    email = r["email"] or ""
+                    bits = [role, ":", name]
+                    contact = []
+                    if phone:
+                        contact.append(f"phone {phone}")
+                    if email:
+                        contact.append(f"email {email}")
+                    if contact:
+                        bits.append("(" + ", ".join(contact) + ")")
+                    lines.append("  - " + " ".join(b for b in bits if b))
+
+                answer = "Here are the facility contacts currently in the database:\n" + "\n".join(lines)
+                return (answer, ["DB:analytics:facility_contacts:all"])
+
+        return None  # unsupported entity
+
+    # ---------------- AGGREGATE QUERIES ----------------
+    if itype == "aggregate":
+        op = intent.get("operation")
+        metric = intent.get("metric")
+
+        if op == "avg" and metric in ("short_beds", "ltc_beds"):
+            col = metric
+            metric_label = "short-term beds per facility" if metric == "short_beds" else "long-term care beds per facility"
+
+            cur = conn.cursor()
+            cur.execute(
+                f"""
+                SELECT AVG({col}) AS avg_val,
+                       COUNT(*) AS n_facilities,
+                       SUM(CASE WHEN {col} IS NOT NULL THEN 1 ELSE 0 END) AS n_with_value
+                FROM facilities
+                """
+            )
+            row = cur.fetchone()
+            if not row or row["n_facilities"] == 0:
+                return (
+                    "I couldn't compute an average because there are no facilities in the database yet.",
+                    [f"DB:analytics:avg_{metric}"],
+                )
+
+            avg_val = row["avg_val"]
+            n_fac = row["n_facilities"]
+            n_with_val = row["n_with_value"] or 0
+
+            if avg_val is None or n_with_val == 0:
+                return (
+                    f"I couldn't compute an average for {metric_label} because none of the facilities have a value in the database.",
+                    [f"DB:analytics:avg_{metric}"],
+                )
+
+            avg_display = round(avg_val, 1)
+            answer = (
+                f"Across {n_fac} facilities in the database, the average {metric_label} "
+                f"(based on {n_with_val} facilities with a non-blank value) is about {avg_display} beds."
+            )
+            return (answer, [f"DB:analytics:avg_{metric}"])
+
+    # If we get here, the intent isn't supported yet
+    return None
 
 
 def get_system_prompt(conn: sqlite3.Connection) -> str:
@@ -1061,6 +1299,7 @@ def get_system_prompt(conn: sqlite3.Connection) -> str:
         "You are Evolv's internal copilot. Use Evolv's database facts about "
         "facilities, processes, and tools first. If unsure, say so."
     )
+
 
 
 # ---------------------------------------------------------------------------
@@ -1081,6 +1320,40 @@ def run_answer_pipeline(
         fac_id = detect_facility_id(normalized_q, conn, facility_aliases)
         fac_label = get_facility_label(fac_id, conn)
 
+        # -------------------------------------------------
+        # 1) Try analytics/listing path (Layer F)
+        #    e.g. "list all contacts at The Pearl",
+        #         "what is the average number of short term beds"
+        # -------------------------------------------------
+        analytics_intent = detect_analytics_intent(normalized_q)
+        if analytics_intent:
+            analytics_result = run_analytics_query(conn, analytics_intent, fac_id, fac_label)
+            if analytics_result is not None:
+                answer_text, sources = analytics_result
+                section_used = section_hint or ("Facility Details" if fac_id else "General")
+
+                # Log to user_qa_log (same as normal path)
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    INSERT INTO user_qa_log (ts, section, q, a, promoted, a_quality)
+                    VALUES (?, ?, ?, ?, 0, '')
+                    """,
+                    (now_iso(), section_used, question, answer_text),
+                )
+                log_id = cur.lastrowid
+                conn.commit()
+
+                return AskResponse(
+                    answer=answer_text,
+                    supporting_points=[],
+                    sources=sources,
+                    section_used=section_used,
+                    log_id=log_id,
+                )
+        # -------------------------------------------------
+        # 2) Normal retrieval + LLM path
+        # -------------------------------------------------
         qa_rows = search_qa_candidates(conn, normalized_q, section_hint, limit=40)
         fac_snippets = fetch_facility_knowledge(conn, fac_id, limit=40)
 
