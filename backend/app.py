@@ -586,6 +586,56 @@ def fetch_facility_knowledge(
     except sqlite3.Error:
         pass
 
+    # NEW: facility_contacts — key roles like Administrator, Therapy, etc.
+    try:
+        cur.execute(
+            """
+            SELECT type, name, phone, email, pref
+            FROM facility_contacts
+            WHERE facility_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (facility_id, limit),
+        )
+        for r in cur.fetchall():
+            role = (r[0] or "").strip()   # type
+            name = (r[1] or "").strip()   # name
+            phone = (r[2] or "").strip()  # phone
+            email = (r[3] or "").strip()  # email
+            pref  = (r[4] or "").strip()  # pref
+
+            # Need at least a role + name to be useful
+            if not (role and name):
+                continue
+
+            bits = [f"{role}: {name}"]
+
+            contact_bits = []
+            if phone:
+                contact_bits.append(f"phone {phone}")
+            if email:
+                contact_bits.append(f"email {email}")
+            if contact_bits:
+                bits.append("(" + ", ".join(contact_bits) + ")")
+
+            if pref:
+                bits.append(f"[prefers: {pref}]")
+
+            text = " ".join(bits)
+
+            snippets.append(
+                {
+                    "text": text,
+                    "source": f"DB:facility_contacts:{role}",
+                    "tags": "contacts",
+                    "weight": 2.0,  # slightly boosted vs generic data
+                }
+            )
+
+    except sqlite3.Error:
+        pass
+
     # Optional views from your existing schema, if present
     try:
         cur.execute(
@@ -610,7 +660,7 @@ def fetch_facility_knowledge(
     except sqlite3.Error:
         pass
 
-
+    # Facility summary (beds, EMR, etc.)
     try:
         cur.execute(
             """
@@ -673,8 +723,8 @@ def fetch_facility_knowledge(
     except sqlite3.Error:
         pass
 
-
     return snippets
+
 
 
 # ---------------------------------------------------------------------------
@@ -705,7 +755,7 @@ def cosine_sim(u: List[float], v: List[float]) -> float:
 def build_ranked_context(question: str, qa_rows, fac_snippets, top_k: int):
     candidates: List[Dict[str, Any]] = []
 
-    # Q&A rows
+    # Q&A rows (default weight 1.0)
     for r in qa_rows:
         text = (
             f"Q: {r['question']}\n"
@@ -713,9 +763,16 @@ def build_ranked_context(question: str, qa_rows, fac_snippets, top_k: int):
             f"Topics: {r['topics'] or ''}\n"
             f"Tags: {r['tags'] or ''}"
         )
-        candidates.append({"text": text, "source": f"Q&A:{r['id']}", "kind": "qa"})
+        candidates.append(
+            {
+                "text": text,
+                "source": f"Q&A:{r['id']}",
+                "kind": "qa",
+                "weight": 1.0,
+            }
+        )
 
-    # Facility snippets
+    # Facility snippets (reuse their weight, default 1.0)
     for sn in fac_snippets:
         txt = sn["text"]
         tags = sn.get("tags") or ""
@@ -725,6 +782,7 @@ def build_ranked_context(question: str, qa_rows, fac_snippets, top_k: int):
                 "text": text,
                 "source": sn.get("source") or "DB:facility_data",
                 "kind": "facility",
+                "weight": float(sn.get("weight", 1.0) or 1.0),
             }
         )
 
@@ -737,12 +795,15 @@ def build_ranked_context(question: str, qa_rows, fac_snippets, top_k: int):
 
     scored = []
     for c, emb in zip(candidates, ctx_embs):
-        scored.append((cosine_sim(q_emb, emb), c))
+        base_score = cosine_sim(q_emb, emb)
+        w = float(c.get("weight", 1.0) or 1.0)
+        scored.append((base_score * w, c))
 
     scored.sort(key=lambda x: x[0], reverse=True)
     top = [c for _, c in scored[: max(top_k, 1)]]
     sources = [c["source"] for c in top]
     return top, sources
+
 
 
 def get_system_prompt(conn: sqlite3.Connection) -> str:
