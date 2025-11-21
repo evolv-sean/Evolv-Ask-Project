@@ -879,6 +879,7 @@ def run_answer_pipeline(
     try:
         maps = load_dictionary_maps(conn)
         abbrev = maps["abbrev"]
+        synonym_map = maps["synonym"]         
         facility_aliases = maps["facility_aliases"]
 
         normalized_q = normalize_question_text(question, abbrev, synonym_map)
