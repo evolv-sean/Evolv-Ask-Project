@@ -1612,6 +1612,138 @@ def run_analytics_query(
     return None
 
 
+# ---------------------------------------------------------------------------
+# Helper: listables "lexicon" so the LLM can see what's actually in the DB
+# ---------------------------------------------------------------------------
+def get_listables_lexicon(conn: sqlite3.Connection) -> Dict[str, List[str]]:
+    """
+    Pull distinct values from v_facility_listables so the LLM knows
+    what is actually present in the data when writing SQL.
+
+    Returns a dict with keys:
+      - item_types
+      - community_partner_types
+      - additional_services
+      - insurance_plans
+    """
+    lex: Dict[str, List[str]] = {
+        "item_types": [],
+        "community_partner_types": [],
+        "additional_services": [],
+        "insurance_plans": [],
+    }
+    cur = conn.cursor()
+
+    try:
+        # All item_type values currently in the view
+        cur.execute(
+            """
+            SELECT DISTINCT item_type
+            FROM v_facility_listables
+            WHERE item_type IS NOT NULL AND item_type <> ''
+            ORDER BY item_type COLLATE NOCASE
+            """
+        )
+        lex["item_types"] = [
+            str(r[0]).strip() for r in cur.fetchall() if r[0] is not None
+        ]
+    except sqlite3.Error:
+        pass
+
+    try:
+        # Kinds of community partners (e.g. home health, hospice, DME)
+        cur.execute(
+            """
+            SELECT DISTINCT LOWER(item_subtype) AS t
+            FROM v_facility_listables
+            WHERE item_type = 'community_partner'
+              AND item_subtype IS NOT NULL
+              AND item_subtype <> ''
+            ORDER BY t
+            """
+        )
+        lex["community_partner_types"] = [
+            str(r[0]).strip() for r in cur.fetchall() if r[0] is not None
+        ]
+    except sqlite3.Error:
+        pass
+
+    try:
+        # Additional services – where things like "wound care", "respiratory therapy"
+        # live today
+        cur.execute(
+            """
+            SELECT DISTINCT LOWER(display_name) AS s
+            FROM v_facility_listables
+            WHERE item_type = 'additional_service'
+              AND display_name IS NOT NULL
+              AND display_name <> ''
+            ORDER BY s
+            """
+        )
+        rows = [str(r[0]).strip() for r in cur.fetchall() if r[0] is not None]
+        # Keep it to a reasonable length for the prompt
+        lex["additional_services"] = rows[:40]
+    except sqlite3.Error:
+        pass
+
+    try:
+        # Insurance plans (also useful for list queries)
+        cur.execute(
+            """
+            SELECT DISTINCT LOWER(display_name) AS p
+            FROM v_facility_listables
+            WHERE item_type = 'insurance_plan'
+              AND display_name IS NOT NULL
+              AND display_name <> ''
+            ORDER BY p
+            """
+        )
+        rows = [str(r[0]).strip() for r in cur.fetchall() if r[0] is not None]
+        lex["insurance_plans"] = rows[:40]
+    except sqlite3.Error:
+        pass
+
+    return lex
+
+
+# ---------------------------------------------------------------------------
+# Helper: make LLM-generated SQL on v_facility_listables case-insensitive
+# ---------------------------------------------------------------------------
+import re  # (already imported at top of file, but safe to reuse here)
+
+def _normalize_listables_sql_case(sql: str) -> str:
+    """
+    Rewrite simple text filters to use LOWER(column) so that
+    'home health' will match 'Home Health', 'HOME HEALTH', etc.
+
+    We only touch a few known text columns:
+      - item_type, item_subtype
+      - state, corporate_group
+      - display_name, details
+    """
+    # Equality on text columns: column = 'Value'
+    for col in ("item_type", "item_subtype", "state", "corporate_group"):
+        sql = re.sub(
+            rf"({col}\s*=\s*)'([^']+)'",
+            lambda m, col=col: f"LOWER({col}) = '{m.group(2).lower()}'",
+            sql,
+            flags=re.IGNORECASE,
+        )
+
+    # LIKE on text columns: column LIKE '%Value%'
+    for col in ("display_name", "details", "item_subtype", "item_type"):
+        sql = re.sub(
+            rf"({col}\s+LIKE\s*)'([^']+)'",
+            lambda m, col=col: f"LOWER({col}) LIKE '{m.group(2).lower()}'",
+            sql,
+            flags=re.IGNORECASE,
+        )
+
+    return sql
+
+
+
 def try_llm_listables_query(
     conn: sqlite3.Connection,
     question: str,
@@ -1634,9 +1766,24 @@ def try_llm_listables_query(
         return None
 
     q_lower = question.lower()
+
+    # Original triggers for list/aggregate style questions
     trigger_phrases = ["list ", "show ", "how many", "count ", "average", "avg "]
-    if not any(tp in q_lower for tp in trigger_phrases):
+    base_trigger = any(tp in q_lower for tp in trigger_phrases)
+
+    # NEW: also treat "Which facilities ..." / "What facilities ..." as list-intent
+    which_facilities_pattern = (
+        q_lower.startswith("which facilities")
+        or "which facilities " in q_lower
+        or q_lower.startswith("what facilities")
+        or "what facilities " in q_lower
+    )
+
+    if not (base_trigger or which_facilities_pattern):
         return None
+
+    # NEW: peek into v_facility_listables to see what is actually present
+    lex = get_listables_lexicon(conn)
 
     schema_desc = (
         "You have a single SQLite view named v_facility_listables with columns:\n"
@@ -1663,10 +1810,50 @@ def try_llm_listables_query(
         "Important rules:\n"
         "- For facility-level aggregates (beds, avg_dcs), ALWAYS filter item_type = 'facility'.\n"
         "- For lists of facilities, use item_type = 'facility'.\n"
-        "- For lists of home health / hospice / DME, use item_type = 'community_partner' and item_subtype.\n"
+        "- For lists of home health / hospice / DME, use item_type = 'community_partner' and the item_subtype for the kind of partner.\n"
         "- For lists of insurance plans, use item_type = 'insurance_plan'.\n"
-        "- For lists of additional services, use item_type = 'additional_service'.\n"
+        "- For lists of additional services (like wound care), use item_type = 'additional_service'.\n"
+        "- When matching text (state, corporate_group, item_type, item_subtype, display_name, details), it is safest to use LOWER(column) and lowercase constants, e.g. LOWER(item_subtype) = 'home health' or LOWER(display_name) LIKE '%wound care%'.\n"
+        "- For questions like 'Which facilities offer wound care?', filter rows where item_type = 'additional_service' and the service name in display_name mentions the requested service (for example, LOWER(display_name) LIKE '%wound care%'), then return DISTINCT facility_name (and optionally city/state).\n"
     )
+
+    # NEW: append concrete examples from the actual data so the model
+    # knows which strings (e.g. 'wound care', 'respiratory therapy',
+    # 'home health') are present and where.
+    extra_lines: List[str] = []
+
+    if lex.get("item_types"):
+        extra_lines.append(
+            "Current item_type values in this database: "
+            + ", ".join(sorted(lex["item_types"]))
+        )
+
+    if lex.get("community_partner_types"):
+        extra_lines.append(
+            "Known community_partner item_subtype values (types of community partners): "
+            + "; ".join(lex["community_partner_types"][:20])
+        )
+
+    if lex.get("additional_services"):
+        extra_lines.append(
+            "Examples of additional services (item_type = 'additional_service', from display_name): "
+            + "; ".join(lex["additional_services"][:20])
+        )
+
+    if lex.get("insurance_plans"):
+        extra_lines.append(
+            "Examples of insurance plans (item_type = 'insurance_plan', from display_name): "
+            + "; ".join(lex["insurance_plans"][:20])
+        )
+
+    if extra_lines:
+        schema_desc += (
+            "\nHere are some example values currently present in v_facility_listables:\n"
+            + "- " + "\n- ".join(extra_lines)
+            + "\n"
+        )
+
+
 
     system_msg = (
         "You are a read-only SQL generator for a SQLite database.\n"
@@ -1722,6 +1909,9 @@ def try_llm_listables_query(
     if any(b in sql_lower for b in banned):
         return None
 
+    # Make text filters case-insensitive before running
+    sql = _normalize_listables_sql_case(sql)
+
     cur = conn.cursor()
     try:
         cur.execute(sql)
@@ -1730,8 +1920,12 @@ def try_llm_listables_query(
         print("[listables-sql] SQL error:", e, " SQL:", sql)
         return None
 
+    # If the SQL ran but returned no rows, fall back to the normal pipeline
+    # instead of giving a hard "no matching rows" message.
     if not rows:
-        return ("I couldn't find any matching rows in v_facility_listables for that question.", ["DB:listables:empty"])
+        print("[listables-sql] No rows for SQL:", sql)
+        return None
+
 
     col_names = [d[0] for d in cur.description] if cur.description else []
     src = "DB:listables"
