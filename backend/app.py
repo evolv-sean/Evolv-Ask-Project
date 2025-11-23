@@ -445,11 +445,13 @@ def load_dictionary_maps(conn: sqlite3.Connection) -> Dict[str, Dict[str, Any]]:
 
         if kind == "abbr":
             abbrev_map[key] = val
-        elif kind == "synonym":
+        elif kind in ("synonym", "alias"):
+            # Treat plain "alias" rows as synonyms for normalization
             synonym_map[key] = val
         elif kind == "facility_alias":
             # Here we map alias text -> canonical facility *name*.
             facility_aliases[key] = val
+
 
     return {
         "abbrev": abbrev_map,
