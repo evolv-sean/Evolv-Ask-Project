@@ -53,9 +53,9 @@
   @media (max-width: 900px){ #tab-qa .card .row { grid-template-columns:1fr; } }
   #tab-qa .card .ipt,
   #tab-qa .card textarea,
-  #tab-qa .card select{
-    width:100%; max-width:100%; display:block;
-  }
+  #tab-qa .card select,
+  #tab-qa .card input[type="text"],
+  #tab-qa .card input[type="search"] { width:100%; max-width:100%; display:block; }
   #tab-qa .card textarea { resize:vertical; }
   #tab-qa .card .filters { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
   #tab-qa .card .filters > * { min-width:0; }
@@ -334,80 +334,6 @@
   }
 </style>
 
-<!-- ===== Facility Facts Tutorial overlay styles ===== -->
-<style>
-  /* Overlay container */
-  #factsTutorialOverlay{
-    position:fixed;
-    inset:0;
-    pointer-events:none;
-    z-index:9999;
-    opacity:0;
-    transition:opacity 220ms ease-out;
-  }
-  #factsTutorialOverlay.is-visible{
-    opacity:1;
-  }
-  #factsTutorialOverlay .facts-tut-backdrop{
-    position:absolute;
-    inset:0;
-    background:rgba(15,23,42,0.32);
-    backdrop-filter:blur(2px);
-  }
-
-  /* Ghost cursor */
-  .facts-tut-cursor{
-    position:absolute;
-    width:22px;
-    height:22px;
-    border-radius:50%;
-    border:2px solid #0f172a;
-    background:#ffffff;
-    box-shadow:0 4px 10px rgba(15,23,42,0.35);
-    transform:translate(var(--facts-cursor-x,50vw),var(--facts-cursor-y,70vh)) scale(1);
-    transition:transform 600ms ease-out, box-shadow 200ms ease-out;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-size:10px;
-    font-weight:600;
-    color:#0f172a;
-  }
-  .facts-tut-cursor::after{
-    content:"";
-    border-style:solid;
-    border-width:0 0 10px 8px;
-    border-color:transparent transparent #0f172a transparent;
-    position:absolute;
-    left:2px;
-    top:2px;
-    transform:rotate(-35deg);
-  }
-  .facts-tut-cursor.is-clicking{
-    animation:factsCursorClick 260ms ease-out;
-  }
-  @keyframes factsCursorClick{
-    0%  { transform:translate(var(--facts-cursor-x),var(--facts-cursor-y)) scale(1); }
-    40% { transform:translate(var(--facts-cursor-x),var(--facts-cursor-y)) scale(0.8); }
-    100%{ transform:translate(var(--facts-cursor-x),var(--facts-cursor-y)) scale(1); }
-  }
-
-  /* Gentle zoom on Facts modal */
-  #facFactsDlg .modal{
-    transform-origin:center top;
-    transition:transform 220ms ease-out, box-shadow 220ms ease-out;
-  }
-  body.facts-tut-zoom #facFactsDlg .modal{
-    transform:scale(1.03) translateY(-3px);
-    box-shadow:0 24px 60px rgba(15,23,42,0.45);
-  }
-
-  /* Field/button highlight during steps */
-  .facts-tut-highlight{
-    box-shadow:0 0 0 3px rgba(59,130,246,0.55) !important;
-    border-color:#3b82f6 !important;
-  }
-</style>
 
 </head>
 
@@ -1874,16 +1800,10 @@ function renderAliasList(items){
     </div>
 
     <div class="e-card" style="padding:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <h3 style="margin:0">Existing Facilities</h3>
-        <div style="display:flex;align-items:center;gap:8px">
-          <!-- New: Facts tutorial button -->
-          <button type="button" class="btn btn-secondary" onclick="startFacilityFactsTutorial()">
-            Facts tutorial
-          </button>
-          <input id="facSearch" class="ipt" type="search" placeholder="Search by name or corporate group" 
-                 oninput="loadFacilities(this.value.trim())" style="max-width:320px"/>
-        </div>
+        <input id="facSearch" class="ipt" type="search" placeholder="Search by name or corporate group" 
+               oninput="loadFacilities(this.value.trim())" style="max-width:320px"/>
       </div>
 
       <div id="facList" style="display:grid;gap:10px">
@@ -1967,12 +1887,6 @@ function renderAliasList(items){
 
 
   <div class="e-sp"></div>
-</div>
-
-<!-- Tutorial overlay DOM (sits on top of everything) -->
-<div id="factsTutorialOverlay" aria-hidden="true">
-  <div class="facts-tut-backdrop"></div>
-  <div class="facts-tut-cursor"></div>
 </div>
 
 <!-- ===== Tabs controller (hash-aware) ===== -->
@@ -2506,202 +2420,6 @@ window.setQuality = setQuality;
 
 
   window.ulogDelete = ulogDelete; window.ulogPromote = ulogPromote; window.ulogPromoteSubmit = ulogPromoteSubmit; })();
-</script>
-
-<!-- ===== Facility Facts Tutorial script ===== -->
-<script>
-(function(){
-  const TYPED_FACT =
-    "Use Vent-care USA for all Oxygen (O2) orders.";
-  const TYPED_TAGS =
-    "Oxygen, O2, preferred provider";
-
-  function wait(ms){
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  function moveCursorTo(x, y){
-    const root = document.documentElement;
-    root.style.setProperty("--facts-cursor-x", x + "px");
-    root.style.setProperty("--facts-cursor-y", y + "px");
-  }
-
-  function clickPulse(cursorEl){
-    if (!cursorEl) return;
-    cursorEl.classList.add("is-clicking");
-    setTimeout(()=> cursorEl.classList.remove("is-clicking"), 260);
-  }
-
-  function getCenter(el){
-    const r = el.getBoundingClientRect();
-    return {
-      x: r.left + r.width / 2,
-      y: r.top + r.height / 2
-    };
-  }
-
-  async function typeInto(el, text, perCharMs){
-    if (!el) return;
-    el.focus();
-    el.value = "";
-    for (const ch of text){
-      el.value += ch;
-      await wait(perCharMs);
-    }
-  }
-
-  function clearHighlights(){
-    document.querySelectorAll(".facts-tut-highlight")
-      .forEach(el => el.classList.remove("facts-tut-highlight"));
-  }
-
-  async function ensureFacilityTabActive(){
-    const btn = document.getElementById("e-tabbtn-fac");
-    if (!btn) return;
-    if (!btn.classList.contains("e-active")){
-      btn.click();
-      await wait(500);
-    }
-  }
-
-  async function getFirstFactsButton(){
-    // first facility row’s Facts button (it’s the first .icon-btn in each .fac-row)
-    for (let i=0; i<12; i++){
-      const btn = document.querySelector(
-        "#tab-fac .fac-row .icon-btn"
-      );
-      if (btn) return btn;
-      await wait(200);
-    }
-    return null;
-  }
-
-  async function waitForFactsDialogOpen(){
-    const dlg = document.getElementById("facFactsDlg");
-    if (!dlg) return null;
-
-    for (let i=0; i<15; i++){
-      if (dlg.open) return dlg;
-      await wait(150);
-    }
-    return null;
-  }
-
-  async function runFactsTutorial(){
-    const overlay = document.getElementById("factsTutorialOverlay");
-    const cursor  = overlay ? overlay.querySelector(".facts-tut-cursor") : null;
-    if (!overlay || !cursor) return;
-
-    overlay.classList.add("is-visible");
-
-    try {
-      // STEP 0: Make sure Facility tab is active
-      await ensureFacilityTabActive();
-
-      // STEP 1: Move to Facts button
-      const factsBtn = await getFirstFactsButton();
-      if (!factsBtn){
-        overlay.classList.remove("is-visible");
-        return;
-      }
-
-      const factsCenter = getCenter(factsBtn);
-      moveCursorTo(factsCenter.x, factsCenter.y + 6); // a little lower
-      await wait(700);
-      clickPulse(cursor);
-
-      // Actually open the modal using the real button
-      factsBtn.click();
-
-      // STEP 2: Wait for dialog & zoom it
-      const dlg = await waitForFactsDialogOpen();
-      if (!dlg){
-        overlay.classList.remove("is-visible");
-        return;
-      }
-
-      const textArea = document.getElementById("factsText");
-      const tagsInput = document.getElementById("factsTags");
-      const addBtn = dlg.querySelector(".toolbar button[type='submit']");
-      const closeBtn = dlg.querySelector(".toolbar .btn.btn-secondary");
-
-      document.body.classList.add("facts-tut-zoom");
-
-      // Move cursor to main free-text Fact box
-      if (textArea){
-        const c = getCenter(textArea);
-        moveCursorTo(c.x - 40, c.y - 10); // slightly to upper-left
-        clearHighlights();
-        textArea.classList.add("facts-tut-highlight");
-        await wait(700);
-
-        // STEP 3: Type the sample fact
-        await typeInto(textArea, TYPED_FACT, 45);
-        await wait(400);
-      }
-
-      // STEP 4: Move to Tags field & type tags
-      if (tagsInput){
-        const cTags = getCenter(tagsInput);
-        moveCursorTo(cTags.x - 40, cTags.y - 6);
-        clearHighlights();
-        tagsInput.classList.add("facts-tut-highlight");
-        await wait(500);
-
-        await typeInto(tagsInput, TYPED_TAGS, 40);
-        await wait(450);
-      }
-
-      // STEP 5: Move near Add Fact button (no real submit)
-      if (addBtn){
-        const cAdd = getCenter(addBtn);
-        moveCursorTo(cAdd.x, cAdd.y);
-        clearHighlights();
-        addBtn.classList.add("facts-tut-highlight");
-        await wait(550);
-        clickPulse(cursor);
-        await wait(400);
-      }
-
-      // STEP 6: Move to Close and actually close dialog
-      if (closeBtn){
-        const cClose = getCenter(closeBtn);
-        moveCursorTo(cClose.x, cClose.y);
-        clearHighlights();
-        closeBtn.classList.add("facts-tut-highlight");
-        await wait(550);
-        clickPulse(cursor);
-
-        // Close the real dialog
-        closeBtn.click();
-        await wait(400);
-      }
-
-    } finally {
-      // Clean up: zoom off, highlights off, clear typed demo text
-      document.body.classList.remove("facts-tut-zoom");
-      clearHighlights();
-      const t = document.getElementById("factsText");
-      const tg = document.getElementById("factsTags");
-      if (t) t.value = "";
-      if (tg) tg.value = "";
-
-      overlay.classList.remove("is-visible");
-    }
-  }
-
-  // Expose a global function so you can call it from anywhere
-  window.startFacilityFactsTutorial = runFactsTutorial;
-
-  // OPTIONAL: auto-run once on load (if you ever want this)
-  /*
-  window.addEventListener("DOMContentLoaded", () => {
-    setTimeout(() => {
-      startFacilityFactsTutorial();
-    }, 1200);
-  });
-  */
-})();
 </script>
 
 </body>
