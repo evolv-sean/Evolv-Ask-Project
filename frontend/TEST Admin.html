@@ -352,7 +352,6 @@
       <button class="e-tab-btn e-active"data-tab="fac"  role="tab" aria-selected="false" id="e-tabbtn-fac">Facility Details</button>
       <button class="e-tab-btn"         data-tab="qa"   role="tab" aria-selected="true"  id="e-tabbtn-qa">Q&amp;A</button>
       <button class="e-tab-btn"         data-tab="abv"  role="tab" aria-selected="false" id="e-tabbtn-abv">Dictionary</button>
-      <button class="e-tab-btn"         data-tab="analytics" role="tab" aria-selected="false" id="e-tabbtn-analytics">Analytics / Lists</button>
       <button class="e-tab-btn"         data-tab="ulog" role="tab" aria-selected="false" id="e-tabbtn-ulog">User Q&amp;A Log</button>
     </div>
     <div class="e-tab-rail"></div>
@@ -1645,102 +1644,6 @@ function renderAliasList(items){
   </dialog>
 </section>
 
-  <!-- Analytics / Lists config -->
-  <section id="tab-analytics" class="e-tab-panel">
-    <div class="e-card" style="padding:16px;margin-bottom:12px">
-      <h3 style="margin:0 0 8px">Analytics / Listing Rules</h3>
-      <div class="e-muted" style="margin-bottom:10px">
-        Configure which questions should be answered directly from the database (lists, counts, averages)
-        without using the AI model. Each rule maps trigger phrases to a SQL query.
-      </div>
-    </div>
-
-    <div class="e-card" style="padding:16px;margin-bottom:12px">
-      <h4 style="margin-top:0;margin-bottom:8px">Edit rule</h4>
-      <div class="e-muted" style="margin-bottom:10px">
-        <strong>Kind</strong> = "List" or "Aggregate". 
-        <strong>Scope</strong> = "All facilities" or "Single facility" (requires a facility in the question).<br/>
-        <strong>Triggers</strong>: use <code>;</code> between phrases (simple "contains" match).<br/>
-        In SQL, you can use <code>{{facility_id}}</code> in the WHERE clause for facility-scoped rules.<br/>
-        For aggregates, you can use <code>{value}</code> or <code>{value_rounded}</code> in the answer prefix.
-      </div>
-
-      <div class="an-grid">
-        <div>
-          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">
-            Rule ID (optional)
-          </label>
-          <input id="an-id" class="ipt" placeholder="auto-from-name if blank"/>
-        </div>
-
-        <div>
-          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">
-            Kind
-          </label>
-          <select id="an-kind" class="ipt">
-            <option value="list">List</option>
-            <option value="aggregate">Aggregate</option>
-          </select>
-        </div>
-
-        <div>
-          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">
-            Scope
-          </label>
-          <select id="an-scope" class="ipt">
-            <option value="global">All facilities</option>
-            <option value="facility">Single facility</option>
-          </select>
-        </div>
-
-        <div style="grid-column:1/-1">
-          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">
-            Name
-          </label>
-          <input id="an-name" class="ipt" placeholder="e.g. List contacts for a facility"/>
-        </div>
-
-        <div style="grid-column:1/-1">
-          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">
-            Trigger phrases (separate with <code>;</code>)
-          </label>
-          <textarea id="an-triggers" rows="2" class="ipt" placeholder="list contacts at; show contacts at"></textarea>
-        </div>
-
-        <div style="grid-column:1/-1">
-          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">
-            SQL to run
-          </label>
-          <textarea id="an-sql" rows="4" class="ipt" placeholder="SELECT ... FROM ..."></textarea>
-        </div>
-
-        <div style="grid-column:1/-1">
-          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">
-            Answer prefix (optional)
-          </label>
-          <textarea id="an-prefix" rows="2" class="ipt" placeholder="Here are the results:"></textarea>
-        </div>
-
-        <div style="grid-column:1/-1">
-          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">
-            Answer suffix (optional)
-          </label>
-          <textarea id="an-suffix" rows="2" class="ipt" placeholder=""></textarea>
-        </div>
-      </div>
-
-      <div style="display:flex;justify-content:flex-end;gap:8px">
-        <button type="button" class="btn btn-secondary" id="an-new-rule">New rule</button>
-        <button type="button" class="btn" id="an-save-rule">Save rule</button>
-      </div>
-    </div>
-
-    <div class="e-card" style="padding:16px;margin-bottom:12px">
-      <h4 style="margin-top:0;margin-bottom:8px">Existing rules</h4>
-      <div id="an-rule-list"></div>
-    </div>
-  </section>
-
 
   <!-- User Q&A Log tab (placeholder) -->
   
@@ -1994,8 +1897,7 @@ function renderAliasList(items){
     qa:   document.getElementById('tab-qa'),
     abv:  document.getElementById('tab-abv'),
     ulog: document.getElementById('tab-ulog'),
-    fac:  document.getElementById('tab-fac'),     
-    analytics: document.getElementById('tab-analytics')   
+    fac:  document.getElementById('tab-fac')   
   };
 
   function activate(tab){
@@ -2013,11 +1915,6 @@ function renderAliasList(items){
     if (tab === 'fac' && typeof loadFacilities === 'function') {
       const q = (document.getElementById('facSearch')?.value || '').trim();
       loadFacilities(q);
-    }
-
-    // NEW: lazy-load analytics config when opening that tab
-    if (tab === 'analytics' && typeof loadAnalyticsConfig === 'function') {
-      loadAnalyticsConfig();
     }
 
     if(location.hash !== '#'+tab){ history.replaceState(null, '', '#'+tab); }
@@ -2176,190 +2073,6 @@ function renderAliasList(items){
 
 })();
 
-</script>
-
-<script>
-// ======= Analytics / Listing config (uses /admin/analytics/*) =======
-(function(){
-  const state = { rules: [], editingIndex: -1 };
-
-  const root = document.getElementById('tab-analytics');
-  if (!root) return;
-
-  const form = {
-    id:     root.querySelector('#an-id'),
-    kind:   root.querySelector('#an-kind'),
-    name:   root.querySelector('#an-name'),
-    trig:   root.querySelector('#an-triggers'),
-    scope:  root.querySelector('#an-scope'),
-    sql:    root.querySelector('#an-sql'),
-    prefix: root.querySelector('#an-prefix'),
-    suffix: root.querySelector('#an-suffix')
-  };
-  const listEl = root.querySelector('#an-rule-list');
-  const saveBtn = root.querySelector('#an-save-rule');
-  const newBtn  = root.querySelector('#an-new-rule');
-
-  function renderList(){
-    if (!listEl) return;
-    if (!state.rules.length){
-      listEl.innerHTML = '<p class="muted">No analytics/listing rules yet. Use the form above to add one.</p>';
-      return;
-    }
-    const rows = state.rules.map((r, idx)=>{
-      const kind = (r.kind || '').toLowerCase();
-      const triggers = Array.isArray(r.triggers) ? r.triggers.join('; ') : (r.triggers || '');
-      return `
-        <tr data-idx="${idx}">
-          <td style="font-weight:600">${escapeHtml(r.name || '')}</td>
-          <td>${escapeHtml(kind)}</td>
-          <td><code>${escapeHtml(r.id || '')}</code></td>
-          <td>${escapeHtml(triggers)}</td>
-          <td>${escapeHtml(r.scope || '')}</td>
-          <td style="text-align:right">
-            <button type="button" class="iconbtn" data-action="edit">Edit</button>
-            <button type="button" class="iconbtn" data-action="delete">Delete</button>
-          </td>
-        </tr>`;
-    }).join('');
-    listEl.innerHTML = `
-      <table class="tbl">
-        <thead>
-          <tr>
-            <th>Name</th><th>Kind</th><th>ID</th><th>Triggers</th><th>Scope</th><th></th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>`;
-  }
-
-  function clearForm(){
-    state.editingIndex = -1;
-    form.id.value = '';
-    form.kind.value = 'list';
-    form.name.value = '';
-    form.trig.value = '';
-    form.scope.value = 'global';
-    form.sql.value = '';
-    form.prefix.value = '';
-    form.suffix.value = '';
-  }
-
-  function fillForm(idx){
-    const r = state.rules[idx];
-    if (!r) return;
-    state.editingIndex = idx;
-    form.id.value = r.id || '';
-    form.kind.value = r.kind || 'list';
-    form.name.value = r.name || '';
-    const triggers = Array.isArray(r.triggers) ? r.triggers.join('; ') : (r.triggers || '');
-    form.trig.value = triggers;
-    form.scope.value = r.scope || 'global';
-    form.sql.value = r.sql || '';
-    form.prefix.value = r.answer_prefix || '';
-    form.suffix.value = r.answer_suffix || '';
-  }
-
-  function readForm(){
-    const id = form.id.value.trim() || form.name.value.trim().toLowerCase().replace(/\s+/g,'_');
-    const kind = form.kind.value.trim() || 'list';
-    const name = form.name.value.trim();
-    const trigRaw = form.trig.value || '';
-    const triggers = trigRaw.split(';').map(s=>s.trim()).filter(Boolean);
-    const scope = form.scope.value.trim() || 'global';
-    const sql = form.sql.value.trim();
-    const prefix = form.prefix.value || '';
-    const suffix = form.suffix.value || '';
-    if (!name || !sql){
-      alert('Name and SQL are required.');
-      return null;
-    }
-    return {
-      id, kind, name,
-      triggers,
-      scope,
-      sql,
-      answer_prefix: prefix,
-      answer_suffix: suffix
-    };
-  }
-
-  async function loadAnalyticsConfig(){
-    try{
-      const res = await api('/admin/analytics/config');
-      const cfg = res.config || {};
-      let rules = cfg.rules || [];
-      if (!Array.isArray(rules)) rules = [];
-      // ensure triggers are arrays
-      rules = rules.map(r=>{
-        if (typeof r.triggers === 'string'){
-          r.triggers = r.triggers.split(';').map(s=>s.trim()).filter(Boolean);
-        }
-        return r;
-      });
-      state.rules = rules;
-      renderList();
-      clearForm();
-    }catch(err){
-      console.error('loadAnalyticsConfig failed', err);
-      if (listEl){
-        listEl.innerHTML = '<p style="color:#b00020">Could not load analytics config.</p>';
-      }
-    }
-  }
-
-  async function saveConfig(){
-    const payload = { rules: state.rules };
-    const fd = new FormData();
-    fd.append('config_json', JSON.stringify(payload));
-    await api('/admin/analytics/config/save', {
-      method: 'POST',
-      body: fd
-    });
-  }
-
-  if (newBtn){
-    newBtn.addEventListener('click', ()=>{
-      clearForm();
-      form.name.focus();
-    });
-  }
-  if (saveBtn){
-    saveBtn.addEventListener('click', async ()=>{
-      const rule = readForm();
-      if (!rule) return;
-      if (state.editingIndex >= 0){
-        state.rules[state.editingIndex] = rule;
-      }else{
-        state.rules.push(rule);
-      }
-      await saveConfig();
-      await loadAnalyticsConfig();
-    });
-  }
-
-  if (listEl){
-    listEl.addEventListener('click', async (ev)=>{
-      const btn = ev.target.closest('button');
-      if (!btn) return;
-      const row = btn.closest('tr');
-      const idx = row ? parseInt(row.dataset.idx, 10) : -1;
-      if (Number.isNaN(idx) || idx < 0) return;
-      if (btn.dataset.action === 'edit'){
-        fillForm(idx);
-        window.scrollTo({ top: root.offsetTop - 20, behavior: 'smooth' });
-      }else if (btn.dataset.action === 'delete'){
-        if (!confirm('Delete this rule?')) return;
-        state.rules.splice(idx, 1);
-        await saveConfig();
-        await loadAnalyticsConfig();
-      }
-    });
-  }
-
-  // Expose loader for tab activation
-  window.loadAnalyticsConfig = loadAnalyticsConfig;
-})();
 </script>
 
 
