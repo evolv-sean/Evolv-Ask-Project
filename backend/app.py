@@ -200,8 +200,197 @@ def init_db():
             ),
         )
 
+    # -------------------------------------------------------------------
+    # v_facility_listables view: single place for list + aggregate queries
+    # NOTE: When you add new columns you want to filter on, edit this SQL.
+    # -------------------------------------------------------------------
+    try:
+        cur.executescript(
+            '''
+            DROP VIEW IF EXISTS v_facility_listables;
+
+            CREATE VIEW v_facility_listables AS
+
+            -- 1) One row per facility with summary metrics
+            SELECT
+                f.facility_id,
+                f.facility_name,
+                f.city,
+                f.state,
+                f.zip,
+                f.county,
+                f.corporate_group,
+                vs.emr,
+                vs.emr_other,
+                vs.pt_emr,
+                vs.orders,
+                vs.orders_other,
+                vs.outpatient_pt,
+                vs.short_beds,
+                vs.ltc_beds,
+                vs.avg_dcs,
+                'facility' AS item_type,
+                ''         AS item_subtype,
+                f.facility_name AS display_name,
+                TRIM(
+                    COALESCE(f.city, '') ||
+                    CASE
+                        WHEN f.city IS NOT NULL AND f.city <> '' AND f.state IS NOT NULL AND f.state <> ''
+                            THEN ', '
+                        ELSE ''
+                    END ||
+                    COALESCE(f.state, '') ||
+                    CASE
+                        WHEN f.corporate_group IS NOT NULL AND f.corporate_group <> ''
+                            THEN ' – ' || f.corporate_group
+                        ELSE ''
+                    END
+                ) AS details
+            FROM facilities f
+            LEFT JOIN v_facility_summary vs
+                ON vs.facility_id = f.facility_id
+
+            UNION ALL
+
+            -- 2) Additional services
+            SELECT
+                fas.facility_id,
+                f.facility_name,
+                f.city,
+                f.state,
+                f.zip,
+                f.county,
+                f.corporate_group,
+                NULL AS emr,
+                NULL AS emr_other,
+                NULL AS pt_emr,
+                NULL AS orders,
+                NULL AS orders_other,
+                NULL AS outpatient_pt,
+                NULL AS short_beds,
+                NULL AS ltc_beds,
+                NULL AS avg_dcs,
+                'additional_service' AS item_type,
+                ''                   AS item_subtype,
+                fas.service          AS display_name,
+                ''                   AS details
+            FROM facility_additional_services fas
+            JOIN facilities f
+                ON f.facility_id = fas.facility_id
+
+            UNION ALL
+
+            -- 3) Insurance plans
+            SELECT
+                fip.facility_id,
+                f.facility_name,
+                f.city,
+                f.state,
+                f.zip,
+                f.county,
+                f.corporate_group,
+                NULL AS emr,
+                NULL AS emr_other,
+                NULL AS pt_emr,
+                NULL AS orders,
+                NULL AS orders_other,
+                NULL AS outpatient_pt,
+                NULL AS short_beds,
+                NULL AS ltc_beds,
+                NULL AS avg_dcs,
+                'insurance_plan' AS item_type,
+                ''               AS item_subtype,
+                fip.plan         AS display_name,
+                ''               AS details
+            FROM facility_insurance_plans fip
+            JOIN facilities f
+                ON f.facility_id = fip.facility_id
+
+            UNION ALL
+
+            -- 4) Community partners (home health, hospice, DME, etc.)
+            SELECT
+                fp.facility_id,
+                f.facility_name,
+                f.city,
+                f.state,
+                f.zip,
+                f.county,
+                f.corporate_group,
+                NULL AS emr,
+                NULL AS emr_other,
+                NULL AS pt_emr,
+                NULL AS orders,
+                NULL AS orders_other,
+                NULL AS outpatient_pt,
+                NULL AS short_beds,
+                NULL AS ltc_beds,
+                NULL AS avg_dcs,
+                'community_partner' AS item_type,
+                fp.type             AS item_subtype,
+                fp.name             AS display_name,
+                TRIM(
+                    CASE
+                        WHEN fp.ins_only IS NOT NULL AND fp.ins_only <> ''
+                            THEN 'Insurance only: ' || fp.ins_only
+                        ELSE ''
+                    END ||
+                    CASE
+                        WHEN (fp.ins_only IS NOT NULL AND fp.ins_only <> '')
+                             AND (fp.insurance IS NOT NULL AND fp.insurance <> '')
+                            THEN ' – '
+                        ELSE ''
+                    END ||
+                    COALESCE(fp.insurance, '')
+                ) AS details
+            FROM facility_partners fp
+            JOIN facilities f
+                ON f.facility_id = fp.facility_id
+
+            UNION ALL
+
+            -- 5) Contacts (Administrator, DON, UR, etc.)
+            SELECT
+                fc.facility_id,
+                f.facility_name,
+                f.city,
+                f.state,
+                f.zip,
+                f.county,
+                f.corporate_group,
+                NULL AS emr,
+                NULL AS emr_other,
+                NULL AS pt_emr,
+                NULL AS orders,
+                NULL AS orders_other,
+                NULL AS outpatient_pt,
+                NULL AS short_beds,
+                NULL AS ltc_beds,
+                NULL AS avg_dcs,
+                'contact'   AS item_type,
+                fc.type     AS item_subtype,
+                fc.name     AS display_name,
+                TRIM(
+                    COALESCE(fc.phone, '') ||
+                    CASE
+                        WHEN fc.phone IS NOT NULL AND fc.phone <> '' AND fc.email IS NOT NULL AND fc.email <> ''
+                            THEN ' | '
+                        ELSE ''
+                    END ||
+                    COALESCE(fc.email, '')
+                ) AS details
+            FROM facility_contacts fc
+            JOIN facilities f
+                ON f.facility_id = fc.facility_id;
+            '''
+        )
+    except sqlite3.Error as e:
+        # Don't break app startup if the view can't be created (e.g. missing tables in a fresh DB)
+        print("[init_db] Warning: could not create v_facility_listables view:", e)
+
     conn.commit()
     conn.close()
+
 
 
 init_db()
@@ -574,76 +763,6 @@ async def admin_dictionary_delete(
         return {"ok": True}
     finally:
         conn.close()
-
-
-
-# ---------------------------------------------------------------------------
-# Admin: Analytics / Listing config (stored in ai_settings.analytics_config)
-# ---------------------------------------------------------------------------
-
-@app.get("/admin/analytics/config")
-async def admin_analytics_config_get(request: Request):
-    """
-    Return the analytics/listing rules config.
-
-    Shape:
-      { ok: True, config: { rules: [ { id, kind, name, triggers, scope,
-                                      sql, answer_prefix, answer_suffix }, ... ] } }
-    """
-    require_admin(request)
-    conn = get_db()
-    try:
-        cfg = load_analytics_config(conn)
-        return {"ok": True, "config": cfg}
-    finally:
-        conn.close()
-
-
-@app.post("/admin/analytics/config/save")
-async def admin_analytics_config_save(
-    request: Request,
-    config_json: str = Form(...),
-):
-    """
-    Save the analytics/listing rules config into ai_settings.analytics_config.
-
-    Accepts either:
-      - a full JSON object: { "rules": [ ... ] }
-      - or a bare list:      [ ... ]  (will be wrapped as { "rules": [...] })
-    """
-    require_admin(request)
-
-    try:
-        data = json.loads(config_json)
-    except json.JSONDecodeError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
-
-    if isinstance(data, list):
-        cfg = {"rules": data}
-    elif isinstance(data, dict):
-        rules = data.get("rules", [])
-        if not isinstance(rules, list):
-            rules = []
-        cfg = {"rules": rules}
-    else:
-        cfg = {"rules": []}
-
-    conn = get_db()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO ai_settings (key, value)
-            VALUES ('analytics_config', ?)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value
-            """,
-            (json.dumps(cfg),),
-        )
-        conn.commit()
-        return {"ok": True}
-    finally:
-        conn.close()
-
 
 
 # ---------------------------------------------------------------------------
@@ -1111,48 +1230,6 @@ def build_ranked_context(
     return top, sources, best_score
 
 
-# ---------------------------------------------------------------------------
-# Analytics config storage (in ai_settings.analytics_config)
-# ---------------------------------------------------------------------------
-
-def load_analytics_config(conn: sqlite3.Connection) -> Dict[str, Any]:
-    """
-    Load analytics/listing rules from ai_settings.analytics_config.
-
-    The JSON shape is:
-      { "rules": [ { id, kind, name, triggers, scope, sql,
-                     answer_prefix, answer_suffix }, ... ] }
-
-    - kind:   "list" or "aggregate"
-    - scope:  "global" or "facility"
-    - triggers: list of substrings to look for in the question
-    - sql:    SQL to run; may include {{facility_id}} placeholder
-    """
-    cur = conn.cursor()
-    try:
-        cur.execute("SELECT value FROM ai_settings WHERE key='analytics_config'")
-        row = cur.fetchone()
-        if not row or not (row["value"] or "").strip():
-            return {"rules": []}
-
-        raw = row["value"]
-        data = json.loads(raw)
-
-        # Allow either { "rules": [...] } or bare [...]
-        if isinstance(data, dict):
-            rules = data.get("rules", [])
-            if not isinstance(rules, list):
-                rules = []
-            return {"rules": rules}
-        elif isinstance(data, list):
-            return {"rules": data}
-        else:
-            return {"rules": []}
-    except Exception:
-        # On any error, fall back to empty; detection will then use built-in heuristics.
-        return {"rules": []}
-
-
 
 # ---------------------------------------------------------------------------
 # Analytics / listing helpers (Layer F)
@@ -1535,9 +1612,164 @@ def run_analytics_query(
     return None
 
 
+def try_llm_listables_query(
+    conn: sqlite3.Connection,
+    question: str,
+    facility_id: Optional[str],
+    facility_label: str,
+) -> Optional[tuple[str, List[str]]]:
+    """
+    Hybrid path: let the LLM write a *safe* SELECT on v_facility_listables.
+
+    - Only used for "list" / "how many" / "average" style questions.
+    - We constrain the model to:
+        * SELECT-only
+        * single table: v_facility_listables
+        * no UPDATE/DELETE/INSERT/DROP/ALTER
+        * no ';' or comments
+    - If the SQL fails validation or errors, we return None and fall back
+      to the normal embedding + LLM answer.
+    """
+    if not question:
+        return None
+
+    q_lower = question.lower()
+    trigger_phrases = ["list ", "show ", "how many", "count ", "average", "avg "]
+    if not any(tp in q_lower for tp in trigger_phrases):
+        return None
+
+    schema_desc = (
+        "You have a single SQLite view named v_facility_listables with columns:\n"
+        "  - facility_id (TEXT)\n"
+        "  - facility_name (TEXT)\n"
+        "  - city (TEXT)\n"
+        "  - state (TEXT)\n"
+        "  - zip (TEXT)\n"
+        "  - county (TEXT)\n"
+        "  - corporate_group (TEXT)\n"
+        "  - emr (TEXT)\n"
+        "  - emr_other (TEXT)\n"
+        "  - pt_emr (TEXT)\n"
+        "  - orders (TEXT)\n"
+        "  - orders_other (TEXT)\n"
+        "  - outpatient_pt (TEXT)\n"
+        "  - short_beds (INTEGER)\n"
+        "  - ltc_beds (INTEGER)\n"
+        "  - avg_dcs (REAL)\n"
+        "  - item_type (TEXT)\n"
+        "  - item_subtype (TEXT)\n"
+        "  - display_name (TEXT)\n"
+        "  - details (TEXT)\n\n"
+        "Important rules:\n"
+        "- For facility-level aggregates (beds, avg_dcs), ALWAYS filter item_type = 'facility'.\n"
+        "- For lists of facilities, use item_type = 'facility'.\n"
+        "- For lists of home health / hospice / DME, use item_type = 'community_partner' and item_subtype.\n"
+        "- For lists of insurance plans, use item_type = 'insurance_plan'.\n"
+        "- For lists of additional services, use item_type = 'additional_service'.\n"
+    )
+
+    system_msg = (
+        "You are a read-only SQL generator for a SQLite database.\n"
+        "Your ONLY job is to output a SINGLE SELECT statement that queries the view v_facility_listables.\n"
+        "Rules:\n"
+        "- Output ONLY raw SQL (no explanation, no comments, no backticks).\n"
+        "- The SQL must start with SELECT and reference ONLY v_facility_listables.\n"
+        "- Do NOT use UPDATE, INSERT, DELETE, DROP, ALTER, CREATE, PRAGMA or transactions.\n"
+        "- Do NOT include multiple statements separated by ';'.\n"
+        "- Prefer simple equality filters (e.g. state = 'FL', item_type = 'facility').\n"
+        "- For facility-level aggregates, filter item_type = 'facility'.\n"
+        "- For list questions, return columns like display_name and details.\n"
+    )
+
+    user_msg = (
+        schema_desc
+        + "\nUser question:\n"
+        + question
+        + "\n\n"
+        "Write a single SELECT statement on v_facility_listables that best answers this question."
+        " If the question is ambiguous or cannot be answered from these columns, still write the best safe SELECT you can.\n"
+    )
+
+    try:
+        chat = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg},
+            ],
+        )
+        sql = (chat.choices[0].message.content or "").strip()
+    except Exception:
+        return None
+
+    # Strip simple ```sql fences if present
+    if sql.lower().startswith("```"):
+        sql = sql.strip("`")
+        lines = [ln for ln in sql.splitlines() if ln.strip()]
+        for ln in lines:
+            if ln.strip().lower().startswith("select"):
+                sql = ln
+                break
+
+    sql_lower = sql.lower()
+
+    # Safety checks
+    if not sql_lower.startswith("select"):
+        return None
+    if " v_facility_listables" not in sql_lower and "from v_facility_listables" not in sql_lower:
+        return None
+    banned = ["update ", "insert ", "delete ", "drop ", "alter ", " create ", "pragma", ";", "--", "/*", "*/"]
+    if any(b in sql_lower for b in banned):
+        return None
+
+    cur = conn.cursor()
+    try:
+        cur.execute(sql)
+        rows = cur.fetchall()
+    except sqlite3.Error as e:
+        print("[listables-sql] SQL error:", e, " SQL:", sql)
+        return None
+
+    if not rows:
+        return ("I couldn't find any matching rows in v_facility_listables for that question.", ["DB:listables:empty"])
+
+    col_names = [d[0] for d in cur.description] if cur.description else []
+    src = "DB:listables"
+
+    # Aggregate-style: 1 row, 1 column → just say "The result is X."
+    if len(rows) == 1 and len(col_names) == 1:
+        val = rows[0][0]
+        return (f"The result is {val}.", [src])
+
+    # Otherwise treat it as a list
+    lines_out: List[str] = []
+    for r in rows:
+        if "display_name" in col_names or "details" in col_names:
+            dn = ""
+            dt = ""
+            if "display_name" in col_names:
+                dn = str(r[col_names.index("display_name")] or "").strip()
+            if "details" in col_names:
+                dt = str(r[col_names.index("details")] or "").strip()
+            if dn or dt:
+                if dt:
+                    lines_out.append(f" - {dn} ({dt})" if dn else f" - {dt}")
+                else:
+                    lines_out.append(f" - {dn}")
+                continue
+
+        vals = [str(v) for v in r if v is not None]
+        if vals:
+            lines_out.append(" - " + " | ".join(vals))
+
+    label = facility_label or (facility_id or "the database")
+    answer_text = f"Here are the results I found in v_facility_listables for '{question}' (scope: {label}):\n" + "\n".join(lines_out)
+    return (answer_text, [src])
+
 
 def get_system_prompt(conn: sqlite3.Connection) -> str:
     cur = conn.cursor()
+
     try:
         cur.execute("SELECT value FROM ai_settings WHERE key='system_prompt'")
         row = cur.fetchone()
@@ -1570,15 +1802,12 @@ def run_answer_pipeline(
         fac_id = detect_facility_id(normalized_q, conn, facility_aliases)
         fac_label = get_facility_label(fac_id, conn)
 
-        # Load analytics/listing configuration (if any)
-        analytics_config = load_analytics_config(conn)
-
         # -------------------------------------------------
         # 1) Try analytics/listing path (Layer F)
         #    e.g. "list all contacts at The Pearl",
         #         "what is the average number of short term beds"
         # -------------------------------------------------
-        analytics_intent = detect_analytics_intent(normalized_q, analytics_config)
+        analytics_intent = detect_analytics_intent(normalized_q)
         if analytics_intent:
             analytics_result = run_analytics_query(conn, analytics_intent, fac_id, fac_label)
             if analytics_result is not None:
@@ -1604,6 +1833,35 @@ def run_answer_pipeline(
                     section_used=section_used,
                     log_id=log_id,
                 )
+
+
+        # -------------------------------------------------
+        # 2) Hybrid LLM → SQL on v_facility_listables
+        # -------------------------------------------------
+        listables_result = try_llm_listables_query(conn, normalized_q, fac_id, fac_label)
+        if listables_result is not None:
+            answer_text, sources = listables_result
+            section_used = section_hint or ("Facility Details" if fac_id else "General")
+
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO user_qa_log (ts, section, q, a, promoted, a_quality)
+                VALUES (?, ?, ?, ?, 0, '')
+                """,
+                (now_iso(), section_used, question, answer_text),
+            )
+            log_id = cur.lastrowid
+            conn.commit()
+
+            return AskResponse(
+                answer=answer_text,
+                supporting_points=[],
+                sources=sources,
+                section_used=section_used,
+                log_id=log_id,
+            )
+
 
         # -------------------------------------------------
         # 2) Normal retrieval + LLM path
@@ -2843,10 +3101,6 @@ async def facility_ui():
 async def health():
     return {"ok": True, "db_path": DB_PATH}
 
-@app.get("/health")
-async def health():
-    return {"ok": True, "db_path": DB_PATH}
-
 
 @app.get("/admin/download-db")
 async def download_db(token: str):
@@ -2882,12 +3136,3 @@ if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
 
 
-# ---------------------------------------------------------------------------
-# Entrypoint for Render
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    import uvicorn
-
-    port = int(os.getenv("PORT", "8000"))
-    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
