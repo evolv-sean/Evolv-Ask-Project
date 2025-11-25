@@ -1717,6 +1717,7 @@ function renderAliasList(items){
           <div class="e-muted"><strong>Topics:</strong> <span id="vTopics"></span></div>
           <div><strong>Question</strong><div id="vQ" class="mono" style="white-space:pre-wrap"></div></div>
           <div><strong>Answer</strong><div id="vA" style="white-space:pre-wrap"></div></div>
+          <div><strong>SQL (if any)</strong><div id="vSql" class="mono" style="white-space:pre-wrap;font-size:12px"></div></div>
         </div>
         <div class="toolbar" style="justify-content:flex-end;margin-top:12px">
           <button type="button" class="btn btn-secondary" onclick="document.querySelector('#ulogViewDlg').close()">Close</button>
@@ -2297,6 +2298,7 @@ window.setQuality = setQuality;
     document.getElementById("vTopics").textContent = r.topics || "";
     document.getElementById("vQ").textContent = r.q || "";
     document.getElementById("vA").textContent = r.a || "";
+    document.getElementById("vSql").textContent = r.debug_sql || "";
     document.getElementById("ulogViewDlg").showModal();
   }
 
