@@ -166,10 +166,19 @@ def init_db():
             q          TEXT,
             a          TEXT,
             promoted   INTEGER DEFAULT 0,
-            a_quality  TEXT
+            a_quality  TEXT,
+            debug_sql  TEXT
+
         )
         """
     )
+
+    # Ensure debug_sql column exists on older DBs
+    try:
+        cur.execute("ALTER TABLE user_qa_log ADD COLUMN debug_sql TEXT")
+    except sqlite3.Error:
+        # Will fail with 'duplicate column name' once it already exists – that's fine.
+        pass
 
 
     # AI settings (editable later via Admin)
@@ -1754,6 +1763,9 @@ def try_llm_listables_query(
 ) -> Optional[tuple[str, List[str]]]:
     """
     Hybrid path: let the LLM write a *safe* SELECT on v_facility_listables.
+    
+    Returns:
+      (answer_text, sources, sql_used) or None.
 
     - Only used for "list" / "how many" / "average" style questions.
     - We constrain the model to:
@@ -1935,7 +1947,7 @@ def try_llm_listables_query(
     # Aggregate-style: 1 row, 1 column → just say "The result is X."
     if len(rows) == 1 and len(col_names) == 1:
         val = rows[0][0]
-        return (f"The result is {val}.", [src])
+        return (f"The result is {val}.", [src], sql)
 
     # Otherwise treat it as a list
     lines_out: List[str] = []
@@ -1960,7 +1972,7 @@ def try_llm_listables_query(
 
     label = facility_label or (facility_id or "the database")
     answer_text = f"Here are the results I found in v_facility_listables for '{question}' (scope: {label}):\n" + "\n".join(lines_out)
-    return (answer_text, [src])
+    return (answer_text, [src], sql)
 
 
 def get_system_prompt(conn: sqlite3.Connection) -> str:
@@ -2045,7 +2057,7 @@ def run_answer_pipeline(
                 INSERT INTO user_qa_log (ts, section, q, a, promoted, a_quality)
                 VALUES (?, ?, ?, ?, 0, '')
                 """,
-                (now_iso(), section_used, question, answer_text),
+                (now_iso(), section_used, question, answer_text, sql_used),
             )
             log_id = cur.lastrowid
             conn.commit()
@@ -2246,7 +2258,7 @@ async def admin_ulog_list(
             params.append(quality.lower())
 
         # NOTE: we no longer select 'topics' from the table
-        sql = "SELECT id, ts, section, q, a, promoted, a_quality FROM user_qa_log"
+        sql = "SELECT id, ts, section, q, a, promoted, a_quality, debug_sql FROM user_qa_log"
         if where:
             sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY id DESC LIMIT 500"
@@ -3330,5 +3342,4 @@ if __name__ == "__main__":
 
     port = int(os.getenv("PORT", "8000"))
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
-
 
