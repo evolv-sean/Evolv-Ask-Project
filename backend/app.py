@@ -1387,7 +1387,11 @@ def run_analytics_query(
                 rows = cur.fetchall()
                 col_names = [d[0] for d in cur.description] if cur.description else []
             except sqlite3.Error as e:
-                return (f"I tried to run the configured analytics query but got a database error: {e}", [src])
+                return (
+                    f"I tried to run the configured analytics query but got a database error: {e}",
+                    [src],
+                    sql,
+                )
 
             # ------- LIST RULES -------
             if kind == "list":
@@ -1414,7 +1418,7 @@ def run_analytics_query(
                     facility_label or (facility_id or "this facility"),
                 )
                 answer_text = prefix + "\n" + "\n".join(lines)
-                return (answer_text, [src])
+                return (answer_text, [src], sql)
 
             # ------- AGGREGATE RULES -------
             if kind == "aggregate":
@@ -1446,7 +1450,7 @@ def run_analytics_query(
                 text = prefix.replace("{value_rounded}", str(vround)).replace("{value}", str(vnum))
                 if suffix:
                     text = f"{text} {suffix}"
-                return (text, [src])
+                return (text, [src], sql)
 
     # ------------------------------------------------
     # 2) Built-in fallback logic (your original code)
@@ -2015,21 +2019,37 @@ def run_answer_pipeline(
         #    e.g. "list all contacts at The Pearl",
         #         "what is the average number of short term beds"
         # -------------------------------------------------
-        analytics_intent = detect_analytics_intent(normalized_q)
+        analytics_cfg: Dict[str, Any] = {}
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT value FROM ai_settings WHERE key='analytics_config'")
+            row = cur.fetchone()
+            if row and row["value"]:
+                analytics_cfg = json.loads(row["value"])
+        except Exception:
+            analytics_cfg = {}
+
+        analytics_intent = detect_analytics_intent(normalized_q, config=analytics_cfg)
         if analytics_intent:
             analytics_result = run_analytics_query(conn, analytics_intent, fac_id, fac_label)
             if analytics_result is not None:
-                answer_text, sources = analytics_result
+                # run_analytics_query may return (answer, sources) or (answer, sources, sql_used)
+                if len(analytics_result) == 3:
+                    answer_text, sources, sql_used = analytics_result
+                else:
+                    answer_text, sources = analytics_result
+                    sql_used = ""
+
                 section_used = section_hint or ("Facility Details" if fac_id else "General")
 
                 # Log to user_qa_log (same as normal path)
                 cur = conn.cursor()
                 cur.execute(
                     """
-                    INSERT INTO user_qa_log (ts, section, q, a, promoted, a_quality)
-                    VALUES (?, ?, ?, ?, 0, '')
+                    INSERT INTO user_qa_log (ts, section, q, a, promoted, a_quality, debug_sql)
+                    VALUES (?, ?, ?, ?, 0, '', ?)
                     """,
-                    (now_iso(), section_used, question, answer_text),
+                    (now_iso(), section_used, question, answer_text, sql_used),
                 )
                 log_id = cur.lastrowid
                 conn.commit()
@@ -2048,14 +2068,21 @@ def run_answer_pipeline(
         # -------------------------------------------------
         listables_result = try_llm_listables_query(conn, normalized_q, fac_id, fac_label)
         if listables_result is not None:
-            answer_text, sources = listables_result
+            # try_llm_listables_query returns (answer_text, sources, sql_used)
+            if len(listables_result) == 3:
+                answer_text, sources, sql_used = listables_result
+            else:
+                # backward-compat / safety
+                answer_text, sources = listables_result
+                sql_used = ""
+
             section_used = section_hint or ("Facility Details" if fac_id else "General")
 
             cur = conn.cursor()
             cur.execute(
                 """
-                INSERT INTO user_qa_log (ts, section, q, a, promoted, a_quality)
-                VALUES (?, ?, ?, ?, 0, '')
+                INSERT INTO user_qa_log (ts, section, q, a, promoted, a_quality, debug_sql)
+                VALUES (?, ?, ?, ?, 0, '', ?)
                 """,
                 (now_iso(), section_used, question, answer_text, sql_used),
             )
