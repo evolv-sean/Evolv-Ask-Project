@@ -1930,6 +1930,29 @@ def try_llm_listables_query(
     # Make text filters case-insensitive before running
     sql = _normalize_listables_sql_case(sql)
 
+    # If the model forgot to include display_name in a simple list query,
+    # rewrite the SELECT to return display_name and details so we show names
+    # (home health agencies, facilities, etc.) instead of only "details".
+    fixed_sql = sql
+    sql_lc = sql.lower()
+    is_aggregate = any(fn in sql_lc for fn in ["count(", "avg(", "sum(", "min(", "max("])
+
+    if ("from v_facility_listables" in sql_lc) and ("display_name" not in sql_lc) and not is_aggregate:
+        # Preserve DISTINCT if the model used it
+        select_prefix = "SELECT DISTINCT" if sql_lc.strip().startswith("select distinct") else "SELECT"
+
+        # Carry over the WHERE clause (if any) so we keep the same filters
+        where_idx = sql_lc.find(" where ")
+        where_clause = ""
+        if where_idx != -1:
+            # Use the original-casing slice for the WHERE part
+            where_clause = sql[where_idx:]
+
+        fixed_sql = f"{select_prefix} display_name, details FROM v_facility_listables{where_clause}"
+        print("[listables-sql] Rewriting SELECT to prefer display_name:", fixed_sql)
+
+    sql = fixed_sql
+
     cur = conn.cursor()
     try:
         cur.execute(sql)
@@ -1937,6 +1960,7 @@ def try_llm_listables_query(
     except sqlite3.Error as e:
         print("[listables-sql] SQL error:", e, " SQL:", sql)
         return None
+
 
     # If the SQL ran but returned no rows, fall back to the normal pipeline
     # instead of giving a hard "no matching rows" message.
