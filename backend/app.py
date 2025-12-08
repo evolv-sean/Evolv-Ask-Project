@@ -8,6 +8,7 @@ import threading
 import smtplib
 import ssl
 import secrets
+import hashlib
 from email.message import EmailMessage
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -90,6 +91,29 @@ def get_db() -> sqlite3.Connection:
 
 def now_iso() -> str:
     return dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+
+def _normalize_note_text_for_hash(text: str) -> str:
+    """
+    Lightly normalize note text so small OCR whitespace differences
+    don't create completely different hashes.
+    """
+    if not text:
+        return ""
+    t = text.lower()
+    # collapse whitespace/newlines/tabs to single spaces
+    t = re.sub(r"\s+", " ", t)
+    return t.strip()
+
+
+def compute_note_hash(patient_mrn: str, note_datetime: str, note_text: str) -> str:
+    """
+    Compute a stable hash for a CM note using MRN, datetime, and normalized text.
+    Used to dedupe repeated OCR of the same note.
+    """
+    base = f"{(patient_mrn or '').strip()}|{(note_datetime or '').strip()}|{_normalize_note_text_for_hash(note_text)}"
+    return hashlib.md5(base.encode("utf-8")).hexdigest()
+
 
 
 
@@ -310,6 +334,11 @@ def init_db():
     )
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_snf_adm_facility ON snf_admissions (final_snf_facility_id)"
+    )
+
+    # Ensure one SNF admission row per source note
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_snf_adm_raw_note ON snf_admissions (raw_note_id)"
     )
 
     # Notification targets for SNF emails
@@ -546,6 +575,123 @@ class AskResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# PAD → CM notes ingest endpoint
+# ---------------------------------------------------------------------------
+
+@app.post("/api/pad/cm-notes/bulk")
+async def pad_cm_notes_bulk(
+    request: Request,
+    notes: List[Dict[str, Any]] = Body(...),
+):
+    """
+    Bulk ingest of OCR'd Case Management notes from PAD.
+
+    Expects JSON body: [ { patient_mrn, note_datetime, note_text, ... }, ... ]
+
+    Performs simple dedupe using compute_note_hash() so that re-running PAD
+    doesn't spam duplicates into cm_notes_raw.
+    """
+    require_pad_api_key(request)
+
+    if not isinstance(notes, list) or not notes:
+        raise HTTPException(status_code=400, detail="Request body must be a non-empty JSON array")
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    inserted = 0
+    skipped = 0
+    errors: List[Dict[str, Any]] = []
+
+    try:
+        for idx, row in enumerate(notes):
+            # Defensive: ensure row is a dict
+            if not isinstance(row, dict):
+                skipped += 1
+                errors.append({"index": idx, "error": "row is not an object"})
+                continue
+
+            patient_mrn = (row.get("patient_mrn") or "").strip()
+            note_datetime = (row.get("note_datetime") or "").strip()
+            note_text = row.get("note_text") or ""
+
+            if not patient_mrn or not note_datetime or not note_text:
+                skipped += 1
+                errors.append(
+                    {
+                        "index": idx,
+                        "error": "patient_mrn, note_datetime, and note_text are required",
+                    }
+                )
+                continue
+
+            note_hash = compute_note_hash(patient_mrn, note_datetime, note_text)
+
+            # Skip if we've already seen this hash
+            cur.execute(
+                "SELECT 1 FROM cm_notes_raw WHERE note_hash = ?",
+                (note_hash,),
+            )
+            if cur.fetchone():
+                skipped += 1
+                continue
+
+            cur.execute(
+                """
+                INSERT INTO cm_notes_raw (
+                    patient_mrn,
+                    patient_name,
+                    dob,
+                    encounter_id,
+                    hospital_name,
+                    unit_name,
+                    admission_date,
+                    note_datetime,
+                    note_author,
+                    note_type,
+                    note_text,
+                    source_system,
+                    pad_run_id,
+                    ocr_confidence,
+                    note_hash,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                """,
+                (
+                    patient_mrn,
+                    row.get("patient_name"),
+                    row.get("dob"),
+                    row.get("encounter_id"),
+                    row.get("hospital_name"),
+                    row.get("unit_name"),
+                    row.get("admission_date"),
+                    note_datetime,
+                    row.get("note_author"),
+                    row.get("note_type") or "Case Management",
+                    note_text,
+                    row.get("source_system") or "EMR",
+                    row.get("pad_run_id"),
+                    row.get("ocr_confidence"),
+                    note_hash,
+                ),
+            )
+            inserted += 1
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {
+        "ok": True,
+        "inserted": inserted,
+        "skipped": skipped,
+        "errors": errors,
+    }
+
+
+
+# ---------------------------------------------------------------------------
 # Dictionary & Facility helpers
 # ---------------------------------------------------------------------------
 
@@ -739,6 +885,54 @@ def detect_facility_id(
 
     return None
 
+
+def map_snf_name_to_facility_id(
+    snf_name: Optional[str],
+    conn: sqlite3.Connection,
+    facility_aliases: Dict[str, str],
+) -> Optional[str]:
+    """
+    Map a free-text SNF name from notes (e.g. 'The Peaks SNF', 'Pks')
+    to a facility_id using:
+      1) dictionary facility_alias entries (kind='facility_alias')
+      2) direct facility_name matches in facilities
+
+    Returns facility_id or None if no good match.
+    """
+    if not snf_name:
+        return None
+
+    name_norm = _normalize_for_facility_match(snf_name)
+
+    # 1) Try explicit aliases from dictionary (alias -> facility_id)
+    for alias_text, fid in facility_aliases.items():
+        if not alias_text or not fid:
+            continue
+        alias_norm = _normalize_for_facility_match(alias_text)
+        if not alias_norm:
+            continue
+
+        # If either string contains the other, treat as a match
+        if alias_norm in name_norm or name_norm in alias_norm:
+            return fid
+
+    # 2) Try matching facility_name from facilities table
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT facility_id, facility_name FROM facilities")
+        for row in cur.fetchall():
+            fac_name = (row["facility_name"] or "").strip()
+            if not fac_name:
+                continue
+            fac_norm = _normalize_for_facility_match(fac_name)
+            if not fac_norm:
+                continue
+            if fac_norm in name_norm or name_norm in fac_norm:
+                return row["facility_id"]
+    except sqlite3.Error:
+        return None
+
+    return None
 
 
 
@@ -2141,6 +2335,136 @@ def get_system_prompt(conn: sqlite3.Connection) -> str:
         "facilities, processes, and tools first. If unsure, say so."
     )
 
+# ---------------------------------------------------------------------------
+# SNF admissions: AI extraction from CM notes
+# ---------------------------------------------------------------------------
+
+def analyze_patient_notes_with_llm(
+    patient_mrn: str,
+    notes: List[sqlite3.Row],
+) -> Optional[Dict[str, Any]]:
+    """
+    Given all CM notes for a single patient (as rows from cm_notes_raw),
+    call the LLM to decide:
+      - is the patient going to a SNF?
+      - which SNF name?
+      - expected transfer date?
+      - confidence (0–1)
+    Returns a dict or None on failure.
+    """
+    if not notes:
+        return None
+
+    # Sort notes by note_datetime ascending for a chronological story
+    sorted_notes = sorted(
+        notes,
+        key=lambda r: (r["note_datetime"] or "", r["id"]),
+    )
+
+    # Build a compact but clear representation of the notes
+    note_chunks: List[str] = []
+    for idx, r in enumerate(sorted_notes, start=1):
+        dt_str = r["note_datetime"] or ""
+        author = r["note_author"] or ""
+        header_bits = [f"#{idx}", dt_str]
+        if author:
+            header_bits.append(f"by {author}")
+        header = " ".join(b for b in header_bits if b)
+        body = (r["note_text"] or "").strip()
+        # Truncate extremely long notes to keep prompt bounded
+        if len(body) > 4000:
+            body = body[:4000] + " ...[truncated]"
+        note_chunks.append(f"{header}:\n{body}")
+
+    notes_block = "\n\n".join(note_chunks)
+
+    system_msg = (
+        "You are a discharge planning assistant reading hospital case management notes.\n"
+        "Your job is to decide if the patient is being discharged to a skilled nursing facility (SNF), "
+        "and, if so, which facility and on what date.\n"
+        "Be conservative: if the plan is unclear or only 'considering SNF', treat it as NOT a confirmed SNF admission.\n"
+    )
+
+    user_msg = (
+        f"Patient MRN: {patient_mrn}\n\n"
+        "Here are this patient's case management / discharge planning notes in chronological order:\n\n"
+        f"{notes_block}\n\n"
+        "From these notes, answer the following questions:\n"
+        "1) Is there a clear plan for the patient to be discharged to a skilled nursing facility (SNF)?\n"
+        "2) If yes, what is the name of the accepting SNF as written in the notes (even if abbreviated)?\n"
+        "3) What is the expected transfer date (if clearly stated)?\n\n"
+        "Return your answer as a single JSON object with EXACTLY these keys:\n"
+        "{\n"
+        '  \"is_snf_candidate\": true or false,\n'
+        '  \"snf_name\": string or null,\n'
+        '  \"expected_transfer_date\": \"YYYY-MM-DD\" or null,\n'
+        '  \"confidence\": number between 0 and 1,\n'
+        '  \"rationale\": string\n'
+        "}\n"
+        "Rules:\n"
+        "- If the patient is clearly accepted to a SNF, set is_snf_candidate to true.\n"
+        "- If multiple SNFs are mentioned, choose the FINAL accepted facility (for example: 'accepted at The Peaks SNF').\n"
+        "- If the date is not clear, use null for expected_transfer_date.\n"
+        "- If the plan is uncertain, set is_snf_candidate to false, snf_name = null, expected_transfer_date = null, confidence <= 0.4.\n"
+        "- Output ONLY the JSON object, with no extra text.\n"
+    )
+
+    try:
+        chat = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg},
+            ],
+        )
+        raw = (chat.choices[0].message.content or "").strip()
+    except Exception as e:
+        print("[snf-llm] LLM error:", e)
+        return None
+
+    # Try to parse JSON
+    try:
+        data = json.loads(raw)
+    except Exception:
+        # Sometimes the model might wrap JSON in text; try a crude extract
+        try:
+            start = raw.find("{")
+            end = raw.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                data = json.loads(raw[start : end + 1])
+            else:
+                print("[snf-llm] Could not parse JSON from:", raw[:500])
+                return None
+        except Exception as e2:
+            print("[snf-llm] JSON parse failed:", e2, " raw:", raw[:500])
+            return None
+
+    # Basic sanity checks / defaults
+    is_snf_candidate = bool(data.get("is_snf_candidate"))
+    snf_name = data.get("snf_name")
+    if snf_name is not None:
+        snf_name = str(snf_name).strip() or None
+
+    expected_date = data.get("expected_transfer_date")
+    if expected_date is not None:
+        expected_date = str(expected_date).strip() or None
+
+    try:
+        conf = float(data.get("confidence", 0.0))
+    except Exception:
+        conf = 0.0
+    conf = max(0.0, min(conf, 1.0))
+
+    rationale = str(data.get("rationale", "") or "").strip()
+
+    return {
+        "is_snf_candidate": is_snf_candidate,
+        "snf_name": snf_name,
+        "expected_transfer_date": expected_date,
+        "confidence": conf,
+        "rationale": rationale,
+    }
+
 
 
 # ---------------------------------------------------------------------------
@@ -2400,6 +2724,20 @@ def require_admin(request: Request):
         raise HTTPException(status_code=403, detail="invalid admin token")
 
 
+def require_pad_api_key(request: Request):
+    """
+    Optional guard for PAD → API calls.
+    If PAD_API_KEY is set in env, require header X-PAD-API-Key to match.
+    If PAD_API_KEY is not set, this is a no-op.
+    """
+    api_key = os.getenv("PAD_API_KEY")
+    if not api_key:
+        return  # no key configured; allow all
+    header = request.headers.get("x-pad-api-key") or ""
+    if header.strip() != api_key.strip():
+        raise HTTPException(status_code=401, detail="invalid PAD api key")
+
+
 @app.get("/admin/ulog/list")
 async def admin_ulog_list(
     request: Request,
@@ -2532,6 +2870,150 @@ async def admin_ulog_promote(
         conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Admin: SNF admissions extraction from CM notes
+# ---------------------------------------------------------------------------
+
+@app.post("/admin/snf/run-extraction")
+async def admin_snf_run_extraction(
+    request: Request,
+    days_back: int = Query(3, ge=1, le=30),
+):
+    """
+    Admin-only endpoint to analyze recent CM notes and populate snf_admissions.
+
+    - Looks at cm_notes_raw.created_at within the last `days_back` days.
+    - Groups notes by patient_mrn.
+    - For each patient, calls the LLM to decide SNF status / facility / date.
+    - Inserts or updates snf_admissions rows (status='pending').
+    """
+    require_admin(request)
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Load facility alias map (dictionary.kind='facility_alias')
+        maps = load_dictionary_maps(conn)
+        facility_aliases = maps["facility_aliases"]
+
+        # Pull recent CM notes
+        cur.execute(
+            """
+            SELECT *
+            FROM cm_notes_raw
+            WHERE created_at >= datetime('now', ?)
+            ORDER BY patient_mrn, note_datetime, id
+            """,
+            (f"-{days_back} days",),
+        )
+        rows = cur.fetchall()
+        if not rows:
+            return {
+                "ok": True,
+                "message": f"No cm_notes_raw rows found in the last {days_back} days.",
+                "patients_processed": 0,
+                "snf_candidates": 0,
+            }
+
+        # Group by patient_mrn
+        notes_by_mrn: Dict[str, List[sqlite3.Row]] = {}
+        for r in rows:
+            mrn = (r["patient_mrn"] or "").strip()
+            if not mrn:
+                continue
+            notes_by_mrn.setdefault(mrn, []).append(r)
+
+        patients_processed = 0
+        snf_candidates = 0
+
+        for mrn, notes in notes_by_mrn.items():
+            result = analyze_patient_notes_with_llm(mrn, notes)
+            if not result:
+                continue
+
+            patients_processed += 1
+            if not result["is_snf_candidate"]:
+                # You could optionally log 'negative' results later if desired
+                continue
+
+            snf_candidates += 1
+
+            snf_name_raw = result["snf_name"]
+            expected_date = result["expected_transfer_date"]
+            conf = result["confidence"]
+
+            # Map SNF name -> facility_id (if possible)
+            ai_facility_id = map_snf_name_to_facility_id(snf_name_raw, conn, facility_aliases)
+
+            # Use the latest note as the "source" for this SNF decision
+            latest_note = sorted(
+                notes,
+                key=lambda r: (r["note_datetime"] or "", r["id"]),
+            )[-1]
+
+            raw_note_id = latest_note["id"]
+            patient_name = latest_note["patient_name"] or ""
+            hospital_name = latest_note["hospital_name"] or ""
+            note_datetime = latest_note["note_datetime"] or ""
+
+            # Upsert into snf_admissions (unique on raw_note_id)
+            cur.execute(
+                """
+                INSERT INTO snf_admissions (
+                    raw_note_id,
+                    patient_mrn,
+                    patient_name,
+                    hospital_name,
+                    note_datetime,
+                    ai_is_snf_candidate,
+                    ai_snf_name_raw,
+                    ai_snf_facility_id,
+                    ai_expected_transfer_date,
+                    ai_confidence,
+                    status,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))
+                ON CONFLICT(raw_note_id) DO UPDATE SET
+                    patient_mrn               = excluded.patient_mrn,
+                    patient_name              = excluded.patient_name,
+                    hospital_name             = excluded.hospital_name,
+                    note_datetime             = excluded.note_datetime,
+                    ai_is_snf_candidate       = excluded.ai_is_snf_candidate,
+                    ai_snf_name_raw           = excluded.ai_snf_name_raw,
+                    ai_snf_facility_id        = excluded.ai_snf_facility_id,
+                    ai_expected_transfer_date = excluded.ai_expected_transfer_date,
+                    ai_confidence             = excluded.ai_confidence,
+                    status                    = 'pending',
+                    emailed_at                = NULL,
+                    email_run_id              = NULL
+                ;
+                """,
+                (
+                    raw_note_id,
+                    mrn,
+                    patient_name,
+                    hospital_name,
+                    note_datetime,
+                    1,  # ai_is_snf_candidate
+                    snf_name_raw,
+                    ai_facility_id,
+                    expected_date,
+                    conf,
+                ),
+            )
+
+        conn.commit()
+
+        return {
+            "ok": True,
+            "days_back": days_back,
+            "patients_processed": patients_processed,
+            "snf_candidates": snf_candidates,
+        }
+    finally:
+        conn.close()
 
 
 
