@@ -209,6 +209,129 @@ def init_db():
             ),
         )
 
+
+    # -------------------------------------------------------------------
+    # SNF pipeline tables
+    # -------------------------------------------------------------------
+
+    # Raw case management notes from PAD OCR
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cm_notes_raw (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            -- Patient identity
+            patient_mrn     TEXT NOT NULL,
+            patient_name    TEXT,
+            dob             TEXT,
+
+            -- Encounter / context
+            encounter_id    TEXT,
+            hospital_name   TEXT,
+            unit_name       TEXT,
+            admission_date  TEXT,
+
+            -- Note metadata
+            note_datetime   TEXT NOT NULL,
+            note_author     TEXT,
+            note_type       TEXT,
+            note_text       TEXT NOT NULL,
+
+            -- PAD / OCR metadata
+            source_system   TEXT,
+            pad_run_id      TEXT,
+            ocr_confidence  REAL,
+
+            -- Dedup helper
+            note_hash       TEXT,
+
+            created_at      TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+
+    # Indexes to speed up typical queries on cm_notes_raw
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cm_notes_raw_mrn ON cm_notes_raw (patient_mrn)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cm_notes_raw_datetime ON cm_notes_raw (note_datetime DESC)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cm_notes_raw_hash ON cm_notes_raw (note_hash)"
+    )
+
+    # SNF admissions derived from CM notes
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS snf_admissions (
+            id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            -- Link back to source note
+            raw_note_id                 INTEGER NOT NULL,
+
+            -- Patient + context
+            patient_mrn                 TEXT NOT NULL,
+            patient_name                TEXT,
+            hospital_name               TEXT,
+            note_datetime               TEXT,
+
+            -- AI interpretation
+            ai_is_snf_candidate         INTEGER,     -- 0/1
+            ai_snf_name_raw             TEXT,
+            ai_snf_facility_id          TEXT,
+            ai_expected_transfer_date   TEXT,
+            ai_confidence               REAL,
+
+            -- Human review / final decision
+            status                      TEXT DEFAULT 'pending',  -- pending/confirmed/corrected/rejected
+            final_snf_facility_id       TEXT,
+            final_snf_name_display      TEXT,
+            final_expected_transfer_date TEXT,
+            reviewed_by                 TEXT,
+            reviewed_at                 TEXT,
+            review_comments             TEXT,
+
+            -- Email tracking
+            emailed_at                  TEXT,
+            email_run_id                TEXT,
+
+            created_at                  TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+
+    # Helpful indexes for SNF admissions queries
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_snf_adm_mrn ON snf_admissions (patient_mrn)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_snf_adm_status_date ON snf_admissions (status, final_expected_transfer_date)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_snf_adm_facility ON snf_admissions (final_snf_facility_id)"
+    )
+
+    # Notification targets for SNF emails
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS snf_notification_targets (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            facility_id TEXT NOT NULL,
+            email_to    TEXT NOT NULL,
+            email_cc    TEXT,
+            active      INTEGER DEFAULT 1,
+            created_at  TEXT DEFAULT (datetime('now')),
+            updated_at  TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_snf_notif_facility ON snf_notification_targets (facility_id)"
+    )
+
+
     # -------------------------------------------------------------------
     # v_facility_listables view: single place for list + aggregate queries
     # NOTE: When you add new columns you want to filter on, edit this SQL.
@@ -3393,4 +3516,3 @@ if __name__ == "__main__":
 
     port = int(os.getenv("PORT", "8000"))
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
-
