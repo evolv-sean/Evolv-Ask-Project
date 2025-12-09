@@ -582,17 +582,25 @@ class AskResponse(BaseModel):
 @app.post("/api/pad/cm-notes/bulk")
 async def pad_cm_notes_bulk(
     request: Request,
-    notes: List[Dict[str, Any]] = Body(...),
+    payload: Any = Body(...),
 ):
     """
     Bulk ingest of OCR'd Case Management notes from PAD.
 
-    Expects JSON body: [ { patient_mrn, note_datetime, note_text, ... }, ... ]
+    Expects JSON body either as:
+      - [ { patient_mrn, note_datetime, note_text, ... }, ... ]
+      - { "DataTable": [ { patient_mrn, note_datetime, note_text, ... }, ... ] }
 
     Performs simple dedupe using compute_note_hash() so that re-running PAD
     doesn't spam duplicates into cm_notes_raw.
     """
     require_pad_api_key(request)
+
+    # Allow both raw list and {"DataTable": [...]} wrapper from PAD
+    if isinstance(payload, dict) and "DataTable" in payload:
+        notes = payload.get("DataTable") or []
+    else:
+        notes = payload
 
     if not isinstance(notes, list) or not notes:
         raise HTTPException(status_code=400, detail="Request body must be a non-empty JSON array")
