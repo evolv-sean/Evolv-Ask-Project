@@ -728,12 +728,24 @@ async def pad_cm_notes_bulk(
     finally:
         conn.close()
 
+    # Kick off SNF extraction in the background so that the SNF Admissions
+    # page is populated without requiring a manual 'run extraction' click.
+    try:
+        threading.Thread(
+            target=snf_run_extraction,
+            kwargs={"days_back": 3},
+            daemon=True,
+        ).start()
+    except Exception as e:
+        print("[pad_cm_notes_bulk] failed to trigger SNF extraction:", e)
+
     return {
         "ok": True,
         "inserted": inserted,
         "skipped": skipped,
         "errors": errors,
     }
+
 
 
 
@@ -2921,21 +2933,11 @@ async def admin_ulog_promote(
 # Admin: SNF admissions extraction from CM notes
 # ---------------------------------------------------------------------------
 
-@app.post("/admin/snf/run-extraction")
-async def admin_snf_run_extraction(
-    request: Request,
-    days_back: int = Query(3, ge=1, le=30),
-):
+def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
     """
-    Admin-only endpoint to analyze recent CM notes and populate snf_admissions.
-
-    - Looks at cm_notes_raw.created_at within the last `days_back` days.
-    - Groups notes by patient_mrn.
-    - For each patient, calls the LLM to decide SNF status / facility / date.
-    - Inserts or updates snf_admissions rows (status='pending').
+    Internal helper to analyze recent CM notes and populate snf_admissions.
+    Shared by the admin endpoint and the PAD ingest endpoint.
     """
-    require_admin(request)
-
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -3061,6 +3063,24 @@ async def admin_snf_run_extraction(
         }
     finally:
         conn.close()
+
+
+@app.post("/admin/snf/run-extraction")
+async def admin_snf_run_extraction(
+    request: Request,
+    days_back: int = Query(3, ge=1, le=30),
+):
+    """
+    Admin-only endpoint to analyze recent CM notes and populate snf_admissions.
+
+    - Looks at cm_notes_raw.created_at within the last `days_back` days.
+    - Groups notes by patient_mrn.
+    - For each patient, calls the LLM to decide SNF status / facility / date.
+    - Inserts or updates snf_admissions rows (status='pending').
+    """
+    require_admin(request)
+    return snf_run_extraction(days_back=days_back)
+
 
 
 
