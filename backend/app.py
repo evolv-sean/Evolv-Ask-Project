@@ -582,19 +582,53 @@ class AskResponse(BaseModel):
 @app.post("/api/pad/cm-notes/bulk")
 async def pad_cm_notes_bulk(
     request: Request,
-    payload: Any = Body(...),
 ):
     """
     Bulk ingest of OCR'd Case Management notes from PAD.
 
-    Expects JSON body either as:
-      - [ { patient_mrn, note_datetime, note_text, ... }, ... ]
-      - { "DataTable": [ { patient_mrn, note_datetime, note_text, ... }, ... ] }
+    Accepts a few JSON shapes to be robust to PAD quirks:
 
-    Performs simple dedupe using compute_note_hash() so that re-running PAD
-    doesn't spam duplicates into cm_notes_raw.
+      1) Raw array:
+         [ { patient_mrn, note_datetime, note_text, ... }, ... ]
+
+      2) Wrapped from PAD DataTable:
+         { "DataTable": [ { patient_mrn, note_datetime, note_text, ... }, ... ] }
+
+    We manually read and parse the request body instead of letting FastAPI
+    auto-parse JSON, so that even slightly odd wire formats from PAD
+    can still be handled.
     """
     require_pad_api_key(request)
+
+    # Read raw body bytes from the request
+    raw_bytes = await request.body()
+    raw_text = raw_bytes.decode("utf-8", errors="ignore").strip()
+
+    if not raw_text:
+        raise HTTPException(status_code=400, detail="Empty request body")
+
+    # TEMP: uncomment this to see exactly what PAD is sending in your Render logs
+    # print("[pad_cm_notes_bulk] raw body:", raw_text[:500])
+
+    # First try: parse the whole body as JSON
+    try:
+        payload = json.loads(raw_text)
+    except json.JSONDecodeError:
+        # Fallback: try to extract the first {...} block and parse that
+        start = raw_text.find("{")
+        end = raw_text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not parse request body as JSON (no JSON object found)",
+            )
+        try:
+            payload = json.loads(raw_text[start : end + 1])
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not parse request body as JSON: {e.msg}",
+            )
 
     # Allow both raw list and {"DataTable": [...]} wrapper from PAD
     if isinstance(payload, dict) and "DataTable" in payload:
@@ -603,7 +637,10 @@ async def pad_cm_notes_bulk(
         notes = payload
 
     if not isinstance(notes, list) or not notes:
-        raise HTTPException(status_code=400, detail="Request body must be a non-empty JSON array")
+        raise HTTPException(
+            status_code=400,
+            detail="Request body must be a non-empty JSON array or an object with a non-empty 'DataTable' array",
+        )
 
     conn = get_db()
     cur = conn.cursor()
@@ -697,6 +734,7 @@ async def pad_cm_notes_bulk(
         "skipped": skipped,
         "errors": errors,
     }
+
 
 
 
