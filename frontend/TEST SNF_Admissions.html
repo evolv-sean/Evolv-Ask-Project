@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SNF Admissions – Audit & Notifications</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f5f5f7;
+      color: #222;
+    }
+    header {
+      padding: 12px 16px;
+      background: #1f2933;
+      color: #f9fafb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    main {
+      display: grid;
+      grid-template-columns: 2fr 1.3fr;
+      gap: 12px;
+      padding: 12px 16px 24px;
+      height: calc(100vh - 56px);
+      box-sizing: border-box;
+    }
+    .panel {
+      background: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 8px 12px;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .panel-header h2 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      font-size: 12px;
+    }
+    label {
+      font-size: 11px;
+      color: #4b5563;
+    }
+    input[type="text"],
+    input[type="date"],
+    input[type="number"],
+    select,
+    textarea {
+      padding: 3px 6px;
+      font-size: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    button {
+      padding: 4px 10px;
+      font-size: 12px;
+      border-radius: 4px;
+      border: 1px solid #4b5563;
+      background: #f9fafb;
+      cursor: pointer;
+    }
+    button.primary {
+      background: #2563eb;
+      border-color: #2563eb;
+      color: #f9fafb;
+    }
+    button.small {
+      font-size: 11px;
+      padding: 2px 6px;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    .token-box {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+    }
+    .token-box input {
+      width: 180px;
+    }
+    .table-wrapper {
+      flex: 1;
+      overflow: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    thead {
+      position: sticky;
+      top: 0;
+      background: #f9fafb;
+      z-index: 1;
+    }
+    th, td {
+      border-bottom: 1px solid #e5e7eb;
+      padding: 4px 6px;
+      vertical-align: top;
+    }
+    th {
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    tr:nth-child(even) {
+      background: #f9fafb;
+    }
+    tr.pending {
+      background: #fff7ed;
+    }
+    tr.confirmed {
+      background: #ecfdf3;
+    }
+    tr.corrected {
+      background: #e0f2fe;
+    }
+    tr.rejected {
+      background: #fee2e2;
+    }
+    tr.selected {
+      outline: 2px solid #2563eb;
+    }
+    .status-pill {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 10px;
+      text-transform: capitalize;
+    }
+    .status-pill.pending { background: #f97316; color: #fff; }
+    .status-pill.confirmed { background: #16a34a; color: #fff; }
+    .status-pill.corrected { background: #0ea5e9; color: #fff; }
+    .status-pill.rejected { background: #ef4444; color: #fff; }
+    .note-body {
+      flex: 1;
+      padding: 8px 12px;
+      overflow: auto;
+      white-space: pre-wrap;
+      font-family: "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 11px;
+      background: #f9fafb;
+    }
+    .note-meta {
+      padding: 8px 12px;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 11px;
+      background: #ffffff;
+    }
+    .note-meta div {
+      margin-bottom: 2px;
+    }
+    .note-footer {
+      padding: 8px 12px;
+      border-top: 1px solid #e5e7eb;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background: #ffffff;
+    }
+    .note-footer textarea {
+      width: 100%;
+      min-height: 40px;
+      resize: vertical;
+    }
+    .flex-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .message {
+      font-size: 11px;
+      color: #4b5563;
+    }
+    .message strong {
+      color: #111827;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SNF Admissions – Audit & Notifications</h1>
+    <div class="token-box">
+      <label for="admin-token">Admin token:</label>
+      <input id="admin-token" type="password" placeholder="Paste ADMIN_TOKEN" />
+      <button class="small" onclick="saveAdminToken()">Save</button>
+      <span id="token-status" class="message"></span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Left panel: admissions list -->
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Upcoming SNF admissions</h2>
+        <div class="filters">
+          <div>
+            <label for="filter-date">For date</label><br />
+            <input id="filter-date" type="date" />
+          </div>
+          <div>
+            <label for="filter-days">Days ahead</label><br />
+            <input id="filter-days" type="number" value="0" min="0" max="30" style="width:60px;" />
+          </div>
+          <div>
+            <label for="filter-status">Status</label><br />
+            <select id="filter-status">
+              <option value="pending">Pending</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="corrected">Corrected</option>
+              <option value="rejected">Rejected</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+          <div>
+            <label for="filter-facility">Facility contains</label><br />
+            <input id="filter-facility" type="text" placeholder="Name filter (client-side)" />
+          </div>
+          <div style="margin-top:16px;">
+            <button class="primary small" onclick="loadAdmissions()">Load</button>
+          </div>
+        </div>
+      </div>
+      <div class="panel-header" style="border-top:1px solid #e5e7eb;">
+        <div class="flex-row">
+          <button class="small" onclick="sendEmails(false)">Send emails for date</button>
+          <button class="small" onclick="sendEmails(true)">Test email</button>
+          <input id="test-email-to" type="text" placeholder="test@example.com (for test only)" style="width:180px;" />
+        </div>
+        <div id="list-message" class="message"></div>
+      </div>
+      <div class="table-wrapper">
+        <table id="snf-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Patient</th>
+              <th>From (Hospital)</th>
+              <th>Facility (AI)</th>
+              <th>Effective date</th>
+              <th>AI conf</th>
+              <th>Status</th>
+              <th>Final date</th>
+              <th>Reviewed?</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="snf-body">
+            <!-- rows injected via JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Right panel: note viewer + edit form -->
+    <section class="panel" id="note-panel">
+      <div class="panel-header">
+        <h2>Case Management Note</h2>
+        <div id="note-header-summary" class="message"></div>
+      </div>
+      <div class="note-meta" id="note-meta">
+        <div>Select a row to load the note.</div>
+      </div>
+      <div class="note-body" id="note-text">
+        <!-- Raw note text -->
+      </div>
+      <div class="note-footer">
+        <div class="flex-row">
+          <label for="edit-status">Status</label>
+          <select id="edit-status">
+            <option value="pending">Pending</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="corrected">Corrected</option>
+            <option value="rejected">Rejected</option>
+          </select>
+          <label for="edit-date">Final transfer date</label>
+          <input id="edit-date" type="date" />
+        </div>
+        <div>
+          <label for="edit-comments">Review comments</label>
+          <textarea id="edit-comments" placeholder="Notes on why SNF / corrections, etc."></textarea>
+        </div>
+        <div class="flex-row">
+          <button class="primary small" onclick="saveCurrent()">Save</button>
+          <span id="note-message" class="message"></span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let admissions = [];
+    let selectedId = null;
+
+    function getAdminToken() {
+      const input = document.getElementById("admin-token");
+      return (input.value || "").trim();
+    }
+
+    function saveAdminToken() {
+      const token = getAdminToken();
+      if (token) {
+        localStorage.setItem("evolv_admin_token", token);
+        document.getElementById("token-status").textContent = "Saved.";
+      } else {
+        localStorage.removeItem("evolv_admin_token");
+        document.getElementById("token-status").textContent = "Cleared.";
+      }
+      setTimeout(() => {
+        document.getElementById("token-status").textContent = "";
+      }, 2000);
+    }
+
+    function initToken() {
+      const saved = localStorage.getItem("evolv_admin_token") || "";
+      if (saved) {
+        document.getElementById("admin-token").value = saved;
+      }
+    }
+
+    function initDate() {
+      const d = new Date();
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      document.getElementById("filter-date").value = `${yyyy}-${mm}-${dd}`;
+    }
+
+    async function loadAdmissions() {
+      const token = getAdminToken();
+      if (!token) {
+        alert("Please paste your ADMIN_TOKEN first.");
+        return;
+      }
+      const date = document.getElementById("filter-date").value;
+      const days = document.getElementById("filter-days").value || "0";
+      const status = document.getElementById("filter-status").value;
+      const facilityFilter = (document.getElementById("filter-facility").value || "").toLowerCase();
+
+      const params = new URLSearchParams();
+      if (status) params.set("status", status);
+      if (date) params.set("for_date", date);
+      if (days) params.set("days_ahead", days);
+
+      document.getElementById("list-message").textContent = "Loading...";
+      selectedId = null;
+      document.getElementById("note-meta").innerHTML = "<div>Select a row to load the note.</div>";
+      document.getElementById("note-text").textContent = "";
+      document.getElementById("note-message").textContent = "";
+      document.getElementById("note-header-summary").textContent = "";
+
+      try {
+        const resp = await fetch(`/admin/snf/list?${params.toString()}`, {
+          headers: { "X-Admin-Token": token }
+        });
+        if (!resp.ok) {
+          throw new Error("HTTP " + resp.status);
+        }
+        const data = await resp.json();
+        if (!data.ok) {
+          throw new Error(data.detail || "Server returned ok=false");
+        }
+        admissions = data.items || [];
+        // Client-side facility name filter
+        const filtered = admissions.filter(r => {
+          if (!facilityFilter) return true;
+          const fac = (r.effective_facility_name || "") + " " + (r.ai_snf_name_raw || "");
+          return fac.toLowerCase().includes(facilityFilter);
+        });
+        renderTable(filtered);
+        document.getElementById("list-message").innerHTML =
+          `<strong>${filtered.length}</strong> rows (from ${admissions.length} total).`;
+      } catch (err) {
+        console.error("loadAdmissions error", err);
+        document.getElementById("list-message").textContent = "Error loading admissions: " + err;
+      }
+    }
+
+    function renderTable(rows) {
+      const tbody = document.getElementById("snf-body");
+      tbody.innerHTML = "";
+      rows.forEach(r => {
+        const tr = document.createElement("tr");
+        tr.className = (r.status || "pending") + (r.id === selectedId ? " selected" : "");
+        tr.onclick = () => selectRow(r.id);
+        const facLabelParts = [];
+        if (r.effective_facility_name) facLabelParts.push(r.effective_facility_name);
+        if (r.effective_facility_city || r.effective_facility_state) {
+          facLabelParts.push(`(${[r.effective_facility_city, r.effective_facility_state].filter(Boolean).join(", ")})`);
+        }
+        const facLabel = facLabelParts.join(" ") || (r.ai_snf_name_raw || "(unknown)");
+
+        const reviewed = r.review_comments ? "Yes" : (r.reviewed_at ? "Yes" : "No");
+
+        tr.innerHTML = `
+          <td>${r.id}</td>
+          <td>
+            <div><strong>${r.patient_name || ""}</strong></div>
+            <div style="color:#6b7280;">MRN ${r.patient_mrn || ""}</div>
+          </td>
+          <td>${r.hospital_name || ""}</td>
+          <td>${facLabel}</td>
+          <td>${r.effective_date || ""}</td>
+          <td>${(r.ai_confidence != null ? r.ai_confidence.toFixed(2) : "")}</td>
+          <td>
+            <span class="status-pill ${r.status || "pending"}">${r.status || "pending"}</span>
+          </td>
+          <td>${r.final_expected_transfer_date || ""}</td>
+          <td>${reviewed}</td>
+          <td>
+            <button class="small" onclick="event.stopPropagation(); selectRow(${r.id});">View</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function selectRow(id) {
+      selectedId = id;
+      const token = getAdminToken();
+      if (!token) {
+        alert("Please paste your ADMIN_TOKEN first.");
+        return;
+      }
+      // Highlight
+      const trs = document.querySelectorAll("#snf-body tr");
+      trs.forEach(tr => {
+        if (tr.firstElementChild && parseInt(tr.firstElementChild.textContent, 10) === id) {
+          tr.classList.add("selected");
+        } else {
+          tr.classList.remove("selected");
+        }
+      });
+
+      document.getElementById("note-message").textContent = "Loading note...";
+      try {
+        const resp = await fetch(`/admin/snf/note/${id}`, {
+          headers: { "X-Admin-Token": token }
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.detail || "ok=false");
+        const adm = data.admission;
+        const note = data.note;
+
+        document.getElementById("note-meta").innerHTML = `
+          <div><strong>${adm.patient_name || ""}</strong> (MRN ${adm.patient_mrn || ""})</div>
+          <div>${adm.hospital_name || ""}</div>
+          <div>Note: ${note.note_datetime || ""} by ${note.note_author || ""} (${note.note_type || ""})</div>
+          <div>AI SNF: ${adm.ai_snf_name_raw || "(none)"} | AI date: ${adm.ai_expected_transfer_date || "(none)"}</div>
+        `;
+        document.getElementById("note-text").textContent = note.note_text || "";
+
+        document.getElementById("edit-status").value = adm.status || "pending";
+        document.getElementById("edit-date").value = adm.final_expected_transfer_date || (adm.ai_expected_transfer_date || "");
+        document.getElementById("edit-comments").value = adm.review_comments || "";
+
+        document.getElementById("note-header-summary").textContent = `Editing SNF record ID ${adm.id}`;
+        document.getElementById("note-message").textContent = "";
+      } catch (err) {
+        console.error("selectRow error", err);
+        document.getElementById("note-message").textContent = "Error loading note: " + err;
+      }
+    }
+
+    async function saveCurrent() {
+      if (!selectedId) {
+        alert("Select a row first.");
+        return;
+      }
+      const token = getAdminToken();
+      if (!token) {
+        alert("Please paste your ADMIN_TOKEN first.");
+        return;
+      }
+      const status = document.getElementById("edit-status").value;
+      const date = document.getElementById("edit-date").value;
+      const comments = document.getElementById("edit-comments").value;
+
+      document.getElementById("note-message").textContent = "Saving...";
+      try {
+        const resp = await fetch("/admin/snf/update", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Token": token
+          },
+          body: JSON.stringify({
+            id: selectedId,
+            status: status,
+            final_expected_transfer_date: date || null,
+            review_comments: comments || ""
+          })
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.detail || "ok=false");
+        document.getElementById("note-message").textContent = "Saved.";
+        // Reload list to refresh colors/dates
+        loadAdmissions();
+      } catch (err) {
+        console.error("saveCurrent error", err);
+        document.getElementById("note-message").textContent = "Error saving: " + err;
+      }
+    }
+
+    async function sendEmails(testOnly) {
+      const token = getAdminToken();
+      if (!token) {
+        alert("Please paste your ADMIN_TOKEN first.");
+        return;
+      }
+      const date = document.getElementById("filter-date").value;
+      if (!date) {
+        alert("Please pick a date first.");
+        return;
+      }
+      const testTo = document.getElementById("test-email-to").value;
+      const payload = {
+        for_date: date,
+        test_only: !!testOnly,
+        test_email_to: testOnly ? testTo : ""
+      };
+      if (testOnly && !testTo) {
+        alert("Enter a test email address.");
+        return;
+      }
+
+      document.getElementById("list-message").textContent = "Sending emails...";
+      try {
+        const resp = await fetch("/admin/snf/send-emails", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Token": token
+          },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const data = await resp.json();
+        if (!data.ok && data.ok !== undefined) {
+          throw new Error(data.detail || "ok=false");
+        }
+        const msg = [
+          testOnly ? "Test emails sent." : "Emails sent.",
+          `emails_sent=${data.emails_sent || 0}`,
+          `skipped_no_facility=${data.skipped_no_facility || 0}`,
+          `skipped_no_targets=${data.skipped_no_targets || 0}`
+        ].join(" ");
+        document.getElementById("list-message").textContent = msg;
+        if (!testOnly) {
+          // Refresh list so emailed rows show emailed_at
+          loadAdmissions();
+        }
+      } catch (err) {
+        console.error("sendEmails error", err);
+        document.getElementById("list-message").textContent = "Error sending emails: " + err;
+      }
+    }
+
+    // Init on load
+    window.addEventListener("DOMContentLoaded", () => {
+      initToken();
+      initDate();
+      // Optionally auto-load
+      // loadAdmissions();
+    });
+  </script>
+</body>
+</html>
