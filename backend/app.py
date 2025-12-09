@@ -44,6 +44,7 @@ else:
 ASK_HTML = FRONTEND_DIR / "TEST Ask.html"
 ADMIN_HTML = FRONTEND_DIR / "TEST Admin.html"
 FACILITY_HTML = FRONTEND_DIR / "TEST  Facility_Details.html"  # note double space
+SNF_HTML = FRONTEND_DIR / "TEST SNF_Admissions.html"
 
 
 
@@ -3803,6 +3804,425 @@ def upsert_facility_and_children(payload: dict) -> str:
     return facility_id
 
 
+# ---------------------------------------------------------------------------
+# Admin: SNF admissions APIs used by TEST SNF_Admissions.html
+# ---------------------------------------------------------------------------
+
+@app.get("/admin/snf/list")
+async def admin_snf_list(
+    request: Request,
+    status: str = Query("pending"),          # 'pending', 'confirmed', 'corrected', 'rejected', 'all'
+    for_date: Optional[str] = Query(None),   # 'YYYY-MM-DD'
+    days_ahead: int = Query(0, ge=0, le=30),
+):
+    """
+    List SNF admissions for the SNF Admissions page.
+
+    Filters:
+      - status: filter by snf_admissions.status (or 'all' for no filter)
+      - for_date: base date for transfer date filtering (optional)
+      - days_ahead: include records up to N days after for_date
+
+    Returns: { ok: True, items: [ ... ] }
+    """
+    require_admin(request)
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        where = ["s.ai_is_snf_candidate = 1"]
+        params: List[Any] = []
+
+        # Status filter
+        status_s = (status or "").strip().lower()
+        if status_s and status_s != "all":
+            where.append("s.status = ?")
+            params.append(status_s)
+
+        # Date filter: use effective_date = COALESCE(final_expected, ai_expected)
+        if for_date:
+            where.append(
+                "COALESCE(s.final_expected_transfer_date, s.ai_expected_transfer_date) >= ?"
+            )
+            params.append(for_date)
+            if days_ahead > 0:
+                where.append(
+                    "COALESCE(s.final_expected_transfer_date, s.ai_expected_transfer_date) "
+                    "<= date(?, ? || ' days')"
+                )
+                params.append(for_date)
+                params.append(days_ahead)
+
+        sql = f"""
+            SELECT
+                s.*,
+                COALESCE(s.final_expected_transfer_date, s.ai_expected_transfer_date) AS effective_date,
+                COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id) AS effective_facility_id,
+                f.facility_name AS effective_facility_name,
+                f.city AS effective_facility_city,
+                f.state AS effective_facility_state
+            FROM snf_admissions s
+            LEFT JOIN facilities f
+              ON f.facility_id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id)
+            WHERE {" AND ".join(where) if where else "1=1"}
+            ORDER BY effective_date IS NULL, effective_date, s.patient_name COLLATE NOCASE
+        """
+
+        cur.execute(sql, params)
+        items: List[Dict[str, Any]] = []
+        for r in cur.fetchall():
+            items.append(
+                {
+                    "id": r["id"],
+                    "patient_mrn": r["patient_mrn"],
+                    "patient_name": r["patient_name"],
+                    "hospital_name": r["hospital_name"],
+                    "note_datetime": r["note_datetime"],
+                    "ai_snf_name_raw": r["ai_snf_name_raw"],
+                    "ai_expected_transfer_date": r["ai_expected_transfer_date"],
+                    "ai_confidence": r["ai_confidence"],
+                    "status": r["status"],
+                    "final_snf_facility_id": r["final_snf_facility_id"],
+                    "final_snf_name_display": r["final_snf_name_display"],
+                    "final_expected_transfer_date": r["final_expected_transfer_date"],
+                    "review_comments": r["review_comments"],
+                    "emailed_at": r["emailed_at"],
+                    "email_run_id": r["email_run_id"],
+                    "effective_date": r["effective_date"],
+                    "effective_facility_id": r["effective_facility_id"],
+                    "effective_facility_name": r["effective_facility_name"],
+                    "effective_facility_city": r["effective_facility_city"],
+                    "effective_facility_state": r["effective_facility_state"],
+                }
+            )
+        return {"ok": True, "items": items}
+    finally:
+        conn.close()
+
+
+@app.get("/admin/snf/note/{snf_id}")
+async def admin_snf_get_note(
+    request: Request,
+    snf_id: int,
+):
+    """
+    Fetch the SNF admission row + the underlying raw CM note.
+    Used when the user clicks 'View Note' on the SNF page.
+    """
+    require_admin(request)
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        cur.execute("SELECT * FROM snf_admissions WHERE id = ?", (snf_id,))
+        adm = cur.fetchone()
+        if not adm:
+            raise HTTPException(status_code=404, detail="SNF admission not found")
+
+        raw_note_id = adm["raw_note_id"]
+
+        cur.execute("SELECT * FROM cm_notes_raw WHERE id = ?", (raw_note_id,))
+        note = cur.fetchone()
+        if not note:
+            raise HTTPException(status_code=404, detail="Raw note not found")
+
+        admission = {
+            "id": adm["id"],
+            "patient_mrn": adm["patient_mrn"],
+            "patient_name": adm["patient_name"],
+            "hospital_name": adm["hospital_name"],
+            "note_datetime": adm["note_datetime"],
+            "ai_snf_name_raw": adm["ai_snf_name_raw"],
+            "ai_expected_transfer_date": adm["ai_expected_transfer_date"],
+            "ai_confidence": adm["ai_confidence"],
+            "status": adm["status"],
+            "final_snf_facility_id": adm["final_snf_facility_id"],
+            "final_snf_name_display": adm["final_snf_name_display"],
+            "final_expected_transfer_date": adm["final_expected_transfer_date"],
+            "review_comments": adm["review_comments"],
+        }
+
+        note_data = {
+            "id": note["id"],
+            "patient_mrn": note["patient_mrn"],
+            "patient_name": note["patient_name"],
+            "dob": note["dob"],
+            "encounter_id": note["encounter_id"],
+            "hospital_name": note["hospital_name"],
+            "unit_name": note["unit_name"],
+            "admission_date": note["admission_date"],
+            "note_datetime": note["note_datetime"],
+            "note_author": note["note_author"],
+            "note_type": note["note_type"],
+            "note_text": note["note_text"],
+            "source_system": note["source_system"],
+            "pad_run_id": note["pad_run_id"],
+        }
+
+        return {"ok": True, "admission": admission, "note": note_data}
+    finally:
+        conn.close()
+
+
+
+@app.post("/admin/snf/update")
+async def admin_snf_update(
+    request: Request,
+    payload: Dict[str, Any] = Body(...),
+):
+    """
+    Update a single SNF admission row from the SNF Admissions page.
+
+    Payload:
+      {
+        "id": 123,
+        "status": "confirmed" | "corrected" | "rejected" | "pending",
+        "final_expected_transfer_date": "YYYY-MM-DD" or null,
+        "review_comments": "..."
+      }
+
+    (For now we treat facility selection as read-only; later we can add edits.)
+    """
+    require_admin(request)
+
+    snf_id = int(payload.get("id") or 0)
+    if not snf_id:
+        raise HTTPException(status_code=400, detail="id is required")
+
+    status = (payload.get("status") or "").strip().lower()
+    if status not in ("pending", "confirmed", "corrected", "rejected"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+
+    final_date = payload.get("final_expected_transfer_date")
+    if final_date:
+        final_date = str(final_date).strip()
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", final_date):
+            raise HTTPException(status_code=400, detail="final_expected_transfer_date must be YYYY-MM-DD")
+    else:
+        final_date = None
+
+    review_comments = (payload.get("review_comments") or "").strip()
+    reviewer = (payload.get("reviewed_by") or "admin").strip()
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE snf_admissions
+               SET status = ?,
+                   final_expected_transfer_date = ?,
+                   review_comments = ?,
+                   reviewed_by = ?,
+                   reviewed_at = datetime('now')
+             WHERE id = ?
+            """,
+            (status, final_date, review_comments, reviewer, snf_id),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="SNF admission not found")
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+@app.post("/admin/snf/send-emails")
+async def admin_snf_send_emails(
+    request: Request,
+    payload: Dict[str, Any] = Body(...),
+):
+    """
+    Send upcoming SNF admission emails grouped by facility.
+
+    Payload:
+      {
+        "for_date": "YYYY-MM-DD",        # required
+        "test_only": true/false,         # if true, do not mark as emailed
+        "test_email_to": "me@domain.com" # optional override recipient in test mode
+      }
+
+    Logic:
+      - Find snf_admissions where:
+          status IN ('confirmed','corrected')
+          effective_date = for_date
+          emailed_at IS NULL   (to avoid double-sending)
+      - Group by effective facility_id (final_snf_facility_id or ai_snf_facility_id)
+      - For each facility, look up snf_notification_targets for email_to/email_cc
+      - Send an email with a simple text list of upcoming admissions
+      - If not test_only, mark rows as emailed with emailed_at + email_run_id
+    """
+    require_admin(request)
+
+    for_date = (payload.get("for_date") or "").strip()
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", for_date):
+        raise HTTPException(status_code=400, detail="for_date must be YYYY-MM-DD")
+
+    test_only = bool(payload.get("test_only"))
+    test_email_to = (payload.get("test_email_to") or "").strip()
+
+    if test_only and not test_email_to:
+        raise HTTPException(status_code=400, detail="test_email_to is required when test_only=true")
+
+    if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD):
+        return {"ok": False, "message": "SMTP not configured; skipping send."}
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Pull rows to email
+        cur.execute(
+            """
+            SELECT
+                s.*,
+                COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id) AS effective_facility_id,
+                COALESCE(s.final_expected_transfer_date, s.ai_expected_transfer_date) AS effective_date
+            FROM snf_admissions s
+            WHERE s.status IN ('confirmed','corrected')
+              AND COALESCE(s.final_expected_transfer_date, s.ai_expected_transfer_date) = ?
+              AND (s.emailed_at IS NULL OR s.emailed_at = '')
+            """,
+            (for_date,),
+        )
+        rows = cur.fetchall()
+        if not rows:
+            return {"ok": True, "message": f"No confirmed/corrected admissions for {for_date} needing email."}
+
+        # Group by facility
+        by_fac: Dict[str, List[sqlite3.Row]] = {}
+        skipped_no_facility = 0
+        for r in rows:
+            fid = (r["effective_facility_id"] or "").strip()
+            if not fid:
+                skipped_no_facility += 1
+                continue
+            by_fac.setdefault(fid, []).append(r)
+
+        email_run_id = secrets.token_hex(8)
+        sent = 0
+        skipped_no_targets = 0
+
+        # Preload facility names
+        fac_names: Dict[str, str] = {}
+        cur.execute("SELECT facility_id, facility_name FROM facilities")
+        for fr in cur.fetchall():
+            fac_names[fr["facility_id"]] = fr["facility_name"] or ""
+
+        # Preload notification targets
+        notif: Dict[str, List[Dict[str, str]]] = {}
+        cur.execute(
+            """
+            SELECT facility_id, email_to, email_cc
+            FROM snf_notification_targets
+            WHERE active = 1
+            """
+        )
+        for nr in cur.fetchall():
+            fid = (nr["facility_id"] or "").strip()
+            if not fid:
+                continue
+            notif.setdefault(fid, []).append(
+                {
+                    "email_to": nr["email_to"] or "",
+                    "email_cc": nr["email_cc"] or "",
+                }
+            )
+
+        # Send emails
+        for fid, items in by_fac.items():
+            if test_only:
+                # Override recipients in test mode
+                target_to = test_email_to
+                target_cc = ""
+            else:
+                targets = notif.get(fid) or []
+                if not targets:
+                    skipped_no_targets += len(items)
+                    continue
+                # Combine all email_to into one comma-separated TO, same for CC
+                tos = sorted({t["email_to"].strip() for t in targets if t["email_to"].strip()})
+                ccs = sorted({t["email_cc"].strip() for t in targets if t["email_cc"].strip()})
+                if not tos:
+                    skipped_no_targets += len(items)
+                    continue
+                target_to = ", ".join(tos)
+                target_cc = ", ".join(ccs)
+
+            fac_name = fac_names.get(fid, fid)
+            subject = f"Upcoming SNF admissions for {for_date} – {fac_name}"
+            if test_only:
+                subject = "[TEST] " + subject
+
+            lines = [
+                f"Upcoming SNF admissions for {fac_name} on {for_date}",
+                "",
+            ]
+            for r in items:
+                pname = r["patient_name"] or ""
+                mrn = r["patient_mrn"] or ""
+                hosp = r["hospital_name"] or ""
+                eff_date = r["effective_date"] or for_date
+                ai_name = r["ai_snf_name_raw"] or ""
+                final_name = r["final_snf_name_display"] or ai_name
+                status = r["status"] or ""
+                line = f"- {pname} (MRN {mrn}) from {hosp}, transfer {eff_date}, facility '{final_name}' [status: {status}]"
+                lines.append(line)
+
+            body = "\n".join(lines)
+
+            msg = EmailMessage()
+            msg["Subject"] = subject
+            msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
+            msg["To"] = target_to
+            if target_cc:
+                msg["Cc"] = target_cc
+            msg.set_content(body)
+
+            try:
+                context = ssl.create_default_context()
+                with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+                    server.starttls(context=context)
+                    server.login(SMTP_USER, SMTP_PASSWORD)
+                    server.send_message(msg)
+                sent += 1
+
+                # Mark rows emailed if not test
+                if not test_only:
+                    ids = [r["id"] for r in items]
+                    cur.execute(
+                        f"""
+                        UPDATE snf_admissions
+                           SET emailed_at = datetime('now'),
+                               email_run_id = ?
+                         WHERE id IN ({",".join("?" for _ in ids)})
+                        """,
+                        (email_run_id, *ids),
+                    )
+            except Exception as e:
+                print("[snf-email] Failed for facility", fid, ":", e)
+                # Don't raise; continue other facilities
+
+        if not test_only:
+            conn.commit()
+
+        return {
+            "ok": True,
+            "for_date": for_date,
+            "email_run_id": email_run_id,
+            "emails_sent": sent,
+            "skipped_no_facility": skipped_no_facility,
+            "skipped_no_targets": skipped_no_targets,
+            "test_only": test_only,
+        }
+    finally:
+        conn.close()
+
+
+
+
 def send_intake_email(facility_id: str, payload: dict) -> None:
     """
     Fire-and-forget email notification for Facility Details submissions.
@@ -3954,6 +4374,11 @@ async def ask_page():
 async def admin_ui():
     return HTMLResponse(content=read_html(ADMIN_HTML))
 
+
+@app.get("/snf-admissions", response_class=HTMLResponse)
+async def snf_admissions_ui():
+    # New SNF admissions audit page
+    return HTMLResponse(content=read_html(SNF_HTML))
 
 
 @app.get("/facility", response_class=HTMLResponse)
