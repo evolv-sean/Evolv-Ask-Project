@@ -608,7 +608,7 @@ async def pad_cm_notes_bulk(
         raise HTTPException(status_code=400, detail="Empty request body")
 
     # TEMP: uncomment this to see exactly what PAD is sending in your Render logs
-    # print("[pad_cm_notes_bulk] raw body:", raw_text[:500])
+    print("[pad_cm_notes_bulk] raw body:", raw_text[:500])
 
     # First try: parse the whole body as JSON
     try:
