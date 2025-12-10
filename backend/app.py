@@ -3122,11 +3122,50 @@ async def admin_snf_run_extraction(
     return snf_run_extraction(days_back=days_back)
 
 
+@app.post("/admin/snf/clear")
+async def admin_snf_clear(
+    request: Request,
+    include_cm_notes: bool = Query(
+        False,
+        description="If true, also delete all rows from cm_notes_raw.",
+    ),
+):
+    """
+    Admin-only endpoint to wipe SNF-related test data.
+
+    WARNING: This permanently deletes data from snf_admissions
+    (and optionally cm_notes_raw). Intended for test/cleanup only.
+    """
+    require_admin(request)
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Delete all SNF admissions
+        cur.execute("DELETE FROM snf_admissions")
+        deleted_snf = cur.rowcount
+
+        deleted_notes = 0
+        if include_cm_notes:
+            cur.execute("DELETE FROM cm_notes_raw")
+            deleted_notes = cur.rowcount
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {
+        "ok": True,
+        "deleted_snf_admissions": deleted_snf,
+        "deleted_cm_notes_raw": deleted_notes,
+    }
 
 
 # ---------------------------------------------------------------------------
 # Admin: Q&A list/add/update/delete  (used by TEST Admin.html "Q&A" tab)
 # ---------------------------------------------------------------------------
+
 
 @app.get("/admin/list")
 async def admin_list(request: Request):
