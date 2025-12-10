@@ -144,6 +144,9 @@
     tr.rejected {
       background: #fee2e2;
     }
+    tr.removed {
+      background: #e5e7eb;
+    }
     tr.selected {
       outline: 2px solid #2563eb;
     }
@@ -158,6 +161,7 @@
     .status-pill.confirmed { background: #16a34a; color: #fff; }
     .status-pill.corrected { background: #0ea5e9; color: #fff; }
     .status-pill.rejected { background: #ef4444; color: #fff; }
+    .status-pill.removed { background: #6b7280; color: #fff; }
     .note-body {
       flex: 1;
       padding: 8px 12px;
@@ -166,6 +170,21 @@
       font-family: "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       font-size: 11px;
       background: #f9fafb;
+    }
+    .note-entry {
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px dashed #e5e7eb;
+    }
+    .note-entry:last-child {
+      border-bottom: none;
+    }
+    .note-entry-header {
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    .note-entry-body {
+      white-space: pre-wrap;
     }
     .note-meta {
       padding: 8px 12px;
@@ -176,6 +195,27 @@
     .note-meta div {
       margin-bottom: 2px;
     }
+
+    /* New: emailed badge styling */
+    .email-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 500;
+      border: 1px solid #d1d5db;
+    }
+    .email-badge.sent {
+      background: #ecfdf3;
+      color: #166534;
+      border-color: #bbf7d0;
+    }
+    .email-badge.not-sent {
+      background: #fef2f2;
+      color: #991b1b;
+      border-color: #fecaca;
+    }
+
     .note-footer {
       padding: 8px 12px;
       border-top: 1px solid #e5e7eb;
@@ -184,6 +224,7 @@
       gap: 4px;
       background: #ffffff;
     }
+
     .note-footer textarea {
       width: 100%;
       min-height: 40px;
@@ -221,7 +262,7 @@
         <h2>Upcoming SNF admissions</h2>
         <div class="filters">
           <div>
-            <label for="filter-date">For date</label><br />
+            <label for="filter-date">Active Date</label><br />
             <input id="filter-date" type="date" />
           </div>
           <div>
@@ -235,6 +276,7 @@
               <option value="confirmed">Confirmed</option>
               <option value="corrected">Corrected</option>
               <option value="rejected">Rejected</option>
+              <option value="removed">Removed</option>
               <option value="all">All</option>
             </select>
           </div>
@@ -267,7 +309,7 @@
               <th>AI conf</th>
               <th>Status</th>
               <th>Final date</th>
-              <th>Reviewed?</th>
+              <th>Emailed</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -298,9 +340,27 @@
             <option value="confirmed">Confirmed</option>
             <option value="corrected">Corrected</option>
             <option value="rejected">Rejected</option>
+            <option value="removed">Removed</option>
           </select>
+
+          <label for="edit-disposition">Disposition</label>
+          <select id="edit-disposition">
+            <option value="">(none)</option>
+            <option value="SNF">SNF</option>
+            <option value="Home Health">Home Health</option>
+            <option value="Home Self-care">Home Self-care</option>
+            <option value="IRF">IRF</option>
+            <option value="LTACH">LTACH</option>
+            <option value="Other">Other</option>
+            <option value="Unknown">Unknown</option>
+          </select>
+
           <label for="edit-date">Final transfer date</label>
           <input id="edit-date" type="date" />
+        </div>
+        <div>
+          <label for="edit-facility-free">Facility (free text)</label>
+          <input id="edit-facility-free" type="text" placeholder="Manual facility / disposition notes" style="width:100%;" />
         </div>
         <div>
           <label for="edit-comments">Review comments</label>
@@ -416,13 +476,17 @@
         }
         const facLabel = facLabelParts.join(" ") || (r.ai_snf_name_raw || "(unknown)");
 
-        const reviewed = r.review_comments ? "Yes" : (r.reviewed_at ? "Yes" : "No");
+        const underName = r.visit_id
+          ? `Visit ${r.visit_id}`
+          : (r.patient_mrn ? `MRN ${r.patient_mrn}` : "");
+
+        const emailed = r.emailed_at ? "Yes" : "No";
 
         tr.innerHTML = `
           <td>${r.id}</td>
           <td>
             <div><strong>${r.patient_name || ""}</strong></div>
-            <div style="color:#6b7280;">MRN ${r.patient_mrn || ""}</div>
+            <div style="color:#6b7280;">${underName}</div>
           </td>
           <td>${r.hospital_name || ""}</td>
           <td>${facLabel}</td>
@@ -432,7 +496,7 @@
             <span class="status-pill ${r.status || "pending"}">${r.status || "pending"}</span>
           </td>
           <td>${r.final_expected_transfer_date || ""}</td>
-          <td>${reviewed}</td>
+          <td>${emailed}</td>
           <td>
             <button class="small" onclick="event.stopPropagation(); selectRow(${r.id});">View</button>
           </td>
@@ -469,16 +533,55 @@
         const adm = data.admission;
         const note = data.note;
 
+        const visitLabel = adm.visit_id
+          ? `Visit ${adm.visit_id}`
+          : (adm.patient_mrn ? `MRN ${adm.patient_mrn}` : "");
+
+        // New: emailed badge label + class
+        const emailedLabel = adm.emailed_at
+          ? `Emailed on ${adm.emailed_at}`
+          : "Not yet emailed";
+        const emailedClass = adm.emailed_at ? "sent" : "not-sent";
+
         document.getElementById("note-meta").innerHTML = `
-          <div><strong>${adm.patient_name || ""}</strong> (MRN ${adm.patient_mrn || ""})</div>
+          <div><strong>${adm.patient_name || ""}</strong>${visitLabel ? " (" + visitLabel + ")" : ""}</div>
           <div>${adm.hospital_name || ""}</div>
-          <div>Note: ${note.note_datetime || ""} by ${note.note_author || ""} (${note.note_type || ""})</div>
-          <div>AI SNF: ${adm.ai_snf_name_raw || "(none)"} | AI date: ${adm.ai_expected_transfer_date || "(none)"}</div>
+          <div>AI SNF: ${adm.ai_snf_name_raw || "(none)"} | AI date: ${adm.ai_expected_transfer_date || "(none)"} | AI conf: ${adm.ai_confidence != null ? adm.ai_confidence.toFixed(2) : "(n/a)"}</div>
+          <div>
+            <span class="email-badge ${emailedClass}">${emailedLabel}</span>
+          </div>
         `;
-        document.getElementById("note-text").textContent = note.note_text || "";
+
+        // Render all notes for this admission
+        const noteTextEl = document.getElementById("note-text");
+        noteTextEl.innerHTML = "";
+        const allNotes = (data.notes && Array.isArray(data.notes) && data.notes.length) ? data.notes : [note];
+
+        allNotes.forEach(n => {
+          const wrapper = document.createElement("div");
+          wrapper.className = "note-entry";
+
+          const header = document.createElement("div");
+          header.className = "note-entry-header";
+          const headerBits = [];
+          if (n.note_datetime) headerBits.push(n.note_datetime);
+          if (n.note_type) headerBits.push(n.note_type);
+          if (n.note_author) headerBits.push("by " + n.note_author);
+          header.textContent = headerBits.join(" – ");
+
+          const body = document.createElement("div");
+          body.className = "note-entry-body";
+          body.textContent = n.note_text || "";
+
+          wrapper.appendChild(header);
+          wrapper.appendChild(body);
+          noteTextEl.appendChild(wrapper);
+        });
 
         document.getElementById("edit-status").value = adm.status || "pending";
+        document.getElementById("edit-disposition").value = adm.disposition || "";
         document.getElementById("edit-date").value = adm.final_expected_transfer_date || (adm.ai_expected_transfer_date || "");
+        document.getElementById("edit-facility-free").value = adm.facility_free_text || "";
         document.getElementById("edit-comments").value = adm.review_comments || "";
 
         document.getElementById("note-header-summary").textContent = `Editing SNF record ID ${adm.id}`;
@@ -500,7 +603,9 @@
         return;
       }
       const status = document.getElementById("edit-status").value;
+      const disposition = document.getElementById("edit-disposition").value;
       const date = document.getElementById("edit-date").value;
+      const facilityFree = document.getElementById("edit-facility-free").value;
       const comments = document.getElementById("edit-comments").value;
 
       document.getElementById("note-message").textContent = "Saving...";
@@ -514,7 +619,9 @@
           body: JSON.stringify({
             id: selectedId,
             status: status,
+            disposition: disposition || "",
             final_expected_transfer_date: date || null,
+            facility_free_text: facilityFree || "",
             review_comments: comments || ""
           })
         });
