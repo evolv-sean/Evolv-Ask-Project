@@ -700,10 +700,25 @@ async def pad_cm_notes_bulk(
                 errors.append({"index": idx, "error": "row is not an object"})
                 continue
 
-            patient_mrn = (row.get("patient_mrn") or "").strip()
-            note_datetime = (row.get("note_datetime") or "").strip()
+            # Normalize incoming fields from PAD – they might be numbers, etc.
+            raw_patient_mrn = row.get("patient_mrn")
+            raw_note_datetime = row.get("note_datetime")
+            raw_visit_id = row.get("visit_id")
+
+            # Convert MRN + datetime to strings safely
+            patient_mrn = str(raw_patient_mrn or "").strip()
+            note_datetime = str(raw_note_datetime or "").strip()
             note_text = row.get("note_text") or ""
-            visit_id = (row.get("visit_id") or "").strip()
+
+            # visit_id might come in as a float like 1234564.0 from PAD DataTable
+            if isinstance(raw_visit_id, (int, float)):
+                # If it's 1234564.0, store "1234564"
+                if isinstance(raw_visit_id, float) and raw_visit_id.is_integer():
+                    visit_id = str(int(raw_visit_id))
+                else:
+                    visit_id = str(raw_visit_id)
+            else:
+                visit_id = str(raw_visit_id or "").strip()
 
             # Every time PAD sends this visit_id, treat it as "still active" today
             if visit_id:
