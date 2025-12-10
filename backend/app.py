@@ -3161,6 +3161,43 @@ async def admin_snf_clear(
         "deleted_cm_notes_raw": deleted_notes,
     }
 
+@app.get("/admin/snf/clear-browser")
+async def admin_snf_clear_browser(
+    request: Request,
+    admin_token: str = Query(..., description="Your admin token"),
+    include_cm_notes: bool = Query(False),
+):
+    """
+    Browser-friendly version of /admin/snf/clear.
+    Allows cleanup directly from the browser address bar
+    by passing the admin token in the query string.
+    """
+    # Validate admin token
+    if admin_token != os.getenv("ADMIN_TOKEN"):
+        raise HTTPException(status_code=403, detail="Invalid admin token")
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        cur.execute("DELETE FROM snf_admissions")
+        deleted_snf = cur.rowcount
+
+        deleted_notes = 0
+        if include_cm_notes:
+            cur.execute("DELETE FROM cm_notes_raw")
+            deleted_notes = cur.rowcount
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {
+        "ok": True,
+        "deleted_snf_admissions": deleted_snf,
+        "deleted_cm_notes_raw": deleted_notes,
+    }
+
 
 # ---------------------------------------------------------------------------
 # Admin: Q&A list/add/update/delete  (used by TEST Admin.html "Q&A" tab)
