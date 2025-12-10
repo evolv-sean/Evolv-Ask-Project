@@ -318,13 +318,18 @@ def init_db():
             ai_confidence               REAL,
 
             -- Human review / final decision
-            status                      TEXT DEFAULT 'pending',  -- pending/confirmed/corrected/rejected
+            status                      TEXT DEFAULT 'pending',  -- pending/confirmed/corrected/rejected/removed
+            disposition                 TEXT,
+            facility_free_text          TEXT,
             final_snf_facility_id       TEXT,
             final_snf_name_display      TEXT,
             final_expected_transfer_date TEXT,
             reviewed_by                 TEXT,
             reviewed_at                 TEXT,
             review_comments             TEXT,
+
+            -- Activity tracking (which admissions are still active in PAD feeds)
+            last_seen_active_date       TEXT,
 
             -- Email tracking
             emailed_at                  TEXT,
@@ -335,9 +340,26 @@ def init_db():
         """
     )
 
+
     # Ensure visit_id exists on older snf_admissions tables
     try:
         cur.execute("ALTER TABLE snf_admissions ADD COLUMN visit_id TEXT")
+    except sqlite3.Error:
+        pass
+
+    # Ensure new columns exist on older snf_admissions tables
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN disposition TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN facility_free_text TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN last_seen_active_date TEXT")
     except sqlite3.Error:
         pass
 
@@ -681,6 +703,14 @@ async def pad_cm_notes_bulk(
             patient_mrn = (row.get("patient_mrn") or "").strip()
             note_datetime = (row.get("note_datetime") or "").strip()
             note_text = row.get("note_text") or ""
+            visit_id = (row.get("visit_id") or "").strip()
+
+            # Every time PAD sends this visit_id, treat it as "still active" today
+            if visit_id:
+                cur.execute(
+                    "UPDATE snf_admissions SET last_seen_active_date = date('now') WHERE visit_id = ?",
+                    (visit_id,),
+                )
 
             if not patient_mrn or not note_datetime or not note_text:
                 skipped += 1
@@ -730,7 +760,7 @@ async def pad_cm_notes_bulk(
                     patient_mrn,
                     row.get("patient_name"),
                     row.get("dob"),
-                    row.get("visit_id"),
+                    visit_id or None,
                     row.get("encounter_id"),
                     row.get("hospital_name"),
                     row.get("unit_name"),
@@ -2463,9 +2493,12 @@ def analyze_patient_notes_with_llm(
 
     system_msg = (
         "You are a discharge planning assistant reading hospital case management notes.\n"
-        "Your job is to decide if the patient is being discharged to a skilled nursing facility (SNF), "
+        "Your job is to decide if the patient is being discharged or is likely to be discharged to a skilled nursing facility (SNF), "
         "and, if so, which facility and on what date.\n"
-        "Be conservative: if the plan is unclear or only 'considering SNF', treat it as NOT a confirmed SNF admission.\n"
+        "Treat terms like 'SNF', 'skilled nursing', 'skilled nursing facility', 'nursing home', 'inpatient SNF', "
+        "'inpatient nursing', or generic 'rehab' when it clearly refers to a post-acute nursing facility as SNF-level care.\n"
+        "If SNF is being actively considered, planned, or pending (choice letters, referrals, waiting on insurance), "
+        "you should still treat the patient as an SNF candidate, but you can use a lower confidence.\n"
     )
 
     user_msg = (
@@ -2957,6 +2990,28 @@ async def admin_ulog_promote(
 # Admin: SNF admissions extraction from CM notes
 # ---------------------------------------------------------------------------
 
+def notes_mention_possible_snf(notes: List[sqlite3.Row]) -> bool:
+    """
+    Heuristic: do any of these notes talk about SNF-like care at all?
+    Used to pull 'possible SNF' cases into the list even if the LLM is unsure.
+    """
+    keywords = [
+        "snf",
+        "skilled nursing",
+        "skilled nursing facility",
+        "nursing home",
+        "inpatient snf",
+        "inpatient nursing",
+        "rehab",
+    ]
+    for r in notes:
+        text = (r["note_text"] or "").lower()
+        for kw in keywords:
+            if kw in text:
+                return True
+    return False
+
+
 def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
     """
     Internal helper to analyze recent CM notes and populate snf_admissions.
@@ -3003,15 +3058,42 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
         snf_candidates = 0
 
         for adm_key, notes in notes_by_admission.items():
+            # Heuristic: do notes mention SNF-like terms at all?
+            has_snf_keywords = notes_mention_possible_snf(notes)
+
             # Derive MRN for the LLM from the first note in this admission group
             mrn_for_llm = (notes[0]["patient_mrn"] or "").strip()
             result = analyze_patient_notes_with_llm(mrn_for_llm, notes)
-            if not result:
+
+            if not result and not has_snf_keywords:
+                # Nothing to go on
                 continue
 
             patients_processed += 1
-            if not result["is_snf_candidate"]:
-                # You could optionally log 'negative' results later if desired
+
+            if not result and has_snf_keywords:
+                # LLM failed but we clearly see SNF-related language; treat as low-confidence candidate
+                result = {
+                    "is_snf_candidate": True,
+                    "snf_name": None,
+                    "expected_transfer_date": None,
+                    "confidence": 0.4,
+                    "rationale": "Heuristic: CM notes mention SNF-related terms (rehab/skilled nursing/nursing home).",
+                }
+            elif result and not result["is_snf_candidate"] and has_snf_keywords:
+                # Override negative when the notes clearly talk about SNF-level care
+                result["is_snf_candidate"] = True
+                try:
+                    if float(result.get("confidence", 0.0)) < 0.6:
+                        result["confidence"] = 0.6
+                except Exception:
+                    result["confidence"] = 0.6
+                result["rationale"] = (result.get("rationale") or "") + (
+                    " Heuristic override: CM notes include SNF-related terms (rehab/skilled nursing/nursing home)."
+                )
+
+            if not result or not result["is_snf_candidate"]:
+                # Still not a candidate
                 continue
 
             snf_candidates += 1
@@ -3058,9 +3140,10 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     ai_expected_transfer_date,
                     ai_confidence,
                     status,
+                    last_seen_active_date,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', date('now'), datetime('now'))
                 ON CONFLICT(visit_id) DO UPDATE SET
                     raw_note_id               = excluded.raw_note_id,
                     patient_mrn               = excluded.patient_mrn,
@@ -3073,6 +3156,7 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     ai_expected_transfer_date = excluded.ai_expected_transfer_date,
                     ai_confidence             = excluded.ai_confidence,
                     status                    = 'pending',
+                    last_seen_active_date     = date('now'),
                     emailed_at                = NULL,
                     email_run_id              = NULL
                 ;
@@ -3091,6 +3175,7 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     conf,
                 ),
             )
+
 
 
         conn.commit()
@@ -4022,16 +4107,14 @@ async def admin_snf_list(
             where.append("s.status = ?")
             params.append(status_s)
 
-        # Date filter: use effective_date = COALESCE(final_expected, ai_expected)
+        # Date filter: use last_seen_active_date so the list shows "active admissions"
         if for_date:
-            where.append(
-                "COALESCE(s.final_expected_transfer_date, s.ai_expected_transfer_date) >= ?"
-            )
+            where.append("s.last_seen_active_date IS NOT NULL")
+            where.append("s.last_seen_active_date >= ?")
             params.append(for_date)
             if days_ahead > 0:
                 where.append(
-                    "COALESCE(s.final_expected_transfer_date, s.ai_expected_transfer_date) "
-                    "<= date(?, ? || ' days')"
+                    "s.last_seen_active_date <= date(?, ? || ' days')"
                 )
                 params.append(for_date)
                 params.append(days_ahead)
@@ -4077,6 +4160,7 @@ async def admin_snf_list(
                     "effective_facility_name": r["effective_facility_name"],
                     "effective_facility_city": r["effective_facility_city"],
                     "effective_facility_state": r["effective_facility_state"],
+                    "last_seen_active_date": r["last_seen_active_date"],
                 }
             )
         return {"ok": True, "items": items}
@@ -4126,6 +4210,10 @@ async def admin_snf_get_note(
             "final_snf_name_display": adm["final_snf_name_display"],
             "final_expected_transfer_date": adm["final_expected_transfer_date"],
             "review_comments": adm["review_comments"],
+            "disposition": adm["disposition"],
+            "facility_free_text": adm["facility_free_text"],
+            "emailed_at": adm["emailed_at"],
+            "email_run_id": adm["email_run_id"],
         }
 
         note_data = {
@@ -4146,7 +4234,55 @@ async def admin_snf_get_note(
             "pad_run_id": note["pad_run_id"],
         }
 
-        return {"ok": True, "admission": admission, "note": note_data}
+        # Also return all notes for this admission (visit_id if present, otherwise MRN)
+        notes_list: List[Dict[str, Any]] = []
+        try:
+            if adm["visit_id"]:
+                cur.execute(
+                    """
+                    SELECT *
+                    FROM cm_notes_raw
+                    WHERE visit_id = ?
+                    ORDER BY note_datetime, id
+                    """,
+                    (adm["visit_id"],),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT *
+                    FROM cm_notes_raw
+                    WHERE patient_mrn = ?
+                    ORDER BY note_datetime, id
+                    """,
+                    (adm["patient_mrn"],),
+                )
+            all_notes = cur.fetchall()
+            for n in all_notes:
+                notes_list.append(
+                    {
+                        "id": n["id"],
+                        "visit_id": n["visit_id"],
+                        "patient_mrn": n["patient_mrn"],
+                        "patient_name": n["patient_name"],
+                        "dob": n["dob"],
+                        "encounter_id": n["encounter_id"],
+                        "hospital_name": n["hospital_name"],
+                        "unit_name": n["unit_name"],
+                        "admission_date": n["admission_date"],
+                        "note_datetime": n["note_datetime"],
+                        "note_author": n["note_author"],
+                        "note_type": n["note_type"],
+                        "note_text": n["note_text"],
+                        "source_system": n["source_system"],
+                        "pad_run_id": n["pad_run_id"],
+                    }
+                )
+        except sqlite3.Error:
+            notes_list = [note_data]
+
+        return {"ok": True, "admission": admission, "note": note_data, "notes": notes_list}
+
     finally:
         conn.close()
 
@@ -4177,7 +4313,7 @@ async def admin_snf_update(
         raise HTTPException(status_code=400, detail="id is required")
 
     status = (payload.get("status") or "").strip().lower()
-    if status not in ("pending", "confirmed", "corrected", "rejected"):
+    if status not in ("pending", "confirmed", "corrected", "rejected", "removed"):
         raise HTTPException(status_code=400, detail="Invalid status")
 
     final_date = payload.get("final_expected_transfer_date")
@@ -4191,6 +4327,28 @@ async def admin_snf_update(
     review_comments = (payload.get("review_comments") or "").strip()
     reviewer = (payload.get("reviewed_by") or "admin").strip()
 
+    # New: disposition + manual facility free text
+    raw_disp = (payload.get("disposition") or "").strip()
+    disposition = ""
+    if raw_disp:
+        disp_norm = raw_disp.lower()
+        allowed = {
+            "snf": "SNF",
+            "home health": "Home Health",
+            "home self-care": "Home Self-care",
+            "home self care": "Home Self-care",
+            "irf": "IRF",
+            "ltach": "LTACH",
+            "other": "Other",
+            "unknown": "Unknown",
+        }
+        if disp_norm in allowed:
+            disposition = allowed[disp_norm]
+        else:
+            raise HTTPException(status_code=400, detail="Invalid disposition value")
+    facility_free_text = (payload.get("facility_free_text") or "").strip()
+
+
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -4201,10 +4359,12 @@ async def admin_snf_update(
                    final_expected_transfer_date = ?,
                    review_comments = ?,
                    reviewed_by = ?,
-                   reviewed_at = datetime('now')
+                   reviewed_at = datetime('now'),
+                   disposition = ?,
+                   facility_free_text = ?
              WHERE id = ?
             """,
-            (status, final_date, review_comments, reviewer, snf_id),
+            (status, final_date, review_comments, reviewer, disposition, facility_free_text, snf_id),
         )
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="SNF admission not found")
