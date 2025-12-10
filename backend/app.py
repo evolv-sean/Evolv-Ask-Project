@@ -4348,10 +4348,47 @@ async def admin_snf_update(
             raise HTTPException(status_code=400, detail="Invalid disposition value")
     facility_free_text = (payload.get("facility_free_text") or "").strip()
 
-
     conn = get_db()
     try:
         cur = conn.cursor()
+
+        # Load current row so we can update SNF facility/name intelligently
+        cur.execute("SELECT * FROM snf_admissions WHERE id = ?", (snf_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="SNF admission not found")
+
+        existing_final_facility_id = row["final_snf_facility_id"]
+        existing_final_name_display = row["final_snf_name_display"]
+        existing_ai_is_candidate = row["ai_is_snf_candidate"]
+        ai_snf_name_raw = row["ai_snf_name_raw"]
+
+        new_final_facility_id = existing_final_facility_id
+        new_final_name_display = existing_final_name_display
+        new_ai_is_candidate = existing_ai_is_candidate
+
+        # If the reviewer explicitly sets disposition = SNF,
+        # treat this as an authoritative override:
+        #  - ensure it is marked as a SNF candidate
+        #  - prefer the manual Facility free text as the SNF name
+        if disposition == "SNF":
+            new_ai_is_candidate = 1
+
+            # Prefer the manually-entered Facility free text
+            if facility_free_text:
+                maps = load_dictionary_maps(conn)
+                facility_aliases = maps["facility_aliases"]
+                mapped_id = map_snf_name_to_facility_id(facility_free_text, conn, facility_aliases)
+                new_final_facility_id = mapped_id
+                new_final_name_display = facility_free_text
+            else:
+                # No manual name; at least confirm the AI name as the final display
+                if not new_final_name_display and ai_snf_name_raw:
+                    new_final_name_display = ai_snf_name_raw
+
+        # NOTE: for non-SNF dispositions we leave ai_is_snf_candidate alone,
+        # but still record disposition and facility_free_text for audit.
+
         cur.execute(
             """
             UPDATE snf_admissions
@@ -4361,10 +4398,24 @@ async def admin_snf_update(
                    reviewed_by = ?,
                    reviewed_at = datetime('now'),
                    disposition = ?,
-                   facility_free_text = ?
+                   facility_free_text = ?,
+                   ai_is_snf_candidate = ?,
+                   final_snf_facility_id = ?,
+                   final_snf_name_display = ?
              WHERE id = ?
             """,
-            (status, final_date, review_comments, reviewer, disposition, facility_free_text, snf_id),
+            (
+                status,
+                final_date,
+                review_comments,
+                reviewer,
+                disposition,
+                facility_free_text,
+                new_ai_is_candidate,
+                new_final_facility_id,
+                new_final_name_display,
+                snf_id,
+            ),
         )
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="SNF admission not found")
