@@ -469,12 +469,23 @@
         const tr = document.createElement("tr");
         tr.className = (r.status || "pending") + (r.id === selectedId ? " selected" : "");
         tr.onclick = () => selectRow(r.id);
-        const facLabelParts = [];
-        if (r.effective_facility_name) facLabelParts.push(r.effective_facility_name);
-        if (r.effective_facility_city || r.effective_facility_state) {
-          facLabelParts.push(`(${[r.effective_facility_city, r.effective_facility_state].filter(Boolean).join(", ")})`);
+        // Prefer the reviewer-confirmed / manual facility name if present,
+        // then fall back to the facility from the DB, then AI raw name.
+        let facLabel = "";
+
+        if (r.final_snf_name_display) {
+          // Manual override from the Facility (free text) field
+          facLabel = r.final_snf_name_display;
+        } else {
+          const facLabelParts = [];
+          if (r.effective_facility_name) facLabelParts.push(r.effective_facility_name);
+          if (r.effective_facility_city || r.effective_facility_state) {
+            facLabelParts.push(
+              `(${[r.effective_facility_city, r.effective_facility_state].filter(Boolean).join(", ")})`
+            );
+          }
+          facLabel = facLabelParts.join(" ") || (r.ai_snf_name_raw || "(unknown)");
         }
-        const facLabel = facLabelParts.join(" ") || (r.ai_snf_name_raw || "(unknown)");
 
         const underName = r.visit_id
           ? `Visit ${r.visit_id}`
