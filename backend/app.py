@@ -251,6 +251,7 @@ def init_db():
             dob             TEXT,
 
             -- Encounter / context
+            visit_id        TEXT,
             encounter_id    TEXT,
             hospital_name   TEXT,
             unit_name       TEXT,
@@ -275,6 +276,13 @@ def init_db():
         """
     )
 
+    # Ensure visit_id exists on older cm_notes_raw tables
+    try:
+        cur.execute("ALTER TABLE cm_notes_raw ADD COLUMN visit_id TEXT")
+    except sqlite3.Error:
+        pass
+
+
     # Indexes to speed up typical queries on cm_notes_raw
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_cm_notes_raw_mrn ON cm_notes_raw (patient_mrn)"
@@ -296,6 +304,7 @@ def init_db():
             raw_note_id                 INTEGER NOT NULL,
 
             -- Patient + context
+            visit_id                    TEXT,
             patient_mrn                 TEXT NOT NULL,
             patient_name                TEXT,
             hospital_name               TEXT,
@@ -326,6 +335,12 @@ def init_db():
         """
     )
 
+    # Ensure visit_id exists on older snf_admissions tables
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN visit_id TEXT")
+    except sqlite3.Error:
+        pass
+
     # Helpful indexes for SNF admissions queries
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_snf_adm_mrn ON snf_admissions (patient_mrn)"
@@ -337,9 +352,15 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_snf_adm_facility ON snf_admissions (final_snf_facility_id)"
     )
 
-    # Ensure one SNF admission row per source note
+    # Refresh indexes for SNF admissions uniqueness & lookup:
+    # - raw_note_id is now just a lookup index
+    # - visit_id enforces "one row per admission"
+    cur.execute("DROP INDEX IF EXISTS idx_snf_adm_raw_note")
     cur.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_snf_adm_raw_note ON snf_admissions (raw_note_id)"
+        "CREATE INDEX IF NOT EXISTS idx_snf_adm_raw_note ON snf_admissions (raw_note_id)"
+    )
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_snf_adm_visit ON snf_admissions (visit_id)"
     )
 
     # Notification targets for SNF emails
@@ -688,6 +709,7 @@ async def pad_cm_notes_bulk(
                     patient_mrn,
                     patient_name,
                     dob,
+                    visit_id,
                     encounter_id,
                     hospital_name,
                     unit_name,
@@ -702,12 +724,13 @@ async def pad_cm_notes_bulk(
                     note_hash,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 """,
                 (
                     patient_mrn,
                     row.get("patient_name"),
                     row.get("dob"),
+                    row.get("visit_id"),
                     row.get("encounter_id"),
                     row.get("hospital_name"),
                     row.get("unit_name"),
@@ -722,6 +745,7 @@ async def pad_cm_notes_bulk(
                     note_hash,
                 ),
             )
+
             inserted += 1
 
         conn.commit()
@@ -2965,19 +2989,23 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                 "snf_candidates": 0,
             }
 
-        # Group by patient_mrn
-        notes_by_mrn: Dict[str, List[sqlite3.Row]] = {}
+        # Group by admission: prefer visit_id, fall back to patient_mrn
+        notes_by_admission: Dict[str, List[sqlite3.Row]] = {}
         for r in rows:
             mrn = (r["patient_mrn"] or "").strip()
-            if not mrn:
+            visit_id = (r["visit_id"] or "").strip() if "visit_id" in r.keys() else ""
+            key = visit_id or mrn
+            if not key:
                 continue
-            notes_by_mrn.setdefault(mrn, []).append(r)
+            notes_by_admission.setdefault(key, []).append(r)
 
         patients_processed = 0
         snf_candidates = 0
 
-        for mrn, notes in notes_by_mrn.items():
-            result = analyze_patient_notes_with_llm(mrn, notes)
+        for adm_key, notes in notes_by_admission.items():
+            # Derive MRN for the LLM from the first note in this admission group
+            mrn_for_llm = (notes[0]["patient_mrn"] or "").strip()
+            result = analyze_patient_notes_with_llm(mrn_for_llm, notes)
             if not result:
                 continue
 
@@ -3002,15 +3030,24 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
             )[-1]
 
             raw_note_id = latest_note["id"]
+
+            # visit_id may be missing on legacy notes; store NULL in that case
+            visit_id = ""
+            if "visit_id" in latest_note.keys():
+                visit_id = (latest_note["visit_id"] or "").strip()
+            visit_id_db = visit_id or None
+
+            patient_mrn = (latest_note["patient_mrn"] or "").strip()
             patient_name = latest_note["patient_name"] or ""
             hospital_name = latest_note["hospital_name"] or ""
             note_datetime = latest_note["note_datetime"] or ""
 
-            # Upsert into snf_admissions (unique on raw_note_id)
+            # Upsert into snf_admissions: one row per visit_id (admission)
             cur.execute(
                 """
                 INSERT INTO snf_admissions (
                     raw_note_id,
+                    visit_id,
                     patient_mrn,
                     patient_name,
                     hospital_name,
@@ -3023,8 +3060,9 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     status,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))
-                ON CONFLICT(raw_note_id) DO UPDATE SET
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))
+                ON CONFLICT(visit_id) DO UPDATE SET
+                    raw_note_id               = excluded.raw_note_id,
                     patient_mrn               = excluded.patient_mrn,
                     patient_name              = excluded.patient_name,
                     hospital_name             = excluded.hospital_name,
@@ -3041,7 +3079,8 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                 """,
                 (
                     raw_note_id,
-                    mrn,
+                    visit_id_db,
+                    patient_mrn,
                     patient_name,
                     hospital_name,
                     note_datetime,
@@ -3052,6 +3091,7 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     conf,
                 ),
             )
+
 
         conn.commit()
 
@@ -3941,6 +3981,7 @@ async def admin_snf_list(
             items.append(
                 {
                     "id": r["id"],
+                    "visit_id": r["visit_id"],
                     "patient_mrn": r["patient_mrn"],
                     "patient_name": r["patient_name"],
                     "hospital_name": r["hospital_name"],
@@ -3996,6 +4037,7 @@ async def admin_snf_get_note(
 
         admission = {
             "id": adm["id"],
+            "visit_id": adm["visit_id"],
             "patient_mrn": adm["patient_mrn"],
             "patient_name": adm["patient_name"],
             "hospital_name": adm["hospital_name"],
@@ -4012,6 +4054,7 @@ async def admin_snf_get_note(
 
         note_data = {
             "id": note["id"],
+            "visit_id": note["visit_id"],
             "patient_mrn": note["patient_mrn"],
             "patient_name": note["patient_name"],
             "dob": note["dob"],
