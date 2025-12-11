@@ -4931,73 +4931,145 @@ async def admin_snf_email_pdf(
             raise HTTPException(status_code=400, detail="No admissions found for the provided IDs.")
 
         # ------------------------
-        # Build the PDF in memory
+        # Build the PDF in memory – updated layout
         # ------------------------
         buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=letter,
+            leftMargin=36,
+            rightMargin=36,
+            topMargin=36,
+            bottomMargin=36,
+        )
+
         styles = getSampleStyleSheet()
+
+        # Base text styles
         title_style = styles["Title"]
+        title_style.fontName = "Helvetica-Bold"
+        title_style.fontSize = 18
+        title_style.leading = 22
+
         normal = styles["Normal"]
+        normal.fontSize = 10
+        normal.leading = 13
+
         small = styles["BodyText"]
         small.fontSize = 9
         small.leading = 11
 
         story = []
 
-        # Title: facility name
-        story.append(Paragraph(facility_name, title_style))
-        story.append(Spacer(1, 6))
+        # 1) Dark header band with facility + list title
+        display_date = for_date or dt.date.today().isoformat()
+        header_title = "Potential SNF Admission List"
 
-        # Subtitle with date
-        if for_date:
-            subtitle = f"Potential SNF referrals for {for_date}"
-        else:
-            subtitle = "Potential SNF referrals"
-        story.append(Paragraph(subtitle, normal))
-        story.append(Spacer(1, 6))
-
-        # Tagline
-        tagline = "Our hospitalists have identified the following patients as potential referrals to your facility."
-        story.append(Paragraph(tagline, normal))
-        story.append(Spacer(1, 10))
-
-        # Attending from master table
-        if attending:
-            story.append(Paragraph(f"Attending physician: {attending}", small))
-            story.append(Spacer(1, 8))
-
-        # Table: Patient Name, DOB, Hospital
-        data = [["Patient name", "DOB", "Hospital"]]
-        for r in rows:
-            pname = r["patient_name"] or ""
-            dob = r["dob"] or ""
-            hosp = r["hospital_name"] or ""
-            data.append([pname, dob, hosp])
-
-        table = Table(data, colWidths=[220, 80, 220])
-        table.setStyle(
+        header_data = [
+            [facility_name, f"{header_title} – {display_date}"],
+        ]
+        header_table = Table(header_data, colWidths=[280, 250])
+        header_table.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e5f0ff")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1f2933")),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#111827")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, -1), 10),
-                    ("ALIGN", (0, 0), (-1, 0), "LEFT"),
-                    ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
-                    ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
-                    ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+                    ("FONTSIZE", (0, 0), (-1, 0), 13),
+                    ("ALIGN", (0, 0), (0, 0), "LEFT"),
+                    ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                    ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
+                    ("TOPPADDING", (0, 0), (-1, 0), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
                 ]
             )
         )
+        story.append(header_table)
+        story.append(Spacer(1, 12))
+
+        # 2) Light summary box with key info
+        summary_rows = [
+            ["Facility:", facility_name],
+            ["List date:", display_date],
+            ["Attending:", attending or "—"],
+            ["Number of patients:", str(len(rows))],
+        ]
+        summary_table = Table(summary_rows, colWidths=[100, 430])
+        summary_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f9fafb")),
+                    ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#111827")),
+                    ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 9),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                    ("LINEBELOW", (0, 0), (-1, -1), 0.25, colors.HexColor("#e5e7eb")),
+                ]
+            )
+        )
+        story.append(summary_table)
+        story.append(Spacer(1, 14))
+
+        # 3) Tagline under the summary box
+        tagline = (
+            "Our hospitalists have identified the following patients as "
+            "potential referrals to your facility."
+        )
+        story.append(Paragraph(tagline, normal))
+        story.append(Spacer(1, 10))
+
+        # 4) Patient list table: # / Patient / DOB / From hospital
+        table_data = [["#", "Patient", "DOB", "From hospital"]]
+        for idx, r in enumerate(rows, start=1):
+            pname = r["patient_name"] or ""
+            dob = r["dob"] or ""
+            hosp = r["hospital_name"] or ""
+            table_data.append([str(idx), pname, dob, hosp])
+
+        table = Table(table_data, colWidths=[25, 210, 70, 225])
+
+        table_style_commands = [
+            # Header row styling
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e5e7eb")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#111827")),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 10),
+            ("ALIGN", (0, 0), (0, 0), "CENTER"),
+            ("ALIGN", (1, 0), (-1, 0), "LEFT"),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+
+            # Body rows styling
+            ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE", (0, 1), (-1, -1), 9),
+            ("TOPPADDING", (0, 1), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 1), (-1, -1), 4),
+
+            # Overall grid
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#d1d5db")),
+        ]
+
+        # Zebra striping for readability
+        for row_idx in range(1, len(table_data)):
+            if row_idx % 2 == 1:
+                table_style_commands.append(
+                    ("BACKGROUND", (0, row_idx), (-1, row_idx), colors.HexColor("#f9fafb"))
+                )
+
+        table.setStyle(TableStyle(table_style_commands))
         story.append(table)
         story.append(Spacer(1, 16))
 
-        # Little footer
-        story.append(Paragraph("Powered by Evolv Health", small))
+        # 5) Footer
+        footer_text = "Generated by Evolv Health – confidential patient information"
+        story.append(Paragraph(footer_text, small))
 
         doc.build(story)
         pdf_bytes = buffer.getvalue()
         buffer.close()
+
 
         # ------------------------
         # Build and send the email
