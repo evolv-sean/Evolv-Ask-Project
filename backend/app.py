@@ -2533,12 +2533,21 @@ def analyze_patient_notes_with_llm(
         '  \"rationale\": string\n'
         "}\n"
         "Rules:\n"
+        "- Read the notes in time order. Later notes override earlier notes.\n"
         "- If the patient is clearly accepted to a SNF, set is_snf_candidate to true.\n"
-        "- If multiple SNFs are mentioned, choose the FINAL accepted facility (for example: 'accepted at The Peaks SNF').\n"
+        "- If multiple SNFs are mentioned over time, choose the FINAL accepted facility or the latest facility based on the latest note "
+        "  (for example: if an early note says 'SNF Morse Life' but a later note says 'Confirmed with family "
+        "  patient is now going to Signature Healthcare SNF', you must use 'Signature Healthcare SNF' as snf_name).\n"
+        "- If the notes say the SNF plan is cancelled or changed to a different level of care "
+        "  (for example: 'no longer going to SNF', 'plan changed to home with home health', "
+        "  'family declined SNF and now wants home'), then set is_snf_candidate = false and use "
+        "  snf_name = null and expected_transfer_date = null, even if earlier notes talked about SNF.\n"
         "- If the date is not clear, use null for expected_transfer_date.\n"
-        "- If the plan is uncertain, set is_snf_candidate to false, snf_name = null, expected_transfer_date = null, confidence <= 0.4.\n"
+        "- If the plan is uncertain or only mentioned as a vague possibility without a clear SNF discharge plan, "
+        "  set is_snf_candidate to false, snf_name = null, expected_transfer_date = null, confidence <= 0.4.\n"
         "- Output ONLY the JSON object, with no extra text.\n"
     )
+
 
     try:
         chat = client.chat.completions.create(
@@ -3007,9 +3016,39 @@ async def admin_ulog_promote(
 
 def notes_mention_possible_snf(notes: List[sqlite3.Row]) -> bool:
     """
-    Heuristic: do any of these notes talk about SNF-like care at all?
+    Heuristic: do any of these notes talk about SNF-like care at all,
+    WITHOUT clearly cancelling or rejecting a SNF plan?
+
     Used to pull 'possible SNF' cases into the list even if the LLM is unsure.
     """
+    # Work with all note text as a single lowercased string
+    all_text = " ".join((r["note_text"] or "") for r in notes).lower()
+
+    # If the notes explicitly say the SNF plan is cancelled / no longer happening,
+    # do NOT treat this as a "possible SNF".
+    negative_patterns = [
+        "no longer going to snf",
+        "no longer going to skilled nursing",
+        "no longer going to a skilled nursing",
+        "snf plan cancelled",
+        "snf plan canceled",
+        "snf placement cancelled",
+        "snf placement canceled",
+        "declined snf",
+        "refused snf",
+        "family declined snf",
+        "no longer pursuing snf",
+        "plan changed to home",
+        "now going home",
+        "now discharging home",
+        "now going with home health instead of snf",
+        "home with home health instead of snf",
+    ]
+    for phrase in negative_patterns:
+        if phrase in all_text:
+            return False
+
+    # Positive SNF-ish keywords
     keywords = [
         "snf",
         "skilled nursing",
@@ -3019,12 +3058,12 @@ def notes_mention_possible_snf(notes: List[sqlite3.Row]) -> bool:
         "inpatient nursing",
         "rehab",
     ]
-    for r in notes:
-        text = (r["note_text"] or "").lower()
-        for kw in keywords:
-            if kw in text:
-                return True
+    for kw in keywords:
+        if kw in all_text:
+            return True
+
     return False
+
 
 
 def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
@@ -3073,62 +3112,20 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
         snf_candidates = 0
 
         for adm_key, notes in notes_by_admission.items():
-            # Heuristic: do notes mention SNF-like terms at all?
+            # Heuristic: do notes mention SNF-like terms at all
+            # (ignoring explicit "no longer SNF" phrases)?
             has_snf_keywords = notes_mention_possible_snf(notes)
 
             # Derive MRN for the LLM from the first note in this admission group
             mrn_for_llm = (notes[0]["patient_mrn"] or "").strip()
             result = analyze_patient_notes_with_llm(mrn_for_llm, notes)
 
-            if not result and not has_snf_keywords:
-                # Nothing to go on
-                continue
-
-            patients_processed += 1
-
-            if not result and has_snf_keywords:
-                # LLM failed but we clearly see SNF-related language; treat as low-confidence candidate
-                result = {
-                    "is_snf_candidate": True,
-                    "snf_name": None,
-                    "expected_transfer_date": None,
-                    "confidence": 0.4,
-                    "rationale": "Heuristic: CM notes mention SNF-related terms (rehab/skilled nursing/nursing home).",
-                }
-            elif result and not result["is_snf_candidate"] and has_snf_keywords:
-                # Override negative when the notes clearly talk about SNF-level care
-                result["is_snf_candidate"] = True
-                try:
-                    if float(result.get("confidence", 0.0)) < 0.6:
-                        result["confidence"] = 0.6
-                except Exception:
-                    result["confidence"] = 0.6
-                result["rationale"] = (result.get("rationale") or "") + (
-                    " Heuristic override: CM notes include SNF-related terms (rehab/skilled nursing/nursing home)."
-                )
-
-            if not result or not result["is_snf_candidate"]:
-                # Still not a candidate
-                continue
-
-            snf_candidates += 1
-
-            snf_name_raw = result["snf_name"]
-            expected_date = result["expected_transfer_date"]
-            conf = result["confidence"]
-
-            # Map SNF name -> facility_id (if possible)
-            ai_facility_id = map_snf_name_to_facility_id(snf_name_raw, conn, facility_aliases)
-
-            # Use the latest note as the "source" for this SNF decision
+            # Always identify the latest note + admission identifiers up front
             latest_note = sorted(
                 notes,
                 key=lambda r: (r["note_datetime"] or "", r["id"]),
             )[-1]
 
-            raw_note_id = latest_note["id"]
-
-            # visit_id may be missing on legacy notes; store NULL in that case
             visit_id = ""
             if "visit_id" in latest_note.keys():
                 visit_id = (latest_note["visit_id"] or "").strip()
@@ -3138,6 +3135,74 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
             patient_name = latest_note["patient_name"] or ""
             hospital_name = latest_note["hospital_name"] or ""
             note_datetime = latest_note["note_datetime"] or ""
+
+            # 1) If the LLM explicitly says "no SNF plan" for this admission,
+            #    treat this as a cancellation of any prior SNF admission.
+            if result and not result.get("is_snf_candidate", False):
+                if visit_id_db:
+                    cur.execute(
+                        """
+                        UPDATE snf_admissions
+                           SET ai_is_snf_candidate = 0,
+                               status = 'removed',
+                               review_comments = COALESCE(review_comments, '') ||
+                                   ' [auto-removed based on later CM notes: plan no longer SNF]',
+                               last_seen_active_date = date('now')
+                         WHERE visit_id = ?
+                        """,
+                        (visit_id_db,),
+                    )
+                else:
+                    # Fallback for legacy rows that may only have MRN
+                    cur.execute(
+                        """
+                        UPDATE snf_admissions
+                           SET ai_is_snf_candidate = 0,
+                               status = 'removed',
+                               review_comments = COALESCE(review_comments, '') ||
+                                   ' [auto-removed based on later CM notes: plan no longer SNF]',
+                               last_seen_active_date = date('now')
+                         WHERE visit_id IS NULL
+                           AND patient_mrn = ?
+                        """,
+                        (patient_mrn,),
+                    )
+
+                patients_processed += 1
+                # Nothing more to do for this admission
+                continue
+
+            # 2) If the LLM gave nothing back AND there is no clear SNF-ish language, skip.
+            if not result and not has_snf_keywords:
+                continue
+
+            patients_processed += 1
+
+            # 3) If the LLM failed but we clearly see SNF-related language,
+            #    treat as a low-confidence 'possible SNF' candidate so it still
+            #    shows up for manual review in the UI.
+            if not result and has_snf_keywords:
+                result = {
+                    "is_snf_candidate": True,
+                    "snf_name": None,
+                    "expected_transfer_date": None,
+                    "confidence": 0.4,
+                    "rationale": "Heuristic: CM notes mention SNF-related terms (rehab/skilled nursing/nursing home), but the LLM could not parse a clean plan.",
+                }
+
+            if not result or not result.get("is_snf_candidate", False):
+                # Still not a candidate even after heuristic
+                continue
+
+            # At this point we have a positive SNF candidate
+            snf_candidates += 1
+
+            snf_name_raw = result.get("snf_name")
+            expected_date = result.get("expected_transfer_date")
+            conf = result.get("confidence", 0.0)
+
+            # Map SNF name -> facility_id (if possible)
+            ai_facility_id = map_snf_name_to_facility_id(snf_name_raw, conn, facility_aliases)
 
             # Upsert into snf_admissions: one row per visit_id (admission)
             cur.execute(
@@ -3177,7 +3242,7 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                 ;
                 """,
                 (
-                    raw_note_id,
+                    latest_note["id"],
                     visit_id_db,
                     patient_mrn,
                     patient_name,
@@ -3190,6 +3255,7 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     conf,
                 ),
             )
+
 
 
 
