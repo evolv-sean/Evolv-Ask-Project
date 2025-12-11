@@ -605,7 +605,7 @@
       const date = document.getElementById("filter-date").value;
       const days = document.getElementById("filter-days").value || "0";
       const status = document.getElementById("filter-status").value;
-      const facilityFilter = (document.getElementById("filter-facility").value || "").toLowerCase();
+      const facilityId = document.getElementById("filter-facility").value || "";
 
       const params = new URLSearchParams();
       if (status) params.set("status", status);
@@ -848,7 +848,7 @@
             status: status,
             disposition: disposition || "",
             final_expected_transfer_date: date || null,
-            facility_free_text: facilityFree || "",
+            facility_free_text: facilityLabel || "",
             review_comments: comments || ""
           })
         });
