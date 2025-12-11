@@ -909,11 +909,23 @@
           },
           body: JSON.stringify(payload)
         });
-        if (!resp.ok) throw new Error("HTTP " + resp.status);
-        const data = await resp.json();
+
+        let data = null;
+        if (!resp.ok) {
+          try {
+            data = await resp.json();
+          } catch (e) {
+            // ignore JSON parse errors
+          }
+          const detail = data && (data.detail || data.message);
+          throw new Error("HTTP " + resp.status + (detail ? " – " + detail : ""));
+        }
+
+        data = data || await resp.json();
         if (!data.ok && data.ok !== undefined) {
           throw new Error(data.detail || "ok=false");
         }
+
 
         const msgParts = [];
         msgParts.push(testOnly ? "Test email sent." : "Email with PDF sent.");
