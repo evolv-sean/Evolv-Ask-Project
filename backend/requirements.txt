@@ -8,3 +8,4 @@ pypdf
 python-docx
 jinja2
 python-multipart
+reportlab
