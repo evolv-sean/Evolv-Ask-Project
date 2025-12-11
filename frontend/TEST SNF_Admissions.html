@@ -281,11 +281,15 @@
             </select>
           </div>
           <div>
-            <label for="filter-facility">Facility contains</label><br />
-            <input id="filter-facility" type="text" placeholder="Name filter (client-side)" />
+            <label for="filter-facility">SNF facility</label><br />
+            <select id="filter-facility">
+              <option value="">(All facilities)</option>
+            </select>
           </div>
-          <div style="margin-top:16px;">
+          <div style="margin-top:16px; display:flex; gap:4px; flex-wrap:wrap;">
             <button class="primary small" onclick="loadAdmissions()">Load</button>
+            <button class="small" onclick="addSnfFacility()">Add facility</button>
+            <button class="small" onclick="editSnfFacility()">Edit facility</button>
           </div>
         </div>
       </div>
@@ -359,8 +363,10 @@
           <input id="edit-date" type="date" />
         </div>
         <div>
-          <label for="edit-facility-free">Facility (free text)</label>
-          <input id="edit-facility-free" type="text" placeholder="Manual facility / disposition notes" style="width:100%;" />
+          <label for="edit-facility-select">Facility</label>
+          <select id="edit-facility-select" style="width:100%;">
+            <option value="">(none)</option>
+          </select>
         </div>
         <div>
           <label for="edit-comments">Review comments</label>
@@ -378,6 +384,9 @@
     let admissions = [];
     let selectedId = null;
 
+    let snfFacilities = [];
+    let currentRows = [];
+
     function getAdminToken() {
       const input = document.getElementById("admin-token");
       return (input.value || "").trim();
@@ -392,10 +401,15 @@
         localStorage.removeItem("evolv_admin_token");
         document.getElementById("token-status").textContent = "Cleared.";
       }
+
+      // NEW: refresh SNF facility dropdowns using the new/cleared token
+      loadSnfFacilities();
+
       setTimeout(() => {
         document.getElementById("token-status").textContent = "";
       }, 2000);
     }
+
 
     function initToken() {
       const saved = localStorage.getItem("evolv_admin_token") || "";
@@ -409,6 +423,176 @@
       const input = document.getElementById("filter-date");
       if (input) {
         input.value = "";
+      }
+    }
+
+    async function loadSnfFacilities() {
+      const token = localStorage.getItem("evolv_admin_token") || getAdminToken();
+      if (!token) {
+        // No token yet; user will paste it and we can reload facilities afterward.
+        return;
+      }
+      try {
+        const resp = await fetch("/admin/snf-facilities/list", {
+          headers: { "X-Admin-Token": token }
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.detail || "ok=false");
+
+        snfFacilities = data.items || [];
+
+        const filterSelect = document.getElementById("filter-facility");
+        if (filterSelect) {
+          filterSelect.innerHTML = '<option value="">(All facilities)</option>';
+          snfFacilities.forEach(f => {
+            const opt = document.createElement("option");
+            opt.value = String(f.id);
+            opt.textContent = f.facility_name || "(no name)";
+            filterSelect.appendChild(opt);
+          });
+        }
+
+        const editSelect = document.getElementById("edit-facility-select");
+        if (editSelect) {
+          editSelect.innerHTML = '<option value="">(none)</option>';
+          snfFacilities.forEach(f => {
+            const opt = document.createElement("option");
+            opt.value = String(f.id);
+            let label = f.facility_name || "(no name)";
+            if (f.attending) {
+              label += " – " + f.attending;
+            }
+            editSelect.appendChild(opt);
+          });
+        }
+      } catch (err) {
+        console.error("loadSnfFacilities error", err);
+      }
+    }
+
+    function setEditFacilityByLabel(label) {
+      const select = document.getElementById("edit-facility-select");
+      if (!select) return;
+
+      if (!label) {
+        select.value = "";
+        return;
+      }
+
+      const target = label.toLowerCase();
+      let foundId = "";
+
+      snfFacilities.forEach(f => {
+        const name = (f.facility_name || "").toLowerCase();
+        const aliases = (f.aliases || "").toLowerCase();
+        if (foundId) return;
+        if (name && (target.includes(name) || name.includes(target))) {
+          foundId = String(f.id);
+        } else if (aliases && aliases.split(/[,\|;]+/).some(a => target.includes(a.trim().toLowerCase()))) {
+          foundId = String(f.id);
+        }
+      });
+
+      select.value = foundId || "";
+    }
+
+    async function addSnfFacility() {
+      const token = getAdminToken();
+      if (!token) {
+        alert("Please paste your ADMIN_TOKEN first.");
+        return;
+      }
+
+      const name = prompt("SNF facility name:");
+      if (!name) return;
+
+      const attending = prompt("Attending (optional):") || "";
+      const notes = prompt("Notes (optional):") || "";
+      const notes2 = "";
+      const aliases = prompt("Aliases (optional, comma separated):") || "";
+      const facility_emails = prompt("Facility email recipients (comma separated):") || "";
+
+      try {
+        const resp = await fetch("/admin/snf-facilities/upsert", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Token": token
+          },
+          body: JSON.stringify({
+            id: null,
+            facility_name: name,
+            attending,
+            notes,
+            notes2,
+            aliases,
+            facility_emails
+          })
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.detail || "ok=false");
+        await loadSnfFacilities();
+        alert("SNF facility saved.");
+      } catch (err) {
+        console.error("addSnfFacility error", err);
+        alert("Error saving SNF facility: " + err);
+      }
+    }
+
+    async function editSnfFacility() {
+      const token = getAdminToken();
+      if (!token) {
+        alert("Please paste your ADMIN_TOKEN first.");
+        return;
+      }
+
+      const select = document.getElementById("filter-facility");
+      const idVal = select.value;
+      if (!idVal) {
+        alert("Pick a facility in the SNF facility dropdown first.");
+        return;
+      }
+
+      const fac = snfFacilities.find(f => String(f.id) === String(idVal));
+      if (!fac) {
+        alert("Could not find that facility in the list.");
+        return;
+      }
+
+      const name = prompt("SNF facility name:", fac.facility_name || "") || fac.facility_name || "";
+      const attending = prompt("Attending (optional):", fac.attending || "") || fac.attending || "";
+      const notes = prompt("Notes (optional):", fac.notes || "") || fac.notes || "";
+      const notes2 = prompt("Notes2 (optional):", fac.notes2 || "") || fac.notes2 || "";
+      const aliases = prompt("Aliases (optional, comma separated):", fac.aliases || "") || fac.aliases || "";
+      const facility_emails = prompt("Facility email recipients (comma separated):", fac.facility_emails || "") || fac.facility_emails || "";
+
+      try {
+        const resp = await fetch("/admin/snf-facilities/upsert", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Token": token
+          },
+          body: JSON.stringify({
+            id: fac.id,
+            facility_name: name,
+            attending,
+            notes,
+            notes2,
+            aliases,
+            facility_emails
+          })
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.detail || "ok=false");
+        await loadSnfFacilities();
+        alert("SNF facility updated.");
+      } catch (err) {
+        console.error("editSnfFacility error", err);
+        alert("Error updating SNF facility: " + err);
       }
     }
 
@@ -447,12 +631,33 @@
           throw new Error(data.detail || "Server returned ok=false");
         }
         admissions = data.items || [];
-        // Client-side facility name filter
+
+        // Client-side facility name filter using SNF Admission Facilities
         const filtered = admissions.filter(r => {
-          if (!facilityFilter) return true;
-          const fac = (r.effective_facility_name || "") + " " + (r.ai_snf_name_raw || "");
-          return fac.toLowerCase().includes(facilityFilter);
+          if (!facilityId) return true;
+          const fac = snfFacilities.find(f => String(f.id) === String(facilityId));
+          if (!fac) return true;
+
+          const tokens = [];
+          if (fac.facility_name) tokens.push(fac.facility_name);
+          if (fac.aliases) {
+            fac.aliases.split(/[,\|;]+/).forEach(a => {
+              if (a && a.trim()) tokens.push(a.trim());
+            });
+          }
+
+          const rowText = (
+            (r.effective_facility_name || "") + " " +
+            (r.final_snf_name_display || "") + " " +
+            (r.ai_snf_name_raw || "")
+          ).toLowerCase();
+
+          if (!tokens.length) return true;
+          return tokens.some(t => rowText.includes(t.toLowerCase()));
         });
+
+        currentRows = filtered;
+
         renderTable(filtered);
         document.getElementById("list-message").innerHTML =
           `<strong>${filtered.length}</strong> rows (from ${admissions.length} total).`;
@@ -592,8 +797,15 @@
         document.getElementById("edit-status").value = adm.status || "pending";
         document.getElementById("edit-disposition").value = adm.disposition || "";
         document.getElementById("edit-date").value = adm.final_expected_transfer_date || (adm.ai_expected_transfer_date || "");
-        document.getElementById("edit-facility-free").value = adm.facility_free_text || "";
         document.getElementById("edit-comments").value = adm.review_comments || "";
+
+        // Decide which facility label to use to preselect the dropdown
+        const facilityLabel =
+          adm.final_snf_name_display ||
+          adm.facility_free_text ||
+          adm.ai_snf_name_raw ||
+          "";
+        setEditFacilityByLabel(facilityLabel);
 
         document.getElementById("note-header-summary").textContent = `Editing SNF record ID ${adm.id}`;
         document.getElementById("note-message").textContent = "";
@@ -616,7 +828,11 @@
       const status = document.getElementById("edit-status").value;
       const disposition = document.getElementById("edit-disposition").value;
       const date = document.getElementById("edit-date").value;
-      const facilityFree = document.getElementById("edit-facility-free").value;
+      const facilitySelect = document.getElementById("edit-facility-select");
+      const facilityLabel =
+        facilitySelect && facilitySelect.value
+          ? facilitySelect.options[facilitySelect.selectedIndex].text
+          : "";
       const comments = document.getElementById("edit-comments").value;
 
       document.getElementById("note-message").textContent = "Saving...";
@@ -654,25 +870,38 @@
         alert("Please paste your ADMIN_TOKEN first.");
         return;
       }
+
       const date = document.getElementById("filter-date").value;
-      if (!date) {
-        alert("Please pick a date first.");
+      const facilityId = document.getElementById("filter-facility").value;
+
+      if (!facilityId) {
+        alert("Please choose a SNF facility from the dropdown first.");
         return;
       }
+      if (!currentRows.length) {
+        alert("There are no admissions in the current filtered list to include.");
+        return;
+      }
+
       const testTo = document.getElementById("test-email-to").value;
-      const payload = {
-        for_date: date,
-        test_only: !!testOnly,
-        test_email_to: testOnly ? testTo : ""
-      };
       if (testOnly && !testTo) {
         alert("Enter a test email address.");
         return;
       }
 
-      document.getElementById("list-message").textContent = "Sending emails...";
+      const admissionIds = currentRows.map(r => r.id);
+
+      const payload = {
+        snf_facility_id: parseInt(facilityId, 10),
+        for_date: date || "",
+        admission_ids: admissionIds,
+        test_only: !!testOnly,
+        test_email_to: testOnly ? testTo : ""
+      };
+
+      document.getElementById("list-message").textContent = "Sending email with PDF...";
       try {
-        const resp = await fetch("/admin/snf/send-emails", {
+        const resp = await fetch("/admin/snf/email-pdf", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -685,13 +914,13 @@
         if (!data.ok && data.ok !== undefined) {
           throw new Error(data.detail || "ok=false");
         }
-        const msg = [
-          testOnly ? "Test emails sent." : "Emails sent.",
-          `emails_sent=${data.emails_sent || 0}`,
-          `skipped_no_facility=${data.skipped_no_facility || 0}`,
-          `skipped_no_targets=${data.skipped_no_targets || 0}`
-        ].join(" ");
-        document.getElementById("list-message").textContent = msg;
+
+        const msgParts = [];
+        msgParts.push(testOnly ? "Test email sent." : "Email with PDF sent.");
+        if (data.emails_sent != null) msgParts.push(`emails_sent=${data.emails_sent}`);
+        if (data.admissions_tagged != null) msgParts.push(`admissions_tagged=${data.admissions_tagged}`);
+        document.getElementById("list-message").textContent = msgParts.join(" ");
+
         if (!testOnly) {
           // Refresh list so emailed rows show emailed_at
           loadAdmissions();
@@ -702,10 +931,12 @@
       }
     }
 
+
     // Init on load
     window.addEventListener("DOMContentLoaded", () => {
       initToken();
       initDate();
+      loadSnfFacilities();
       // Optionally auto-load
       // loadAdmissions();
     });
