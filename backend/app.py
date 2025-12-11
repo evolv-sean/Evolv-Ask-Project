@@ -9,9 +9,19 @@ import smtplib
 import ssl
 import secrets
 import hashlib
+import io
 from email.message import EmailMessage
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+
+try:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    HAVE_REPORTLAB = True
+except Exception:
+    HAVE_REPORTLAB = False
 
 from fastapi import FastAPI, HTTPException, Request, Form, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -402,6 +412,23 @@ def init_db():
 
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_snf_notif_facility ON snf_notification_targets (facility_id)"
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS snf_admission_facilities (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            facility_name  TEXT NOT NULL,
+            attending      TEXT,
+            notes          TEXT,
+            notes2         TEXT,
+            aliases        TEXT,
+            facility_emails TEXT
+        )
+        """
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_snf_adm_fac_name ON snf_admission_facilities(facility_name)"
     )
 
 
@@ -4160,6 +4187,102 @@ def upsert_facility_and_children(payload: dict) -> str:
 # Admin: SNF admissions APIs used by TEST SNF_Admissions.html
 # ---------------------------------------------------------------------------
 
+
+
+@app.get("/admin/snf-facilities/list")
+async def admin_snf_facilities_list(request: Request):
+    """
+    List SNF Admission Facilities for dropdowns and simple editing.
+    Returns:
+      { ok: True, items: [ { id, facility_name, attending, notes, notes2, aliases, facility_emails }, ... ] }
+    """
+    require_admin(request)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, facility_name, attending, notes, notes2, aliases, facility_emails
+            FROM snf_admission_facilities
+            ORDER BY facility_name COLLATE NOCASE
+            """
+        )
+        items = [dict(r) for r in cur.fetchall()]
+        return {"ok": True, "items": items}
+    finally:
+        conn.close()
+
+
+@app.post("/admin/snf-facilities/upsert")
+async def admin_snf_facilities_upsert(
+    request: Request,
+    payload: Dict[str, Any] = Body(...),
+):
+    """
+    Insert or update a SNF Admission Facility.
+
+    Payload (JSON):
+      {
+        "id": optional integer (omit/null for insert),
+        "facility_name": "The Peaks",
+        "attending": "Dr. Smith",
+        "notes": "...",
+        "notes2": "...",
+        "aliases": "Peaks SNF, The Peaks Rehab",
+        "facility_emails": "referrals@snf.com, admissions@snf.com"
+      }
+    """
+    require_admin(request)
+
+    name = (payload.get("facility_name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="facility_name is required")
+
+    fac_id = payload.get("id")
+    attending = (payload.get("attending") or "").strip()
+    notes = (payload.get("notes") or "").strip()
+    notes2 = (payload.get("notes2") or "").strip()
+    aliases = (payload.get("aliases") or "").strip()
+    facility_emails = (payload.get("facility_emails") or "").strip()
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        if fac_id:
+            cur.execute(
+                """
+                UPDATE snf_admission_facilities
+                   SET facility_name = ?,
+                       attending     = ?,
+                       notes         = ?,
+                       notes2        = ?,
+                       aliases       = ?,
+                       facility_emails = ?
+                 WHERE id = ?
+                """,
+                (name, attending, notes, notes2, aliases, facility_emails, fac_id),
+            )
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="SNF facility not found")
+            new_id = fac_id
+        else:
+            cur.execute(
+                """
+                INSERT INTO snf_admission_facilities
+                  (facility_name, attending, notes, notes2, aliases, facility_emails)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (name, attending, notes, notes2, aliases, facility_emails),
+            )
+            new_id = cur.lastrowid
+
+        conn.commit()
+        return {"ok": True, "id": new_id}
+    finally:
+        conn.close()
+
+
+
 @app.get("/admin/snf/list")
 async def admin_snf_list(
     request: Request,
@@ -4709,6 +4832,255 @@ async def admin_snf_send_emails(
     finally:
         conn.close()
 
+
+@app.post("/admin/snf/email-pdf")
+async def admin_snf_email_pdf(
+    request: Request,
+    payload: Dict[str, Any] = Body(...),
+):
+    """
+    Send a single SNF email with a nicely formatted PDF attachment
+    for the CURRENT filtered list of admissions for one SNF facility.
+
+    Payload (JSON):
+      {
+        "snf_facility_id": 1,              # id from snf_admission_facilities
+        "for_date": "2025-12-10",         # optional, used in subject/PDF header
+        "admission_ids": [1, 2, 3],       # ids from snf_admissions
+        "test_only": true/false,
+        "test_email_to": "me@domain.com"  # required if test_only = true
+      }
+    """
+    require_admin(request)
+
+    if not HAVE_REPORTLAB:
+        raise HTTPException(
+            status_code=500,
+            detail="PDF support is not installed (reportlab). Please add 'reportlab' to your environment."
+        )
+
+    snf_facility_id = int(payload.get("snf_facility_id") or 0)
+    admission_ids = payload.get("admission_ids") or []
+    for_date = (payload.get("for_date") or "").strip()
+    test_only = bool(payload.get("test_only"))
+    test_email_to = (payload.get("test_email_to") or "").strip()
+
+    if not snf_facility_id:
+        raise HTTPException(status_code=400, detail="snf_facility_id is required")
+    if not admission_ids:
+        raise HTTPException(status_code=400, detail="admission_ids must be a non-empty list")
+
+    if test_only and not test_email_to:
+        raise HTTPException(
+            status_code=400,
+            detail="test_email_to is required when test_only=true"
+        )
+
+    # Validate date format lightly (optional)
+    if for_date and not re.match(r"^\d{4}-\d{2}-\d{2}$", for_date):
+        raise HTTPException(status_code=400, detail="for_date must be YYYY-MM-DD")
+
+    if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD):
+        return {"ok": False, "message": "SMTP not configured; skipping send."}
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Load SNF facility master row
+        cur.execute(
+            """
+            SELECT id, facility_name, attending, notes, notes2, aliases, facility_emails
+            FROM snf_admission_facilities
+            WHERE id = ?
+            """,
+            (snf_facility_id,),
+        )
+        fac = cur.fetchone()
+        if not fac:
+            raise HTTPException(status_code=404, detail="SNF Admission Facility not found")
+
+        facility_name = fac["facility_name"] or "SNF facility"
+        attending = fac["attending"] or ""
+        facility_emails = (fac["facility_emails"] or "").strip()
+
+        if not test_only and not facility_emails:
+            raise HTTPException(
+                status_code=400,
+                detail="No facility_emails configured for this SNF Admission Facility."
+            )
+
+        # Look up the admissions (and DOB from raw notes)
+        placeholders = ",".join("?" for _ in admission_ids)
+        cur.execute(
+            f"""
+            SELECT s.id,
+                   s.patient_name,
+                   s.hospital_name,
+                   raw.dob
+            FROM snf_admissions s
+            LEFT JOIN cm_notes_raw raw
+              ON raw.id = s.raw_note_id
+            WHERE s.id IN ({placeholders})
+            ORDER BY s.patient_name COLLATE NOCASE
+            """,
+            admission_ids,
+        )
+        rows = cur.fetchall()
+        if not rows:
+            raise HTTPException(status_code=400, detail="No admissions found for the provided IDs.")
+
+        # ------------------------
+        # Build the PDF in memory
+        # ------------------------
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
+        styles = getSampleStyleSheet()
+        title_style = styles["Title"]
+        normal = styles["Normal"]
+        small = styles["BodyText"]
+        small.fontSize = 9
+        small.leading = 11
+
+        story = []
+
+        # Title: facility name
+        story.append(Paragraph(facility_name, title_style))
+        story.append(Spacer(1, 6))
+
+        # Subtitle with date
+        if for_date:
+            subtitle = f"Potential SNF referrals for {for_date}"
+        else:
+            subtitle = "Potential SNF referrals"
+        story.append(Paragraph(subtitle, normal))
+        story.append(Spacer(1, 6))
+
+        # Tagline
+        tagline = "Our hospitalists have identified the following patients as potential referrals to your facility."
+        story.append(Paragraph(tagline, normal))
+        story.append(Spacer(1, 10))
+
+        # Attending from master table
+        if attending:
+            story.append(Paragraph(f"Attending physician: {attending}", small))
+            story.append(Spacer(1, 8))
+
+        # Table: Patient Name, DOB, Hospital
+        data = [["Patient name", "DOB", "Hospital"]]
+        for r in rows:
+            pname = r["patient_name"] or ""
+            dob = r["dob"] or ""
+            hosp = r["hospital_name"] or ""
+            data.append([pname, dob, hosp])
+
+        table = Table(data, colWidths=[220, 80, 220])
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e5f0ff")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1f2933")),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 10),
+                    ("ALIGN", (0, 0), (-1, 0), "LEFT"),
+                    ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+                    ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
+                    ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+                ]
+            )
+        )
+        story.append(table)
+        story.append(Spacer(1, 16))
+
+        # Little footer
+        story.append(Paragraph("Powered by Evolv Health", small))
+
+        doc.build(story)
+        pdf_bytes = buffer.getvalue()
+        buffer.close()
+
+        # ------------------------
+        # Build and send the email
+        # ------------------------
+        if not for_date:
+            for_date = dt.date.today().isoformat()
+
+        if test_only:
+            to_addr = test_email_to
+            cc_addr = ""
+        else:
+            # facility_emails may contain comma/semicolon separated list
+            to_addr = facility_emails
+            cc_addr = ""
+
+        subject = f"Potential SNF referrals for {facility_name} on {for_date}"
+        if test_only:
+            subject = "[TEST] " + subject
+
+        body_lines = [
+            subject,
+            "",
+            "Attached is a PDF summary of the patients identified as potential SNF referrals for your facility.",
+            "",
+            f"Facility: {facility_name}",
+            f"Date: {for_date}",
+            "",
+            "Powered by Evolv Health",
+        ]
+        body = "\n".join(body_lines)
+
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
+        msg["To"] = to_addr
+        if cc_addr:
+            msg["Cc"] = cc_addr
+        msg.set_content(body)
+
+        safe_fac = re.sub(r"[^A-Za-z0-9]+", "_", facility_name) or "SNF"
+        filename = f"SNF_Referrals_{safe_fac}_{for_date}.pdf"
+
+        msg.add_attachment(
+            pdf_bytes,
+            maintype="application",
+            subtype="pdf",
+            filename=filename,
+        )
+
+        email_run_id = secrets.token_hex(8)
+
+        try:
+            context = ssl.create_default_context()
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+                server.starttls(context=context)
+                server.login(SMTP_USER, SMTP_PASSWORD)
+                server.send_message(msg)
+
+            # Mark those admissions as emailed if this is a real send
+            if not test_only:
+                cur.execute(
+                    f"""
+                    UPDATE snf_admissions
+                       SET emailed_at = datetime('now'),
+                           email_run_id = ?
+                     WHERE id IN ({placeholders})
+                    """,
+                    (email_run_id, *admission_ids),
+                )
+                conn.commit()
+
+            return {
+                "ok": True,
+                "emails_sent": 1,
+                "email_run_id": email_run_id if not test_only else None,
+                "admissions_tagged": 0 if test_only else len(admission_ids),
+                "test_only": test_only,
+            }
+        except Exception as e:
+            print("[snf-email-pdf] Failed:", e)
+            raise HTTPException(status_code=500, detail=f"Failed to send email: {e}")
+    finally:
+        conn.close()
 
 
 
