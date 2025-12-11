@@ -3235,7 +3235,11 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     ai_snf_facility_id        = excluded.ai_snf_facility_id,
                     ai_expected_transfer_date = excluded.ai_expected_transfer_date,
                     ai_confidence             = excluded.ai_confidence,
-                    status                    = 'pending',
+                    status                    = CASE
+                                                   WHEN snf_admissions.status = 'removed'
+                                                       THEN snf_admissions.status
+                                                   ELSE 'pending'
+                                                END,
                     last_seen_active_date     = date('now'),
                     emailed_at                = NULL,
                     email_run_id              = NULL
@@ -4189,16 +4193,24 @@ async def admin_snf_list(
             params.append(status_s)
 
         # Date filter: use last_seen_active_date so the list shows "active admissions"
+        # - If days_ahead = 0: show only that exact date
+        # - If days_ahead > 0: show a window [for_date, for_date + days_ahead]
         if for_date:
             where.append("s.last_seen_active_date IS NOT NULL")
-            where.append("s.last_seen_active_date >= ?")
-            params.append(for_date)
+
             if days_ahead > 0:
-                where.append(
-                    "s.last_seen_active_date <= date(?, ? || ' days')"
-                )
+                # Range: for_date <= last_seen_active_date <= for_date + days_ahead
+                where.append("s.last_seen_active_date >= ?")
+                params.append(for_date)
+
+                where.append("s.last_seen_active_date <= date(?, ? || ' days')")
                 params.append(for_date)
                 params.append(days_ahead)
+            else:
+                # Exact match: only rows from this batch date
+                where.append("s.last_seen_active_date = ?")
+                params.append(for_date)
+
 
         sql = f"""
             SELECT
