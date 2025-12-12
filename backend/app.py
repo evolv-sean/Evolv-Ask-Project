@@ -4959,82 +4959,82 @@ def build_snf_pdf_html(
       gap: 24px;
     }}
 
-    .report-header {{
+    .report-header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
       gap: 16px;
       border-bottom: 1px solid #e5e7eb;
       padding-bottom: 16px;
-    }}
+    }
 
-    .header-main {{
+    .header-main {
       display: flex;
       flex-direction: column;
       gap: 4px;
-    }}
+    }
 
-    .report-kicker {{
-      font-size: 11px;
+    .report-kicker {
+      font-size: 10px;              /* was 11px */
       letter-spacing: 0.15em;
       text-transform: uppercase;
       color: #6b7280;
-    }}
+    }
 
-    .report-title {{
-      font-size: 22px;
+    .report-title {
+      font-size: 20px;              /* was 22px */
       font-weight: 700;
       color: #111827;
-    }}
+    }
 
-    .facility-line {{
-      font-size: 14px;
+    .facility-line {
+      font-size: 13px;              /* was 14px */
       color: #4b5563;
-    }}
+    }
 
-    .facility-chip {{
+    .facility-chip {
       display: inline-flex;
       align-items: center;
       gap: 6px;
       padding: 4px 10px;
       border-radius: 999px;
       background: #f3f4ff;
-      font-size: 12px;
+      font-size: 11px;              /* was 12px */
       color: #3730a3;
       margin-top: 4px;
-    }}
+    }
 
-    .legend-dot {{
+    .legend-dot {
       width: 7px;
       height: 7px;
       border-radius: 999px;
       background: #4f46e5;
-    }}
+    }
 
-    .header-side {{
+    .header-side {
       text-align: right;
-      font-size: 12px;
+      font-size: 11px;              /* was 12px */
       color: #6b7280;
-    }}
+    }
 
-    .header-side-label {{
+    .header-side-label {
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      font-size: 10px;
+      font-size: 9px;               /* was 10px */
       color: #9ca3af;
-    }}
+    }
 
-    .header-side-value {{
+    .header-side-value {
       margin-top: 2px;
-    }}
+    }
 
-    .header-description {{
-      font-size: 13px;
+    .header-description {
+      font-size: 12px;              /* was 13px */
       color: #4b5563;
       margin-top: 8px;
-    }}
+    }
 
-    .summary-bar {{
+    .summary-bar {
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -5043,113 +5043,121 @@ def build_snf_pdf_html(
       background: #f9fafb;
       border-radius: 12px;
       border: 1px solid #e5e7eb;
-      font-size: 12px;
+      font-size: 11px;              /* was 12px */
       color: #4b5563;
-    }}
+    }
 
-    .summary-count {{
+    .summary-count {
       font-weight: 600;
       color: #111827;
-    }}
+    }
 
-    .summary-tags {{
+    .summary-tags {
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
       justify-content: flex-end;
-    }}
+    }
 
-    .summary-tag {{
+    /* Generic pill style (no longer used for Status) */
+    .summary-tag {
       padding: 3px 9px;
       border-radius: 999px;
       border: 1px solid #e5e7eb;
-      font-size: 11px;
+      font-size: 10px;              /* was 11px */
       color: #374151;
       background: #ffffff;
-    }}
+    }
 
-    .table-wrapper {{
+    /* NEW: plain text status (no pill) */
+    .summary-status {
+      font-size: 10px;
+      color: #374151;
+    }
+
+    .table-wrapper {
       border-radius: 16px;
       border: 1px solid #e5e7eb;
       overflow: hidden;
-    }}
+    }
 
-    table {{
+    table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 13px;
-    }}
+      font-size: 12px;              /* was 13px */
+    }
 
-    thead {{
+    thead {
       background: #f3f4ff;
-    }}
+    }
 
     th,
-    td {{
+    td {
       padding: 10px 14px;
       text-align: left;
-    }}
+    }
 
-    th {{
-      font-size: 11px;
+    th {
+      font-size: 10px;              /* was 11px */
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.09em;
       color: #4b5563;
       border-bottom: 1px solid #e5e7eb;
       white-space: nowrap;
-    }}
+    }
 
-    tbody tr:nth-child(even) {{
+    tbody tr:nth-child(even) {
       background: #f9fafb;
-    }}
+    }
 
-    tbody tr:hover {{
+    tbody tr:hover {
       background: #eef2ff;
-    }}
+    }
 
-    td {{
+    td {
       border-bottom: 1px solid #e5e7eb;
       vertical-align: middle;
       color: #111827;
-    }}
+    }
 
-    tbody tr:last-child td {{
+    tbody tr:last-child td {
       border-bottom: none;
-    }}
+    }
 
-    .col-patient strong {{
+    .col-patient strong {
       font-weight: 600;
-    }}
+    }
 
-    .col-patient span {{
+    .col-patient span {
       display: block;
-      font-size: 11px;
+      font-size: 10px;              /* was 11px */
       color: #6b7280;
       margin-top: 2px;
-    }}
+    }
 
-    .col-hospital {{
-      font-size: 13px;
+    .col-hospital {
+      font-size: 12px;              /* was 13px */
       color: #111827;
-    }}
+    }
 
-    .col-md {{
-      font-size: 13px;
+    .col-md {
+      font-size: 12px;              /* was 13px */
       color: #374151;
-    }}
+    }
 
-    .report-footer {{
+    .report-footer {
       padding-top: 10px;
       margin-top: 4px;
       border-top: 1px solid #f3f4f6;
       text-align: center;
-    }}
+    }
 
-    .footer-brand {{
-      font-size: 11px;
+    .footer-brand {
+      font-size: 10px;              /* was 11px */
       color: #000000;
-    }}
+    }
+
   </style>
 </head>
 <body>
@@ -5184,8 +5192,8 @@ def build_snf_pdf_html(
           currently flagged as expected SNF admissions.
         </div>
         <div class="summary-tags">
-          <span class="summary-tag">Source: {safe_source}</span>
-          <span class="summary-tag">Status: Upcoming Discharges</span>
+          <!-- Source pill removed on purpose -->
+          <span class="summary-status">Status: Upcoming Discharges</span>
         </div>
       </section>
 
