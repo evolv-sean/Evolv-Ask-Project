@@ -23,6 +23,12 @@ try:
 except Exception:
     HAVE_REPORTLAB = False
 
+try:
+    from weasyprint import HTML as WEASY_HTML
+    HAVE_WEASYPRINT = True
+except Exception:
+    HAVE_WEASYPRINT = False
+
 from fastapi import FastAPI, HTTPException, Request, Form, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
@@ -4833,6 +4839,366 @@ async def admin_snf_send_emails(
         conn.close()
 
 
+def build_snf_pdf_html(
+    facility_name: str,
+    for_date: str,
+    rows: List[sqlite3.Row],
+) -> str:
+    """
+    Build the HTML for the SNF admissions PDF using the same design as
+    Example PDF Export v2.1.html.
+    """
+    safe_fac = html.escape(facility_name or "Receiving Facility")
+
+    # Count + source hospital
+    patient_count = len(rows)
+    patient_word = "patient" if patient_count == 1 else "patients"
+
+    hospitals = sorted(
+        {
+            (r["hospital_name"] or "").strip()
+            for r in rows
+            if (r["hospital_name"] or "").strip()
+        }
+    )
+    if len(hospitals) == 1:
+        source_label = hospitals[0]
+    elif len(hospitals) > 1:
+        source_label = "Multiple hospitals"
+    else:
+        source_label = "Unknown"
+
+    safe_source = html.escape(source_label)
+
+    # Table rows
+    body_rows: List[str] = []
+    for r in rows:
+        name = html.escape(r["patient_name"] or "")
+        dob = html.escape(r["dob"] or "")
+        hosp = html.escape(r["hospital_name"] or "")
+        md = html.escape(r["hospitalist"] or "")
+
+        body_rows.append(
+            f"""
+            <tr>
+              <td class="col-patient">
+                <strong>{name}</strong>
+              </td>
+              <td>{dob}</td>
+              <td class="col-hospital">{hosp}</td>
+              <td class="col-md">{md}</td>
+            </tr>
+            """
+        )
+
+    body_html = "\n".join(body_rows) or """
+        <tr>
+          <td colspan="4" style="padding: 16px; text-align: center; color: #6b7280;">
+            No patients found for this date.
+          </td>
+        </tr>
+    """
+
+    # MAIN HTML – this is your Example PDF Export v2.1.html with dynamic parts
+    html_doc = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Upcoming SNF Admissions</title>
+  <style>
+    * {{
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }}
+
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f5f7;
+      color: #111827;
+      line-height: 1.5;
+    }}
+
+    .report-shell {{
+      min-height: 100vh;
+      padding: 32px 16px 40px;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }}
+
+    .report {{
+      width: 100%;
+      max-width: 900px;
+      background: #ffffff;
+      border-radius: 20px;
+      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
+      padding: 28px 32px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }}
+
+    .report-header {{
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 16px;
+    }}
+
+    .header-main {{
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }}
+
+    .report-kicker {{
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #6b7280;
+    }}
+
+    .report-title {{
+      font-size: 22px;
+      font-weight: 700;
+      color: #111827;
+    }}
+
+    .facility-line {{
+      font-size: 14px;
+      color: #4b5563;
+    }}
+
+    .facility-chip {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #f3f4ff;
+      font-size: 12px;
+      color: #3730a3;
+      margin-top: 4px;
+    }}
+
+    .legend-dot {{
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #4f46e5;
+    }}
+
+    .header-side {{
+      text-align: right;
+      font-size: 12px;
+      color: #6b7280;
+    }}
+
+    .header-side-label {{
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 10px;
+      color: #9ca3af;
+    }}
+
+    .header-side-value {{
+      margin-top: 2px;
+    }}
+
+    .header-description {{
+      font-size: 13px;
+      color: #4b5563;
+      margin-top: 8px;
+    }}
+
+    .summary-bar {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      background: #f9fafb;
+      border-radius: 12px;
+      border: 1px solid #e5e7eb;
+      font-size: 12px;
+      color: #4b5563;
+    }}
+
+    .summary-count {{
+      font-weight: 600;
+      color: #111827;
+    }}
+
+    .summary-tags {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: flex-end;
+    }}
+
+    .summary-tag {{
+      padding: 3px 9px;
+      border-radius: 999px;
+      border: 1px solid #e5e7eb;
+      font-size: 11px;
+      color: #374151;
+      background: #ffffff;
+    }}
+
+    .table-wrapper {{
+      border-radius: 16px;
+      border: 1px solid #e5e7eb;
+      overflow: hidden;
+    }}
+
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }}
+
+    thead {{
+      background: #f3f4ff;
+    }}
+
+    th,
+    td {{
+      padding: 10px 14px;
+      text-align: left;
+    }}
+
+    th {{
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: #4b5563;
+      border-bottom: 1px solid #e5e7eb;
+      white-space: nowrap;
+    }}
+
+    tbody tr:nth-child(even) {{
+      background: #f9fafb;
+    }}
+
+    tbody tr:hover {{
+      background: #eef2ff;
+    }}
+
+    td {{
+      border-bottom: 1px solid #e5e7eb;
+      vertical-align: middle;
+      color: #111827;
+    }}
+
+    tbody tr:last-child td {{
+      border-bottom: none;
+    }}
+
+    .col-patient strong {{
+      font-weight: 600;
+    }}
+
+    .col-patient span {{
+      display: block;
+      font-size: 11px;
+      color: #6b7280;
+      margin-top: 2px;
+    }}
+
+    .col-hospital {{
+      font-size: 13px;
+      color: #111827;
+    }}
+
+    .col-md {{
+      font-size: 13px;
+      color: #374151;
+    }}
+
+    .report-footer {{
+      padding-top: 10px;
+      margin-top: 4px;
+      border-top: 1px solid #f3f4f6;
+      text-align: center;
+    }}
+
+    .footer-brand {{
+      font-size: 11px;
+      color: #000000;
+    }}
+  </style>
+</head>
+<body>
+  <div class="report-shell">
+    <div class="report">
+      <!-- Header -->
+      <header class="report-header">
+        <div class="header-main">
+          <div class="report-kicker">Transition Summary</div>
+          <div class="report-title">Upcoming SNF Admissions</div>
+          <div class="facility-line">
+            Receiving Facility:
+            <span class="facility-chip">
+              <span class="legend-dot"></span>
+              {safe_fac}
+            </span>
+          </div>
+          <p class="header-description">
+            Our Hospitalists have identified the following patients as expected discharges to your facility.
+          </p>
+        </div>
+        <div class="header-side">
+          <div class="header-side-label">Report Type</div>
+          <div class="header-side-value">Disposition: SNF</div>
+        </div>
+      </header>
+
+      <!-- Summary Bar -->
+      <section class="summary-bar">
+        <div>
+          <span class="summary-count">{patient_count} {patient_word}</span>
+          currently flagged as expected SNF admissions.
+        </div>
+        <div class="summary-tags">
+          <span class="summary-tag">Source: {safe_source}</span>
+          <span class="summary-tag">Status: Upcoming Discharges</span>
+        </div>
+      </section>
+
+      <!-- Patient Table -->
+      <section class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Patient</th>
+              <th>DOB</th>
+              <th>Hospital</th>
+              <th>Hospitalist</th>
+            </tr>
+          </thead>
+          <tbody>
+            {body_html}
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Footer -->
+      <footer class="report-footer">
+        <div class="footer-brand">Powered by Evolv Health</div>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>
+"""
+    return html_doc
+
+
+
 @app.post("/admin/snf/email-pdf")
 async def admin_snf_email_pdf(
     request: Request,
@@ -4842,21 +5208,15 @@ async def admin_snf_email_pdf(
     Send a single SNF email with a nicely formatted PDF attachment
     for the CURRENT filtered list of admissions for one SNF facility.
 
-    Payload (JSON):
-      {
-        "snf_facility_id": 1,              # id from snf_admission_facilities
-        "for_date": "2025-12-10",         # optional, used in subject/PDF header
-        "admission_ids": [1, 2, 3],       # ids from snf_admissions
-        "test_only": true/false,
-        "test_email_to": "me@domain.com"  # required if test_only = true
-      }
+    Uses HTML → PDF via WeasyPrint so the design exactly matches
+    Example PDF Export v2.1.html.
     """
     require_admin(request)
 
-    if not HAVE_REPORTLAB:
+    if not HAVE_WEASYPRINT:
         raise HTTPException(
             status_code=500,
-            detail="PDF support is not installed (reportlab). Please add 'reportlab' to your environment."
+            detail="PDF support is not installed (weasyprint). Please add 'weasyprint' to your environment."
         )
 
     snf_facility_id = int(payload.get("snf_facility_id") or 0)
@@ -4877,7 +5237,7 @@ async def admin_snf_email_pdf(
         )
 
     # Validate date format lightly (optional)
-    if for_date and not re.match(r"^\d{4}-\d{2}-\d{2}$", for_date):
+    if for_date and not re.match(r"^\d{{4}}-\d{{2}}-\d{{2}}$", for_date):
         raise HTTPException(status_code=400, detail="for_date must be YYYY-MM-DD")
 
     if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD):
@@ -4927,210 +5287,27 @@ async def admin_snf_email_pdf(
             """,
             admission_ids,
         )
-        
+
         rows = cur.fetchall()
         if not rows:
             raise HTTPException(status_code=400, detail="No admissions found for the provided IDs.")
 
         # ------------------------
-        # Build the PDF in memory – HTML-style layout
-        # ------------------------
-        buffer = io.BytesIO()
-        doc = SimpleDocTemplate(
-            buffer,
-            pagesize=letter,
-            leftMargin=36,
-            rightMargin=36,
-            topMargin=36,
-            bottomMargin=36,
-        )
-
-        styles = getSampleStyleSheet()
-        normal = styles["Normal"]
-        normal.fontSize = 10
-        normal.leading = 13
-
-        small = styles["BodyText"]
-        small.fontSize = 9
-        small.leading = 11
-
-        story = []
-
-        # Date to display in header and summary
-        display_date = for_date or dt.date.today().isoformat()
-        patient_count = len(rows)
-
-        # Build a simple "source" label based on distinct hospitals
-        hospitals = sorted(
-            { (r["hospital_name"] or "").strip() for r in rows if (r["hospital_name"] or "").strip() }
-        )
-        if len(hospitals) == 1:
-            source_label = hospitals[0]
-        elif len(hospitals) > 1:
-            source_label = "Multiple hospitals"
-        else:
-            source_label = "Unknown"
-
-        # ------------------------------------------------------------------
-        # 1) Header: matches Example HTML
-        #
-        # Left:
-        #   TRANSITION SUMMARY
-        #   Upcoming SNF Admissions
-        #   Receiving Facility: {facility_name}
-        #   Our Hospitalists have identified ...
-        #
-        # Right:
-        #   Report Type
-        #   Disposition: SNF
-        # ------------------------------------------------------------------
-        left_header_html = (
-            "<font size=8 color='#6b7280'>TRANSITION SUMMARY</font><br/>"
-            "<font size=16><b>Upcoming SNF Admissions</b></font><br/>"
-            f"<font size=10 color='#4b5563'>Receiving Facility: "
-            f"<b>{facility_name}</b></font><br/>"
-            "<font size=9 color='#4b5563'>Our Hospitalists have identified the "
-            "following patients as expected discharges to your facility.</font>"
-        )
-
-        right_header_html = (
-            "<font size=8 color='#9ca3af'>REPORT TYPE</font><br/>"
-            "<font size=10>Disposition: SNF</font>"
-        )
-
-        header_data = [
-            [
-                Paragraph(left_header_html, normal),
-                Paragraph(right_header_html, small),
-            ]
-        ]
-
-        header_table = Table(header_data, colWidths=[360, 170])
-        header_table.setStyle(
-            TableStyle(
-                [
-                    ("VALIGN", (0, 0), (-1, 0), "TOP"),
-                    ("ALIGN", (0, 0), (0, 0), "LEFT"),
-                    ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-                    ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
-                    ("LINEBELOW", (0, 0), (-1, 0), 0.25, colors.HexColor("#e5e7eb")),
-                ]
-            )
-        )
-        story.append(header_table)
-        story.append(Spacer(1, 12))
-
-        # ------------------------------------------------------------------
-        # 2) Summary bar – "X patients currently flagged..." + tags
-        # ------------------------------------------------------------------
-        summary_text_html = (
-            f"<font size=9>"
-            f"<b>{patient_count} patient{'s' if patient_count != 1 else ''}</b> "
-            "currently flagged as expected SNF admissions."
-            "</font>"
-        )
-
-        tags_html = (
-            f"<font size=8>"
-            f"Source: {source_label}"
-            "&nbsp;&nbsp;&nbsp;&nbsp;"
-            "Status: Upcoming Discharges"
-            "</font>"
-        )
-
-        summary_data = [
-            [
-                Paragraph(summary_text_html, small),
-                Paragraph(tags_html, small),
-            ]
-        ]
-
-        summary_table = Table(summary_data, colWidths=[320, 210])
-        summary_table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f9fafb")),
-                    ("BOX", (0, 0), (-1, 0), 0.5, colors.HexColor("#e5e7eb")),
-                    ("LEFTPADDING", (0, 0), (-1, 0), 8),
-                    ("RIGHTPADDING", (0, 0), (-1, 0), 8),
-                    ("TOPPADDING", (0, 0), (-1, 0), 4),
-                    ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
-                    ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
-                ]
-            )
-        )
-        story.append(summary_table)
-        story.append(Spacer(1, 14))
-
-        # ------------------------------------------------------------------
-        # 3) Patient table: Patient / DOB / Hospital / Hospitalist
-        # ------------------------------------------------------------------
-        table_data = [["Patient", "DOB", "Hospital", "Hospitalist"]]
-
-        for r in rows:
-            pname = r["patient_name"] or ""
-            dob = r["dob"] or ""
-            hosp = r["hospital_name"] or ""
-            hosp_md = r["hospitalist"] or ""
-
-            table_data.append([pname, dob, hosp, hosp_md])
-
-        table = Table(table_data, colWidths=[230, 80, 140, 80])
-
-        table_style_commands = [
-            # Header row
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f3f4ff")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#4b5563")),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, 0), 9),
-            ("ALIGN", (0, 0), (-1, 0), "LEFT"),
-            ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
-
-            # Body rows
-            ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-            ("FONTSIZE", (0, 1), (-1, -1), 9),
-            ("TOPPADDING", (0, 1), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 1), (-1, -1), 4),
-
-            # Grid / borders
-            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e5e7eb")),
-        ]
-
-        # Zebra striping (like the HTML table)
-        for row_idx in range(1, len(table_data)):
-            if row_idx % 2 == 0:
-                table_style_commands.append(
-                    ("BACKGROUND", (0, row_idx), (-1, row_idx), colors.HexColor("#f9fafb"))
-                )
-
-        table.setStyle(TableStyle(table_style_commands))
-        story.append(table)
-        story.append(Spacer(1, 16))
-
-        # ------------------------------------------------------------------
-        # 4) Footer – "Powered by Evolv Health"
-        # ------------------------------------------------------------------
-        footer_html = "<font size=8>Powered by Evolv Health</font>"
-        story.append(Paragraph(footer_html, small))
-
-        # Build the document
-        doc.build(story)
-        pdf_bytes = buffer.getvalue()
-        buffer.close()
-
-
-
-        # ------------------------
-        # Build and send the email
+        # Build PDF via HTML → PDF
         # ------------------------
         if not for_date:
             for_date = dt.date.today().isoformat()
 
+        html_doc = build_snf_pdf_html(facility_name, for_date, rows)
+        pdf_bytes = WEASY_HTML(string=html_doc).write_pdf()
+
+        # ------------------------
+        # Build and send the email
+        # ------------------------
         if test_only:
             to_addr = test_email_to
             cc_addr = ""
         else:
-            # facility_emails may contain comma/semicolon separated list
             to_addr = facility_emails
             cc_addr = ""
 
@@ -5202,7 +5379,6 @@ async def admin_snf_email_pdf(
             raise HTTPException(status_code=500, detail=f"Failed to send email: {e}")
     finally:
         conn.close()
-
 
 
 def send_intake_email(facility_id: str, payload: dict) -> None:
