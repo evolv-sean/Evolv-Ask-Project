@@ -4908,6 +4908,12 @@ def build_snf_pdf_html(
   <meta charset="UTF-8" />
   <title>Upcoming SNF Admissions</title>
   <style>
+    /* Tell WeasyPrint to use small page margins so the card fills the page better */
+    @page {{
+      size: letter;
+      margin: 12px;
+    }}
+
     * {{
       box-sizing: border-box;
       margin: 0;
@@ -4923,10 +4929,22 @@ def build_snf_pdf_html(
 
     .report-shell {{
       min-height: 100vh;
-      padding: 32px 16px 40px;
+      padding: 8px;
       display: flex;
       justify-content: center;
       align-items: flex-start;
+    }}
+
+    .report {{
+      width: 100%;
+      max-width: 100%;
+      background: #ffffff;
+      border-radius: 20px;
+      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
+      padding: 28px 32px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
     }}
 
     .report {{
