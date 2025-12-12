@@ -5301,14 +5301,14 @@ async def admin_snf_email_pdf(
             to_addr = facility_emails
             cc_addr = ""
 
-        subject = f"Potential SNF referrals for {facility_name} on {for_date}"
+        subject = f"Upcoming SNF referrals for {facility_name} on {for_date}"
         if test_only:
             subject = "[TEST] " + subject
 
         body_lines = [
             subject,
             "",
-            "Attached is a PDF summary of the patients identified as potential SNF referrals for your facility.",
+            "Attached is a PDF summary from our FirstDocs/Medrina Hospital Physicians of the patients identified as upcoming SNF referrals to your facility.",
             "",
             f"Facility: {facility_name}",
             f"Date: {for_date}",
