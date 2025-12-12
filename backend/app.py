@@ -4847,32 +4847,16 @@ def build_snf_pdf_html(
     rows: List[sqlite3.Row],
 ) -> str:
     """
-    Build the HTML for the SNF admissions PDF using the same design as
-    Example PDF Export v2.1.html.
+    Build the HTML for the SNF admissions PDF, styled like the
+    Example PDF Export v2.1, but with slightly smaller fonts and
+    no Source pill.
     """
     safe_fac = html.escape(facility_name or "Receiving Facility")
 
-    # Count + source hospital
     patient_count = len(rows)
     patient_word = "patient" if patient_count == 1 else "patients"
 
-    hospitals = sorted(
-        {
-            (r["hospital_name"] or "").strip()
-            for r in rows
-            if (r["hospital_name"] or "").strip()
-        }
-    )
-    if len(hospitals) == 1:
-        source_label = hospitals[0]
-    elif len(hospitals) > 1:
-        source_label = "Multiple hospitals"
-    else:
-        source_label = "Unknown"
-
-    safe_source = html.escape(source_label)
-
-    # Table rows
+    # Build table body rows
     body_rows: List[str] = []
     for r in rows:
         name = html.escape(r["patient_name"] or "")
@@ -4893,25 +4877,25 @@ def build_snf_pdf_html(
             """
         )
 
-    body_html = "\n".join(body_rows) or """
+    body_html = "\n".join(body_rows).strip() or """
         <tr>
           <td colspan="4" style="padding: 16px; text-align: center; color: #6b7280;">
             No patients found for this date.
           </td>
         </tr>
-    """
+    """.strip()
 
-    # MAIN HTML – this is your Example PDF Export v2.1.html with dynamic parts
+    # NOTE: all CSS/HTML braces that are not Python variables are doubled {{ }}
     html_doc = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>Upcoming SNF Admissions</title>
   <style>
-    /* Tell WeasyPrint to use small page margins so the card fills the page better */
+    /* Page margins so content fills more of the page */
     @page {{
       size: letter;
-      margin: 12px;
+      margin: 16px;
     }}
 
     * {{
@@ -4947,94 +4931,82 @@ def build_snf_pdf_html(
       gap: 24px;
     }}
 
-    .report {{
-      width: 100%;
-      max-width: 900px;
-      background: #ffffff;
-      border-radius: 20px;
-      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
-      padding: 28px 32px 18px;
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-    }}
-
-    .report-header {
+    .report-header {{
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
       gap: 16px;
       border-bottom: 1px solid #e5e7eb;
       padding-bottom: 16px;
-    }
+    }}
 
-    .header-main {
+    .header-main {{
       display: flex;
       flex-direction: column;
       gap: 4px;
-    }
+    }}
 
-    .report-kicker {
-      font-size: 10px;              /* was 11px */
+    .report-kicker {{
+      font-size: 10px;
       letter-spacing: 0.15em;
       text-transform: uppercase;
       color: #6b7280;
-    }
+    }}
 
-    .report-title {
-      font-size: 20px;              /* was 22px */
+    .report-title {{
+      font-size: 20px;
       font-weight: 700;
       color: #111827;
-    }
+    }}
 
-    .facility-line {
-      font-size: 13px;              /* was 14px */
+    .facility-line {{
+      font-size: 13px;
       color: #4b5563;
-    }
+    }}
 
-    .facility-chip {
+    .facility-chip {{
       display: inline-flex;
       align-items: center;
       gap: 6px;
       padding: 4px 10px;
       border-radius: 999px;
       background: #f3f4ff;
-      font-size: 11px;              /* was 12px */
+      font-size: 11px;
       color: #3730a3;
       margin-top: 4px;
-    }
+    }}
 
-    .legend-dot {
+    .legend-dot {{
       width: 7px;
       height: 7px;
       border-radius: 999px;
       background: #4f46e5;
-    }
+    }}
 
-    .header-side {
+    .header-side {{
       text-align: right;
-      font-size: 11px;              /* was 12px */
+      font-size: 11px;
       color: #6b7280;
-    }
+    }}
 
-    .header-side-label {
+    .header-side-label {{
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      font-size: 9px;               /* was 10px */
+      font-size: 9px;
       color: #9ca3af;
-    }
+    }}
 
-    .header-side-value {
+    .header-side-value {{
       margin-top: 2px;
-    }
+    }}
 
-    .header-description {
-      font-size: 12px;              /* was 13px */
+    .header-description {{
+      font-size: 12px;
       color: #4b5563;
       margin-top: 8px;
-    }
+    }}
 
-    .summary-bar {
+    .summary-bar {{
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -5043,121 +5015,110 @@ def build_snf_pdf_html(
       background: #f9fafb;
       border-radius: 12px;
       border: 1px solid #e5e7eb;
-      font-size: 11px;              /* was 12px */
+      font-size: 11px;
       color: #4b5563;
-    }
+    }}
 
-    .summary-count {
+    .summary-count {{
       font-weight: 600;
       color: #111827;
-    }
+    }}
 
-    .summary-tags {
+    .summary-tags {{
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
       justify-content: flex-end;
-    }
+    }}
 
-    /* Generic pill style (no longer used for Status) */
-    .summary-tag {
-      padding: 3px 9px;
-      border-radius: 999px;
-      border: 1px solid #e5e7eb;
-      font-size: 10px;              /* was 11px */
-      color: #374151;
-      background: #ffffff;
-    }
-
-    /* NEW: plain text status (no pill) */
-    .summary-status {
+    /* plain text status (no pill) */
+    .summary-status {{
       font-size: 10px;
       color: #374151;
-    }
+    }}
 
-    .table-wrapper {
+    .table-wrapper {{
       border-radius: 16px;
       border: 1px solid #e5e7eb;
       overflow: hidden;
-    }
+    }}
 
-    table {
+    table {{
       width: 100%;
       border-collapse: collapse;
-      font-size: 12px;              /* was 13px */
-    }
+      font-size: 12px;
+    }}
 
-    thead {
+    thead {{
       background: #f3f4ff;
-    }
+    }}
 
     th,
-    td {
+    td {{
       padding: 10px 14px;
       text-align: left;
-    }
+    }}
 
-    th {
-      font-size: 10px;              /* was 11px */
+    th {{
+      font-size: 10px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.09em;
       color: #4b5563;
       border-bottom: 1px solid #e5e7eb;
       white-space: nowrap;
-    }
+    }}
 
-    tbody tr:nth-child(even) {
+    tbody tr:nth-child(even) {{
       background: #f9fafb;
-    }
+    }}
 
-    tbody tr:hover {
+    tbody tr:hover {{
       background: #eef2ff;
-    }
+    }}
 
-    td {
+    td {{
       border-bottom: 1px solid #e5e7eb;
       vertical-align: middle;
       color: #111827;
-    }
+    }}
 
-    tbody tr:last-child td {
+    tbody tr:last-child td {{
       border-bottom: none;
-    }
+    }}
 
-    .col-patient strong {
+    .col-patient strong {{
       font-weight: 600;
-    }
+    }}
 
-    .col-patient span {
+    .col-patient span {{
       display: block;
-      font-size: 10px;              /* was 11px */
+      font-size: 10px;
       color: #6b7280;
       margin-top: 2px;
-    }
+    }}
 
-    .col-hospital {
-      font-size: 12px;              /* was 13px */
+    .col-hospital {{
+      font-size: 12px;
       color: #111827;
-    }
+    }}
 
-    .col-md {
-      font-size: 12px;              /* was 13px */
+    .col-md {{
+      font-size: 12px;
       color: #374151;
-    }
+    }}
 
-    .report-footer {
+    .report-footer {{
       padding-top: 10px;
       margin-top: 4px;
       border-top: 1px solid #f3f4f6;
       text-align: center;
-    }
+    }}
 
-    .footer-brand {
-      font-size: 10px;              /* was 11px */
+    .footer-brand {{
+      font-size: 10px;
       color: #000000;
-    }
-
+    }}
   </style>
 </head>
 <body>
@@ -5224,6 +5185,7 @@ def build_snf_pdf_html(
 </html>
 """
     return html_doc
+
 
 
 
