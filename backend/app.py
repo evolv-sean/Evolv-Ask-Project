@@ -13,6 +13,8 @@ import io
 from email.message import EmailMessage
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+import html
+
 
 try:
     from reportlab.lib.pagesizes import letter
