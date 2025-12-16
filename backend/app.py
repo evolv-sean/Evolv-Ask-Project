@@ -3300,7 +3300,7 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     last_seen_active_date,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', date('now'), datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', date('now'), datetime('now'))
                 ON CONFLICT(visit_id) DO UPDATE SET
                     raw_note_id               = excluded.raw_note_id,
                     patient_mrn               = excluded.patient_mrn,
