@@ -303,7 +303,17 @@ def init_db():
         pass
 
     try:
+        cur.execute("ALTER TABLE cm_notes_raw ADD COLUMN admit_date TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
         cur.execute("ALTER TABLE cm_notes_raw ADD COLUMN attending TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE cm_notes_raw ADD COLUMN dob TEXT")
     except sqlite3.Error:
         pass
 
@@ -831,7 +841,7 @@ async def pad_cm_notes_bulk(
                     note_hash,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 """,
                 (
                     patient_mrn,
@@ -5329,7 +5339,7 @@ async def admin_snf_email_pdf(
             FROM snf_admissions s
             LEFT JOIN cm_notes_raw raw
               ON raw.id = s.raw_note_id
-            WHERE s.id IN ({placeholders})
+            WHERE s.id IN (...)
             ORDER BY s.patient_name COLLATE NOCASE
             """,
             admission_ids,
