@@ -274,6 +274,8 @@ def init_db():
             hospital_name   TEXT,
             unit_name       TEXT,
             admission_date  TEXT,
+            admit_date      TEXT,
+            attending       TEXT,
 
             -- Note metadata
             note_datetime   TEXT NOT NULL,
@@ -300,6 +302,10 @@ def init_db():
     except sqlite3.Error:
         pass
 
+    try:
+        cur.execute("ALTER TABLE cm_notes_raw ADD COLUMN attending TEXT")
+    except sqlite3.Error:
+        pass
 
     # Indexes to speed up typical queries on cm_notes_raw
     cur.execute(
@@ -325,6 +331,9 @@ def init_db():
             visit_id                    TEXT,
             patient_mrn                 TEXT NOT NULL,
             patient_name                TEXT,
+            dob                         TEXT,
+            attending                   TEXT,
+            admit_date                  TEXT,
             hospital_name               TEXT,
             note_datetime               TEXT,
 
@@ -380,6 +389,22 @@ def init_db():
         cur.execute("ALTER TABLE snf_admissions ADD COLUMN last_seen_active_date TEXT")
     except sqlite3.Error:
         pass
+
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN dob TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN attending TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN admit_date TEXT")
+    except sqlite3.Error:
+        pass
+
 
     # Helpful indexes for SNF admissions queries
     cur.execute(
@@ -794,6 +819,8 @@ async def pad_cm_notes_bulk(
                     hospital_name,
                     unit_name,
                     admission_date,
+                    admit_date,
+                    attending,
                     note_datetime,
                     note_author,
                     note_type,
@@ -815,6 +842,8 @@ async def pad_cm_notes_bulk(
                     row.get("hospital_name"),
                     row.get("unit_name"),
                     row.get("admission_date"),
+                    row.get("admit_date") or row.get("admission_date"),
+                    row.get("attending") or row.get("hospitalist") or row.get("note_author"),
                     note_datetime,
                     row.get("note_author"),
                     row.get("note_type") or "Case Management",
@@ -3247,6 +3276,9 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     visit_id,
                     patient_mrn,
                     patient_name,
+                    dob,
+                    attending,
+                    admit_date,
                     hospital_name,
                     note_datetime,
                     ai_is_snf_candidate,
@@ -3263,6 +3295,9 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     raw_note_id               = excluded.raw_note_id,
                     patient_mrn               = excluded.patient_mrn,
                     patient_name              = excluded.patient_name,
+                    dob                       = excluded.dob,
+                    attending                 = excluded.attending,
+                    admit_date                = excluded.admit_date,
                     hospital_name             = excluded.hospital_name,
                     note_datetime             = excluded.note_datetime,
                     ai_is_snf_candidate       = excluded.ai_is_snf_candidate,
@@ -3285,14 +3320,29 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     visit_id_db,
                     patient_mrn,
                     patient_name,
+
+                    # NEW:
+                    latest_note["dob"] if "dob" in latest_note.keys() else None,
+                    (
+                        (latest_note["attending"] if "attending" in latest_note.keys() else None)
+                        or (latest_note["note_author"] if "note_author" in latest_note.keys() else None)
+                        or ""
+                    ),
+                    (
+                        (latest_note["admit_date"] if "admit_date" in latest_note.keys() else None)
+                        or (latest_note["admission_date"] if "admission_date" in latest_note.keys() else None)
+                        or ""
+                    ),
+
                     hospital_name,
                     note_datetime,
-                    1,  # ai_is_snf_candidate
+                    1,
                     snf_name_raw,
                     ai_facility_id,
                     expected_date,
                     conf,
                 ),
+
             )
 
 
@@ -4385,6 +4435,9 @@ async def admin_snf_list(
                     "effective_facility_city": r["effective_facility_city"],
                     "effective_facility_state": r["effective_facility_state"],
                     "last_seen_active_date": r["last_seen_active_date"],
+                    "dob": r["dob"],
+                    "attending": r["attending"],
+                    "admit_date": r["admit_date"],
                 }
             )
         return {"ok": True, "items": items}
@@ -5264,11 +5317,15 @@ async def admin_snf_email_pdf(
         placeholders = ",".join("?" for _ in admission_ids)
         cur.execute(
             f"""
-            SELECT s.id,
-                   s.patient_name,
-                   s.hospital_name,
-                   raw.dob,
-                   raw.note_author AS hospitalist
+            SELECT
+                s.id,
+                s.patient_name,
+                s.hospital_name,
+
+                -- Prefer the values stored on the admission row
+                COALESCE(s.dob, raw.dob) AS dob,
+                COALESCE(s.attending, raw.attending, raw.note_author) AS hospitalist
+
             FROM snf_admissions s
             LEFT JOIN cm_notes_raw raw
               ON raw.id = s.raw_note_id
