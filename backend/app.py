@@ -45,6 +45,20 @@ BASE_DIR = Path(__file__).resolve().parent   # this is your /backend folder
 # Where the HTML files actually live, same as old app.py
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
 
+
+# ============================
+# Email helper utilities
+# ============================
+def normalize_email_list(raw: str) -> str:
+    """
+    Accepts commas, semicolons, or newlines.
+    Returns a clean, comma-separated email list.
+    """
+    parts = re.split(r"[,\n;]+", (raw or "").strip())
+    parts = [p.strip() for p in parts if p.strip()]
+    return ", ".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # DB PATH – wired for Render, but still overrideable via DB_PATH
 # ---------------------------------------------------------------------------
@@ -5315,7 +5329,7 @@ async def admin_snf_email_pdf(
 
         facility_name = fac["facility_name"] or "SNF facility"
         attending = fac["attending"] or ""
-        facility_emails = (fac["facility_emails"] or "").strip()
+        facility_emails = normalize_email_list(fac["facility_emails"] or "")
 
         if not test_only and not facility_emails:
             raise HTTPException(
@@ -5355,8 +5369,12 @@ async def admin_snf_email_pdf(
         if not for_date:
             for_date = dt.date.today().isoformat()
 
-        html_doc = build_snf_pdf_html(facility_name, for_date, rows)
-        pdf_bytes = WEASY_HTML(string=html_doc).write_pdf()
+        try:
+            html_doc = build_snf_pdf_html(facility_name, for_date, rows)
+            pdf_bytes = WEASY_HTML(string=html_doc).write_pdf()
+        except Exception as e:
+            print("[snf-email-pdf] PDF generation failed:", repr(e))
+            raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")
 
         # ------------------------
         # Build and send the email
@@ -5432,7 +5450,7 @@ async def admin_snf_email_pdf(
                 "test_only": test_only,
             }
         except Exception as e:
-            print("[snf-email-pdf] Failed:", e)
+            print("[snf-email-pdf] SMTP failed:", repr(e))
             raise HTTPException(status_code=500, detail=f"Failed to send email: {e}")
     finally:
         conn.close()
