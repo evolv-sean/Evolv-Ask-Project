@@ -5338,26 +5338,31 @@ async def admin_snf_email_pdf(
             )
 
         # Look up the admissions (and DOB from raw notes)
+        # Look up the admissions (DOB + Hospitalist)
         placeholders = ",".join("?" for _ in admission_ids)
-        cur.execute(
-            f"""
-            SELECT
-                s.id,
-                s.patient_name,
-                s.hospital_name,
 
-                -- Prefer the values stored on the admission row
-                COALESCE(s.dob, raw.dob) AS dob,
-                COALESCE(s.attending, raw.attending, raw.note_author) AS hospitalist
+        sql = f"""
+        SELECT
+            s.id,
+            s.patient_name,
+            s.hospital_name,
+            COALESCE(s.dob, raw.dob) AS dob,
+            COALESCE(s.attending, raw.attending, raw.note_author) AS hospitalist
+        FROM snf_admissions s
+        LEFT JOIN cm_notes_raw raw
+          ON raw.id = s.raw_note_id
+        WHERE s.id IN ({placeholders})
+        ORDER BY s.patient_name COLLATE NOCASE
+        """
 
-            FROM snf_admissions s
-            LEFT JOIN cm_notes_raw raw
-              ON raw.id = s.raw_note_id
-            WHERE s.id IN (...)
-            ORDER BY s.patient_name COLLATE NOCASE
-            """,
-            admission_ids,
-        )
+        try:
+            cur.execute(sql, admission_ids)
+        except Exception as e:
+            print("[snf-email-pdf] SQL failed:", repr(e))
+            print("[snf-email-pdf] SQL text was:\n", sql)
+            print("[snf-email-pdf] admission_ids:", admission_ids)
+            raise
+
 
         rows = cur.fetchall()
         if not rows:
