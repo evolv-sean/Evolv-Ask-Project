@@ -69,6 +69,27 @@
       color: #111827;
     }
 
+
+    /* Make the two panels fill the viewport under the header */
+    main {
+      height: calc(100vh - 70px); /* adjust 70px if your header height changes */
+    }
+
+    /* Critical for nested flex scroll areas */
+    .panel,
+    .table-wrapper,
+    #note-panel {
+      min-height: 0;
+    }
+
+    /* Left table already scrolls via .table-wrapper { overflow:auto; } */
+
+    /* Right panel: ONLY the note text area scrolls */
+    #note-text {
+      overflow: auto;
+      flex: 1;
+    }
+
     .filters {
       display: flex;
       flex-wrap: wrap;
@@ -391,9 +412,8 @@
               <th>Effective date</th>
               <th>AI conf</th>
               <th>Status</th>
-              <th>Final date</th>
               <th>Emailed</th>
-              <th>Actions</th>
+              <th>Last Updated</th>
             </tr>
           </thead>
           <tbody id="snf-body">
@@ -791,11 +811,8 @@
           <td>
             <span class="status-pill ${r.status || "pending"}">${r.status || "pending"}</span>
           </td>
-          <td>${r.final_expected_transfer_date || ""}</td>
           <td>${emailed}</td>
-          <td>
-            <button class="small" onclick="event.stopPropagation(); selectRow(${r.id});">View</button>
-          </td>
+          <td>${r.last_seen_active_date || ""}</td>
         `;
         tbody.appendChild(tr);
       });
@@ -852,6 +869,14 @@
         const noteTextEl = document.getElementById("note-text");
         noteTextEl.innerHTML = "";
         const allNotes = (data.notes && Array.isArray(data.notes) && data.notes.length) ? data.notes : [note];
+        
+        // Sort notes newest -> oldest
+        allNotes.sort((a, b) => {
+          const ad = a.note_datetime || "";
+          const bd = b.note_datetime || "";
+          if (ad === bd) return (b.id || 0) - (a.id || 0);
+          return bd.localeCompare(ad);
+        });
 
         allNotes.forEach(n => {
           const wrapper = document.createElement("div");
