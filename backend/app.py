@@ -5398,7 +5398,7 @@ async def admin_snf_email_pdf(
         body_lines = [
             subject,
             "",
-            "Attached is a PDF summary from our FirstDocs/Medrina Hospital Physicians of the patients identified as upcoming SNF referrals to your facility.",
+            "Attached is a PDF summary from our Accountable Care Hospitalist Group hospital physicians of the patients identified as upcoming SNF referrals to your facility.",
             "",
             f"Facility: {facility_name}",
             f"Date: {for_date}",
