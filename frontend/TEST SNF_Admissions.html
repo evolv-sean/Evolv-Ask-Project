@@ -363,10 +363,10 @@
         <div class="filters">
           <div>
             <label for="filter-date">Active Date</label><br />
-            <input id="filter-date" type="date" />
+            <input id="filter-date" type="text" placeholder="MM-DD-YYYY" inputmode="numeric" />
           </div>
           <div>
-            <label for="filter-days">Days ahead</label><br />
+            <label for="filter-date">Active Date</label><br />
             <input id="filter-days" type="number" value="0" min="0" max="30" style="width:60px;" />
           </div>
           <div>
@@ -597,6 +597,26 @@
       select.value = foundId || "";
     }
 
+
+    function formatISOToMDY(iso) {
+      // Accepts "YYYY-MM-DD" (or "YYYY-MM-DDTHH:MM:SS"), returns "MM-DD-YYYY"
+      if (!iso) return "";
+      const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (!m) return String(iso); // if it's not ISO, leave it alone
+      const [_, yyyy, mm, dd] = m;
+      return `${mm}-${dd}-${yyyy}`;
+    }
+
+    function parseMDYToISO(mdy) {
+      // Accepts "MM-DD-YYYY" (or "MM/DD/YYYY"), returns "YYYY-MM-DD"
+      if (!mdy) return "";
+      const cleaned = String(mdy).trim().replace(/\//g, "-");
+      const m = cleaned.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+      if (!m) return ""; // invalid -> treat like blank
+      const [_, mm, dd, yyyy] = m;
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
     async function addSnfFacility() {
       const token = getAdminToken();
       if (!token) {
@@ -709,7 +729,8 @@
 
       const params = new URLSearchParams();
       if (status) params.set("status", status);
-      if (date) params.set("for_date", date);
+      const dateIso = parseMDYToISO(date);
+      if (dateIso) params.set("for_date", dateIso);
       if (days) params.set("days_ahead", days);
 
       document.getElementById("list-message").textContent = "Loading...";
@@ -806,13 +827,13 @@
           </td>
           <td>${r.hospital_name || ""}</td>
           <td>${facLabel}</td>
-          <td>${r.effective_date || ""}</td>
+          <td>${formatISOToMDY(r.effective_date)}</td>
           <td>${(r.ai_confidence != null ? r.ai_confidence.toFixed(2) : "")}</td>
           <td>
             <span class="status-pill ${r.status || "pending"}">${r.status || "pending"}</span>
           </td>
           <td>${emailed}</td>
-          <td>${r.last_seen_active_date || ""}</td>
+          <td>${formatISOToMDY(r.last_seen_active_date)}</td>
         `;
         tbody.appendChild(tr);
       });
