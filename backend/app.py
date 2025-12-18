@@ -4922,6 +4922,7 @@ def build_snf_pdf_html(
     facility_name: str,
     for_date: str,
     rows: List[sqlite3.Row],
+    attending: str = "",
 ) -> str:
     """
     Build the HTML for the SNF admissions PDF, styled like the
@@ -5378,7 +5379,7 @@ async def admin_snf_email_pdf(
             for_date = dt.date.today().isoformat()
 
         try:
-            html_doc = build_snf_pdf_html(facility_name, for_date, rows)
+            html_doc = build_snf_pdf_html(facility_name, for_date, rows, attending)
             pdf_bytes = WEASY_HTML(string=html_doc).write_pdf()
         except Exception as e:
             print("[snf-email-pdf] PDF generation failed:", repr(e))
