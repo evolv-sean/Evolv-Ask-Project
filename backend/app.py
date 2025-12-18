@@ -5304,7 +5304,7 @@ async def admin_snf_email_pdf(
         )
 
     # Validate date format lightly (optional)
-    if for_date and not re.match(r"^\d{{4}}-\d{{2}}-\d{{2}}$", for_date):
+    if for_date and not re.match(r"^\d{4}-\d{2}-\d{2}$", for_date):
         raise HTTPException(status_code=400, detail="for_date must be YYYY-MM-DD")
 
     if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD):
