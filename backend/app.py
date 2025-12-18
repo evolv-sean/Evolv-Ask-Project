@@ -3334,7 +3334,7 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                                                        THEN snf_admissions.status
                                                    ELSE 'pending'
                                                 END,
-                    last_seen_active_date     = date('now'),
+                    last_seen_active_date     = snf_admissions.last_seen_active_date,
                     emailed_at                = NULL,
                     email_run_id              = NULL
                 ;
@@ -3387,7 +3387,7 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
 @app.post("/admin/snf/run-extraction")
 async def admin_snf_run_extraction(
     request: Request,
-    days_back: int = Query(3, ge=1, le=30),
+    days_back: int = Query(0, ge=1, le=30),
 ):
     """
     Admin-only endpoint to analyze recent CM notes and populate snf_admissions.
