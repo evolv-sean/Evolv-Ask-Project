@@ -363,10 +363,10 @@
         <div class="filters">
           <div>
             <label for="filter-date">Active Date</label><br />
-            <input id="filter-date" type="text" placeholder="MM-DD-YYYY" inputmode="numeric" />
+            <input id="filter-date" type="date" />
           </div>
           <div>
-            <label for="filter-date">Active Date</label><br />
+            <label for="filter-date">Days ahead</label><br />
             <input id="filter-days" type="number" value="0" min="0" max="30" style="width:60px;" />
           </div>
           <div>
@@ -384,6 +384,22 @@
             <label for="filter-facility">SNF facility</label><br />
             <select id="filter-facility">
               <option value="">(All facilities)</option>
+            </select>
+          </div>
+          <div>
+            <label for="sort-by">Sort by</label><br />
+            <select id="sort-by">
+              <option value="">(none)</option>
+              <option value="patient">Patient</option>
+              <option value="facility">Facility</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="sort-dir">Direction</label><br />
+            <select id="sort-dir">
+              <option value="asc">A → Z</option>
+              <option value="desc">Z → A</option>
             </select>
           </div>
           <div style="margin-top:16px; display:flex; gap:4px; flex-wrap:wrap;">
@@ -458,7 +474,7 @@
             <option value="Unknown">Unknown</option>
           </select>
 
-          <label for="edit-date">Final transfer date</label>
+          <label for="edit-date">DC Date</label>
           <input id="edit-date" type="date" />
         </div>
         <div>
@@ -525,6 +541,11 @@
       }
     }
 
+    function getFacilityLabel(r) {
+      // Use whatever you already display in the “Facility” column first (AI name or chosen facility)
+      return String(r.facility_free_text || r.snf_facility_name || r.facility_ai || "").trim();
+    }
+
     async function loadSnfFacilities() {
       const token = localStorage.getItem("evolv_admin_token") || getAdminToken();
       if (!token) {
@@ -544,10 +565,19 @@
         const filterSelect = document.getElementById("filter-facility");
         if (filterSelect) {
           filterSelect.innerHTML = '<option value="">(All facilities)</option>';
-          snfFacilities.forEach(f => {
+
+          const withAttending = (snfFacilities || []).filter(f => (f.attending || "").trim());
+          const withoutAttending = (snfFacilities || []).filter(f => !(f.attending || "").trim());
+
+          // Put “attending” facilities first + star them
+          [...withAttending, ...withoutAttending].forEach(f => {
             const opt = document.createElement("option");
             opt.value = String(f.id);
-            opt.textContent = f.facility_name || "(no name)";
+
+            const name = f.facility_name || "(no name)";
+            const star = (f.attending || "").trim() ? "★ " : "";
+            opt.textContent = star + name;
+
             filterSelect.appendChild(opt);
           });
         }
