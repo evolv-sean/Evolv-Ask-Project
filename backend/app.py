@@ -5206,7 +5206,7 @@ def build_snf_pdf_html(
       <!-- Header -->
       <header class="report-header">
         <div class="header-main">
-          <div class="report-kicker">Transition Summary</div>
+          <div class="report-kicker">Accountable Care Hospitalist Group</div>
           <div class="report-title">Upcoming SNF Admissions</div>
           <div class="facility-line">
             Receiving Facility:
