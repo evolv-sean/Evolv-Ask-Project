@@ -637,12 +637,19 @@
       return `${mm}-${dd}-${yyyy}`;
     }
 
-    function parseMDYToISO(mdy) {
-      // Accepts "MM-DD-YYYY" (or "MM/DD/YYYY"), returns "YYYY-MM-DD"
-      if (!mdy) return "";
-      const cleaned = String(mdy).trim().replace(/\//g, "-");
+    function parseMDYToISO(val) {
+      // Accepts:
+      //  - "YYYY-MM-DD" (from <input type="date">)  ✅ return as-is
+      //  - "MM-DD-YYYY" or "MM/DD/YYYY"            ✅ convert to ISO
+      if (!val) return "";
+      const s = String(val).trim();
+
+      // Already ISO?
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+      const cleaned = s.replace(/\//g, "-");
       const m = cleaned.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-      if (!m) return ""; // invalid -> treat like blank
+      if (!m) return "";
       const [_, mm, dd, yyyy] = m;
       return `${yyyy}-${mm}-${dd}`;
     }
@@ -807,16 +814,53 @@
           return tokens.some(t => rowText.includes(t.toLowerCase()));
         });
 
+        // Apply Sort by / Direction
+        const sortBy = document.getElementById("sort-by")?.value || "";
+        const sortDir = document.getElementById("sort-dir")?.value || "asc";
+        const dir = (sortDir === "desc") ? -1 : 1;
+
+        if (sortBy) {
+          filtered.sort((a, b) => {
+            let av = "", bv = "";
+
+            if (sortBy === "patient") {
+              av = (a.patient_name || "").toLowerCase();
+              bv = (b.patient_name || "").toLowerCase();
+            } else if (sortBy === "facility") {
+              av = (getDisplayFacilityLabel(a) || "").toLowerCase();
+              bv = (getDisplayFacilityLabel(b) || "").toLowerCase();
+            }
+
+            if (av < bv) return -1 * dir;
+            if (av > bv) return  1 * dir;
+            return 0;
+          });
+        }
+
         currentRows = filtered;
 
         renderTable(filtered);
         document.getElementById("list-message").innerHTML =
           `<strong>${filtered.length}</strong> rows (from ${admissions.length} total).`;
+
       } catch (err) {
         console.error("loadAdmissions error", err);
         document.getElementById("list-message").textContent = "Error loading admissions: " + err;
       }
     }
+
+
+    function getDisplayFacilityLabel(r) {
+      if (r.final_snf_name_display) return r.final_snf_name_display;
+
+      const parts = [];
+      if (r.effective_facility_name) parts.push(r.effective_facility_name);
+      if (r.effective_facility_city || r.effective_facility_state) {
+        parts.push(`(${[r.effective_facility_city, r.effective_facility_state].filter(Boolean).join(", ")})`);
+      }
+      return parts.join(" ") || (r.ai_snf_name_raw || "");
+    }
+
 
     function renderTable(rows) {
       const tbody = document.getElementById("snf-body");
