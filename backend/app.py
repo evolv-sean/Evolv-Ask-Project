@@ -4929,6 +4929,7 @@ def build_snf_pdf_html(
     no Source pill.
     """
     safe_fac = html.escape(facility_name or "Receiving Facility")
+    safe_attending = html.escape(attending) if attending else ""
 
     patient_count = len(rows)
     patient_word = "patient" if patient_count == 1 else "patients"
@@ -5215,7 +5216,9 @@ def build_snf_pdf_html(
           </div>
           <p class="header-description">
             Our Hospitalists have identified the following patients as expected discharges to your facility.
+            {f"<br/>We would like these patients to be assigned to the following provider: <strong>{safe_attending}</strong>" if safe_attending else ""}
           </p>
+
         </div>
         <div class="header-side">
           <div class="header-side-label">Report Type</div>
