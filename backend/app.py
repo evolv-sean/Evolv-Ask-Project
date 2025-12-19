@@ -5260,7 +5260,7 @@ def build_snf_pdf_html(
             </span>
           </div>
           <p class="header-description">
-            Our Hospitalists have identified the following patients as expected discharges to your facility. Please contact Stephanie Sellers (ssellers@startevolv.com)
+            Our Hospitalists have identified the following patients as expected discharges to your facility. Please contact Anthony Aguirre (Anthony.Aguirre@accountablecarehg.com ) or Stephanie Sellers (ssellers@startevolv.com) if you have questions or would like to add additional recipients to future emails.
           </p>
 
 {f"""
