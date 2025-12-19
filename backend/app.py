@@ -5021,11 +5021,24 @@ def build_snf_pdf_html(
       padding-bottom: 16px;
     }}
 
+    /* ✅ Key fix: make the left side expand to full available width */
     .header-main {{
+      flex: 1;
+      min-width: 0;
+      width: 100%;
       display: flex;
       flex-direction: column;
       gap: 4px;
     }}
+
+    /* ✅ Ensure the “top sections” actually render full-width */
+    .facility-line,
+    .header-description,
+    .provider-callout {{
+      width: 100%;
+      box-sizing: border-box;
+    }}
+
 
     .report-kicker {{
       font-size: 10px;
