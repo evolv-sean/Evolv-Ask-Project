@@ -100,6 +100,31 @@ SMTP_PASSWORD     = os.getenv("SMTP_PASSWORD", "")
 # Optional: direct URL back to the Facility Details page (?f=&t=)
 FACILITY_FORM_BASE_URL = os.getenv("FACILITY_FORM_BASE_URL", "")
 
+
+# ---------------------------------------------------------------------------
+# Email / SMTP config for Facility Details intake notifications
+# ---------------------------------------------------------------------------
+INTAKE_EMAIL_FROM = os.getenv("INTAKE_EMAIL_FROM", "")
+INTAKE_EMAIL_TO   = os.getenv("INTAKE_EMAIL_TO", "")
+SMTP_HOST         = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT         = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER         = os.getenv("SMTP_USER", INTAKE_EMAIL_FROM or "")
+SMTP_PASSWORD     = os.getenv("SMTP_PASSWORD", "")
+
+# Optional: direct URL back to the Facility Details page (?f=&t=)
+FACILITY_FORM_BASE_URL = os.getenv("FACILITY_FORM_BASE_URL", "")
+
+# Public base URL for links in outbound emails (set in Render as PUBLIC_APP_BASE_URL)
+PUBLIC_APP_BASE_URL = (os.getenv("PUBLIC_APP_BASE_URL") or "").strip().rstrip("/")
+
+# How long (in hours) a secure SNF link should remain valid (set in Render as SNF_LINK_TTL_HOURS)
+try:
+    SNF_LINK_TTL_HOURS = int(os.getenv("SNF_LINK_TTL_HOURS", "24"))
+except Exception:
+    SNF_LINK_TTL_HOURS = 24
+
+
+
 # ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
