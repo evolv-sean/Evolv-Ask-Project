@@ -4964,6 +4964,8 @@ def build_snf_pdf_html(
         </tr>
     """.strip()
 
+    PAGE_MARGIN_PX = 16
+
     # NOTE: all CSS/HTML braces that are not Python variables are doubled {{ }}
     html_doc = f"""<!DOCTYPE html>
 <html lang="en">
@@ -4974,7 +4976,7 @@ def build_snf_pdf_html(
     /* Page margins so content fills more of the page */
     @page {{
       size: letter;
-      margin: 16px;
+      margin: {PAGE_MARGIN_PX}px;
     }}
 
     * {{
@@ -5087,8 +5089,11 @@ def build_snf_pdf_html(
 
     .provider-callout {
       margin-top: 10px;
-      padding-left: 12px;
-      border-left: 3px solid #4f46e5; /* Evolv indigo accent */
+      padding: 10px 12px;
+      border-left: 3px solid #4f46e5;          /* Evolv indigo accent */
+      background: #eef2ff;                     /* subtle indigo tint */
+      border: 1px solid #e0e7ff;               /* soft border */
+      border-radius: 12px;
       font-size: 13px;
       font-weight: 500;
       color: #111827;
@@ -5229,7 +5234,7 @@ def build_snf_pdf_html(
             </span>
           </div>
           <p class="header-description">
-            Our Hospitalists have identified the following patients as expected discharges to your facility.
+            Our Hospitalists have identified the following patients as expected discharges to your facility. Please contact Stephanie Sellers (ssellers@startevolv.com)
           </p>
 
           {f"""
