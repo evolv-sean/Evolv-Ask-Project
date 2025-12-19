@@ -5089,7 +5089,7 @@ def build_snf_pdf_html(
 
     .provider-callout {{
       margin-top: 10px;
-      padding: 10px 14px;
+      padding: 10px 10px;
       border-left: 4px solid #4f46e5;          /* slightly stronger accent */
       background: #eef2ff;                     /* subtle indigo tint */
       border: 1px solid #e0e7ff;               /* soft border */
@@ -5122,7 +5122,7 @@ def build_snf_pdf_html(
       justify-content: space-between;
       align-items: center;
       gap: 12px;
-      padding: 10px 14px;
+      padding: 10px 12px;
       background: #f9fafb;
       border-radius: 12px;
       border: 1px solid #e5e7eb;
@@ -5253,7 +5253,7 @@ def build_snf_pdf_html(
 
 {f"""
           <div class="provider-callout">
-            <span class="provider-label">We would like these patients to be assigned to the following provider:</span>
+            <span class="provider-label">The patients below should be assigned to the following ACHG provider:</span>
             <strong class="provider-name">{safe_attending}</strong>
           </div>
           """ if safe_attending else ""}
