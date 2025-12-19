@@ -33,7 +33,7 @@ except Exception:
 
 from fastapi import FastAPI, HTTPException, Request, Form, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, Response
 from pydantic import BaseModel
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -146,6 +146,185 @@ def compute_note_hash(patient_mrn: str, note_datetime: str, note_text: str) -> s
     """
     base = f"{(patient_mrn or '').strip()}|{(note_datetime or '').strip()}|{_normalize_note_text_for_hash(note_text)}"
     return hashlib.md5(base.encode("utf-8")).hexdigest()
+
+
+
+# ============================
+# SNF secure link helpers
+# ============================
+
+def sha256_hex(s: str) -> str:
+    return hashlib.sha256((s or "").encode("utf-8")).hexdigest()
+
+
+def hash_pin(pin: str) -> str:
+    """Hash a facility PIN for storage/comparison."""
+    return sha256_hex((pin or "").strip())
+
+
+def verify_pin(pin: str, expected_hash: str) -> bool:
+    if not expected_hash:
+        return False
+    return hash_pin(pin) == expected_hash
+
+
+def ensure_column(conn: sqlite3.Connection, table: str, col: str, col_sql: str) -> None:
+    """Add a column to a SQLite table if it doesn't already exist."""
+    cur = conn.cursor()
+    cur.execute(f"PRAGMA table_info({table})")
+    cols = {r[1] for r in cur.fetchall()}  # (cid, name, type, notnull, dflt_value, pk)
+    if col not in cols:
+        cur.execute(f"ALTER TABLE {table} ADD COLUMN {col_sql}")
+        conn.commit()
+
+
+def build_snf_secure_link_email_html(secure_url: str) -> str:
+    """HTML email body for the secure expiring link."""
+    safe_url = html.escape(secure_url or "")
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SNF Secure Link</title>
+  <style>
+    body{{margin:0;padding:0;background:#F5F7FA;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#111827;}}
+    .wrap{{padding:28px 12px;}}
+    .card{{max-width:560px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 10px 28px rgba(0,0,0,.08);border:1px solid #e5e7eb;}}
+    .topbar{{background:#0D3B66;padding:18px 22px;}}
+    .logo{{width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:inline-flex;align-items:center;justify-content:center;}}
+    .logo svg{{display:block}}
+    .content{{padding:26px 26px 18px 26px;}}
+    h1{{margin:0 0 10px 0;font-size:26px;line-height:1.2;color:#0D3B66;letter-spacing:-0.01em;}}
+    p{{margin:0 0 12px 0;font-size:14px;line-height:1.55;color:#374151;}}
+    .callout{{background:#F5F7FA;border:1px solid #e5e7eb;padding:12px 14px;border-radius:12px;margin:14px 0 18px 0;font-size:13px;color:#1f2937;}}
+    .btn-row{{padding:0 26px 24px 26px;}}
+    .btn{{display:inline-block;background:#4DA8DA;color:#0D3B66 !important;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:800;font-size:14px;}}
+    .fine{{padding:0 26px 20px 26px;font-size:12px;color:#6b7280;line-height:1.5;}}
+    .divider{{height:1px;background:#eef2f7;}}
+    .footer{{padding:14px 26px 18px 26px;font-size:11px;color:#6b7280;line-height:1.4;}}
+    .footer strong{{color:#0D3B66}}
+    .meta{{font-size:11px;color:#6b7280;margin-top:8px;}}
+    code{{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;background:#F5F7FA;padding:2px 6px;border-radius:6px;border:1px solid #e5e7eb;}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="topbar">
+        <div class="logo" aria-label="Evolv">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="7" rx="1.6" fill="#ffffff"/>
+            <rect x="14" y="3" width="7" height="7" rx="1.6" fill="#ffffff" opacity="0.9"/>
+            <rect x="3" y="14" width="7" height="7" rx="1.6" fill="#ffffff" opacity="0.9"/>
+            <rect x="14" y="14" width="7" height="7" rx="1.6" fill="#ffffff"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="content">
+        <h1>Accountable Care Hospitalist Group (ACHG)</h1>
+        <p>
+          Our Hospitalists have identified upcoming patients expected to discharge to your facility.
+          To protect patient information, the list is available through a secure link (password required).
+        </p>
+
+        <div class="callout">
+          <div><strong>What you’ll need:</strong></div>
+          <div style="margin-top:6px;">• Your facility password / PIN</div>
+          <div>• This link expires in <strong>24 hours</strong></div>
+        </div>
+
+        <p class="meta">
+          If you have questions or need additional recipients added to these notifications,
+          please contact Anthony Aguirre (Anthony.Aguirre@accountablecarehg.com) or Stephanie Sellers (ssellers@startevolv.com).
+        </p>
+      </div>
+
+      <div class="btn-row">
+        <a class="btn" href="{safe_url}" target="_blank" rel="noopener">
+          View secure list
+        </a>
+      </div>
+
+      <div class="fine">
+        If you did not expect this email, you can ignore it. For security, do not forward this message outside of your organization.
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="footer">
+        <div><strong>Powered by Evolv Health</strong></div>
+        <div style="margin-top:6px;">
+          Tip: If your browser asks for a password/PIN, enter your facility PIN.
+          If you don’t know it, ask your facility admin or reply to your contact at Evolv.
+        </div>
+        <div style="margin-top:10px;">
+          <span>Secure link:</span>
+          <span style="display:inline-block;margin-left:6px;"><code>{safe_url}</code></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>"""
+
+
+def build_secure_link_landing_html(facility_name: str, expires_at_iso: str, error: str = "") -> str:
+    """Password entry page shown when partner clicks the secure link."""
+    safe_fac = html.escape(facility_name or "")
+    safe_exp = html.escape(expires_at_iso or "")
+    safe_err = html.escape(error or "")
+    err_html = f"<div style='margin-top:10px;color:#b91c1c;font-size:13px;'><strong>{safe_err}</strong></div>" if safe_err else ""
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Secure SNF List</title>
+  <style>
+    body{{margin:0;padding:0;background:#F5F7FA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#111827;}}
+    .wrap{{max-width:560px;margin:0 auto;padding:26px 14px;}}
+    .card{{background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 10px 28px rgba(0,0,0,.08);overflow:hidden;}}
+    .topbar{{background:#0D3B66;padding:16px 18px;color:#fff;font-weight:800;}}
+    .content{{padding:18px;}}
+    .title{{font-size:18px;font-weight:800;color:#0D3B66;margin:0 0 8px 0;}}
+    .sub{{font-size:13px;color:#374151;line-height:1.5;margin:0 0 14px 0;}}
+    .field{{margin:10px 0 14px 0;}}
+    input{{width:100%;padding:12px 12px;border:1px solid #d1d5db;border-radius:10px;font-size:14px;}}
+    button{{width:100%;padding:12px 14px;border:none;border-radius:10px;background:#4DA8DA;color:#0D3B66;font-weight:900;font-size:14px;cursor:pointer;}}
+    .meta{{margin-top:10px;font-size:12px;color:#6b7280;}}
+    .ok{{display:inline-block;background:#A8E6CF;color:#0D3B66;padding:3px 8px;border-radius:999px;font-weight:800;font-size:11px;}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="topbar">Secure Patient List</div>
+      <div class="content">
+        <div class="title">{safe_fac}</div>
+        <p class="sub">
+          Enter your facility password / PIN to view the list.
+          <span class="ok">Expires</span> {safe_exp}
+        </p>
+
+        <form method="post">
+          <div class="field">
+            <input name="pin" type="password" placeholder="Facility PIN" autocomplete="current-password" required />
+          </div>
+          <button type="submit">View list</button>
+        </form>
+
+        {err_html}
+
+        <div class="meta">
+          For security, do not forward this link outside of your organization.
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>"""
 
 
 
@@ -487,6 +666,52 @@ def init_db():
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_snf_adm_fac_name ON snf_admission_facilities(facility_name)"
     )
+
+
+    # Ensure optional PIN hash column exists for facilities (used by secure links)
+    try:
+        ensure_column(conn, "snf_admission_facilities", "pin_hash", "pin_hash TEXT")
+    except Exception as e:
+        print("[init_db] Could not ensure pin_hash column:", repr(e))
+
+    # Secure expiring links for SNF partner emails (token -> admissions list)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS snf_secure_links (
+            token         TEXT PRIMARY KEY,
+            snf_facility_id INTEGER NOT NULL,
+            for_date      TEXT,
+            admission_ids TEXT NOT NULL,
+            created_at    TEXT DEFAULT (datetime('now')),
+            expires_at    TEXT NOT NULL
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_snf_secure_links_exp ON snf_secure_links(expires_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_snf_secure_links_fac ON snf_secure_links(snf_facility_id)")
+
+
+    # Ensure optional PIN hash column exists for facilities (used by secure links)
+    try:
+        ensure_column(conn, "snf_admission_facilities", "pin_hash", "pin_hash TEXT")
+    except Exception as e:
+        print("[init_db] Could not ensure pin_hash column:", repr(e))
+
+    # Secure expiring links for SNF partner emails (token -> admissions list)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS snf_secure_links (
+            token         TEXT PRIMARY KEY,
+            snf_facility_id INTEGER NOT NULL,
+            for_date      TEXT,
+            admission_ids TEXT NOT NULL,
+            created_at    TEXT DEFAULT (datetime('now')),
+            expires_at    TEXT NOT NULL
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_snf_secure_links_exp ON snf_secure_links(expires_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_snf_secure_links_fac ON snf_secure_links(snf_facility_id)")
 
 
     # -------------------------------------------------------------------
@@ -4878,6 +5103,9 @@ async def admin_snf_send_emails(
                 msg["Cc"] = target_cc
             msg.set_content(body)
 
+        # Nicely designed HTML email version
+        msg.add_alternative(build_snf_secure_link_email_html(secure_url), subtype="html")
+
             try:
                 context = ssl.create_default_context()
                 with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
@@ -5337,6 +5565,156 @@ def build_snf_pdf_html(
 
 
 
+
+
+@app.get("/snf/secure/{token}", response_class=HTMLResponse)
+async def snf_secure_link_get(token: str):
+    """Landing page where SNF partner enters PIN to view the PDF list."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT token, snf_facility_id, for_date, admission_ids, created_at, expires_at
+            FROM snf_secure_links
+            WHERE token = ?
+            """,
+            (token,),
+        )
+        link = cur.fetchone()
+        if not link:
+            raise HTTPException(status_code=404, detail="Link not found")
+
+        # Expiration check (SQLite stores timestamps as strings; compare via SQLite)
+        cur.execute(
+            """
+            SELECT CASE WHEN datetime(?) > datetime('now') THEN 1 ELSE 0 END AS ok
+            """,
+            (link["expires_at"],),
+        )
+        ok = int(cur.fetchone()["ok"] or 0)
+        if not ok:
+            return HTMLResponse(
+                build_secure_link_landing_html("Secure Patient List", link["expires_at"], "This link has expired."),
+                status_code=410,
+            )
+
+        cur.execute(
+            """
+            SELECT facility_name, attending, pin_hash
+            FROM snf_admission_facilities
+            WHERE id = ?
+            """,
+            (int(link["snf_facility_id"]),),
+        )
+        fac = cur.fetchone()
+        fac_name = (fac["facility_name"] if fac else "") or "Receiving Facility"
+        return HTMLResponse(build_secure_link_landing_html(fac_name, link["expires_at"]))
+    finally:
+        conn.close()
+
+
+@app.post("/snf/secure/{token}")
+async def snf_secure_link_post(token: str, pin: str = Form(...)):
+    """Validate PIN and return the PDF for this secure link."""
+    if not HAVE_WEASYPRINT:
+        raise HTTPException(
+            status_code=500,
+            detail="PDF support is not installed (weasyprint). Please add 'weasyprint' to your environment."
+        )
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT token, snf_facility_id, for_date, admission_ids, created_at, expires_at
+            FROM snf_secure_links
+            WHERE token = ?
+            """,
+            (token,),
+        )
+        link = cur.fetchone()
+        if not link:
+            raise HTTPException(status_code=404, detail="Link not found")
+
+        # Expiration check
+        cur.execute(
+            """
+            SELECT CASE WHEN datetime(?) > datetime('now') THEN 1 ELSE 0 END AS ok
+            """,
+            (link["expires_at"],),
+        )
+        ok = int(cur.fetchone()["ok"] or 0)
+        if not ok:
+            return HTMLResponse(
+                build_secure_link_landing_html("Secure Patient List", link["expires_at"], "This link has expired."),
+                status_code=410,
+            )
+
+        cur.execute(
+            """
+            SELECT facility_name, attending, pin_hash
+            FROM snf_admission_facilities
+            WHERE id = ?
+            """,
+            (int(link["snf_facility_id"]),),
+        )
+        fac = cur.fetchone()
+        if not fac:
+            raise HTTPException(status_code=404, detail="Facility not found")
+
+        expected_hash = (fac["pin_hash"] or "").strip()
+        if not expected_hash and SNF_DEFAULT_PIN:
+            expected_hash = hash_pin(SNF_DEFAULT_PIN)
+
+        if not verify_pin(pin, expected_hash):
+            return HTMLResponse(
+                build_secure_link_landing_html(fac["facility_name"] or "Receiving Facility", link["expires_at"], "Incorrect PIN. Please try again."),
+                status_code=401,
+            )
+
+        admission_ids = json.loads(link["admission_ids"] or "[]")
+        if not admission_ids:
+            raise HTTPException(status_code=400, detail="No admissions stored for this link")
+
+        placeholders = ",".join("?" for _ in admission_ids)
+        sql = f"""
+        SELECT
+            s.id,
+            s.patient_name,
+            s.hospital_name,
+            COALESCE(s.dob, raw.dob) AS dob,
+            COALESCE(s.attending, raw.attending, raw.note_author) AS hospitalist
+        FROM snf_admissions s
+        LEFT JOIN cm_notes_raw raw
+          ON raw.id = s.raw_note_id
+        WHERE s.id IN ({placeholders})
+        ORDER BY s.patient_name COLLATE NOCASE
+        """
+        cur.execute(sql, admission_ids)
+        rows = cur.fetchall()
+        if not rows:
+            raise HTTPException(status_code=400, detail="No admissions found for this link")
+
+        for_date = (link["for_date"] or "").strip()
+        if not for_date:
+            for_date = dt.date.today().isoformat()
+
+        html_doc = build_snf_pdf_html(fac["facility_name"] or "SNF facility", for_date, rows, fac["attending"] or "")
+        pdf_bytes = WEASY_HTML(string=html_doc).write_pdf()
+
+        safe_fac = re.sub(r"[^A-Za-z0-9]+", "_", (fac["facility_name"] or "")) or "SNF"
+        filename = f"SNF_Referrals_{safe_fac}_{for_date}.pdf"
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        )
+    finally:
+        conn.close()
+
 @app.post("/admin/snf/email-pdf")
 async def admin_snf_email_pdf(
     request: Request,
@@ -5439,18 +5817,32 @@ async def admin_snf_email_pdf(
         if not rows:
             raise HTTPException(status_code=400, detail="No admissions found for the provided IDs.")
 
+
         # ------------------------
-        # Build PDF via HTML → PDF
+        # Build secure expiring link (24 hours)
         # ------------------------
         if not for_date:
             for_date = dt.date.today().isoformat()
 
-        try:
-            html_doc = build_snf_pdf_html(facility_name, for_date, rows, attending)
-            pdf_bytes = WEASY_HTML(string=html_doc).write_pdf()
-        except Exception as e:
-            print("[snf-email-pdf] PDF generation failed:", repr(e))
-            raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")
+        token = secrets.token_urlsafe(24)
+
+        # Store the link payload in DB (expires in 24 hours)
+        expires_at = (dt.datetime.utcnow() + dt.timedelta(hours=24)).replace(microsecond=0).isoformat() + "Z"
+        cur.execute(
+            """
+            INSERT INTO snf_secure_links (token, snf_facility_id, for_date, admission_ids, expires_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (token, snf_facility_id, for_date, json.dumps(admission_ids), expires_at),
+        )
+        conn.commit()
+
+        # Build the URL shown in the email
+        public_base = (os.getenv("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+        if public_base:
+            secure_url = f"{public_base}/snf/secure/{token}"
+        else:
+            secure_url = str(request.base_url).rstrip("/") + f"/snf/secure/{token}"
 
         # ------------------------
         # Build and send the email
@@ -5469,14 +5861,17 @@ async def admin_snf_email_pdf(
         body_lines = [
             subject,
             "",
-            "Attached is a PDF summary from our Accountable Care Hospitalist Group hospital physicians of the patients identified as upcoming SNF referrals to your facility.",
+            "Our Hospitalists have identified upcoming patients expected to discharge to your facility.",
+            "To protect patient information, please use the secure link below (password/PIN required).",
             "",
             f"Facility: {facility_name}",
             f"Date: {for_date}",
+            f"Secure link (expires in 24 hours): {secure_url}",
             "",
             "Powered by Evolv Health",
         ]
-        body = "\n".join(body_lines)
+        body = "
+".join(body_lines)
 
         msg = EmailMessage()
         msg["Subject"] = subject
@@ -5485,6 +5880,9 @@ async def admin_snf_email_pdf(
         if cc_addr:
             msg["Cc"] = cc_addr
         msg.set_content(body)
+
+        # Nicely designed HTML email version
+        msg.add_alternative(build_snf_secure_link_email_html(secure_url), subtype="html")
 
         safe_fac = re.sub(r"[^A-Za-z0-9]+", "_", facility_name) or "SNF"
         filename = f"SNF_Referrals_{safe_fac}_{for_date}.pdf"
@@ -5597,6 +5995,9 @@ def send_intake_email(facility_id: str, payload: dict) -> None:
         msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
         msg["To"] = INTAKE_EMAIL_TO
         msg.set_content(body)
+
+        # Nicely designed HTML email version
+        msg.add_alternative(build_snf_secure_link_email_html(secure_url), subtype="html")
 
         context = ssl.create_default_context()
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
