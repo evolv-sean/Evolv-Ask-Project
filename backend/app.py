@@ -212,7 +212,7 @@ def get_public_base_url(request: Request) -> str:
 
 
 def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
-    """HTML email body for the secure expiring link."""
+    """HTML email body for the secure expiring link (matches snf_secure_link_email_preview.html)."""
     safe_url = html.escape(secure_url or "")
     ttl_hours = int(ttl_hours or 24)
 
@@ -221,26 +221,120 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>SNF Secure Link</title>
+  <title>SNF Secure Link Email Preview</title>
   <style>
-    body{{margin:0;padding:0;background:#F5F7FA;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#111827;}}
+    /* Color swatches
+       Primary/nav:        #0D3B66
+       Links/highlights:   #4DA8DA
+       Success/accents:    #A8E6CF
+       Backgrounds/cards:  #F5F7FA
+    */
+
+    /* Email-safe CSS: keep it simple and inline-ish */
+    body{{
+      margin:0;
+      padding:0;
+      background:#F5F7FA; /* backgrounds/cards */
+      font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      color:#111827;
+    }}
     .wrap{{padding:28px 12px;}}
-    .card{{max-width:560px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 10px 28px rgba(0,0,0,.08);border:1px solid #e5e7eb;}}
-    .topbar{{background:#0D3B66;padding:18px 22px;}}
-    .logo{{width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:inline-flex;align-items:center;justify-content:center;}}
+    .card{{
+      max-width:560px;
+      margin:0 auto;
+      background:#ffffff;
+      border-radius:14px;
+      overflow:hidden;
+      box-shadow:0 10px 28px rgba(0,0,0,.08);
+      border:1px solid #e5e7eb;
+    }}
+    .topbar{{
+      background:#0D3B66; /* primary/nav */
+      padding:18px 22px;
+    }}
+    .logo{{
+      width:42px;height:42px;border-radius:10px;
+      background:rgba(255,255,255,.12);
+      display:inline-flex;align-items:center;justify-content:center;
+    }}
     .logo svg{{display:block}}
     .content{{padding:26px 26px 18px 26px;}}
-    h1{{margin:0 0 10px 0;font-size:26px;line-height:1.2;color:#0D3B66;letter-spacing:-0.01em;}}
-    p{{margin:0 0 12px 0;font-size:14px;line-height:1.55;color:#374151;}}
-    .callout{{background:#F5F7FA;border:1px solid #e5e7eb;padding:12px 14px;border-radius:12px;margin:14px 0 18px 0;font-size:13px;color:#1f2937;}}
+    h1{{
+      margin:0 0 10px 0;
+      font-size:22px;
+      line-height:1.25;
+      color:#0D3B66; /* primary/nav */
+      letter-spacing:-0.01em;
+    }}
+    p{{margin:0 0 12px 0; font-size:14px; line-height:1.55; color:#374151;}}
+
+    /* Optional inline link style if you add any clickable emails/urls later */
+    a.inline-link{{
+      color:#4DA8DA; /* links/highlights */
+      text-decoration:underline;
+    }}
+
+    .callout{{
+      background:#F5F7FA; /* backgrounds/cards */
+      border:1px solid #A8E6CF; /* success/accents */
+      padding:12px 14px;
+      border-radius:12px;
+      margin:14px 0 18px 0;
+      font-size:13px;
+      color:#1f2937;
+    }}
+    .pill{{
+      display:inline-block;
+      background:#A8E6CF; /* success/accents */
+      color:#0D3B66;      /* primary/nav */
+      padding:2px 8px;
+      border-radius:999px;
+      font-weight:700;
+      font-size:12px;
+    }}
+
     .btn-row{{padding:0 26px 24px 26px;}}
-    .btn{{display:inline-block;background:#4DA8DA;color:#0D3B66 !important;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:800;font-size:14px;}}
-    .fine{{padding:0 26px 20px 26px;font-size:12px;color:#6b7280;line-height:1.5;}}
+    .btn{{
+      display:inline-block;
+      background:#0D3B66; /* primary/nav */
+      color:#ffffff !important;
+      text-decoration:none;
+      padding:12px 18px;
+      border-radius:10px;
+      font-weight:700;
+      font-size:14px;
+      box-shadow:0 8px 18px rgba(13,59,102,.18);
+    }}
+    .btn:hover{{background:#0b3357;}}
+
+    .fine{{
+      padding:0 26px 20px 26px;
+      font-size:12px;
+      color:#6b7280;
+      line-height:1.5;
+    }}
     .divider{{height:1px;background:#eef2f7;}}
-    .footer{{padding:14px 26px 18px 26px;font-size:11px;color:#6b7280;line-height:1.4;}}
-    .footer strong{{color:#0D3B66}}
-    .meta{{font-size:11px;color:#6b7280;margin-top:8px;}}
-    code{{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;background:#F5F7FA;padding:2px 6px;border-radius:6px;border:1px solid #e5e7eb;}}
+    .footer{{
+      padding:14px 26px 18px 26px;
+      font-size:11px;
+      color:#6b7280;
+      line-height:1.4;
+    }}
+    .footer strong{{color:#111827}}
+    .meta{{
+      font-size:12px;
+      color:#6b7280;
+      margin-top:10px;
+      line-height:1.45;
+    }}
+    code{{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      background:#F5F7FA; /* backgrounds/cards */
+      padding:2px 6px;
+      border-radius:6px;
+      border:1px solid #e5e7eb;
+    }}
   </style>
 </head>
 <body>
@@ -248,6 +342,7 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
     <div class="card">
       <div class="topbar">
         <div class="logo" aria-label="Evolv">
+          <!-- Simple 4-square mark -->
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <rect x="3" y="3" width="7" height="7" rx="1.6" fill="#ffffff"/>
             <rect x="14" y="3" width="7" height="7" rx="1.6" fill="#ffffff" opacity="0.9"/>
@@ -261,18 +356,20 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
         <h1>Accountable Care Hospitalist Group (ACHG)</h1>
         <p>
           Our Hospitalists have identified upcoming patients expected to discharge to your facility.
-          To protect patient information, the list is available through a secure link (password required).
+          To protect patient information, the list is available through a secure link (PIN required).
         </p>
 
         <div class="callout">
           <div><strong>What you’ll need:</strong></div>
-          <div style="margin-top:6px;">• Your facility password / PIN</div>
-          <div>• This link expires in <strong>{ttl_hours} hours</strong></div>
+          <div style="margin-top:6px;">• Your facility PIN</div>
+          <div style="margin-top:6px;">
+            • Link expires in <span class="pill">{ttl_hours} hours</span>
+          </div>
         </div>
 
         <p class="meta">
-          If you have questions or need additional recipients added to these notifications,
-          please contact Anthony Aguirre (Anthony.Aguirre@accountablecarehg.com) or Stephanie Sellers (ssellers@startevolv.com).
+          Questions or need to add recipients to these notifications?
+          Please contact Anthony Aguirre (Anthony.Aguirre@accountablecarehg.com) or Stephanie Sellers (ssellers@startevolv.com).
         </p>
       </div>
 
@@ -294,11 +391,17 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
           Tip: If your browser asks for a password/PIN, enter your facility PIN.
           If you don’t know it, ask your facility admin or reply to your contact at Evolv.
         </div>
+        <div style="margin-top:10px;">
+          <span>Preview placeholders:</span>
+          <span style="display:inline-block;margin-left:6px;"><code>PUBLIC_APP_BASE_URL</code></span>
+          <span style="display:inline-block;margin-left:6px;"><code>SNF_LINK_TTL_HOURS</code></span>
+        </div>
       </div>
     </div>
   </div>
 </body>
 </html>"""
+
 
 
 
