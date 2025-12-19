@@ -5087,21 +5087,23 @@ def build_snf_pdf_html(
       margin-top: 8px;
     }}
 
-    .provider-callout {
+    .provider-callout {{
       margin-top: 10px;
       padding: 10px 12px;
-      border-left: 3px solid #4f46e5;          /* Evolv indigo accent */
+      border-left: 4px solid #4f46e5;          /* slightly stronger accent */
       background: #eef2ff;                     /* subtle indigo tint */
       border: 1px solid #e0e7ff;               /* soft border */
       border-radius: 12px;
-      font-size: 13px;
-      font-weight: 500;
+      font-size: 14px;                         /* slightly larger than line above */
+      font-weight: 600;                        /* slightly bolder */
       color: #111827;
-    }
+      box-shadow: 0 1px 0 rgba(17, 24, 39, 0.04); /* subtle depth, stays on-brand */
+    }}
 
-    .provider-callout strong {
-      font-weight: 700;
-    }
+    .provider-callout strong {{
+      font-weight: 800;                        /* attending name pops */
+    }}
+
 
     .summary-bar {{
       display: flex;
