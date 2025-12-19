@@ -250,14 +250,9 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
     }}
     .topbar{{
       background:#0D3B66; /* primary/nav */
-      padding:18px 22px;
+      padding:10px 0; /* thinner, empty bar */
     }}
-    .logo{{
-      width:42px;height:42px;border-radius:10px;
-      background:rgba(255,255,255,.12);
-      display:inline-flex;align-items:center;justify-content:center;
-    }}
-    .logo svg{{display:block}}
+
     .content{{padding:26px 26px 18px 26px;}}
     h1{{
       margin:0 0 10px 0;
@@ -340,17 +335,7 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="topbar">
-        <div class="logo" aria-label="Evolv">
-          <!-- Simple 4-square mark -->
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <rect x="3" y="3" width="7" height="7" rx="1.6" fill="#ffffff"/>
-            <rect x="14" y="3" width="7" height="7" rx="1.6" fill="#ffffff" opacity="0.9"/>
-            <rect x="3" y="14" width="7" height="7" rx="1.6" fill="#ffffff" opacity="0.9"/>
-            <rect x="14" y="14" width="7" height="7" rx="1.6" fill="#ffffff"/>
-          </svg>
-        </div>
-      </div>
+      <div class="topbar" aria-hidden="true"></div>
 
       <div class="content">
         <h1>Accountable Care Hospitalist Group (ACHG)</h1>
@@ -390,11 +375,6 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
         <div style="margin-top:6px;">
           Tip: If your browser asks for a password/PIN, enter your facility PIN.
           If you don’t know it, ask your facility admin or reply to your contact at Evolv.
-        </div>
-        <div style="margin-top:10px;">
-          <span>Preview placeholders:</span>
-          <span style="display:inline-block;margin-left:6px;"><code>PUBLIC_APP_BASE_URL</code></span>
-          <span style="display:inline-block;margin-left:6px;"><code>SNF_LINK_TTL_HOURS</code></span>
         </div>
       </div>
     </div>
@@ -5693,30 +5673,40 @@ async def snf_secure_link_get(token: str, request: Request):
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Secure SNF List</title>
   <style>
+    /* Keep layout stable so the PIN field never overflows/crops */
+    *{{box-sizing:border-box;}}
+
     body{{margin:0;padding:0;background:#F5F7FA;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#111827;}}
     .wrap{{max-width:520px;margin:40px auto;padding:0 14px;}}
     .card{{background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);overflow:hidden;}}
     .topbar{{background:#0D3B66;padding:18px 22px;color:#fff;font-weight:700;}}
+    .mintbar{{height:4px;background:#A8E6CF;}} /* subtle mint accent */
     .content{{padding:22px;}}
     h1{{margin:0 0 6px 0;font-size:18px;color:#0D3B66;}}
     p{{margin:0 0 14px 0;font-size:13px;color:#374151;line-height:1.5;}}
     label{{display:block;font-size:12px;color:#374151;margin-bottom:6px;font-weight:600;}}
-    input{{width:100%;padding:12px 12px;border-radius:12px;border:1px solid #d1d5db;font-size:14px;}}
-    .btn{{margin-top:12px;display:inline-block;background:#4DA8DA;color:#0D3B66;border:none;padding:12px 16px;border-radius:12px;font-weight:800;font-size:14px;cursor:pointer;}}
+    input{{width:100%;max-width:100%;padding:12px 12px;border-radius:12px;border:1px solid #d1d5db;font-size:14px;}}
+    input:focus{{outline:none;border-color:#A8E6CF;box-shadow:0 0 0 3px rgba(168,230,207,.45);}}
+
+    /* Match the email button styling */
+    .btn{{margin-top:12px;display:inline-block;background:#0D3B66;color:#ffffff;border:none;padding:12px 18px;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 8px 18px rgba(13,59,102,.18);}}
+    .btn:hover{{background:#0b3357;}}
+
     .fine{{margin-top:14px;font-size:12px;color:#6b7280;}}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="topbar">Evolv Health • Secure List</div>
+      <div class="topbar">ACHG • Secure List</div>
+      <div class="mintbar" aria-hidden="true"></div>
       <div class="content">
         <h1>{fac_name}</h1>
         <p>Enter your facility password / PIN to view the secure list. This link expires automatically.</p>
         <form method="post">
           <label for="pin">Facility PIN</label>
           <input id="pin" name="pin" type="password" autocomplete="one-time-code" required />
-          <button class="btn" type="submit">View list</button>
+          <button class="btn" type="submit">View List</button>
         </form>
         <div class="fine">Powered by Evolv Health</div>
       </div>
