@@ -5107,11 +5107,11 @@ def build_snf_pdf_html(
       box-shadow: 0 1px 0 rgba(17, 24, 39, 0.04); /* subtle depth, stays on-brand */
     }}
 
-    .provider-callout .provider-label {
+    .provider-callout .provider-label {{
       color: #374151;
     }}
 
-    .provider-callout .provider-name {
+    .provider-callout .provider-name {{
       font-weight: 700; /* still bold, but not heavy */
       color: #111827;
     }}
