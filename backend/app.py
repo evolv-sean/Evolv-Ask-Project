@@ -341,7 +341,7 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
         <h1>Accountable Care Hospitalist Group (ACHG)</h1>
         <p>
           Our Hospitalists have identified upcoming patients expected to discharge to your facility.
-          To protect patient information, the list is available through a secure link (PIN required).
+          Please use the View List button below to download today's list (Facility PIN required).
         </p>
 
         <div class="callout">
@@ -360,7 +360,7 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
 
       <div class="btn-row">
         <a class="btn" href="{safe_url}" target="_blank" rel="noopener">
-          View secure list
+          View List
         </a>
       </div>
 
@@ -373,8 +373,7 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
       <div class="footer">
         <div><strong>Powered by Evolv Health</strong></div>
         <div style="margin-top:6px;">
-          Tip: If your browser asks for a password/PIN, enter your facility PIN.
-          If you don’t know it, ask your facility admin or reply to your contact at Evolv.
+          Disclaimer: The information provided reflects anticipated or potential patient referrals and is shared for planning purposes only. Actual admissions are not guaranteed and may change at any time.
         </div>
       </div>
     </div>
@@ -2275,8 +2274,8 @@ def run_analytics_query(
             cur = conn.cursor()
             cur.execute(
                 """
-                SELECT facility_id, facility_name, city, state, corporate_group
-                FROM facilities
+                SELECT id, facility_name, attending, notes, notes2, aliases, facility_emails, pin_hash
+                FROM snf_admission_facilities
                 ORDER BY facility_name COLLATE NOCASE
                 """
             )
@@ -4562,12 +4561,19 @@ async def admin_snf_facilities_list(request: Request):
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT id, facility_name, attending, notes, notes2, aliases, facility_emails
+            SELECT id, facility_name, attending, notes, notes2, aliases, facility_emails, pin_hash
             FROM snf_admission_facilities
             ORDER BY facility_name COLLATE NOCASE
             """
         )
-        items = [dict(r) for r in cur.fetchall()]
+
+        items = []
+        for r in cur.fetchall():
+            d = dict(r)
+            d["pin_set"] = bool((d.get("pin_hash") or "").strip())
+            d.pop("pin_hash", None)  # don't send hashes to the browser
+            items.append(d)
+
         return {"ok": True, "items": items}
     finally:
         conn.close()
@@ -4578,20 +4584,6 @@ async def admin_snf_facilities_upsert(
     request: Request,
     payload: Dict[str, Any] = Body(...),
 ):
-    """
-    Insert or update a SNF Admission Facility.
-
-    Payload (JSON):
-      {
-        "id": optional integer (omit/null for insert),
-        "facility_name": "The Peaks",
-        "attending": "Dr. Smith",
-        "notes": "...",
-        "notes2": "...",
-        "aliases": "Peaks SNF, The Peaks Rehab",
-        "facility_emails": "referrals@snf.com, admissions@snf.com"
-      }
-    """
     require_admin(request)
 
     name = (payload.get("facility_name") or "").strip()
@@ -4605,34 +4597,74 @@ async def admin_snf_facilities_upsert(
     aliases = (payload.get("aliases") or "").strip()
     facility_emails = (payload.get("facility_emails") or "").strip()
 
+    # NEW: facility PIN controls
+    facility_pin = (payload.get("facility_pin") or "").strip()
+    clear_pin = bool(payload.get("clear_pin") or False)
+
+    # new_pin_hash meanings:
+    #   ""    => clear pin_hash
+    #   None  => leave unchanged
+    #   "..." => set to new hash
+    if clear_pin:
+        new_pin_hash = ""
+    elif facility_pin:
+        new_pin_hash = hash_pin(facility_pin)
+    else:
+        new_pin_hash = None
+
     conn = get_db()
     try:
         cur = conn.cursor()
+
         if fac_id:
-            cur.execute(
-                """
-                UPDATE snf_admission_facilities
-                   SET facility_name = ?,
-                       attending     = ?,
-                       notes         = ?,
-                       notes2        = ?,
-                       aliases       = ?,
-                       facility_emails = ?
-                 WHERE id = ?
-                """,
-                (name, attending, notes, notes2, aliases, facility_emails, fac_id),
-            )
+            # UPDATE
+            if new_pin_hash is None:
+                cur.execute(
+                    """
+                    UPDATE snf_admission_facilities
+                       SET facility_name   = ?,
+                           attending       = ?,
+                           notes           = ?,
+                           notes2          = ?,
+                           aliases         = ?,
+                           facility_emails = ?
+                     WHERE id = ?
+                    """,
+                    (name, attending, notes, notes2, aliases, facility_emails, fac_id),
+                )
+            else:
+                cur.execute(
+                    """
+                    UPDATE snf_admission_facilities
+                       SET facility_name   = ?,
+                           attending       = ?,
+                           notes           = ?,
+                           notes2          = ?,
+                           aliases         = ?,
+                           facility_emails = ?,
+                           pin_hash        = ?
+                     WHERE id = ?
+                    """,
+                    (name, attending, notes, notes2, aliases, facility_emails, new_pin_hash, fac_id),
+                )
+
             if cur.rowcount == 0:
                 raise HTTPException(status_code=404, detail="SNF facility not found")
+
             new_id = fac_id
+
         else:
+            # INSERT
+            if new_pin_hash is None:
+                new_pin_hash = ""  # on insert, blank means "no facility PIN set"
+
             cur.execute(
                 """
                 INSERT INTO snf_admission_facilities
-                  (facility_name, attending, notes, notes2, aliases, facility_emails)
-                VALUES (?, ?, ?, ?, ?, ?)
+                  (facility_name, attending, notes, notes2, aliases, facility_emails, pin_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (name, attending, notes, notes2, aliases, facility_emails),
+                (name, attending, notes, notes2, aliases, facility_emails, new_pin_hash),
             )
             new_id = cur.lastrowid
 
@@ -4640,6 +4672,7 @@ async def admin_snf_facilities_upsert(
         return {"ok": True, "id": new_id}
     finally:
         conn.close()
+
 
 
 
@@ -5196,6 +5229,66 @@ async def admin_snf_send_emails(
         conn.close()
 
 
+SNF_UNIVERSAL_PIN_KEY = "snf_universal_pin_hash"
+
+@app.get("/admin/snf/universal-pin/get")
+async def admin_snf_universal_pin_get(request: Request):
+    require_admin(request)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT value FROM ai_settings WHERE key = ?", (SNF_UNIVERSAL_PIN_KEY,))
+        row = cur.fetchone()
+        pin_hash = (row["value"] if row else "") or ""
+        return {"ok": True, "pin_set": bool(pin_hash.strip())}
+    finally:
+        conn.close()
+
+@app.post("/admin/snf/universal-pin/set")
+async def admin_snf_universal_pin_set(request: Request, payload: Dict[str, Any] = Body(...)):
+    require_admin(request)
+    pin = (payload.get("pin") or "").strip()
+    if not pin:
+        raise HTTPException(status_code=400, detail="pin is required")
+
+    pin_hash = hash_pin(pin)
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO ai_settings (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value
+            """,
+            (SNF_UNIVERSAL_PIN_KEY, pin_hash),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+@app.post("/admin/snf/universal-pin/clear")
+async def admin_snf_universal_pin_clear(request: Request):
+    require_admin(request)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO ai_settings (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value
+            """,
+            (SNF_UNIVERSAL_PIN_KEY, ""),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
 def build_snf_pdf_html(
     facility_name: str,
     for_date: str,
@@ -5702,7 +5795,7 @@ async def snf_secure_link_get(token: str, request: Request):
       <div class="mintbar" aria-hidden="true"></div>
       <div class="content">
         <h1>{fac_name}</h1>
-        <p>Enter your facility password / PIN to view the secure list. This link expires automatically.</p>
+        <p>Enter your facility password / PIN to view the secure list. This link expires in 24hrs.</p>
         <form method="post">
           <label for="pin">Facility PIN</label>
           <input id="pin" name="pin" type="password" autocomplete="one-time-code" required />
@@ -5721,7 +5814,7 @@ async def snf_secure_link_get(token: str, request: Request):
 
 
 @app.post("/snf/secure/{token}")
-async def snf_secure_link_post(token: str, request: Request, pin: str = Form(...)):
+async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] = Form(None)):
     """Validates PIN and returns the PDF for this secure link."""
     if not HAVE_WEASYPRINT:
         raise HTTPException(status_code=500, detail="PDF support is not installed (weasyprint).")
@@ -5759,19 +5852,75 @@ async def snf_secure_link_post(token: str, request: Request, pin: str = Form(...
         if not fac:
             raise HTTPException(status_code=404, detail="Facility not found")
 
+        fac_name = fac["facility_name"] or "SNF facility"
+
+        # Render the PIN form page (same page, with optional error message)
+        def _render_form(error_msg: str = "") -> str:
+            err_html = f'<div class="err">{error_msg}</div>' if error_msg else ""
+            return f"""<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Secure SNF List</title>
+  <style>
+    *{{box-sizing:border-box;}}
+    body{{margin:0;padding:0;background:#F5F7FA;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#111827;}}
+    .wrap{{max-width:520px;margin:40px auto;padding:0 14px;}}
+    .card{{background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);overflow:hidden;}}
+    .topbar{{background:#0D3B66;padding:16px 22px;color:#fff;font-weight:700;}}
+    .mintbar{{height:4px;background:#A8E6CF;}} /* subtle mint accent */
+    .content{{padding:22px;}}
+    h1{{margin:0 0 6px 0;font-size:18px;color:#0D3B66;}}
+    p{{margin:0 0 14px 0;font-size:13px;color:#374151;line-height:1.5;}}
+    label{{display:block;font-size:12px;color:#374151;margin-bottom:6px;font-weight:600;}}
+    form{{margin:0;}}
+    input{{display:block;width:100%;max-width:100%;min-width:0;padding:12px 12px;border-radius:12px;border:1px solid #d1d5db;font-size:14px;}}
+    input:focus{{outline:none;border-color:#A8E6CF;box-shadow:0 0 0 3px rgba(168,230,207,.45);}}
+
+    /* Match email button styling */
+    .btn{{margin-top:12px;display:inline-block;background:#0D3B66;color:#ffffff;border:none;padding:12px 18px;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 8px 18px rgba(13,59,102,.18);}}
+    .btn:hover{{background:#0b3357;}}
+
+    .fine{{margin-top:14px;font-size:12px;color:#6b7280;text-align:center;}}
+    .err{{margin:0 0 12px 0;padding:10px 12px;border-radius:12px;border:1px solid #fca5a5;background:#fef2f2;color:#991b1b;font-size:13px;}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="topbar">ACHG • Secure List</div>
+      <div class="mintbar" aria-hidden="true"></div>
+      <div class="content">
+        <h1>{fac_name}</h1>
+        <p>Enter your facility password / PIN to view the secure list. This link expires automatically.</p>
+        {err_html}
+        <form method="post">
+          <label for="pin">Facility PIN</label>
+          <input id="pin" name="pin" type="password" autocomplete="one-time-code" />
+          <button class="btn" type="submit">View List</button>
+        </form>
+        <div class="fine">Powered by Evolv Health</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>"""
+
+        # Normalize PIN (prevents FastAPI from returning raw 422 JSON)
+        pin = (pin or "").strip()
+        if not pin:
+            return HTMLResponse(_render_form("Please enter your Facility PIN."), status_code=401)
+
         expected_hash = (fac["pin_hash"] or "").strip()
         if not expected_hash and SNF_DEFAULT_PIN:
             expected_hash = hash_pin(SNF_DEFAULT_PIN)
 
         if not expected_hash:
-            raise HTTPException(status_code=500, detail="No facility PIN is configured.")
+            return HTMLResponse(_render_form("No facility PIN is configured. Please contact Evolv."), status_code=500)
 
         if not verify_pin(pin, expected_hash):
-            # Keep error generic (don't leak whether a facility exists)
-            return HTMLResponse(
-                "<h2>Incorrect PIN</h2><p>Please go back and try again.</p>",
-                status_code=401,
-            )
+            return HTMLResponse(_render_form("Incorrect PIN. Please try again."), status_code=401)
 
         # Parse admission ids
         try:
@@ -5823,6 +5972,7 @@ async def snf_secure_link_post(token: str, request: Request, pin: str = Form(...
         )
     finally:
         conn.close()
+
 
 
 
@@ -5978,7 +6128,7 @@ async def admin_snf_email_pdf(
           "Secure patient referral list",
           "",
           "To protect patient information, the referral list is available through a secure link (PIN required).",
-          f"View secure list: {secure_url}",
+          f"View List: {secure_url}",
           "",
           f"This link expires in {SNF_LINK_TTL_HOURS} hours.",
           "",
@@ -6252,7 +6402,7 @@ async def snf_secure_token_page(token: str):
     <div class="top">Secure patient referral list</div>
     <div class="content">
       <p style="margin:0 0 12px 0;color:#374151;font-size:14px;line-height:1.5;">
-        Enter your facility PIN to view the secure PDF. This link expires automatically.
+        Enter your facility PIN to view the secure PDF. This link expires in 24hrs.
       </p>
       <form method="POST" action="/snf/secure/{token}/pdf">
         <label>Facility PIN</label>
