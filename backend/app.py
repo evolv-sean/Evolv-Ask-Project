@@ -5109,6 +5109,8 @@ def build_snf_pdf_html(
 
     .provider-callout .provider-label {{
       color: #374151;
+      margin-top: 2px;
+      margin-bottom: 2px;
     }}
 
     .provider-callout .provider-name {{
@@ -5226,6 +5228,16 @@ def build_snf_pdf_html(
       text-align: center;
     }}
 
+    .pdf-disclaimer {{
+      margin-top: 12px;
+      margin-bottom: 18px;
+      font-size: 10.5px;
+      color: #6b7280;
+      line-height: 1.4;
+      text-align: left;
+    }}
+
+
     .footer-brand {{
       font-size: 10px;
       color: #000000;
@@ -5292,6 +5304,11 @@ def build_snf_pdf_html(
           </tbody>
         </table>
       </section>
+
+      <!-- Disclaimer -->
+      <div class="pdf-disclaimer">
+        Disclaimer: The information provided reflects anticipated or potential patient referrals and is shared for planning purposes only. Actual admissions are not guaranteed and may change at any time.
+      </div>
 
       <!-- Footer -->
       <footer class="report-footer">
