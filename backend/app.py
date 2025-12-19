@@ -5085,6 +5085,19 @@ def build_snf_pdf_html(
       margin-top: 8px;
     }}
 
+    .provider-callout {
+      margin-top: 10px;
+      padding-left: 12px;
+      border-left: 3px solid #4f46e5; /* Evolv indigo accent */
+      font-size: 13px;
+      font-weight: 500;
+      color: #111827;
+    }
+
+    .provider-callout strong {
+      font-weight: 700;
+    }
+
     .summary-bar {{
       display: flex;
       justify-content: space-between;
@@ -5206,8 +5219,8 @@ def build_snf_pdf_html(
       <!-- Header -->
       <header class="report-header">
         <div class="header-main">
-          <div class="report-kicker">Accountable Care Hospitalist Group</div>
-          <div class="report-title">Upcoming SNF Admissions</div>
+          <div class="report-kicker">Upcoming SNF Admissions</div>
+          <div class="report-title">Accountable Care Hospitalist Group</div>
           <div class="facility-line">
             Receiving Facility:
             <span class="facility-chip">
@@ -5217,9 +5230,14 @@ def build_snf_pdf_html(
           </div>
           <p class="header-description">
             Our Hospitalists have identified the following patients as expected discharges to your facility.
-            {f"<br/>We would like these patients to be assigned to the following provider: <strong>{safe_attending}</strong>" if safe_attending else ""}
           </p>
 
+          {f"""
+          <div class="provider-callout">
+            We would like these patients to be assigned to the following provider:
+            <strong>{safe_attending}</strong>
+          </div>
+          """ if safe_attending else ""}
         </div>
         <div class="header-side">
           <div class="header-side-label">Report Type</div>
