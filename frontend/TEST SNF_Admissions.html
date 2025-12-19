@@ -347,6 +347,20 @@
 <body>
   <header>
     <h1>SNF Admissions – Audit & Notifications</h1>
+    <div style="margin-top:10px; padding:12px; border:1px solid #e5e7eb; border-radius:14px; background:#fafafa;">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+      <div>
+        <div style="font-weight:800; color:#111827;">Universal PIN (fallback)</div>
+        <div id="universal-pin-status" style="font-size:12px; color:#6b7280; margin-top:2px;">Universal PIN: …</div>
+      </div>
+
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <input id="universal-pin" type="password" placeholder="Set universal PIN" style="width:220px;" />
+        <button class="small" onclick="saveUniversalPin()">Save</button>
+        <button class="small" onclick="clearUniversalPin()">Clear</button>
+      </div>
+    </div>
+  </div>
     <div class="token-box">
       <label for="admin-token">Admin token:</label>
       <input id="admin-token" type="password" placeholder="Paste ADMIN_TOKEN" />
@@ -404,8 +418,8 @@
           </div>
           <div style="margin-top:16px; display:flex; gap:4px; flex-wrap:wrap;">
             <button class="primary small" onclick="loadAdmissions()">Load</button>
-            <button class="small" onclick="addSnfFacility()">Add facility</button>
-            <button class="small" onclick="editSnfFacility()">Edit facility</button>
+            <button class="small" onclick="openFacilityModal('add')">Add facility</button>
+            <button class="small" onclick="openFacilityModal('edit')">Edit facility</button>
           </div>
         </div>
       </div>
@@ -654,21 +668,112 @@
       return `${yyyy}-${mm}-${dd}`;
     }
 
-    async function addSnfFacility() {
+    let facilityModalMode = "add";   // "add" | "edit"
+    let facilityModalId = null;
+
+    function openFacilityModal(mode) {
       const token = getAdminToken();
       if (!token) {
-        alert("Please paste your ADMIN_TOKEN first.");
+        showToast("Please paste your ADMIN_TOKEN first.", "error");
         return;
       }
 
-      const name = prompt("SNF facility name:");
-      if (!name) return;
+      facilityModalMode = mode;
+      facilityModalId = null;
 
-      const attending = prompt("Attending (optional):") || "";
-      const notes = prompt("Notes (optional):") || "";
-      const notes2 = "";
-      const aliases = prompt("Aliases (optional, comma separated):") || "";
-      const facility_emails = prompt("Facility email recipients (comma separated):") || "";
+      // Reset fields
+      setFacilityModalValues({
+        facility_name: "",
+        attending: "",
+        notes: "",
+        notes2: "",
+        aliases: "",
+        facility_emails: "",
+        pin_set: false
+      });
+      document.getElementById("facility-pin").value = "";
+      document.getElementById("facility-clear-pin").checked = false;
+
+      if (mode === "edit") {
+        const select = document.getElementById("filter-facility");
+        const idVal = select && select.value;
+
+        if (!idVal) {
+          showToast("Pick a facility in the SNF facility dropdown first.", "error");
+          return;
+        }
+
+        const fac = snfFacilities.find(f => String(f.id) === String(idVal));
+        if (!fac) {
+          showToast("Could not find that facility in the list.", "error");
+          return;
+        }
+
+        facilityModalId = fac.id;
+        setFacilityModalValues({
+          facility_name: fac.facility_name || "",
+          attending: fac.attending || "",
+          notes: fac.notes || "",
+          notes2: fac.notes2 || "",
+          aliases: fac.aliases || "",
+          facility_emails: fac.facility_emails || "",
+          pin_set: !!fac.pin_set
+        });
+      }
+
+      document.getElementById("facility-modal-title").textContent =
+        mode === "add" ? "Add SNF facility" : "Edit SNF facility";
+
+      document.getElementById("facility-modal").classList.add("open");
+    }
+
+    function closeFacilityModal() {
+      document.getElementById("facility-modal").classList.remove("open");
+    }
+
+    function setFacilityModalValues(f) {
+      document.getElementById("facility-name").value = f.facility_name || "";
+      document.getElementById("facility-attending").value = f.attending || "";
+      document.getElementById("facility-notes").value = f.notes || "";
+      document.getElementById("facility-notes2").value = f.notes2 || "";
+      document.getElementById("facility-aliases").value = f.aliases || "";
+      document.getElementById("facility-emails").value = f.facility_emails || "";
+
+      const pinStatus = document.getElementById("facility-pin-status");
+      pinStatus.textContent = f.pin_set ? "PIN: Set" : "PIN: Not set";
+    }
+
+    async function saveFacilityFromModal() {
+      const token = getAdminToken();
+      if (!token) {
+        showToast("Please paste your ADMIN_TOKEN first.", "error");
+        return;
+      }
+
+      const name = (document.getElementById("facility-name").value || "").trim();
+      if (!name) {
+        showToast("Facility name is required.", "error");
+        return;
+      }
+
+      const payload = {
+        id: facilityModalMode === "edit" ? facilityModalId : null,
+        facility_name: name,
+        attending: (document.getElementById("facility-attending").value || "").trim(),
+        notes: (document.getElementById("facility-notes").value || "").trim(),
+        notes2: (document.getElementById("facility-notes2").value || "").trim(),
+        aliases: (document.getElementById("facility-aliases").value || "").trim(),
+        facility_emails: (document.getElementById("facility-emails").value || "").trim(),
+
+        // NEW: facility PIN controls
+        facility_pin: (document.getElementById("facility-pin").value || "").trim(),
+        clear_pin: !!document.getElementById("facility-clear-pin").checked
+      };
+
+      // UX safety: if user checks clear_pin, ignore facility_pin
+      if (payload.clear_pin) payload.facility_pin = "";
+
+      setModalMessage("facility-modal-msg", "Saving…", "info");
 
       try {
         const resp = await fetch("/admin/snf-facilities/upsert", {
@@ -677,81 +782,137 @@
             "Content-Type": "application/json",
             "X-Admin-Token": token
           },
-          body: JSON.stringify({
-            id: null,
-            facility_name: name,
-            attending,
-            notes,
-            notes2,
-            aliases,
-            facility_emails
-          })
+          body: JSON.stringify(payload)
         });
-        if (!resp.ok) throw new Error("HTTP " + resp.status);
-        const data = await resp.json();
-        if (!data.ok) throw new Error(data.detail || "ok=false");
+
+        let data = null;
+        try { data = await resp.json(); } catch (e) {}
+
+        if (!resp.ok) {
+          const detail = data && (data.detail || data.message);
+          throw new Error("HTTP " + resp.status + (detail ? " – " + detail : ""));
+        }
+        if (data && data.ok === false) throw new Error(data.detail || "ok=false");
+
         await loadSnfFacilities();
-        alert("SNF facility saved.");
+        setModalMessage(
+          "facility-modal-msg",
+          facilityModalMode === "add" ? "Facility saved." : "Facility updated.",
+          "success"
+        );
+
+        // Close after a beat so the user sees success
+        setTimeout(() => closeFacilityModal(), 450);
       } catch (err) {
-        console.error("addSnfFacility error", err);
-        alert("Error saving SNF facility: " + err);
+        console.error("saveFacilityFromModal error", err);
+        setModalMessage("facility-modal-msg", "Error: " + err, "error");
       }
     }
 
-    async function editSnfFacility() {
+    /* ------- Universal PIN editor (fallback PIN) ------- */
+
+    async function loadUniversalPinStatus() {
       const token = getAdminToken();
-      if (!token) {
-        alert("Please paste your ADMIN_TOKEN first.");
-        return;
-      }
-
-      const select = document.getElementById("filter-facility");
-      const idVal = select.value;
-      if (!idVal) {
-        alert("Pick a facility in the SNF facility dropdown first.");
-        return;
-      }
-
-      const fac = snfFacilities.find(f => String(f.id) === String(idVal));
-      if (!fac) {
-        alert("Could not find that facility in the list.");
-        return;
-      }
-
-      const name = prompt("SNF facility name:", fac.facility_name || "") || fac.facility_name || "";
-      const attending = prompt("Attending (optional):", fac.attending || "") || fac.attending || "";
-      const notes = prompt("Notes (optional):", fac.notes || "") || fac.notes || "";
-      const notes2 = prompt("Notes2 (optional):", fac.notes2 || "") || fac.notes2 || "";
-      const aliases = prompt("Aliases (optional, comma separated):", fac.aliases || "") || fac.aliases || "";
-      const facility_emails = prompt("Facility email recipients (comma separated):", fac.facility_emails || "") || fac.facility_emails || "";
+      if (!token) return;
 
       try {
-        const resp = await fetch("/admin/snf-facilities/upsert", {
+        const resp = await fetch("/admin/snf/universal-pin/get", {
+          headers: { "X-Admin-Token": token }
+        });
+        if (!resp.ok) return;
+
+        const data = await resp.json();
+        if (!data.ok) return;
+
+        document.getElementById("universal-pin-status").textContent =
+          data.pin_set ? "Universal PIN: Set" : "Universal PIN: Not set";
+      } catch (e) {
+        // silent
+      }
+    }
+
+    async function saveUniversalPin() {
+      const token = getAdminToken();
+      if (!token) {
+        showToast("Please paste your ADMIN_TOKEN first.", "error");
+        return;
+      }
+
+      const pin = (document.getElementById("universal-pin").value || "").trim();
+      if (!pin) {
+        showToast("Enter a universal PIN (or use Clear).", "error");
+        return;
+      }
+
+      try {
+        const resp = await fetch("/admin/snf/universal-pin/set", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "X-Admin-Token": token
           },
-          body: JSON.stringify({
-            id: fac.id,
-            facility_name: name,
-            attending,
-            notes,
-            notes2,
-            aliases,
-            facility_emails
-          })
+          body: JSON.stringify({ pin })
         });
         if (!resp.ok) throw new Error("HTTP " + resp.status);
+
         const data = await resp.json();
         if (!data.ok) throw new Error(data.detail || "ok=false");
-        await loadSnfFacilities();
-        alert("SNF facility updated.");
+
+        document.getElementById("universal-pin").value = "";
+        await loadUniversalPinStatus();
+        showToast("Universal PIN saved.", "success");
       } catch (err) {
-        console.error("editSnfFacility error", err);
-        alert("Error updating SNF facility: " + err);
+        console.error("saveUniversalPin error", err);
+        showToast("Error saving universal PIN: " + err, "error");
       }
     }
+
+    async function clearUniversalPin() {
+      const token = getAdminToken();
+      if (!token) {
+        showToast("Please paste your ADMIN_TOKEN first.", "error");
+        return;
+      }
+
+      try {
+        const resp = await fetch("/admin/snf/universal-pin/clear", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Token": token
+          },
+          body: JSON.stringify({})
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.detail || "ok=false");
+
+        document.getElementById("universal-pin").value = "";
+        await loadUniversalPinStatus();
+        showToast("Universal PIN cleared.", "success");
+      } catch (err) {
+        console.error("clearUniversalPin error", err);
+        showToast("Error clearing universal PIN: " + err, "error");
+      }
+    }
+
+    /* ------- simple toast + modal message helpers ------- */
+
+    function setModalMessage(id, text, kind) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = text || "";
+      el.className = "modal-msg " + (kind || "info");
+    }
+
+    function showToast(text, kind) {
+      const el = document.getElementById("toast");
+      el.textContent = text;
+      el.className = "toast show " + (kind || "info");
+      setTimeout(() => el.className = "toast", 2600);
+    }
+
 
     async function loadAdmissions() {
       const token = getAdminToken();
@@ -1149,9 +1310,136 @@
       initToken();
       initDate();
       loadSnfFacilities();
+      loadUniversalPinStatus();
       // Optionally auto-load
       // loadAdmissions();
     });
   </script>
+  
+  <!-- Toast -->
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <!-- Facility Add/Edit Modal -->
+  <div id="facility-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="facility-modal-title">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div>
+          <div id="facility-modal-title" class="modal-title">Add SNF facility</div>
+          <div class="modal-sub">Matches the site styling. PIN is stored securely (hash).</div>
+        </div>
+        <button class="modal-x" onclick="closeFacilityModal()" aria-label="Close">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div id="facility-modal-msg" class="modal-msg info"></div>
+
+        <div class="grid2">
+          <div>
+            <label>Facility name *</label>
+            <input id="facility-name" type="text" placeholder="e.g., Luxe Rehab" />
+          </div>
+          <div>
+            <label>Attending(s)</label>
+            <input id="facility-attending" type="text" placeholder="e.g., Pandey, Ravi MD" />
+          </div>
+        </div>
+
+        <label>Aliases (comma separated)</label>
+        <input id="facility-aliases" type="text" placeholder="e.g., Luxe Rehab at Wellington, Luxe Wellington" />
+
+        <label>Facility email recipients (comma separated)</label>
+        <input id="facility-emails" type="text" placeholder="admissions@…, referrals@…" />
+
+        <div class="grid2">
+          <div>
+            <label>Notes</label>
+            <textarea id="facility-notes" rows="3" placeholder="Optional notes…"></textarea>
+          </div>
+          <div>
+            <label>Notes2</label>
+            <textarea id="facility-notes2" rows="3" placeholder="Optional notes…"></textarea>
+          </div>
+        </div>
+
+        <div class="pin-row">
+          <div class="pin-left">
+            <label>Facility PIN</label>
+            <input id="facility-pin" type="password" placeholder="Set a new PIN (leave blank to keep unchanged)" />
+            <div class="pin-help">
+              <span id="facility-pin-status">PIN: Not set</span>
+              <span class="dot" aria-hidden="true"></span>
+              <span>Stored as a hash. You can set a new one any time.</span>
+            </div>
+          </div>
+          <div class="pin-right">
+            <label>&nbsp;</label>
+            <label class="checkline">
+              <input id="facility-clear-pin" type="checkbox" />
+              Clear facility PIN (forces universal PIN fallback)
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-foot">
+        <button class="btn-lite" onclick="closeFacilityModal()">Cancel</button>
+        <button class="btn-primary" onclick="saveFacilityFromModal()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    /* --- Modal / Toast styling that fits your existing clean UI --- */
+    .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);opacity:0;pointer-events:none;
+      padding:10px 12px;border-radius:12px;border:1px solid #e5e7eb;background:#fff;box-shadow:0 10px 30px rgba(0,0,0,.12);
+      font-size:13px;color:#111827;min-width:260px;max-width:560px;z-index:9999;}
+    .toast.show{opacity:1;pointer-events:auto;transition:opacity .15s ease;}
+    .toast.success{border-color:#bbf7d0;background:#f0fdf4;}
+    .toast.error{border-color:#fecaca;background:#fef2f2;}
+    .toast.info{border-color:#e5e7eb;background:#fff;}
+
+    .modal{position:fixed;inset:0;background:rgba(17,24,39,.55);display:none;align-items:center;justify-content:center;z-index:9998;padding:18px;}
+    .modal.open{display:flex;}
+    .modal-card{width:min(920px,100%);background:#fff;border-radius:16px;box-shadow:0 18px 60px rgba(0,0,0,.25);overflow:hidden;border:1px solid #e5e7eb;}
+    .modal-head{display:flex;align-items:flex-start;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #e5e7eb;}
+    .modal-title{font-size:16px;font-weight:800;color:#111827;}
+    .modal-sub{margin-top:2px;font-size:12px;color:#6b7280;}
+    .modal-x{border:0;background:transparent;font-size:18px;cursor:pointer;color:#6b7280;padding:4px 8px;border-radius:10px;}
+    .modal-x:hover{background:#f3f4f6;}
+    .modal-body{padding:16px 18px;}
+    .modal-foot{display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid #e5e7eb;background:#fafafa;}
+
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+    @media(max-width:760px){.grid2{grid-template-columns:1fr;}}
+
+    .modal-body label{display:block;font-size:12px;font-weight:700;color:#374151;margin:10px 0 6px;}
+    .modal-body input,.modal-body textarea{
+      width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:12px;padding:10px 12px;font-size:14px;min-width:0;
+    }
+    .modal-body textarea{resize:vertical;}
+    .modal-body input:focus,.modal-body textarea:focus{
+      outline:none;border-color:#A8E6CF;box-shadow:0 0 0 3px rgba(168,230,207,.35);
+    }
+
+    .modal-msg{display:none;margin-bottom:10px;padding:10px 12px;border-radius:12px;border:1px solid #e5e7eb;font-size:13px;}
+    .modal-msg.info{display:block;background:#fff;}
+    .modal-msg.success{display:block;border-color:#bbf7d0;background:#f0fdf4;}
+    .modal-msg.error{display:block;border-color:#fecaca;background:#fef2f2;}
+
+    .pin-row{display:flex;gap:12px;align-items:flex-start;margin-top:6px;}
+    .pin-left{flex:1;min-width:0;}
+    .pin-right{width:300px;}
+    @media(max-width:760px){.pin-row{flex-direction:column;}.pin-right{width:100%;}}
+    .pin-help{margin-top:6px;font-size:12px;color:#6b7280;display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+    .pin-help .dot{width:4px;height:4px;border-radius:999px;background:#A8E6CF;display:inline-block;}
+    .checkline{display:flex;align-items:center;gap:8px;font-size:13px;color:#374151;font-weight:600;margin-top:6px;}
+
+    .btn-primary{background:#0D3B66;color:#fff;border:0;border-radius:12px;padding:10px 14px;font-weight:800;cursor:pointer;}
+    .btn-primary:hover{background:#0b3357;}
+    .btn-lite{background:#fff;color:#111827;border:1px solid #e5e7eb;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer;}
+    .btn-lite:hover{background:#f9fafb;}
+  </style>
+
+  
 </body>
 </html>
