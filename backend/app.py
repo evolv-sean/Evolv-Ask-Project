@@ -5089,19 +5089,31 @@ def build_snf_pdf_html(
 
     .provider-callout {{
       margin-top: 10px;
-      padding: 10px 12px;
+      padding: 10px 14px;
       border-left: 4px solid #4f46e5;          /* slightly stronger accent */
       background: #eef2ff;                     /* subtle indigo tint */
       border: 1px solid #e0e7ff;               /* soft border */
       border-radius: 12px;
-      font-size: 14px;                         /* slightly larger than line above */
-      font-weight: 600;                        /* slightly bolder */
+      
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;      
+      
+      font-size: 12px;                         /* slightly larger than line above */
+      font-weight: 500;                        /* slightly bolder */
+      line-height: 1.3;
       color: #111827;
       box-shadow: 0 1px 0 rgba(17, 24, 39, 0.04); /* subtle depth, stays on-brand */
     }}
 
-    .provider-callout strong {{
-      font-weight: 800;                        /* attending name pops */
+    .provider-callout .provider-label {
+      color: #374151;
+    }}
+
+    .provider-callout .provider-name {
+      font-weight: 700; /* still bold, but not heavy */
+      color: #111827;
     }}
 
 
@@ -5239,16 +5251,16 @@ def build_snf_pdf_html(
             Our Hospitalists have identified the following patients as expected discharges to your facility. Please contact Stephanie Sellers (ssellers@startevolv.com)
           </p>
 
-          {f"""
+{f"""
           <div class="provider-callout">
-            We would like these patients to be assigned to the following provider:
-            <strong>{safe_attending}</strong>
+            <span class="provider-label">We would like these patients to be assigned to the following provider:</span>
+            <strong class="provider-name">{safe_attending}</strong>
           </div>
           """ if safe_attending else ""}
         </div>
         <div class="header-side">
-          <div class="header-side-label">Report Type</div>
-          <div class="header-side-value">Disposition: SNF</div>
+          <div class="header-side-label">Disposition:</div>
+          <div class="header-side-value">SNF</div>
         </div>
       </header>
 
