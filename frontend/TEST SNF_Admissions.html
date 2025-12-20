@@ -281,6 +281,56 @@
     .note-entry-body {
       color: #4b5563;
     }
+
+    /* NEW: keyword highlight */
+    .kw-hl {
+      background: #A8E6CF;
+      padding: 0 2px;
+      border-radius: 4px;
+    }
+
+    /* NEW: bell icon button in note card header */
+    .note-tools {
+      margin-left: auto;
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .icon-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      border: 1px solid #e5e7eb;
+      background: #ffffff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .icon-btn:hover { background: #f9fafb; }
+
+    .bell {
+      width: 18px;
+      height: 18px;
+      color: #9ca3af; /* grey default */
+    }
+    .icon-btn.on .bell {
+      color: #A8E6CF; /* mint when checked */
+    }
+
+    /* NEW: subtle list icon */
+    .notif-dot {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 6px;
+      border: 1px solid #e5e7eb;
+      margin-left: 6px;
+    }
+    .notif-dot svg { width: 12px; height: 12px; color: #A8E6CF; }
+
     .note-meta {
       padding: 10px 16px;
       border-bottom: 1px solid #e5e7eb;
@@ -345,9 +395,17 @@
   </style>
 </head>
 <body>
-  <header>
+  <header style="position:relative;">
     <h1>SNF Admissions – Audit & Notifications</h1>
-    <div style="margin-top:10px; padding:12px; border:1px solid #e5e7eb; border-radius:14px; background:#fafafa;">
+
+    <!-- NEW: Settings button (top-right) -->
+    <button class="small" style="position:absolute; top:10px; right:10px;"
+            onclick="openSettingsModal()">
+      ⚙ Settings
+    </button>
+
+    <!-- (we will move Universal PIN + Admin token into the Settings modal below) -->
+
     <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
       <div>
         <div style="font-weight:800; color:#111827;">Universal PIN (fallback)</div>
@@ -416,6 +474,13 @@
               <option value="desc">Z → A</option>
             </select>
           </div>
+          <div>
+            <label for="filter-notified">Notified</label><br />
+            <select id="filter-notified">
+              <option value="">All</option>
+              <option value="1">Notified only</option>
+            </select>
+          </div>  
           <div style="margin-top:16px; display:flex; gap:4px; flex-wrap:wrap;">
             <button class="primary small" onclick="loadAdmissions()">Load</button>
             <button class="small" onclick="openFacilityModal('add')">Add facility</button>
@@ -457,7 +522,18 @@
     <section class="panel" id="note-panel">
       <div class="panel-header">
         <h2>Case Management Note</h2>
-        <div id="note-header-summary" class="message"></div>
+
+        <div class="note-tools">
+          <button class="icon-btn" id="notif-btn" title="Notification details" onclick="openNotifModal()">
+            <!-- bell icon (SVG) -->
+            <svg class="bell" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 22a2 2 0 0 0 2-2H10a2 2 0 0 0 2 2Z" stroke="currentColor" stroke-width="2"/>
+              <path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2h16l-2-2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            </svg>
+          </button>
+
+          <div id="note-header-summary" class="message"></div>
+        </div>
       </div>
       <div class="note-meta" id="note-meta">
         <div>Select a row to load the note.</div>
@@ -507,6 +583,108 @@
         </div>
       </div>
     </section>
+      <!-- NEW: Settings modal -->
+      <div class="modal" id="settings-modal">
+        <div class="modal-inner" style="max-width:780px;">
+          <div class="modal-header">
+            <div style="font-weight:800;">Settings</div>
+            <button class="small" onclick="closeSettingsModal()">Close</button>
+          </div>
+
+          <div style="padding:12px 14px; display:flex; flex-direction:column; gap:14px;">
+
+            <!-- Admin token -->
+            <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa;">
+              <div style="font-weight:800; color:#111827; margin-bottom:8px;">Admin token</div>
+              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <input id="admin-token" type="password" placeholder="Paste ADMIN_TOKEN" style="width:320px;" />
+                <button class="small" onclick="saveAdminToken()">Save</button>
+                <span id="token-status" class="message"></span>
+              </div>
+            </div>
+
+            <!-- Universal PIN -->
+            <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa;">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                <div>
+                  <div style="font-weight:800; color:#111827;">Universal PIN (fallback)</div>
+                  <div id="universal-pin-status" style="font-size:12px; color:#6b7280; margin-top:2px;">Universal PIN: …</div>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                  <input id="universal-pin" type="password" placeholder="Set universal PIN" style="width:220px;" />
+                  <button class="small" onclick="saveUniversalPin()">Save</button>
+                  <button class="small" onclick="clearUniversalPin()">Clear</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Highlight Keywords -->
+            <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa;">
+              <div style="font-weight:800; color:#111827; margin-bottom:6px;">Highlighted keywords</div>
+              <div style="font-size:12px; color:#6b7280; margin-bottom:8px;">
+                One per line. These will be highlighted in Case Management Notes with mint.
+              </div>
+              <textarea id="kw-list" style="width:100%; min-height:90px;"
+                        placeholder="denied&#10;appeal&#10;peer to peer&#10;auth"></textarea>
+              <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
+                <button class="small" onclick="saveKeywords()">Save keywords</button>
+                <span id="kw-status" class="message"></span>
+              </div>
+            </div>
+
+            <!-- Future section placeholder -->
+            <div style="border:1px dashed #e5e7eb; border-radius:14px; padding:12px; background:#ffffff; color:#6b7280;">
+              Future settings will appear here.
+            </div>
+
+          </div>
+        </div>
+      </div>
+      <!-- NEW: Notification modal -->
+      <div class="modal" id="notif-modal">
+        <div class="modal-inner" style="max-width:720px;">
+          <div class="modal-header">
+            <div style="font-weight:800;">Notification</div>
+            <button class="small" onclick="closeNotifModal()">Close</button>
+          </div>
+
+          <div style="padding:12px 14px; display:flex; flex-direction:column; gap:10px;">
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input id="nm-checked" type="checkbox" onchange="onNotifCheckedChanged()" />
+              <span><strong>Notified by Hospital</strong></span>
+            </label>
+
+            <div class="flex-row" style="gap:10px; flex-wrap:wrap;">
+              <div style="flex:1; min-width:220px;">
+                <label for="nm-by">Notified by</label>
+                <input id="nm-by" type="text" placeholder="Name / dept (optional)" />
+              </div>
+
+              <div style="min-width:220px;">
+                <label for="nm-dt">Notification date/time</label>
+                <input id="nm-dt" type="datetime-local" />
+              </div>
+            </div>
+
+            <div>
+              <label for="nm-fac">Hospital reported Facility</label>
+              <input id="nm-fac" type="text" placeholder="Facility name as hospital stated" />
+            </div>
+
+            <div>
+              <label for="nm-details">Notification Details</label>
+              <textarea id="nm-details" style="width:100%; min-height:90px;"
+                        placeholder="Any details you want saved with this admission..."></textarea>
+            </div>
+
+            <div class="flex-row">
+              <button class="primary small" onclick="saveNotif()">Save notification</button>
+              <span id="nm-status" class="message"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
   </main>
 
   <script>
@@ -515,6 +693,38 @@
 
     let snfFacilities = [];
     let currentRows = [];
+
+    let highlightKeywords = []; // loaded from backend
+
+    function escapeHtml(s) {
+      return String(s || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function splitKeywords(raw) {
+      return String(raw || "")
+        .split(/\r?\n/)
+        .map(x => x.trim())
+        .filter(Boolean);
+    }
+
+    function highlightText(rawText, keywords) {
+      const safe = escapeHtml(rawText);
+      if (!keywords || !keywords.length) return safe;
+
+      // longest-first prevents partial masking of longer phrases
+      const sorted = [...keywords].sort((a, b) => b.length - a.length);
+
+      // build a single alternation regex
+      const escaped = sorted.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+      const re = new RegExp("(" + escaped.join("|") + ")", "gi");
+      return safe.replace(re, `<span class="kw-hl">$1</span>`);
+    }
+
 
     function getAdminToken() {
       const input = document.getElementById("admin-token");
@@ -930,6 +1140,9 @@
       const dateIso = parseMDYToISO(date);
       if (dateIso) params.set("for_date", dateIso);
       if (days) params.set("days_ahead", days);
+      
+      const notified = document.getElementById("filter-notified").value;
+      if (notified) params.set("notified_only", notified);
 
       document.getElementById("list-message").textContent = "Loading...";
       selectedId = null;
@@ -1112,14 +1325,19 @@
           : "Not yet emailed";
         const emailedClass = adm.emailed_at ? "sent" : "not-sent";
 
+        const admitTag = (adm.admit_date || "").trim()
+          ? ` <span style="color:#6b7280;">(Admit: ${adm.admit_date})</span>`
+          : "";
+
         document.getElementById("note-meta").innerHTML = `
           <div><strong>${adm.patient_name || ""}</strong>${visitLabel ? " (" + visitLabel + ")" : ""}</div>
-          <div>${adm.hospital_name || ""}</div>
+          <div>${adm.hospital_name || ""}${admitTag}</div>
           <div>AI SNF: ${adm.ai_snf_name_raw || "(none)"} | AI date: ${adm.ai_expected_transfer_date || "(none)"} | AI conf: ${adm.ai_confidence != null ? adm.ai_confidence.toFixed(2) : "(n/a)"}</div>
           <div>
             <span class="email-badge ${emailedClass}">${emailedLabel}</span>
           </div>
         `;
+
 
         // Render all notes for this admission
         const noteTextEl = document.getElementById("note-text");
@@ -1148,7 +1366,8 @@
 
           const body = document.createElement("div");
           body.className = "note-entry-body";
-          body.textContent = n.note_text || "";
+          body.innerHTML = highlightText(n.note_text || "", highlightKeywords);
+
 
           wrapper.appendChild(header);
           wrapper.appendChild(body);
