@@ -34,6 +34,39 @@
       letter-spacing: 0.03em;
     }
 
+    header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+
+    /* NEW: lock icon link (matches your other page's click feel) */
+    .admin-link{
+      position:absolute;
+      top:10px;
+      right:10px;
+      width:34px;
+      height:34px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      border-radius:12px;
+      color:#e5e7eb;
+      text-decoration:none;
+      border:1px solid rgba(229,231,235,0.22);
+      background:rgba(255,255,255,0.06);
+      transition:transform .08s ease, background .15s ease, border-color .15s ease, color .15s ease;
+    }
+    .admin-link:hover{
+      background:rgba(255,255,255,0.12);
+      border-color:rgba(168,230,207,0.55);
+      color:#ffffff;
+    }
+    .admin-link:active{
+      transform:scale(0.96);
+    }
+
     main {
       display: grid;
       grid-template-columns: 2fr 1.3fr;
@@ -315,8 +348,8 @@
     }
 
     .bell {
-      width: 24px;         /* bigger bell */
-      height: 24px;        /* bigger bell */
+      width: 36px;         /* bigger bell */
+      height: 36px;        /* bigger bell */
       color: #9ca3af;      /* grey default */
     }
     .icon-btn.on .bell {
@@ -403,22 +436,26 @@
   <header style="position:relative;">
     <h1>SNF Admissions – Audit & Notifications</h1>
 
-    <!-- NEW: Settings button (top-right) -->
-    <button class="small" style="position:absolute; top:10px; right:10px;"
-            onclick="openSettingsModal()">
-      ⚙ Settings
-    </button>
+    <!-- Admin link (top-right, subtle lock icon) -->
+    <a href="#"
+       class="admin-link"
+       aria-label="Open Settings"
+       title="Settings"
+       onclick="openSettingsModal(); return false;">
+      <!-- lock icon (SVG) -->
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+        <path d="M7 10V8a5 5 0 0 1 10 0v2m-9 0h8a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z"
+              fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </a>
 
     <!-- Optional: show status only (no duplicate input IDs) -->
     <div id="universal-pin-status" style="margin-top:10px; font-size:12px; color:#6b7280;">
       Universal PIN: …
     </div>
 
-    <div class="token-box">
-      <label for="admin-token">Admin token:</label>
-      <input id="admin-token" type="password" placeholder="Paste ADMIN_TOKEN" />
-      <button class="small" onclick="saveAdminToken()">Save</button>
-      <span id="token-status" class="message"></span>
+    <div id="admin-token-status" style="margin-top:10px; font-size:12px; color:#6b7280;">
+      Admin Token: …
     </div>
   </header>
 
@@ -594,7 +631,7 @@
             <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa;">
               <div style="font-weight:800; color:#111827; margin-bottom:8px;">Admin token</div>
               <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <input id="admin-token" type="password" placeholder="Paste ADMIN_TOKEN" style="width:320px;" />
+                <input id="admin-token-input" type="password" placeholder="Paste ADMIN_TOKEN" style="width:320px;" />
                 <button class="small" onclick="saveAdminToken()">Save</button>
                 <span id="token-status" class="message"></span>
               </div>
@@ -653,10 +690,10 @@
           </div>
 
           <div class="modal-body">
-            <div class="checkline" style="margin-top:0;">
+            <label class="checkline" style="margin-top:0;">
               <input id="nm-checked" type="checkbox" onchange="onNotifCheckedChanged()" />
-              <span><strong>Notified by Hospital</strong></span>
-            </div>
+              <strong>Notified by Hospital</strong>
+            </label>
 
             <div class="grid2" style="margin-top:10px;">
               <div>
@@ -681,10 +718,6 @@
               <button class="btn-primary" onclick="saveNotif()">Save notification</button>
               <span id="nm-status" class="message"></span>
             </div>
-          </div>
-
-          <div class="modal-foot">
-            <button class="btn-lite" onclick="closeNotifModal()">Cancel</button>
           </div>
         </div>
       </div>
@@ -725,18 +758,30 @@
 
       // build a single alternation regex
       const escaped = sorted.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+
       const re = new RegExp("(" + escaped.join("|") + ")", "gi");
       return safe.replace(re, `<span class="kw-hl">$1</span>`);
     }
 
-
     function getAdminToken() {
-      const input = document.getElementById("admin-token");
-      return (input.value || "").trim();
+      // Source of truth: localStorage
+      return (localStorage.getItem("evolv_admin_token") || "").trim();
+    }
+
+    function updateAdminTokenStatus() {
+      const hasToken = !!getAdminToken();
+
+      const top = document.getElementById("admin-token-status");
+      if (top) top.textContent = hasToken ? "Admin Token: Set" : "Admin Token: Not set";
+
+      const modalStatus = document.getElementById("token-status");
+      // (modalStatus is your small “Saved.” message area; we won’t overwrite it here)
     }
 
     function saveAdminToken() {
-      const token = getAdminToken();
+      const input = document.getElementById("admin-token-input");
+      const token = (input?.value || "").trim();
+
       if (token) {
         localStorage.setItem("evolv_admin_token", token);
         document.getElementById("token-status").textContent = "Saved.";
@@ -745,7 +790,10 @@
         document.getElementById("token-status").textContent = "Cleared.";
       }
 
-      // NEW: refresh SNF facility dropdowns using the new/cleared token
+      // Keep UI in sync everywhere
+      updateAdminTokenStatus();
+
+      // Refresh SNF facility dropdowns using the new/cleared token
       loadSnfFacilities();
 
       setTimeout(() => {
@@ -753,12 +801,15 @@
       }, 2000);
     }
 
-
     function initToken() {
       const saved = localStorage.getItem("evolv_admin_token") || "";
-      if (saved) {
-        document.getElementById("admin-token").value = saved;
-      }
+
+      // Populate ONLY the Settings modal field
+      const input = document.getElementById("admin-token-input");
+      if (input) input.value = saved;
+
+      // Update top-bar status text
+      updateAdminTokenStatus();
     }
 
     // ===============================
@@ -767,6 +818,12 @@
     function openSettingsModal() {
       const m = document.getElementById("settings-modal");
       if (m) m.classList.add("open");
+
+      // NEW: ensure modal shows the current saved token
+      const input = document.getElementById("admin-token-input");
+      if (input) input.value = localStorage.getItem("evolv_admin_token") || "";
+
+      updateAdminTokenStatus();
 
       // load keywords into textarea whenever opened
       loadKeywords();
