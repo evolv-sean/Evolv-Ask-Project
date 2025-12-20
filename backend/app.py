@@ -790,8 +790,36 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_snf_secure_links_fac ON snf_secure_links(snf_facility_id)"
     )
 
+    # ---------------------------------------------------------
+    # NEW: Add a detailed access log (each time someone enters a PIN)
+    # ---------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS snf_secure_link_access_log (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            secure_link_id  INTEGER NOT NULL,
+            snf_facility_id INTEGER NOT NULL,
+            pin_type        TEXT NOT NULL,   -- facility | universal | default
+            accessed_at     TEXT DEFAULT (datetime('now')),
+            ip              TEXT,
+            user_agent      TEXT
+        )
+        """
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_snf_access_link ON snf_secure_link_access_log(secure_link_id)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_snf_access_fac ON snf_secure_link_access_log(snf_facility_id)"
+    )
 
-
+    # ---------------------------------------------------------
+    # OPTIONAL (but recommended): tie the secure link back to the email send
+    # (safe: this is just metadata, no PHI)
+    # ---------------------------------------------------------
+    ensure_column(conn, "snf_secure_links", "email_run_id", "email_run_id TEXT")
+    ensure_column(conn, "snf_secure_links", "sent_to",     "sent_to TEXT")
+    ensure_column(conn, "snf_secure_links", "sent_at",     "sent_at TEXT")
 
     
 # -------------------------------------------------------------------
@@ -5458,6 +5486,184 @@ async def admin_snf_universal_pin_clear(request: Request):
     finally:
         conn.close()
 
+@app.get("/admin/snf/email-log/list")
+async def admin_snf_email_log_list(request: Request):
+    """
+    Returns sent email records based on snf_secure_links that were successfully sent.
+    (No PHI is returned; only metadata: facility, count, sent time, recipients.)
+    """
+    require_admin(request)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+                l.id AS secure_link_id,
+                l.snf_facility_id,
+                l.for_date,
+                l.sent_at,
+                l.sent_to,
+                l.admission_ids,
+                f.facility_name AS snf_facility_name
+            FROM snf_secure_links l
+            LEFT JOIN snf_admission_facilities f
+              ON f.id = l.snf_facility_id
+            WHERE l.sent_at IS NOT NULL AND l.sent_at <> ''
+            ORDER BY l.sent_at DESC
+            LIMIT 250
+            """
+        )
+        rows = cur.fetchall()
+
+        items = []
+        for r in rows:
+            try:
+                ids = json.loads(r["admission_ids"] or "[]")
+                patient_count = len(ids) if isinstance(ids, list) else 0
+            except Exception:
+                patient_count = 0
+
+            # Simple local display string (SQLite stores local server time in datetime('now'))
+            sent_at = (r["sent_at"] or "").strip()
+            sent_at_local = sent_at.replace("T", " ") if "T" in sent_at else sent_at
+
+            items.append(
+                {
+                    "secure_link_id": int(r["secure_link_id"]),
+                    "snf_facility_id": int(r["snf_facility_id"]) if r["snf_facility_id"] is not None else None,
+                    "snf_facility_name": (r["snf_facility_name"] or "").strip(),
+                    "for_date": (r["for_date"] or "").strip(),
+                    "sent_at": sent_at,
+                    "sent_at_local": sent_at_local,
+                    "sent_to": (r["sent_to"] or "").strip(),
+                    "patient_count": patient_count,
+                }
+            )
+
+        return {"ok": True, "items": items}
+    finally:
+        conn.close()
+
+
+@app.get("/admin/snf/email-log/opens/{secure_link_id}")
+async def admin_snf_email_log_opens(request: Request, secure_link_id: int):
+    """
+    Returns all access log rows for a specific secure link, including pin_type.
+    """
+    require_admin(request)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT pin_type, accessed_at, ip, user_agent
+            FROM snf_secure_link_access_log
+            WHERE secure_link_id = ?
+            ORDER BY accessed_at DESC
+            """,
+            (int(secure_link_id),),
+        )
+        rows = cur.fetchall()
+        items = []
+        for r in rows:
+            accessed_at = (r["accessed_at"] or "").strip()
+            accessed_at_local = accessed_at.replace("T", " ") if "T" in accessed_at else accessed_at
+            items.append(
+                {
+                    "pin_type": (r["pin_type"] or "").strip(),
+                    "accessed_at": accessed_at,
+                    "accessed_at_local": accessed_at_local,
+                    "ip": (r["ip"] or "").strip(),
+                    "user_agent": (r["user_agent"] or "").strip(),
+                }
+            )
+        return {"ok": True, "items": items}
+    finally:
+        conn.close()
+
+
+@app.get("/admin/snf/email-log/pdf/{secure_link_id}")
+async def admin_snf_email_log_pdf(request: Request, secure_link_id: int):
+    """
+    Admin-only: regenerate the PDF for a previously sent secure link and return it as a download.
+    """
+    require_admin(request)
+
+    if not HAVE_WEASYPRINT:
+        raise HTTPException(status_code=500, detail="PDF support is not installed (weasyprint).")
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT *
+            FROM snf_secure_links
+            WHERE id = ?
+            """,
+            (int(secure_link_id),),
+        )
+        link = cur.fetchone()
+        if not link:
+            raise HTTPException(status_code=404, detail="Secure link not found")
+
+        cur.execute(
+            """
+            SELECT *
+            FROM snf_admission_facilities
+            WHERE id = ?
+            """,
+            (int(link["snf_facility_id"]),),
+        )
+        fac = cur.fetchone()
+        fac_name = (fac["facility_name"] if fac else "") or "Receiving Facility"
+        attending = (fac["attending"] if fac else "") or ""
+
+        try:
+            admission_ids = json.loads(link["admission_ids"] or "[]")
+        except Exception:
+            admission_ids = []
+
+        if not admission_ids:
+            raise HTTPException(status_code=400, detail="No admissions found for this link")
+
+        placeholders = ",".join("?" for _ in admission_ids)
+        sql = f"""
+        SELECT
+            s.id,
+            s.patient_name,
+            s.hospital_name,
+            COALESCE(s.dob, raw.dob) AS dob,
+            COALESCE(s.attending, raw.attending, raw.note_author) AS hospitalist
+        FROM snf_admissions s
+        LEFT JOIN cm_notes_raw raw
+          ON raw.id = s.raw_note_id
+        WHERE s.id IN ({placeholders})
+        ORDER BY s.patient_name COLLATE NOCASE
+        """
+        cur.execute(sql, admission_ids)
+        rows = cur.fetchall()
+        if not rows:
+            raise HTTPException(status_code=400, detail="Admissions no longer available")
+
+        for_date = (link["for_date"] or "").strip() or dt.date.today().isoformat()
+
+        html_doc = build_snf_pdf_html(fac_name, for_date, rows, attending)
+        pdf_bytes = WEASY_HTML(string=html_doc).write_pdf()
+
+        safe_fac = re.sub(r"[^A-Za-z0-9]+", "_", fac_name) or "SNF"
+        filename = f"SNF_Referrals_{safe_fac}_{for_date}.pdf"
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    finally:
+        conn.close()
+
 
 def build_snf_pdf_html(
     facility_name: str,
@@ -6095,9 +6301,33 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
                 status_code=500
             )
 
-        if not any(verify_pin(pin, h) for h in candidate_hashes):
+        # NEW: determine WHICH PIN matched (so we can log pin_type)
+        pin_type = None
+        if facility_hash and verify_pin(pin, facility_hash):
+            pin_type = "facility"
+        elif universal_hash and verify_pin(pin, universal_hash):
+            pin_type = "universal"
+        elif default_hash and verify_pin(pin, default_hash):
+            pin_type = "default"
+
+        if not pin_type:
             return HTMLResponse(_render_form("Incorrect PIN. Please try again."), status_code=401)
 
+        # NEW: write an access log row (timestamp + pin type + IP/UA)
+        ip = (request.client.host if request.client else None)
+        ua = request.headers.get("user-agent")
+
+        try:
+            cur.execute(
+                """
+                INSERT INTO snf_secure_link_access_log (secure_link_id, snf_facility_id, pin_type, ip, user_agent)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (int(link["id"]), int(link["snf_facility_id"]), pin_type, ip, ua),
+            )
+        except Exception as e:
+            # Don't block PDF if logging fails
+            print("[snf-secure-link] access log insert failed:", repr(e))
 
         # Parse admission ids
         try:
@@ -6273,58 +6503,19 @@ async def admin_snf_email_pdf(
 
         expires_at = (dt.datetime.utcnow() + dt.timedelta(hours=SNF_LINK_TTL_HOURS)).replace(microsecond=0).isoformat() + "Z"
 
+        # NEW: generate email_run_id BEFORE we insert the secure link row
+        email_run_id = secrets.token_hex(8)
+
         cur.execute(
             """
-            INSERT INTO snf_secure_links (token_hash, snf_facility_id, admission_ids, for_date, expires_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO snf_secure_links (token_hash, snf_facility_id, admission_ids, for_date, expires_at, email_run_id, sent_to)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (token_hash, snf_facility_id, json.dumps(admission_ids), for_date, expires_at),
+            (token_hash, snf_facility_id, json.dumps(admission_ids), for_date, expires_at, email_run_id, to_addr),
         )
         conn.commit()
 
         secure_url = f"{base_url}/snf/secure/{raw_token}"
-
-        # ------------------------
-        # Build and send the email
-        # ------------------------
-        if test_only:
-            to_addr = test_email_to
-            cc_addr = ""
-        else:
-            to_addr = facility_emails
-            cc_addr = ""
-
-        subject = f"Upcoming SNF referrals for {facility_name} on {for_date}"
-        if test_only:
-            subject = "[TEST] " + subject
-
-        # Secure link was created above and stored in snf_secure_links
-
-        # IMPORTANT: keep PHI out of email body
-        body_lines = [
-          "Secure patient referral list",
-          "",
-          "To protect patient information, the referral list is available through a secure link (PIN required).",
-          f"View List: {secure_url}",
-          "",
-          f"This link expires in {SNF_LINK_TTL_HOURS} hours.",
-          "",
-          "Powered by Evolv Health",
-        ]
-        body = "\n".join(body_lines)
-
-        msg = EmailMessage()
-        msg["Subject"] = subject
-        msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
-        msg["To"] = to_addr
-        if cc_addr:
-            msg["Cc"] = cc_addr
-
-        # Plain text + HTML email
-        msg.set_content(body)
-        msg.add_alternative(build_snf_secure_link_email_html(secure_url, SNF_LINK_TTL_HOURS), subtype="html")
-
-        email_run_id = secrets.token_hex(8)
 
         try:
             context = ssl.create_default_context()
@@ -6332,6 +6523,13 @@ async def admin_snf_email_pdf(
                 server.starttls(context=context)
                 server.login(SMTP_USER, SMTP_PASSWORD)
                 server.send_message(msg)
+                
+            # NEW: mark link "sent_at" only after successful SMTP send
+            cur.execute(
+                "UPDATE snf_secure_links SET sent_at = datetime('now') WHERE token_hash = ? AND email_run_id = ?",
+                (token_hash, email_run_id),
+            )
+            conn.commit()
 
             # Mark those admissions as emailed if this is a real send
             if not test_only:
@@ -6581,7 +6779,7 @@ async def snf_secure_token_page(token: str):
       <p style="margin:0 0 12px 0;color:#374151;font-size:14px;line-height:1.5;">
         Enter your facility PIN to view the secure PDF. This link expires in 24hrs.
       </p>
-      <form method="POST" action="/snf/secure/{token}/pdf">
+      <form method="POST" action="/snf/secure/{token}">
         <label>Facility PIN</label>
         <input type="password" name="pin" autocomplete="current-password" required />
         <button type="submit">View PDF</button>
@@ -6594,112 +6792,6 @@ async def snf_secure_token_page(token: str):
 </body>
 </html>
 """
-
-@app.post("/snf/secure/{token}/pdf")
-async def snf_secure_token_pdf(token: str, pin: str = Form(...)):
-    conn = get_db()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT snf_facility_id, for_date, admission_ids_json, expires_at FROM snf_pdf_links WHERE token = ?",
-            (token,),
-        )
-        link = cur.fetchone()
-        if not link:
-            raise HTTPException(status_code=404, detail="Link not found")
-
-        # Expiration check (UTC-based, consistent)
-        expires_at = link["expires_at"] or ""
-        if expires_at and dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S") > expires_at:
-            raise HTTPException(status_code=410, detail="Link expired")
-
-        # Normalize PIN
-        pin = (pin or "").strip()
-        if not pin:
-            return HTMLResponse("<h2>Missing PIN</h2><p>Please go back and enter your Facility PIN.</p>", status_code=401)
-
-        # Load facility (so we can validate facility pin_hash)
-        cur.execute("""
-          SELECT id, facility_name, attending, pin_hash
-          FROM snf_admission_facilities
-          WHERE id = ?
-        """, (int(link["snf_facility_id"]),))
-        fac = cur.fetchone()
-        if not fac:
-            raise HTTPException(status_code=404, detail="Facility not found")
-
-        # Accept Facility PIN OR Universal PIN OR SNF_DEFAULT_PIN
-        facility_hash = (fac["pin_hash"] or "").strip()
-        universal_hash = get_snf_universal_pin_hash(cur)
-        default_hash = hash_pin(SNF_DEFAULT_PIN) if SNF_DEFAULT_PIN else ""
-
-        candidate_hashes = [h for h in (facility_hash, universal_hash, default_hash) if h]
-
-        if not candidate_hashes:
-            return HTMLResponse("<h2>PIN not configured</h2><p>Please contact Evolv.</p>", status_code=500)
-
-        if not any(verify_pin(pin, h) for h in candidate_hashes):
-            return HTMLResponse("<h2>Invalid PIN</h2><p>Please go back and try again.</p>", status_code=401)
-
-
-        # (keep using these variables below as your code already does)
-        snf_facility_id = int(link["snf_facility_id"])
-        for_date = link["for_date"]
-        admission_ids = json.loads(link["admission_ids_json"] or "[]")
-
-        facility_name = fac["facility_name"] or "Receiving Facility"
-        attending = fac["attending"] or ""
-
-
-        snf_facility_id = int(link["snf_facility_id"])
-        for_date = link["for_date"]
-        admission_ids = json.loads(link["admission_ids_json"] or "[]")
-
-        # Reuse your existing email-pdf logic to load facility + rows and build PDF
-        cur.execute("""
-          SELECT id, facility_name, attending
-          FROM snf_admission_facilities
-          WHERE id = ?
-        """, (snf_facility_id,))
-        fac = cur.fetchone()
-        if not fac:
-            raise HTTPException(status_code=404, detail="Facility not found")
-
-        facility_name = fac["facility_name"] or "Receiving Facility"
-        attending = fac["attending"] or ""
-
-        placeholders = ",".join("?" for _ in admission_ids)
-        sql = f"""
-        SELECT
-            s.id,
-            s.patient_name,
-            s.hospital_name,
-            COALESCE(s.dob, raw.dob) AS dob,
-            COALESCE(s.attending, raw.attending, raw.note_author) AS hospitalist
-        FROM snf_admissions s
-        LEFT JOIN cm_notes_raw raw
-          ON raw.id = s.raw_note_id
-        WHERE s.id IN ({placeholders})
-        ORDER BY s.patient_name COLLATE NOCASE
-        """
-        cur.execute(sql, admission_ids)
-        rows = cur.fetchall()
-        if not rows:
-            raise HTTPException(status_code=400, detail="No admissions found for this link")
-
-        html_doc = build_snf_pdf_html(facility_name, for_date, rows, attending)
-        pdf_bytes = WEASY_HTML(string=html_doc).write_pdf()
-
-        safe_fac = re.sub(r"[^A-Za-z0-9]+", "_", facility_name) or "SNF"
-        filename = f"SNF_Referrals_{safe_fac}_{for_date}.pdf"
-
-        return Response(
-            content=pdf_bytes,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'inline; filename="{filename}"'},
-        )
-    finally:
-        conn.close()
 
 # ---------------------------------------------------------------------------
 # Entrypoint for Render
