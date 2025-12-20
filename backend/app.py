@@ -679,6 +679,31 @@ def init_db():
     except sqlite3.Error:
         pass
 
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN notified_by_hospital INTEGER DEFAULT 0")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN notified_by TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN notification_dt TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN hospital_reported_facility TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN notification_details TEXT")
+    except sqlite3.Error:
+        pass
+
 
     # Helpful indexes for SNF admissions queries
     cur.execute(
@@ -4598,6 +4623,54 @@ def upsert_facility_and_children(payload: dict) -> str:
 # Admin: SNF admissions APIs used by TEST SNF_Admissions.html
 # ---------------------------------------------------------------------------
 
+SNF_HIGHLIGHT_KEYWORDS_KEY = "snf_highlight_keywords"
+
+def get_setting(cur: sqlite3.Cursor, key: str) -> str:
+    cur.execute("SELECT value FROM ai_settings WHERE key = ?", (key,))
+    row = cur.fetchone()
+    return (row["value"] if row else "") or ""
+
+def set_setting(conn: sqlite3.Connection, cur: sqlite3.Cursor, key: str, value: str) -> None:
+    cur.execute(
+        """
+        INSERT INTO ai_settings(key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value=excluded.value
+        """,
+        (key, value or ""),
+    )
+    conn.commit()
+
+@app.get("/admin/snf/highlight-keywords/get")
+async def admin_snf_highlight_keywords_get(request: Request):
+    require_admin(request)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        raw = get_setting(cur, SNF_HIGHLIGHT_KEYWORDS_KEY)
+        return {"ok": True, "keywords": raw}
+    finally:
+        conn.close()
+
+@app.post("/admin/snf/highlight-keywords/set")
+async def admin_snf_highlight_keywords_set(
+    request: Request,
+    payload: Dict[str, Any] = Body(...),
+):
+    require_admin(request)
+    keywords = (payload.get("keywords") or "").strip()
+
+    # light safety limits (prevents huge blobs)
+    if len(keywords) > 5000:
+        raise HTTPException(status_code=400, detail="keywords too long")
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        set_setting(conn, cur, SNF_HIGHLIGHT_KEYWORDS_KEY, keywords)
+        return {"ok": True}
+    finally:
+        conn.close()
 
 
 @app.get("/admin/snf-facilities/list")
@@ -4734,6 +4807,7 @@ async def admin_snf_list(
     status: str = Query("pending"),          # 'pending', 'confirmed', 'corrected', 'rejected', 'all'
     for_date: Optional[str] = Query(None),   # 'YYYY-MM-DD'
     days_ahead: int = Query(0, ge=0, le=30),
+    notified_only: int = Query(0),
 ):
     """
     List SNF admissions for the SNF Admissions page.
@@ -4759,6 +4833,10 @@ async def admin_snf_list(
         if status_s and status_s != "all":
             where.append("s.status = ?")
             params.append(status_s)
+            
+        # NEW: Notified-only filter
+        if int(notified_only or 0) == 1:
+            where.append("COALESCE(s.notified_by_hospital, 0) = 1")
 
         # Date filter: use last_seen_active_date so the list shows "active admissions"
         # - If days_ahead = 0: show only that exact date
@@ -4805,6 +4883,7 @@ async def admin_snf_list(
                     "patient_mrn": r["patient_mrn"],
                     "patient_name": r["patient_name"],
                     "hospital_name": r["hospital_name"],
+                    "notified_by_hospital": int(r["notified_by_hospital"] or 0),
                     "note_datetime": r["note_datetime"],
                     "ai_snf_name_raw": r["ai_snf_name_raw"],
                     "ai_expected_transfer_date": r["ai_expected_transfer_date"],
@@ -4878,6 +4957,16 @@ async def admin_snf_get_note(
             "facility_free_text": adm["facility_free_text"],
             "emailed_at": adm["emailed_at"],
             "email_run_id": adm["email_run_id"],
+            
+            # NEW: show admit_date in UI near hospital name
+            "admit_date": adm["admit_date"],
+
+            # NEW: notification fields
+            "notified_by_hospital": int(adm["notified_by_hospital"] or 0),
+            "notified_by": adm["notified_by"] or "",
+            "notification_dt": adm["notification_dt"] or "",
+            "hospital_reported_facility": adm["hospital_reported_facility"] or "",
+            "notification_details": adm["notification_details"] or "",
         }
 
         note_data = {
@@ -4990,6 +5079,12 @@ async def admin_snf_update(
 
     review_comments = (payload.get("review_comments") or "").strip()
     reviewer = (payload.get("reviewed_by") or "admin").strip()
+    notified_by_hospital = 1 if payload.get("notified_by_hospital") else 0
+    notified_by = (payload.get("notified_by") or "").strip()
+    notification_dt = (payload.get("notification_dt") or "").strip()
+    hospital_reported_facility = (payload.get("hospital_reported_facility") or "").strip()
+    notification_details = (payload.get("notification_details") or "").strip()
+
 
     # New: disposition + manual facility free text
     raw_disp = (payload.get("disposition") or "").strip()
@@ -5053,6 +5148,13 @@ async def admin_snf_update(
         # NOTE: for non-SNF dispositions we leave ai_is_snf_candidate alone,
         # but still record disposition and facility_free_text for audit.
 
+        # NEW: Notification fields
+        notified_by_hospital = 1 if payload.get("notified_by_hospital") else 0
+        notified_by = (payload.get("notified_by") or "").strip()
+        notification_dt = (payload.get("notification_dt") or "").strip()
+        hospital_reported_facility = (payload.get("hospital_reported_facility") or "").strip()
+        notification_details = (payload.get("notification_details") or "").strip()
+
         cur.execute(
             """
             UPDATE snf_admissions
@@ -5065,7 +5167,12 @@ async def admin_snf_update(
                    facility_free_text = ?,
                    ai_is_snf_candidate = ?,
                    final_snf_facility_id = ?,
-                   final_snf_name_display = ?
+                   final_snf_name_display = ?,
+                   notified_by_hospital = ?,
+                   notified_by = ?,
+                   notification_dt = ?,
+                   hospital_reported_facility = ?,
+                   notification_details = ?
              WHERE id = ?
             """,
             (
@@ -5078,9 +5185,15 @@ async def admin_snf_update(
                 new_ai_is_candidate,
                 new_final_facility_id,
                 new_final_name_display,
+                notified_by_hospital,
+                notified_by,
+                notification_dt,
+                hospital_reported_facility,
+                notification_details,
                 snf_id,
             ),
         )
+
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="SNF admission not found")
         conn.commit()
