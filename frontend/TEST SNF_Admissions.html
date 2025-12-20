@@ -503,8 +503,8 @@
     }
 
     .icon-btn .bell {
-      width: 60%;                  /* ← change me (icon size inside box) */
-      height: 60%;                 /* ← change me */
+      width: 50%;                  /* ← change me (icon size inside box) */
+      height: 50%;                 /* ← change me */
       display: block;
       color: #9ca3af;
     }
@@ -901,10 +901,18 @@
           </div>
 
           <div class="modal-body">
-            <label class="checkline" style="margin-top:0;">
-              <input id="nm-checked" type="checkbox" onchange="onNotifCheckedChanged()" />
-              <strong>Notified by Hospital</strong>
-            </label>
+            <div class="nm-toggle-row" style="margin-top:0;">
+              <!-- keep the checkbox in the DOM (hidden) so your existing saveNotif() logic still works -->
+              <input id="nm-checked" type="checkbox" onchange="onNotifCheckedChanged()" style="display:none;" />
+
+              <button id="nm-checked-btn"
+                      type="button"
+                      class="toggle-pill"
+                      aria-pressed="false"
+                      onclick="toggleNmChecked()">
+                Notified by Hospital
+              </button>
+            </div>
 
             <div class="grid2" style="margin-top:10px;">
               <div>
@@ -1075,9 +1083,15 @@
         if (ta) ta.value = (list || []).join("\n");
 
         // refresh note body if one is selected so highlights apply immediately
-        if (selectedId != null) {
-          const adm = admissions.find(x => x.id === selectedId);
-          if (adm) renderSelectedAdmission(adm);
+        // (but don’t mark keyword LOAD as failed if only the UI refresh fails)
+        try {
+          if (selectedId != null) {
+            const adm = admissions.find(x => x.id === selectedId);
+            if (adm) renderSelectedAdmission(adm);
+          }
+        } catch (uiErr) {
+          console.error("Post-load UI refresh error (keywords):", uiErr);
+          // keep status blank because keywords DID load
         }
       } catch (e) {
         if (status) status.textContent = "Could not load keywords.";
@@ -1169,12 +1183,29 @@
       if (m) m.classList.remove("open");
     }
 
+    function toggleNmChecked() {
+      const cb = document.getElementById("nm-checked");
+      if (!cb) return;
+
+      cb.checked = !cb.checked;
+      onNotifCheckedChanged();
+    }
+
     function onNotifCheckedChanged() {
       const checked = document.getElementById("nm-checked").checked;
+
+      // existing bell highlight behavior
       const btn = document.getElementById("notif-btn");
       if (btn) {
         if (checked) btn.classList.add("on");
         else btn.classList.remove("on");
+      }
+
+      // NEW: update the modal toggle button style/state
+      const tbtn = document.getElementById("nm-checked-btn");
+      if (tbtn) {
+        tbtn.classList.toggle("active", checked);
+        tbtn.setAttribute("aria-pressed", checked ? "true" : "false");
       }
     }
 
@@ -2050,7 +2081,7 @@
         document.getElementById("note-meta").innerHTML = `
           <div><strong>${adm.patient_name || ""}</strong>${visitLabel ? " (" + visitLabel + ")" : ""}</div>
           <div>${adm.hospital_name || ""}${admitTag}</div>
-          <div>AI SNF: ${adm.ai_snf_name_raw || "(none)"} | AI date: ${adm.ai_expected_transfer_date || "(none)"} | AI conf: ${adm.ai_confidence != null ? adm.ai_confidence.toFixed(2) : "(n/a)"}</div>
+          <div>AI SNF: ${adm.ai_snf_name_raw || "(none)"} | AI DC Date: ${adm.ai_expected_transfer_date || "(none)"} | AI conf: ${adm.ai_confidence != null ? adm.ai_confidence.toFixed(2) : "(n/a)"}</div>
           <div>
             <span class="email-badge ${emailedClass}">${emailedLabel}</span>
           </div>
@@ -2377,6 +2408,38 @@
     .pin-help{margin-top:6px;font-size:12px;color:#6b7280;display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
     .pin-help .dot{width:4px;height:4px;border-radius:999px;background:#A8E6CF;display:inline-block;}
     .checkline{display:flex;align-items:center;gap:8px;font-size:13px;color:#374151;font-weight:600;margin-top:6px;}
+    .nm-toggle-row{
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+
+    .toggle-pill{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding:9px 12px;
+      border-radius:999px;
+      border:1px solid #e5e7eb;
+      background:#f9fafb;
+      color:#6b7280;
+      font-weight:800;
+      font-size:13px;
+      cursor:pointer;
+      user-select:none;
+      line-height:1;
+    }
+
+    .toggle-pill:hover{
+      background:#ffffff;
+    }
+
+    .toggle-pill.active{
+      background:#ffffff;
+      border-color:#A8E6CF;
+      color:#A8E6CF;
+      box-shadow: 0 0 0 3px rgba(168,230,207,0.25);
+    }
 
     .btn-primary{background:#0D3B66;color:#fff;border:0;border-radius:12px;padding:10px 14px;font-weight:800;cursor:pointer;}
     .btn-primary:hover{background:#0b3357;}
