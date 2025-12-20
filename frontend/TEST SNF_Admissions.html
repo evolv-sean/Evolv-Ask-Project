@@ -309,13 +309,18 @@
     }
     .icon-btn:hover { background: #f9fafb; }
 
+    .icon-btn.on {
+      border-color: #A8E6CF;
+      box-shadow: 0 0 0 3px rgba(168, 230, 207, 0.28);
+    }
+
     .bell {
-      width: 18px;
-      height: 18px;
-      color: #9ca3af; /* grey default */
+      width: 24px;         /* bigger bell */
+      height: 24px;        /* bigger bell */
+      color: #9ca3af;      /* grey default */
     }
     .icon-btn.on .bell {
-      color: #A8E6CF; /* mint when checked */
+      color: #A8E6CF;      /* mint when checked */
     }
 
     /* NEW: subtle list icon */
@@ -579,16 +584,18 @@
         </div>
       </div>
     </section>
-      <!-- NEW: Settings modal -->
-      <div class="modal" id="settings-modal">
-        <div class="modal-inner" style="max-width:780px;">
-          <div class="modal-header">
-            <div style="font-weight:800;">Settings</div>
-            <button class="small" onclick="closeSettingsModal()">Close</button>
+      <!-- Settings modal (styled like Facility modal) -->
+      <div id="settings-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+        <div class="modal-card">
+          <div class="modal-head">
+            <div>
+              <div id="settings-modal-title" class="modal-title">Settings</div>
+              <div class="modal-sub">Admin token, universal PIN, and keyword highlighting.</div>
+            </div>
+            <button class="modal-x" onclick="closeSettingsModal()" aria-label="Close">✕</button>
           </div>
 
-          <div style="padding:12px 14px; display:flex; flex-direction:column; gap:14px;">
-
+          <div class="modal-body">
             <!-- Admin token -->
             <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa;">
               <div style="font-weight:800; color:#111827; margin-bottom:8px;">Admin token</div>
@@ -600,7 +607,7 @@
             </div>
 
             <!-- Universal PIN -->
-            <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa;">
+            <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa; margin-top:12px;">
               <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
                 <div>
                   <div style="font-weight:800; color:#111827;">Universal PIN (fallback)</div>
@@ -615,7 +622,7 @@
             </div>
 
             <!-- Highlight Keywords -->
-            <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa;">
+            <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa; margin-top:12px;">
               <div style="font-weight:800; color:#111827; margin-bottom:6px;">Highlighted keywords</div>
               <div style="font-size:12px; color:#6b7280; margin-bottom:8px;">
                 One per line. These will be highlighted in Case Management Notes with mint.
@@ -629,54 +636,61 @@
             </div>
 
             <!-- Future section placeholder -->
-            <div style="border:1px dashed #e5e7eb; border-radius:14px; padding:12px; background:#ffffff; color:#6b7280;">
+            <div style="border:1px dashed #e5e7eb; border-radius:14px; padding:12px; background:#ffffff; color:#6b7280; margin-top:12px;">
               Future settings will appear here.
             </div>
+          </div>
 
+          <div class="modal-foot">
+            <button class="btn-lite" onclick="closeSettingsModal()">Close</button>
           </div>
         </div>
       </div>
-      <!-- NEW: Notification modal -->
-      <div class="modal" id="notif-modal">
-        <div class="modal-inner" style="max-width:720px;">
-          <div class="modal-header">
-            <div style="font-weight:800;">Notification</div>
-            <button class="small" onclick="closeNotifModal()">Close</button>
+
+      <!-- Notification modal (styled like Facility modal) -->
+      <div id="notif-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="notif-modal-title">
+        <div class="modal-card" style="width:min(780px,100%);">
+          <div class="modal-head">
+            <div>
+              <div id="notif-modal-title" class="modal-title">Notification</div>
+              <div class="modal-sub">Capture hospital notification details for this admission.</div>
+            </div>
+            <button class="modal-x" onclick="closeNotifModal()" aria-label="Close">✕</button>
           </div>
 
-          <div style="padding:12px 14px; display:flex; flex-direction:column; gap:10px;">
-            <label style="display:flex; gap:8px; align-items:center;">
+          <div class="modal-body">
+            <div class="checkline" style="margin-top:0;">
               <input id="nm-checked" type="checkbox" onchange="onNotifCheckedChanged()" />
               <span><strong>Notified by Hospital</strong></span>
-            </label>
+            </div>
 
-            <div class="flex-row" style="gap:10px; flex-wrap:wrap;">
-              <div style="flex:1; min-width:220px;">
+            <div class="grid2" style="margin-top:10px;">
+              <div>
                 <label for="nm-by">Notified by</label>
                 <input id="nm-by" type="text" placeholder="Name / dept (optional)" />
               </div>
 
-              <div style="min-width:220px;">
+              <div>
                 <label for="nm-dt">Notification date/time</label>
                 <input id="nm-dt" type="datetime-local" />
               </div>
             </div>
 
-            <div>
-              <label for="nm-fac">Hospital reported Facility</label>
-              <input id="nm-fac" type="text" placeholder="Facility name as hospital stated" />
-            </div>
+            <label for="nm-fac">Hospital reported Facility</label>
+            <input id="nm-fac" type="text" placeholder="Facility name as hospital stated" />
 
-            <div>
-              <label for="nm-details">Notification Details</label>
-              <textarea id="nm-details" style="width:100%; min-height:90px;"
-                        placeholder="Any details you want saved with this admission..."></textarea>
-            </div>
+            <label for="nm-details">Notification details</label>
+            <textarea id="nm-details" rows="4"
+                      placeholder="Any details you want saved with this admission..."></textarea>
 
-            <div class="flex-row">
-              <button class="primary small" onclick="saveNotif()">Save notification</button>
+            <div class="flex-row" style="margin-top:10px;">
+              <button class="btn-primary" onclick="saveNotif()">Save notification</button>
               <span id="nm-status" class="message"></span>
             </div>
+          </div>
+
+          <div class="modal-foot">
+            <button class="btn-lite" onclick="closeNotifModal()">Cancel</button>
           </div>
         </div>
       </div>
@@ -1562,6 +1576,13 @@
         setEditFacilityByLabel(facilityLabel);
 
         document.getElementById("note-header-summary").textContent = `Editing SNF record ID ${adm.id}`;
+        
+        /* NEW: sync bell state with the selected admission */
+        const btn = document.getElementById("notif-btn");
+        if (btn) {
+          if (adm.notified_by_hospital) btn.classList.add("on");
+          else btn.classList.remove("on");
+        }
         document.getElementById("note-message").textContent = "";
       } catch (err) {
         console.error("selectRow error", err);
