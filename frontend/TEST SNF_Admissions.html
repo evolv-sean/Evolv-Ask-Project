@@ -330,15 +330,17 @@
       align-items: center;
     }
     .icon-btn {
-      width: 34px;
-      height: 34px;
-      border-radius: 10px;
+      width: 40px;                 /* ← change me */
+      height: 40px;                /* ← change me */
+      border-radius: 12px;
       border: 1px solid #e5e7eb;
       background: #ffffff;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
+      padding: 0;
+      overflow: hidden;            /* keeps it clean if icon is large */
     }
     .icon-btn:hover { background: #f9fafb; }
 
@@ -347,10 +349,11 @@
       box-shadow: 0 0 0 3px rgba(168, 230, 207, 0.28);
     }
 
-    .bell {
-      width: 36px;         /* bigger bell */
-      height: 36px;        /* bigger bell */
-      color: #9ca3af;      /* grey default */
+    .icon-btn .bell {
+      width: 60%;                  /* ← change me (icon size inside box) */
+      height: 60%;                 /* ← change me */
+      display: block;
+      color: #9ca3af;
     }
     .icon-btn.on .bell {
       color: #A8E6CF;      /* mint when checked */
