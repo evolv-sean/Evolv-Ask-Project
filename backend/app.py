@@ -6454,6 +6454,9 @@ async def admin_snf_email_pdf(
                 detail="No facility_emails configured for this SNF Admission Facility."
             )
 
+        # ✅ NEW: determine the recipient list we will send to (and log in DB)
+        to_addr = test_email_to if test_only else facility_emails
+
         # Look up the admissions (and DOB from raw notes)
         # Look up the admissions (DOB + Hospitalist)
         placeholders = ",".join("?" for _ in admission_ids)
@@ -6516,6 +6519,24 @@ async def admin_snf_email_pdf(
         conn.commit()
 
         secure_url = f"{base_url}/snf/secure/{raw_token}"
+
+        # ✅ NEW: build the outbound email (HTML + plain text)
+        subject = f"SNF Admissions List – {facility_name} – {for_date}"
+        if test_only:
+            subject = "[TEST] " + subject
+
+        plain_body = (
+            f"Secure SNF admissions list link (expires in {SNF_LINK_TTL_HOURS} hours):\n\n"
+            f"{secure_url}\n"
+        )
+        html_body = build_snf_secure_link_email_html(secure_url, SNF_LINK_TTL_HOURS)
+
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
+        msg["To"] = to_addr
+        msg.set_content(plain_body)
+        msg.add_alternative(html_body, subtype="html")
 
         try:
             context = ssl.create_default_context()
