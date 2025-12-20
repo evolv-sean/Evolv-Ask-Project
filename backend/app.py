@@ -2900,16 +2900,23 @@ def analyze_patient_notes_with_llm(
         "Rules:\n"
         "- Read the notes in time order. Later notes override earlier notes.\n"
         "- If the patient is clearly accepted to a SNF, set is_snf_candidate to true.\n"
-        "- If multiple SNFs are mentioned over time, choose the FINAL accepted facility or the latest facility based on the latest note "
-        "  (for example: if an early note says 'SNF Morse Life' but a later note says 'Confirmed with family "
-        "  patient is now going to Signature Healthcare SNF', you must use 'Signature Healthcare SNF' as snf_name).\n"
-        "- If the notes say the SNF plan is cancelled or changed to a different level of care "
-        "  (for example: 'no longer going to SNF', 'plan changed to home with home health', "
-        "  'family declined SNF and now wants home'), then set is_snf_candidate = false and use "
-        "  snf_name = null and expected_transfer_date = null, even if earlier notes talked about SNF.\n"
+        "- If multiple SNFs are mentioned over time, choose the FINAL accepted facility or the latest facility based on the latest note.\n"
+        "\n"
+        "- IMPORTANT: Insurance authorization language must be interpreted carefully:\n"
+        "  • If notes say SNF authorization is PENDING / UNDER REVIEW / REQUEST SUBMITTED / REF# present / awaiting decision,\n"
+        "    then is_snf_candidate should generally be TRUE (but confidence can be lower).\n"
+        "  • If notes say SNF auth was DENIED but there is an APPEAL in progress OR a PEER-TO-PEER (P2P) is being offered/attempted\n"
+        "    OR the denial is being contested (deadline, physician to call, expedited appeal), then keep is_snf_candidate = TRUE\n"
+        "    until there is a clear FINAL outcome.\n"
+        "  • If notes say the appeal was OVERTURNED / APPROVED / WON, treat SNF as continuing (is_snf_candidate = TRUE).\n"
+        "  • If notes say the appeal was UPHELD / LOST / denial stands AND the plan changes to home / home health / other level of care,\n"
+        "    then set is_snf_candidate = FALSE.\n"
+        "\n"
+        "- Only set is_snf_candidate = FALSE when the latest notes clearly indicate SNF is no longer the discharge plan\n"
+        "  (examples: 'no longer going to SNF', 'plan changed to home with home health', 'family declined SNF', 'discharging home today').\n"
         "- If the date is not clear, use null for expected_transfer_date.\n"
-        "- If the plan is uncertain or only mentioned as a vague possibility without a clear SNF discharge plan, "
-        "  set is_snf_candidate to false, snf_name = null, expected_transfer_date = null, confidence <= 0.4.\n"
+        "- If the plan is uncertain but SNF is still being pursued (pending auth / appeal / P2P), you may set is_snf_candidate = TRUE\n"
+        "  with confidence <= 0.5 and explain why in rationale.\n"
         "- Output ONLY the JSON object, with no extra text.\n"
     )
 
@@ -3429,6 +3436,36 @@ def notes_mention_possible_snf(notes: List[sqlite3.Row]) -> bool:
 
     return False
 
+def denial_is_contested_or_pending(notes: List[sqlite3.Row]) -> bool:
+    """
+    Returns True when the notes indicate SNF auth was denied BUT there is still
+    an active contest process (appeal / peer-to-peer / pending review), meaning
+    we should NOT auto-remove the SNF prospect yet.
+    """
+    all_text = " ".join((r["note_text"] or "") for r in notes).lower()
+
+    denied = any(p in all_text for p in [
+        "denied", "denial", "auth has been denied", "authorization has been denied", "snf auth has been denied"
+    ])
+    if not denied:
+        return False
+
+    still_in_play = any(p in all_text for p in [
+        "appeal", "appealing", "expedited appeal", "grievance",
+        "peer to peer", "peer-to-peer", "p2p",
+        "offered", "deadline", "call", "before",
+        "pending", "under review", "still pending", "awaiting", "in review", "ref#"
+    ])
+    if not still_in_play:
+        return False
+
+    # If the notes clearly say they are going home / HH is arranged / pickup today,
+    # treat that as SNF no longer the plan (even if earlier denial was contested).
+    clearly_not_snf_now = any(p in all_text for p in [
+        "discharging home", "going home", "daughter will be picking", "family picking",
+        "home health", "hh referral", "no further cm needs"
+    ])
+    return not clearly_not_snf_now
 
 
 def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
@@ -3503,39 +3540,54 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
 
             # 1) If the LLM explicitly says "no SNF plan" for this admission,
             #    treat this as a cancellation of any prior SNF admission.
+            #    BUT: do not auto-remove if auth was denied and is still being contested (appeal/P2P/pending).
             if result and not result.get("is_snf_candidate", False):
-                if visit_id_db:
-                    cur.execute(
-                        """
-                        UPDATE snf_admissions
-                           SET ai_is_snf_candidate = 0,
-                               status = 'removed',
-                               review_comments = COALESCE(review_comments, '') ||
-                                   ' [auto-removed based on later CM notes: plan no longer SNF]',
-                               last_seen_active_date = date('now')
-                         WHERE visit_id = ?
-                        """,
-                        (visit_id_db,),
-                    )
+                if denial_is_contested_or_pending(notes):
+                    # Keep it visible for review instead of removing the prospect prematurely
+                    result = {
+                        "is_snf_candidate": True,
+                        "snf_name": None,
+                        "expected_transfer_date": None,
+                        "confidence": 0.35,
+                        "rationale": (
+                            "Insurance denial is mentioned, but notes indicate appeal/peer-to-peer/"
+                            "pending review is still in progress; keep as SNF prospect until final outcome."
+                        ),
+                    }
                 else:
-                    # Fallback for legacy rows that may only have MRN
-                    cur.execute(
-                        """
-                        UPDATE snf_admissions
-                           SET ai_is_snf_candidate = 0,
-                               status = 'removed',
-                               review_comments = COALESCE(review_comments, '') ||
-                                   ' [auto-removed based on later CM notes: plan no longer SNF]',
-                               last_seen_active_date = date('now')
-                         WHERE visit_id IS NULL
-                           AND patient_mrn = ?
-                        """,
-                        (patient_mrn,),
-                    )
+                    if visit_id_db:
+                        cur.execute(
+                            """
+                            UPDATE snf_admissions
+                               SET ai_is_snf_candidate = 0,
+                                   status = 'removed',
+                                   review_comments = COALESCE(review_comments, '') ||
+                                       ' [auto-removed based on later CM notes: plan no longer SNF]',
+                                   last_seen_active_date = date('now')
+                             WHERE visit_id = ?
+                            """,
+                            (visit_id_db,),
+                        )
+                    else:
+                        # Fallback for legacy rows that may only have MRN
+                        cur.execute(
+                            """
+                            UPDATE snf_admissions
+                               SET ai_is_snf_candidate = 0,
+                                   status = 'removed',
+                                   review_comments = COALESCE(review_comments, '') ||
+                                       ' [auto-removed based on later CM notes: plan no longer SNF]',
+                                   last_seen_active_date = date('now')
+                             WHERE visit_id IS NULL
+                               AND patient_mrn = ?
+                            """,
+                            (patient_mrn,),
+                        )
 
-                patients_processed += 1
-                # Nothing more to do for this admission
-                continue
+                    patients_processed += 1
+                    # Nothing more to do for this admission
+                    continue
+
 
             # 2) If the LLM gave nothing back AND there is no clear SNF-ish language, skip.
             if not result and not has_snf_keywords:
