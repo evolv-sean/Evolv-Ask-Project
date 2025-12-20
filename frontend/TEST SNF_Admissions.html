@@ -404,21 +404,11 @@
       ⚙ Settings
     </button>
 
-    <!-- (we will move Universal PIN + Admin token into the Settings modal below) -->
-
-    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-      <div>
-        <div style="font-weight:800; color:#111827;">Universal PIN (fallback)</div>
-        <div id="universal-pin-status" style="font-size:12px; color:#6b7280; margin-top:2px;">Universal PIN: …</div>
-      </div>
-
-      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-        <input id="universal-pin" type="password" placeholder="Set universal PIN" style="width:220px;" />
-        <button class="small" onclick="saveUniversalPin()">Save</button>
-        <button class="small" onclick="clearUniversalPin()">Clear</button>
-      </div>
+    <!-- Optional: show status only (no duplicate input IDs) -->
+    <div id="universal-pin-status" style="margin-top:10px; font-size:12px; color:#6b7280;">
+      Universal PIN: …
     </div>
-  </div>
+
     <div class="token-box">
       <label for="admin-token">Admin token:</label>
       <input id="admin-token" type="password" placeholder="Paste ADMIN_TOKEN" />
@@ -473,6 +463,12 @@
               <option value="asc">A → Z</option>
               <option value="desc">Z → A</option>
             </select>
+          </div>
+          <div>
+            <label style="display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" id="filter-notified-only" onchange="loadAdmissions()" />
+              Notified only
+            </label>
           </div>
           <div>
             <label for="filter-notified">Notified</label><br />
@@ -756,6 +752,172 @@
         document.getElementById("admin-token").value = saved;
       }
     }
+
+    // ===============================
+    // Settings modal (open/close)
+    // ===============================
+    function openSettingsModal() {
+      const m = document.getElementById("settings-modal");
+      if (m) m.classList.add("open");
+
+      // load keywords into textarea whenever opened
+      loadKeywords();
+    }
+
+    function closeSettingsModal() {
+      const m = document.getElementById("settings-modal");
+      if (m) m.classList.remove("open");
+    }
+
+    // ===============================
+    // Highlight keywords (load/save)
+    // ===============================
+    async function loadKeywords() {
+      const token = getAdminToken();
+      const status = document.getElementById("kw-status");
+      if (status) status.textContent = "";
+
+      try {
+        const resp = await fetch("/admin/snf/highlight-keywords/get", {
+          headers: { "x-admin-token": token }
+        });
+        if (!resp.ok) throw new Error("Failed to load keywords");
+        const data = await resp.json();
+
+        highlightKeywords = data.keywords || [];
+        const ta = document.getElementById("kw-list");
+        if (ta) ta.value = (highlightKeywords || []).join("\n");
+
+        // refresh note body if one is selected so highlights apply immediately
+        if (selectedId != null) {
+          const adm = admissions.find(x => x.id === selectedId);
+          if (adm) renderSelectedAdmission(adm);
+        }
+      } catch (e) {
+        if (status) status.textContent = "Could not load keywords.";
+        console.error(e);
+      }
+    }
+
+    async function saveKeywords() {
+      const token = getAdminToken();
+      const status = document.getElementById("kw-status");
+      if (status) status.textContent = "Saving…";
+
+      try {
+        const raw = (document.getElementById("kw-list")?.value || "");
+        const list = splitKeywords(raw);
+
+        const resp = await fetch("/admin/snf/highlight-keywords/save", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-admin-token": token
+          },
+          body: JSON.stringify({ keywords: list })
+        });
+        if (!resp.ok) throw new Error("Failed to save keywords");
+
+        highlightKeywords = list;
+        if (status) status.textContent = "Saved.";
+
+        // refresh selected note (so highlight appears immediately)
+        if (selectedId != null) {
+          const adm = admissions.find(x => x.id === selectedId);
+          if (adm) renderSelectedAdmission(adm);
+        }
+
+        setTimeout(() => { if (status) status.textContent = ""; }, 2000);
+      } catch (e) {
+        if (status) status.textContent = "Save failed.";
+        console.error(e);
+      }
+    }
+
+    // ===============================
+    // Notification modal (open/close/save)
+    // ===============================
+    function openNotifModal() {
+      const m = document.getElementById("notif-modal");
+      if (m) m.classList.add("open");
+
+      // load current selected admission fields into modal
+      const adm = admissions.find(x => x.id === selectedId);
+      if (!adm) return;
+
+      document.getElementById("nm-checked").checked = !!adm.notified_by_hospital;
+      document.getElementById("nm-by").value = adm.notified_by || "";
+      document.getElementById("nm-dt").value = adm.notification_dt || "";
+      document.getElementById("nm-fac").value = adm.hospital_reported_facility || "";
+      document.getElementById("nm-details").value = adm.notification_details || "";
+
+      onNotifCheckedChanged();
+    }
+
+    function closeNotifModal() {
+      const m = document.getElementById("notif-modal");
+      if (m) m.classList.remove("open");
+    }
+
+    function onNotifCheckedChanged() {
+      const checked = document.getElementById("nm-checked").checked;
+      const btn = document.getElementById("notif-btn");
+      if (btn) {
+        if (checked) btn.classList.add("on");
+        else btn.classList.remove("on");
+      }
+    }
+
+    async function saveNotif() {
+      const status = document.getElementById("nm-status");
+      if (status) status.textContent = "Saving…";
+
+      const adm = admissions.find(x => x.id === selectedId);
+      if (!adm) {
+        if (status) status.textContent = "No admission selected.";
+        return;
+      }
+
+      const token = getAdminToken();
+      const payload = {
+        notified_by_hospital: document.getElementById("nm-checked").checked,
+        notified_by: document.getElementById("nm-by").value || "",
+        notification_dt: document.getElementById("nm-dt").value || "",
+        hospital_reported_facility: document.getElementById("nm-fac").value || "",
+        notification_details: document.getElementById("nm-details").value || ""
+      };
+
+      try {
+        const resp = await fetch(`/admin/snf-admissions/update/${adm.id}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-admin-token": token
+          },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) throw new Error("Save failed");
+
+        // Update local copy so the list + bell update immediately
+        adm.notified_by_hospital = payload.notified_by_hospital ? 1 : 0;
+        adm.notified_by = payload.notified_by;
+        adm.notification_dt = payload.notification_dt;
+        adm.hospital_reported_facility = payload.hospital_reported_facility;
+        adm.notification_details = payload.notification_details;
+
+        onNotifCheckedChanged();
+        if (status) status.textContent = "Saved.";
+
+        // re-render list to show subtle icon
+        renderRows(currentRows);
+
+        setTimeout(() => { if (status) status.textContent = ""; }, 2000);
+      } catch (e) {
+        console.error(e);
+        if (status) status.textContent = "Save failed.";
+      }
+    }
+
 
     function initDate() {
       // Default to no date selected so the backend returns all dates
@@ -1273,7 +1435,19 @@
             <div><strong>${r.patient_name || ""}</strong></div>
             <div style="color:#6b7280;">${underName}</div>
           </td>
-          <td>${r.hospital_name || ""}</td>
+          <td>
+            ${escapeHtml(r.hospital_name || "")}
+            ${
+              r.notified_by_hospital
+                ? ` <span class="notif-dot" title="Notified by Hospital" aria-label="Notified by Hospital">
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M12 22a2 2 0 0 0 2-2H10a2 2 0 0 0 2 2Z" stroke="currentColor" stroke-width="2"/>
+                        <path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2h16l-2-2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                      </svg>
+                    </span>`
+                : ""
+            }
+          </td>
           <td>${facLabel}</td>
           <td>${formatISOToMDY(r.effective_date)}</td>
           <td>${(r.ai_confidence != null ? r.ai_confidence.toFixed(2) : "")}</td>
@@ -1530,9 +1704,9 @@
       initDate();
       loadSnfFacilities();
       loadUniversalPinStatus();
-      // Optionally auto-load
-      // loadAdmissions();
+      loadKeywords(); // <-- add this
     });
+
   </script>
   
   <!-- Toast -->
