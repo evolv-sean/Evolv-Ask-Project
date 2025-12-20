@@ -58,6 +58,159 @@
       background:rgba(255,255,255,0.06);
       transition:transform .08s ease, background .15s ease, border-color .15s ease, color .15s ease;
     }
+    
+        /* NEW: email icon link (same styling as admin-link) */
+    .email-link{
+      position:absolute;
+      top:10px;
+      right:52px;              /* sits just left of the lock */
+      width:34px;
+      height:34px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      border-radius:12px;
+      color:#e5e7eb;
+      text-decoration:none;
+      border:1px solid rgba(229,231,235,0.22);
+      background:rgba(255,255,255,0.06);
+      transition:transform .08s ease, background .15s ease, border-color .15s ease, color .15s ease;
+    }
+    .email-link:hover{
+      background:rgba(255,255,255,0.12);
+      border-color:rgba(168,230,207,0.55);
+      color:#ffffff;
+    }
+    .email-link:active{
+      transform:scale(0.96);
+    }
+
+    /* NEW: Email Log modal layout */
+    .email-log-wrap{
+      display:grid;
+      grid-template-columns: 1.05fr 1fr;
+      gap:12px;
+      height: min(70vh, 620px);   /* not too tall; fits screen */
+      min-height: 360px;
+    }
+    .email-log-card{
+      border:1px solid #e5e7eb;
+      border-radius:14px;
+      background:#fafafa;
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+      min-width:0;
+    }
+    .email-log-card-head{
+      padding:10px 12px;
+      border-bottom:1px solid #e5e7eb;
+      background:#ffffff;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .email-log-card-title{
+      font-weight:800;
+      color:#111827;
+      font-size:13px;
+    }
+    .email-log-scroll{
+      padding:10px 12px;
+      overflow:auto;
+      min-height:0;
+    }
+
+    .email-item{
+      border:1px solid #e5e7eb;
+      background:#ffffff;
+      border-radius:12px;
+      padding:10px 10px;
+      margin-bottom:10px;
+      cursor:pointer;
+      transition: border-color .15s ease, box-shadow .15s ease, transform .08s ease;
+    }
+    .email-item:hover{
+      border-color: rgba(168,230,207,0.75);
+      box-shadow: 0 10px 24px rgba(15,23,42,0.10);
+    }
+    .email-item:active{ transform: scale(0.99); }
+    .email-item.active{
+      border-color:#A8E6CF;
+      box-shadow: 0 0 0 3px rgba(168,230,207,0.30);
+    }
+    .email-item-top{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .email-fac{
+      font-weight:800;
+      font-size:13px;
+      color:#111827;
+      line-height:1.2;
+    }
+    .email-meta{
+      font-size:11px;
+      color:#6b7280;
+      margin-top:6px;
+      line-height:1.35;
+      word-break:break-word;
+    }
+    .pdf-btn{
+      border:1px solid #e5e7eb;
+      background:#ffffff;
+      border-radius:10px;
+      width:30px;
+      height:30px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      cursor:pointer;
+      flex:0 0 auto;
+    }
+    .pdf-btn:hover{
+      border-color: rgba(168,230,207,0.85);
+    }
+    .pdf-btn svg{ width:16px; height:16px; color:#0D3B66; }
+
+    .open-row{
+      border:1px solid #e5e7eb;
+      background:#ffffff;
+      border-radius:12px;
+      padding:10px 10px;
+      margin-bottom:10px;
+    }
+    .open-top{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .pin-pill{
+      font-size:11px;
+      font-weight:800;
+      padding:3px 8px;
+      border-radius:999px;
+      border:1px solid #e5e7eb;
+      background:#f9fafb;
+      color:#111827;
+      text-transform:uppercase;
+      letter-spacing:0.03em;
+    }
+    .pin-pill.facility{ border-color:#A8E6CF; }
+    .pin-pill.universal{ border-color:#93c5fd; }
+    .pin-pill.default{ border-color:#fca5a5; }
+
+    .open-sub{
+      font-size:11px;
+      color:#6b7280;
+      margin-top:6px;
+      word-break:break-word;
+    }
+    
     .admin-link:hover{
       background:rgba(255,255,255,0.12);
       border-color:rgba(168,230,207,0.55);
@@ -439,6 +592,19 @@
   <header style="position:relative;">
     <h1>SNF Admissions – Audit & Notifications</h1>
 
+    <!-- Email log link (top-right, subtle email icon) -->
+    <a href="#"
+       class="email-link"
+       aria-label="Open Email Log"
+       title="Email Log"
+       onclick="openEmailLogModal(); return false;">
+      <!-- mail icon (SVG) -->
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+        <path d="M4 6h16v12H4V6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        <path d="M4 7l8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+      </svg>
+    </a>
+
     <!-- Admin link (top-right, subtle lock icon) -->
     <a href="#"
        class="admin-link"
@@ -451,6 +617,7 @@
               fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </a>
+
 
     <!-- Optional: show status only (no duplicate input IDs) -->
     <div id="universal-pin-status" style="margin-top:10px; font-size:12px; color:#6b7280;">
@@ -680,6 +847,51 @@
           </div>
         </div>
       </div>
+
+      <!-- Email Log modal (styled like Settings modal) -->
+      <div id="email-log-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="email-log-modal-title">
+        <div class="modal-card" style="width:min(980px,100%);">
+          <div class="modal-head">
+            <div>
+              <div id="email-log-modal-title" class="modal-title">Email Log</div>
+              <div class="modal-sub">Sent emails + access/open log (facility vs universal PIN).</div>
+            </div>
+            <button class="modal-x" onclick="closeEmailLogModal()" aria-label="Close">✕</button>
+          </div>
+
+          <div class="modal-body" style="overflow:hidden;">
+            <div class="email-log-wrap">
+              <!-- Left: emails -->
+              <div class="email-log-card">
+                <div class="email-log-card-head">
+                  <div class="email-log-card-title">Sent emails</div>
+                  <span id="email-log-left-status" class="message"></span>
+                </div>
+                <div id="email-log-list" class="email-log-scroll"></div>
+              </div>
+
+              <!-- Right: opens -->
+              <div class="email-log-card">
+                <div class="email-log-card-head">
+                  <div class="email-log-card-title">Opens / Access log</div>
+                  <span id="email-log-right-status" class="message"></span>
+                </div>
+                <div id="email-log-opens" class="email-log-scroll">
+                  <div class="message">Select an email on the left.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-foot">
+            <button class="btn-lite" onclick="closeEmailLogModal()">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notification modal (styled like Facility modal) -->
+      <div id="notif-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="notif-modal-title">
+
 
       <!-- Notification modal (styled like Facility modal) -->
       <div id="notif-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="notif-modal-title">
@@ -1432,6 +1644,193 @@
       el.textContent = text;
       el.className = "toast show " + (kind || "info");
       setTimeout(() => el.className = "toast", 2600);
+    }
+
+    /* ------- Email Log modal ------- */
+
+    let emailLogItems = [];
+    let emailLogSelectedId = null;
+
+    function openEmailLogModal() {
+      const modal = document.getElementById("email-log-modal");
+      if (!modal) return;
+      modal.classList.add("show");
+      loadEmailLog();
+    }
+
+    function closeEmailLogModal() {
+      const modal = document.getElementById("email-log-modal");
+      if (!modal) return;
+      modal.classList.remove("show");
+    }
+
+    async function loadEmailLog() {
+      const token = getAdminToken();
+      if (!token) {
+        showToast("Please paste your ADMIN_TOKEN first.", "error");
+        return;
+      }
+
+      const leftStatus = document.getElementById("email-log-left-status");
+      const rightStatus = document.getElementById("email-log-right-status");
+      const listEl = document.getElementById("email-log-list");
+      const opensEl = document.getElementById("email-log-opens");
+
+      if (leftStatus) leftStatus.textContent = "Loading…";
+      if (rightStatus) rightStatus.textContent = "";
+      if (listEl) listEl.innerHTML = "";
+      if (opensEl) opensEl.innerHTML = `<div class="message">Select an email on the left.</div>`;
+
+      try {
+        const resp = await fetch("/admin/snf/email-log/list", {
+          headers: { "X-Admin-Token": token }
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.detail || "ok=false");
+
+        emailLogItems = Array.isArray(data.items) ? data.items : [];
+        emailLogSelectedId = null;
+
+        renderEmailLogList();
+        if (leftStatus) leftStatus.textContent = emailLogItems.length ? "" : "No sent emails found.";
+      } catch (err) {
+        console.error("loadEmailLog error", err);
+        if (leftStatus) leftStatus.textContent = "Error loading.";
+        showToast("Error loading email log: " + err, "error");
+      }
+    }
+
+    function renderEmailLogList() {
+      const listEl = document.getElementById("email-log-list");
+      if (!listEl) return;
+
+      listEl.innerHTML = "";
+
+      emailLogItems.forEach(item => {
+        const div = document.createElement("div");
+        div.className = "email-item" + (String(item.secure_link_id) === String(emailLogSelectedId) ? " active" : "");
+
+        const fac = item.snf_facility_name || "(Receiving facility)";
+        const count = (item.patient_count != null) ? item.patient_count : "";
+        const when = item.sent_at_local || item.sent_at || "";
+        const to = item.sent_to || "";
+
+        div.innerHTML = `
+          <div class="email-item-top">
+            <div style="min-width:0;">
+              <div class="email-fac">${escapeHtml(fac)}</div>
+              <div class="email-meta">
+                <div><strong>Patients:</strong> ${escapeHtml(String(count))}</div>
+                <div><strong>Sent:</strong> ${escapeHtml(when)}</div>
+                <div><strong>Recipients:</strong> ${escapeHtml(to)}</div>
+              </div>
+            </div>
+
+            <button class="pdf-btn" title="Download PDF" onclick="event.stopPropagation(); downloadEmailLogPdf(${item.secure_link_id});">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 3v10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M8 11l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+        `;
+
+        div.onclick = () => selectEmailLogItem(item.secure_link_id);
+        listEl.appendChild(div);
+      });
+    }
+
+    async function selectEmailLogItem(secureLinkId) {
+      emailLogSelectedId = secureLinkId;
+      renderEmailLogList();
+
+      const token = getAdminToken();
+      const rightStatus = document.getElementById("email-log-right-status");
+      const opensEl = document.getElementById("email-log-opens");
+
+      if (rightStatus) rightStatus.textContent = "Loading…";
+      if (opensEl) opensEl.innerHTML = "";
+
+      try {
+        const resp = await fetch(`/admin/snf/email-log/opens/${secureLinkId}`, {
+          headers: { "X-Admin-Token": token }
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.detail || "ok=false");
+
+        const rows = Array.isArray(data.items) ? data.items : [];
+        if (!rows.length) {
+          if (opensEl) opensEl.innerHTML = `<div class="message">No opens yet for this email.</div>`;
+          if (rightStatus) rightStatus.textContent = "";
+          return;
+        }
+
+        if (opensEl) {
+          opensEl.innerHTML = "";
+          rows.forEach(r => {
+            const pinType = (r.pin_type || "").toLowerCase() || "unknown";
+            const pillClass =
+              pinType === "facility" ? "facility" :
+              pinType === "universal" ? "universal" :
+              pinType === "default" ? "default" : "";
+
+            const card = document.createElement("div");
+            card.className = "open-row";
+            card.innerHTML = `
+              <div class="open-top">
+                <span class="pin-pill ${pillClass}">${escapeHtml(pinType)}</span>
+                <div style="font-size:11px;color:#111827;font-weight:700;">${escapeHtml(r.accessed_at_local || r.accessed_at || "")}</div>
+              </div>
+              <div class="open-sub">
+                <div><strong>IP:</strong> ${escapeHtml(r.ip || "")}</div>
+                <div><strong>User-Agent:</strong> ${escapeHtml(r.user_agent || "")}</div>
+              </div>
+            `;
+            opensEl.appendChild(card);
+          });
+        }
+
+        if (rightStatus) rightStatus.textContent = "";
+      } catch (err) {
+        console.error("selectEmailLogItem error", err);
+        if (rightStatus) rightStatus.textContent = "Error loading.";
+        if (opensEl) opensEl.innerHTML = `<div class="message">Error loading opens: ${escapeHtml(String(err))}</div>`;
+      }
+    }
+
+    async function downloadEmailLogPdf(secureLinkId) {
+      const token = getAdminToken();
+      if (!token) {
+        showToast("Please paste your ADMIN_TOKEN first.", "error");
+        return;
+      }
+
+      try {
+        const resp = await fetch(`/admin/snf/email-log/pdf/${secureLinkId}`, {
+          headers: { "X-Admin-Token": token }
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `SNF_Email_${secureLinkId}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+      } catch (err) {
+        console.error("downloadEmailLogPdf error", err);
+        showToast("Error downloading PDF: " + err, "error");
+      }
     }
 
 
