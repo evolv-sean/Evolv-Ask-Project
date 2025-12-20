@@ -849,9 +849,12 @@
         if (!resp.ok) throw new Error("Failed to load keywords");
         const data = await resp.json();
 
-        highlightKeywords = data.keywords || [];
+        // API returns keywords as a single string; convert to list for the UI
+        const list = splitKeywords(data.keywords || "");
+        highlightKeywords = list;
+
         const ta = document.getElementById("kw-list");
-        if (ta) ta.value = (highlightKeywords || []).join("\n");
+        if (ta) ta.value = (list || []).join("\n");
 
         // refresh note body if one is selected so highlights apply immediately
         if (selectedId != null) {
@@ -873,15 +876,26 @@
         const raw = (document.getElementById("kw-list")?.value || "");
         const list = splitKeywords(raw);
 
-        const resp = await fetch("/admin/snf/highlight-keywords/save", {
+        // API expects keywords as ONE string blob (newline separated)
+        const keywordsBlob = list.join("\n");
+
+        const resp = await fetch("/admin/snf/highlight-keywords/set", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "x-admin-token": token
           },
-          body: JSON.stringify({ keywords: list })
+          body: JSON.stringify({ keywords: keywordsBlob })
         });
-        if (!resp.ok) throw new Error("Failed to save keywords");
+
+        let data = null;
+        try { data = await resp.json(); } catch (e) {}
+
+        if (!resp.ok) {
+          const detail = data && (data.detail || data.message);
+          throw new Error("HTTP " + resp.status + (detail ? " – " + detail : ""));
+        }
+        if (data && data.ok === false) throw new Error(data.detail || "ok=false");
 
         highlightKeywords = list;
         if (status) status.textContent = "Saved.";
@@ -953,15 +967,53 @@
       };
 
       try {
-        const resp = await fetch(`/admin/snf-admissions/update/${adm.id}`, {
+        // IMPORTANT: the backend save endpoint is /admin/snf/update
+        // and it requires status + the normal edit fields too.
+        const statusVal = (document.getElementById("edit-status")?.value || adm.status || "pending");
+        const dispositionVal = (document.getElementById("edit-disposition")?.value || adm.disposition || "");
+        const dateVal = (document.getElementById("edit-date")?.value || adm.final_expected_transfer_date || (adm.ai_expected_transfer_date || "") || "");
+
+        const facilitySelect = document.getElementById("edit-facility-select");
+        const facilityLabel =
+          facilitySelect && facilitySelect.value
+            ? facilitySelect.options[facilitySelect.selectedIndex].text
+            : (adm.facility_free_text || "");
+
+        const commentsVal = (document.getElementById("edit-comments")?.value || adm.review_comments || "");
+
+        const resp = await fetch(`/admin/snf/update`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "x-admin-token": token
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({
+            // required base fields
+            id: adm.id,
+            status: statusVal,
+            disposition: dispositionVal,
+            final_expected_transfer_date: dateVal || null,
+            facility_free_text: facilityLabel || "",
+            review_comments: commentsVal || "",
+
+            // notification modal fields
+            notified_by_hospital: payload.notified_by_hospital,
+            notified_by: payload.notified_by,
+            notification_dt: payload.notification_dt,
+            hospital_reported_facility: payload.hospital_reported_facility,
+            notification_details: payload.notification_details
+          })
         });
-        if (!resp.ok) throw new Error("Save failed");
+
+        let data = null;
+        try { data = await resp.json(); } catch (e) {}
+
+        if (!resp.ok) {
+          const detail = data && (data.detail || data.message);
+          throw new Error("HTTP " + resp.status + (detail ? " – " + detail : ""));
+        }
+        if (data && data.ok === false) throw new Error(data.detail || "ok=false");
+
 
         // Update local copy so the list + bell update immediately
         adm.notified_by_hospital = payload.notified_by_hospital ? 1 : 0;
