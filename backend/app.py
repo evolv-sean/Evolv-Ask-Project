@@ -5231,6 +5231,11 @@ async def admin_snf_send_emails(
 
 SNF_UNIVERSAL_PIN_KEY = "snf_universal_pin_hash"
 
+def get_snf_universal_pin_hash(cur) -> str:
+    cur.execute("SELECT value FROM ai_settings WHERE key = ?", (SNF_UNIVERSAL_PIN_KEY,))
+    row = cur.fetchone()
+    return ((row["value"] if row else "") or "").strip()
+
 @app.get("/admin/snf/universal-pin/get")
 async def admin_snf_universal_pin_get(request: Request):
     require_admin(request)
@@ -5913,11 +5918,23 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
             return HTMLResponse(_render_form("Please enter your Facility PIN."), status_code=401)
 
         expected_hash = (fac["pin_hash"] or "").strip()
-        if not expected_hash and SNF_DEFAULT_PIN:
-            expected_hash = hash_pin(SNF_DEFAULT_PIN)
+
+        # Fallback order:
+        # 1) Facility PIN (per-facility)
+        # 2) Universal PIN (stored in ai_settings)
+        # 3) SNF_DEFAULT_PIN env var (legacy fallback, optional)
+        if not expected_hash:
+            universal_hash = get_snf_universal_pin_hash(cur)
+            if universal_hash:
+                expected_hash = universal_hash
+            elif SNF_DEFAULT_PIN:
+                expected_hash = hash_pin(SNF_DEFAULT_PIN)
 
         if not expected_hash:
-            return HTMLResponse(_render_form("No facility PIN is configured. Please contact Evolv."), status_code=500)
+            return HTMLResponse(
+                _render_form("No facility PIN is configured. Please contact Evolv."),
+                status_code=500
+            )
 
         if not verify_pin(pin, expected_hash):
             return HTMLResponse(_render_form("Incorrect PIN. Please try again."), status_code=401)
@@ -6436,9 +6453,45 @@ async def snf_secure_token_pdf(token: str, pin: str = Form(...)):
         if expires_at and dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S") > expires_at:
             raise HTTPException(status_code=410, detail="Link expired")
 
-        # PIN check (simple default PIN for now)
-        if not SNF_DEFAULT_PIN or pin.strip() != SNF_DEFAULT_PIN:
-            raise HTTPException(status_code=401, detail="Invalid PIN")
+        # Normalize PIN
+        pin = (pin or "").strip()
+        if not pin:
+            return HTMLResponse("<h2>Missing PIN</h2><p>Please go back and enter your Facility PIN.</p>", status_code=401)
+
+        # Load facility (so we can validate facility pin_hash)
+        cur.execute("""
+          SELECT id, facility_name, attending, pin_hash
+          FROM snf_admission_facilities
+          WHERE id = ?
+        """, (int(link["snf_facility_id"]),))
+        fac = cur.fetchone()
+        if not fac:
+            raise HTTPException(status_code=404, detail="Facility not found")
+
+        expected_hash = (fac["pin_hash"] or "").strip()
+
+        # Same fallback order as /snf/secure/{token}
+        if not expected_hash:
+            universal_hash = get_snf_universal_pin_hash(cur)
+            if universal_hash:
+                expected_hash = universal_hash
+            elif SNF_DEFAULT_PIN:
+                expected_hash = hash_pin(SNF_DEFAULT_PIN)
+
+        if not expected_hash:
+            return HTMLResponse("<h2>PIN not configured</h2><p>Please contact Evolv.</p>", status_code=500)
+
+        if not verify_pin(pin, expected_hash):
+            return HTMLResponse("<h2>Invalid PIN</h2><p>Please go back and try again.</p>", status_code=401)
+
+        # (keep using these variables below as your code already does)
+        snf_facility_id = int(link["snf_facility_id"])
+        for_date = link["for_date"]
+        admission_ids = json.loads(link["admission_ids_json"] or "[]")
+
+        facility_name = fac["facility_name"] or "Receiving Facility"
+        attending = fac["attending"] or ""
+
 
         snf_facility_id = int(link["snf_facility_id"])
         for_date = link["for_date"]
