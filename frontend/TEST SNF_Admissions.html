@@ -845,10 +845,17 @@
       const status = document.getElementById("kw-status");
       if (status) status.textContent = "";
 
+      // ✅ Don’t even call the API if the token is missing
+      if (!token) {
+        if (status) status.textContent = "Paste ADMIN_TOKEN above, then reopen Settings.";
+        return;
+      }
+
       try {
         const resp = await fetch("/admin/snf/highlight-keywords/get", {
-          headers: { "x-admin-token": token }
+          headers: { "X-Admin-Token": token }
         });
+
         if (!resp.ok) throw new Error("Failed to load keywords");
         const data = await resp.json();
 
@@ -875,6 +882,12 @@
       const status = document.getElementById("kw-status");
       if (status) status.textContent = "Saving…";
 
+      // ✅ Don’t call the API if the token is missing
+      if (!token) {
+        if (status) status.textContent = "Paste ADMIN_TOKEN above, then try again.";
+        return;
+      }
+
       try {
         const raw = (document.getElementById("kw-list")?.value || "");
         const list = splitKeywords(raw);
@@ -886,7 +899,7 @@
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-admin-token": token
+            "X-Admin-Token": token
           },
           body: JSON.stringify({ keywords: keywordsBlob })
         });
@@ -900,21 +913,28 @@
         }
         if (data && data.ok === false) throw new Error(data.detail || "ok=false");
 
+        // ✅ Save succeeded — set UI/state now
         highlightKeywords = list;
         if (status) status.textContent = "Saved.";
 
-        // refresh selected note (so highlight appears immediately)
-        if (selectedId != null) {
-          const adm = admissions.find(x => x.id === selectedId);
-          if (adm) renderSelectedAdmission(adm);
+        // ✅ If the UI refresh fails, don’t lie and say “Save failed.”
+        try {
+          if (selectedId != null) {
+            const adm = admissions.find(x => x.id === selectedId);
+            if (adm) renderSelectedAdmission(adm);
+          }
+        } catch (uiErr) {
+          console.error("Post-save UI refresh error (keywords):", uiErr);
+          // Keep "Saved." — backend update already happened
         }
 
         setTimeout(() => { if (status) status.textContent = ""; }, 2000);
       } catch (e) {
-        if (status) status.textContent = "Save failed.";
         console.error(e);
+        if (status) status.textContent = "Save failed: " + e;
       }
     }
+
 
     // ===============================
     // Notification modal (open/close/save)
@@ -961,6 +981,10 @@
       }
 
       const token = getAdminToken();
+      if (!token) {
+        if (status) status.textContent = "Paste ADMIN_TOKEN in Settings first.";
+        return;
+      }
       const payload = {
         notified_by_hospital: document.getElementById("nm-checked").checked,
         notified_by: document.getElementById("nm-by").value || "",
@@ -988,7 +1012,7 @@
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-admin-token": token
+            "X-Admin-Token": token
           },
           body: JSON.stringify({
             // required base fields
@@ -1029,7 +1053,12 @@
         if (status) status.textContent = "Saved.";
 
         // re-render list to show subtle icon
-        renderRows(currentRows);
+        try {
+          renderRows(currentRows);
+        } catch (uiErr) {
+          console.error("Post-save UI refresh error (notif):", uiErr);
+          // Keep "Saved." — backend update already happened
+        }
 
         setTimeout(() => { if (status) status.textContent = ""; }, 2000);
       } catch (e) {
