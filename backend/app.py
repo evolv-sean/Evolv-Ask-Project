@@ -5917,27 +5917,22 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
         if not pin:
             return HTMLResponse(_render_form("Please enter your Facility PIN."), status_code=401)
 
-        expected_hash = (fac["pin_hash"] or "").strip()
+        # Accept Facility PIN OR Universal PIN OR SNF_DEFAULT_PIN
+        facility_hash = (fac["pin_hash"] or "").strip()
+        universal_hash = get_snf_universal_pin_hash(cur)  # stored in ai_settings
+        default_hash = hash_pin(SNF_DEFAULT_PIN) if SNF_DEFAULT_PIN else ""
 
-        # Fallback order:
-        # 1) Facility PIN (per-facility)
-        # 2) Universal PIN (stored in ai_settings)
-        # 3) SNF_DEFAULT_PIN env var (legacy fallback, optional)
-        if not expected_hash:
-            universal_hash = get_snf_universal_pin_hash(cur)
-            if universal_hash:
-                expected_hash = universal_hash
-            elif SNF_DEFAULT_PIN:
-                expected_hash = hash_pin(SNF_DEFAULT_PIN)
+        candidate_hashes = [h for h in (facility_hash, universal_hash, default_hash) if h]
 
-        if not expected_hash:
+        if not candidate_hashes:
             return HTMLResponse(
                 _render_form("No facility PIN is configured. Please contact Evolv."),
                 status_code=500
             )
 
-        if not verify_pin(pin, expected_hash):
+        if not any(verify_pin(pin, h) for h in candidate_hashes):
             return HTMLResponse(_render_form("Incorrect PIN. Please try again."), status_code=401)
+
 
         # Parse admission ids
         try:
@@ -6468,21 +6463,19 @@ async def snf_secure_token_pdf(token: str, pin: str = Form(...)):
         if not fac:
             raise HTTPException(status_code=404, detail="Facility not found")
 
-        expected_hash = (fac["pin_hash"] or "").strip()
+        # Accept Facility PIN OR Universal PIN OR SNF_DEFAULT_PIN
+        facility_hash = (fac["pin_hash"] or "").strip()
+        universal_hash = get_snf_universal_pin_hash(cur)
+        default_hash = hash_pin(SNF_DEFAULT_PIN) if SNF_DEFAULT_PIN else ""
 
-        # Same fallback order as /snf/secure/{token}
-        if not expected_hash:
-            universal_hash = get_snf_universal_pin_hash(cur)
-            if universal_hash:
-                expected_hash = universal_hash
-            elif SNF_DEFAULT_PIN:
-                expected_hash = hash_pin(SNF_DEFAULT_PIN)
+        candidate_hashes = [h for h in (facility_hash, universal_hash, default_hash) if h]
 
-        if not expected_hash:
+        if not candidate_hashes:
             return HTMLResponse("<h2>PIN not configured</h2><p>Please contact Evolv.</p>", status_code=500)
 
-        if not verify_pin(pin, expected_hash):
+        if not any(verify_pin(pin, h) for h in candidate_hashes):
             return HTMLResponse("<h2>Invalid PIN</h2><p>Please go back and try again.</p>", status_code=401)
+
 
         # (keep using these variables below as your code already does)
         snf_facility_id = int(link["snf_facility_id"])
