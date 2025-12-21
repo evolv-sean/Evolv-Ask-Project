@@ -78,7 +78,7 @@ ASK_HTML = FRONTEND_DIR / "TEST Ask.html"
 ADMIN_HTML = FRONTEND_DIR / "TEST Admin.html"
 FACILITY_HTML = FRONTEND_DIR / "TEST  Facility_Details.html"  # note double space
 SNF_HTML = FRONTEND_DIR / "TEST SNF_Admissions.html"
-HOSPITAL_DISCHARGE_HTML = BASE_DIR / "Hospital_Discharge.html"
+HOSPITAL_DISCHARGE_HTML = FRONTEND_DIR / "Hospital_Discharge.html"
 
 
 
