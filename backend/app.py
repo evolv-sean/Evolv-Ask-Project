@@ -1492,6 +1492,175 @@ async def pad_cm_notes_bulk(
 # ---------------------------------------------------------------------------
 # Hospital Document ingest (raw text -> document + sections) ✅ NEW
 # ---------------------------------------------------------------------------
+
+
+# PAD → Hospital documents bulk ingest endpoint  ✅ NEW
+@app.post("/api/pad/hospital-documents/bulk")
+async def pad_hospital_documents_bulk(request: Request):
+    """
+    Bulk ingest of Hospital Documents from PAD.
+
+    Accepts:
+      1) Raw array: [ { hospital_name, document_type, source_text, ... }, ... ]
+      2) PAD DataTable wrapper: { "DataTable": [ {...}, ... ] }
+    """
+    require_pad_api_key(request)
+
+    raw_bytes = await request.body()
+    raw_text = raw_bytes.decode("utf-8", errors="ignore").strip()
+    if not raw_text:
+        raise HTTPException(status_code=400, detail="Empty request body")
+
+    # TEMP debug
+    print("[pad_hospital_documents_bulk] raw body:", raw_text[:500])
+
+    try:
+        payload = json.loads(raw_text)
+    except json.JSONDecodeError:
+        start = raw_text.find("{")
+        end = raw_text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise HTTPException(status_code=400, detail="Could not parse request body as JSON")
+        payload = json.loads(raw_text[start : end + 1])
+
+    if isinstance(payload, dict) and "DataTable" in payload:
+        docs = payload.get("DataTable") or []
+    else:
+        docs = payload
+
+    if not isinstance(docs, list) or not docs:
+        raise HTTPException(
+            status_code=400,
+            detail="Request body must be a non-empty JSON array or an object with a non-empty 'DataTable' array",
+        )
+
+    conn = get_db()
+    inserted = 0
+    skipped = 0
+    errors: List[Dict[str, Any]] = []
+
+    try:
+        for idx, row in enumerate(docs):
+            if not isinstance(row, dict):
+                skipped += 1
+                errors.append({"index": idx, "error": "row is not an object"})
+                continue
+
+            # Required
+            hospital_name = str(row.get("hospital_name") or "").strip()
+            document_type = str(row.get("document_type") or "").strip()
+            source_text = str(row.get("source_text") or "").strip()
+
+            if not hospital_name or not document_type or not source_text:
+                skipped += 1
+                errors.append(
+                    {"index": idx, "error": "hospital_name, document_type, source_text are required"}
+                )
+                continue
+
+            # Optional fields supported by your existing ingest endpoint
+            doc_payload = {
+                "hospital_name": hospital_name,
+                "document_type": document_type,
+                "source_text": source_text,
+                "document_datetime": (str(row.get("document_datetime") or "").strip() or None),
+                "patient_mrn": (str(row.get("patient_mrn") or "").strip() or None),
+                "patient_name": (str(row.get("patient_name") or "").strip() or None),
+                "dob": (str(row.get("dob") or "").strip() or None),
+                "visit_id": (str(row.get("visit_id") or "").strip() or None),
+                "admit_date": (str(row.get("admit_date") or "").strip() or None),
+                "dc_date": (str(row.get("dc_date") or "").strip() or None),
+                "source_system": (str(row.get("source_system") or "EMR").strip() or "EMR"),
+            }
+
+            # Reuse the same logic as /api/hospital-documents/ingest (inline)
+            profile_map = load_extraction_profile(conn, hospital_name, document_type)
+            sections = split_document_into_sections(source_text, heading_map_override=profile_map)
+
+            cur = conn.cursor()
+
+            cur.execute(
+                """
+                INSERT INTO hospital_documents (
+                    hospital_name, document_type, document_datetime,
+                    patient_mrn, patient_name, dob, visit_id,
+                    admit_date, dc_date,
+                    source_text, source_system
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    doc_payload["hospital_name"],
+                    doc_payload["document_type"],
+                    doc_payload["document_datetime"],
+                    doc_payload["patient_mrn"],
+                    doc_payload["patient_name"],
+                    doc_payload["dob"],
+                    doc_payload["visit_id"],
+                    doc_payload["admit_date"],
+                    doc_payload["dc_date"],
+                    doc_payload["source_text"],
+                    doc_payload["source_system"],
+                ),
+            )
+            document_id = cur.lastrowid
+
+            # Upsert hub row (same behavior as your existing ingest endpoint)
+            if doc_payload["visit_id"]:
+                cur.execute(
+                    """
+                    INSERT INTO hospital_discharges (
+                        visit_id, patient_mrn, patient_name, hospital_name,
+                        admit_date, dc_date,
+                        updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                    ON CONFLICT(visit_id) DO UPDATE SET
+                        patient_mrn   = COALESCE(excluded.patient_mrn, hospital_discharges.patient_mrn),
+                        patient_name  = COALESCE(excluded.patient_name, hospital_discharges.patient_name),
+                        hospital_name = COALESCE(excluded.hospital_name, hospital_discharges.hospital_name),
+                        admit_date    = COALESCE(excluded.admit_date, hospital_discharges.admit_date),
+                        dc_date       = COALESCE(excluded.dc_date, hospital_discharges.dc_date),
+                        updated_at    = datetime('now')
+                    """,
+                    (
+                        doc_payload["visit_id"],
+                        doc_payload["patient_mrn"],
+                        doc_payload["patient_name"],
+                        doc_payload["hospital_name"],
+                        doc_payload["admit_date"],
+                        doc_payload["dc_date"],
+                    ),
+                )
+
+            # Store sections
+            for i, s in enumerate(sections, start=1):
+                cur.execute(
+                    """
+                    INSERT INTO hospital_document_sections (
+                        document_id, section_key, section_title, section_order, section_text
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        document_id,
+                        s["section_key"],
+                        s.get("section_title"),
+                        i,
+                        s["section_text"],
+                    ),
+                )
+
+            inserted += 1
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {"ok": True, "inserted": inserted, "skipped": skipped, "errors": errors}
+
+
+
 @app.post("/api/hospital-documents/ingest")
 async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
     """
