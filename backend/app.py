@@ -5505,10 +5505,17 @@ async def admin_snf_email_log_list(request: Request):
                 l.sent_at,
                 l.sent_to,
                 l.admission_ids,
-                f.facility_name AS snf_facility_name
+                f.facility_name AS snf_facility_name,
+                COALESCE(o.open_count, 0) AS open_count
             FROM snf_secure_links l
             LEFT JOIN snf_admission_facilities f
               ON f.id = l.snf_facility_id
+            LEFT JOIN (
+                SELECT secure_link_id, COUNT(*) AS open_count
+                FROM snf_secure_link_access_log
+                GROUP BY secure_link_id
+            ) o
+              ON o.secure_link_id = l.id
             WHERE l.sent_at IS NOT NULL AND l.sent_at <> ''
             ORDER BY l.sent_at DESC
             LIMIT 250
@@ -5538,6 +5545,7 @@ async def admin_snf_email_log_list(request: Request):
                     "sent_at_local": sent_at_local,
                     "sent_to": (r["sent_to"] or "").strip(),
                     "patient_count": patient_count,
+                    "open_count": int(r["open_count"] or 0),
                 }
             )
 
