@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hospital Discharges • Evolv</title>
+  <style>
+    :root{
+      --navy:#0D3B66;
+      --navy-2:#0b3357;
+      --grey:#F5F7FA;
+      --cool:#E5E7EB;
+      --cool-2:#D1D5DB;
+      --text:#111827;
+      --muted:#6B7280;
+      --mint:#A8E6CF;
+      --mint-2: rgba(168,230,207,.35);
+      --sky:#59A5D8;
+      --white:#FFFFFF;
+      --danger:#B91C1C;
+    }
+    *{box-sizing:border-box;}
+    body{margin:0;background:var(--grey);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;}
+    .page{padding:18px 18px 24px;max-width:1600px;margin:0 auto;}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;}
+    .titleblock{display:flex;flex-direction:column;gap:3px;}
+    .kicker{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700;}
+    .pagetitle{font-size:20px;font-weight:900;color:var(--navy);line-height:1.15;}
+    .subtitle{font-size:12px;color:var(--muted);}
+    .actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;}
+    .token-pill{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border-radius:999px;border:1px solid var(--cool);background:var(--white);box-shadow:0 10px 24px rgba(0,0,0,.06);font-size:12px;color:var(--muted);font-weight:700;white-space:nowrap;}
+    .dot{width:10px;height:10px;border-radius:999px;background:var(--cool-2);box-shadow:0 0 0 3px rgba(209,213,219,.35);}
+    .dot.ok{background:var(--mint);box-shadow:0 0 0 3px var(--mint-2);}
+    .icon-btn{width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;border:1px solid var(--cool);background:var(--white);box-shadow:0 10px 24px rgba(0,0,0,.06);cursor:pointer;transition:transform .08s ease, box-shadow .08s ease, border-color .08s ease;position:relative;}
+    .icon-btn:hover{transform:translateY(-1px);border-color:var(--mint);box-shadow:0 14px 28px rgba(0,0,0,.08);}
+    .icon-btn:active{transform:translateY(0px);}
+    .icon-btn svg{width:18px;height:18px;fill:var(--navy);}
+    .grid{display:grid;grid-template-columns:520px 1fr;gap:14px;align-items:stretch;min-height:calc(100vh - 120px);}
+    .card{background:var(--white);border:1px solid var(--cool);border-radius:18px;box-shadow:0 16px 34px rgba(0,0,0,.06);overflow:hidden;display:flex;flex-direction:column;min-height:0;}
+    .card-head{padding:14px 16px 10px;border-bottom:1px solid #F1F5F9;display:flex;align-items:flex-end;justify-content:space-between;gap:10px;}
+    .card-title{font-size:14px;font-weight:900;color:var(--navy);display:flex;gap:10px;align-items:center;}
+    .mint-accent{width:10px;height:10px;border-radius:999px;background:var(--mint);box-shadow:0 0 0 4px var(--mint-2);}
+    .card-sub{font-size:12px;color:var(--muted);margin-top:2px;}
+    .card-body{padding:12px 12px 14px;overflow:auto;min-height:0;}
+    .mini-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
+    .pill{display:inline-flex;align-items:center;gap:8px;padding:7px 10px;border-radius:999px;border:1px solid var(--cool);background:#FBFDFF;color:var(--muted);font-size:12px;font-weight:700;}
+    .pill .mini-dot{width:8px;height:8px;border-radius:999px;background:var(--cool-2);}
+    table{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border-radius:14px;border:1px solid var(--cool);}
+    thead th{font-size:10px;letter-spacing:.10em;text-transform:uppercase;color:#4B5563;padding:10px 12px;text-align:left;border-bottom:1px solid var(--cool);background:#FAFBFC;position:sticky;top:0;z-index:2;white-space:nowrap;}
+    tbody td{padding:10px 12px;border-bottom:1px solid #F1F5F9;vertical-align:middle;font-size:12.5px;color:var(--text);}
+    tbody tr:nth-child(even){background:#F9FAFB;}
+    tbody tr:hover{background:#F0FFFA;}
+    tbody tr.selected{outline:2px solid var(--mint);outline-offset:-2px;background:#FFFFFF;}
+    .cell-patient strong{font-weight:900;color:var(--navy);}
+    .cell-patient .sub{display:block;margin-top:2px;font-size:10.5px;color:var(--muted);font-weight:700;}
+    .muted{color:var(--muted);}
+    .status-chip{display:inline-flex;align-items:center;justify-content:center;padding:6px 10px;border-radius:999px;border:1px dashed var(--cool);background:#FFFFFF;color:#9CA3AF;font-size:11px;font-weight:800;min-width:64px;}
+    .visit-summary{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-bottom:12px;border-bottom:1px solid #F1F5F9;margin-bottom:12px;}
+    .field{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border:1px solid var(--cool);border-radius:14px;background:#FBFDFF;}
+    .field label{font-size:10px;letter-spacing:.10em;text-transform:uppercase;color:#6B7280;font-weight:900;}
+    .field .val{font-size:13px;font-weight:900;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .field .val.muted{color:#374151;font-weight:800;}
+    .visit-panels{display:grid;grid-template-columns:340px 1fr;gap:12px;min-height:0;height:100%;}
+    .subcard{border:1px solid var(--cool);border-radius:16px;background:#FFFFFF;box-shadow:0 10px 24px rgba(0,0,0,.05);overflow:hidden;display:flex;flex-direction:column;min-height:0;}
+    .subhead{padding:12px 12px 10px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+    .subhead strong{font-size:12px;color:var(--navy);font-weight:900;display:flex;align-items:center;gap:10px;}
+    .subbody{padding:10px;overflow:auto;min-height:0;}
+    .doc-item{border:1px solid var(--cool);border-radius:14px;padding:10px 10px;background:#FFFFFF;cursor:pointer;transition:border-color .08s ease, transform .08s ease;margin-bottom:10px;}
+    .doc-item:hover{border-color:var(--mint);transform:translateY(-1px);}
+    .doc-item.active{border-color:var(--mint);box-shadow:0 0 0 3px var(--mint-2);}
+    .doc-item .t{font-weight:900;color:var(--navy);font-size:12.5px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+    .doc-item .m{margin-top:4px;font-size:11px;color:var(--muted);font-weight:700;}
+    .section{border:1px solid #EEF2F7;border-radius:16px;background:#FFFFFF;padding:12px 12px;margin-bottom:12px;}
+    .section h4{margin:0 0 6px 0;font-size:12px;font-weight:900;color:var(--navy);display:flex;align-items:center;gap:8px;}
+    .section h4 .badge{font-size:10px;letter-spacing:.10em;text-transform:uppercase;color:#6B7280;font-weight:900;padding:4px 8px;border-radius:999px;border:1px solid var(--cool);background:#FBFDFF;}
+    .section pre{margin:0;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;line-height:1.45;color:#111827;}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(17,24,39,.45);display:none;align-items:center;justify-content:center;padding:16px;z-index:999;}
+    .modal-backdrop.open{display:flex;}
+    .modal{width:min(760px, 100%);background:var(--white);border:1px solid var(--cool);border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,.22);overflow:hidden;display:flex;flex-direction:column;max-height:80vh;min-height:0;}
+    .modal-head{padding:14px 16px 12px;border-bottom:1px solid #F1F5F9;display:flex;align-items:flex-end;justify-content:space-between;gap:10px;}
+    .modal-title{font-size:14px;font-weight:900;color:var(--navy);display:flex;align-items:center;gap:10px;}
+    .modal-body{padding:14px 16px;overflow:auto;min-height:0;}
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+    .input{display:flex;flex-direction:column;gap:6px;}
+    .input label{font-size:10px;letter-spacing:.10em;text-transform:uppercase;color:#6B7280;font-weight:900;}
+    input[type="text"], input[type="date"], select{width:100%;padding:11px 12px;border-radius:12px;border:1px solid var(--cool-2);font-size:13px;outline:none;background:#FFFFFF;}
+    input[type="text"]:focus, input[type="date"]:focus, select:focus{border-color:var(--mint);box-shadow:0 0 0 3px var(--mint-2);}
+    .modal-foot{padding:12px 16px;border-top:1px solid #F1F5F9;display:flex;align-items:center;justify-content:center;gap:10px;}
+    .btn{border:none;padding:11px 16px;border-radius:12px;cursor:pointer;font-weight:900;font-size:13px;box-shadow:0 12px 26px rgba(0,0,0,.08);}
+    .btn.primary{background:var(--navy);color:#fff;}
+    .btn.primary:hover{background:var(--navy-2);}
+    .btn.ghost{background:#FFFFFF;color:var(--navy);border:1px solid var(--cool);box-shadow:none;}
+    .btn.ghost:hover{border-color:var(--mint);}
+    .tiny-note{font-size:12px;color:var(--muted);line-height:1.45;}
+    @media (max-width:1120px){.grid{grid-template-columns:1fr;}}
+    @media (max-width:640px){.visit-summary{grid-template-columns:1fr;}.visit-panels{grid-template-columns:1fr;}.form-grid{grid-template-columns:1fr;}}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="topbar">
+      <div class="titleblock">
+        <div class="kicker">Discharge Packet Hub</div>
+        <div class="pagetitle">Hospital Discharges</div>
+        <div class="subtitle">One row per Visit ID • documents and sections update as new records arrive</div>
+      </div>
+      <div class="actions">
+        <div class="token-pill" title="Admin token status (placeholder)">
+          <span class="dot" id="adminDot"></span>
+          <span id="adminStatusText">Admin token: unknown</span>
+        </div>
+        <button class="icon-btn" id="btnFilter" title="Filters">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5a1 1 0 0 1 1-1h16a1 1 0 0 1 .8 1.6l-6.6 8.8a1 1 0 0 0-.2.6v3.6a1 1 0 0 1-.55.9l-3 1.5A1 1 0 0 1 9 20.1V15a1 1 0 0 0-.2-.6L2.2 5.6A1 1 0 0 1 3 5z"/></svg>
+        </button>
+        <button class="icon-btn" id="btnSettings" title="Settings">
+  <!-- sliders -->
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M4 21v-7h2v7H4zm0-11V3h2v7H4zm7 11V3h2v18h-2zm7 0v-9h2v9h-2zm0-13V3h2v5h-2z"/>
+  </svg>
+</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title"><span class="mint-accent"></span>Discharges</div>
+            <div class="card-sub" id="leftSub">Loading…</div>
+          </div>
+          <div class="mini-filters" id="activeFilterPills">
+            <span class="pill"><span class="mini-dot"></span> All hospitals</span>
+            <span class="pill"><span class="mini-dot"></span> All dispositions</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:34%;">Patient</th>
+                <th style="width:22%;">Hospital</th>
+                <th style="width:18%;">Admit–DC</th>
+                <th style="width:14%;">Disposition</th>
+                <th style="width:12%;">Status</th>
+              </tr>
+            </thead>
+            <tbody id="dischargeTbody"></tbody>
+          </table>
+          <div class="tiny-note" style="margin-top:10px;">
+            Tip: Click a row to load <b>Visit Details</b>. New documents auto-attach to the same Visit ID.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title"><span class="mint-accent"></span>Visit Details</div>
+            <div class="card-sub" id="rightSub">Select a discharge on the left</div>
+          </div>
+          <div class="mini-filters">
+            <span class="pill" title="Reserved for future e-fax status"><span class="mini-dot"></span> Fax: —</span>
+            <span class="pill" title="Reserved for future AI status"><span class="mini-dot"></span> AI: —</span>
+          </div>
+        </div>
+        <div class="card-body" id="visitDetailsBody">
+          <div class="tiny-note">Nothing selected yet.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="filterModal">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title"><span class="mint-accent"></span>Filters</div>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="input">
+            <label>Hospital name contains</label>
+            <input type="text" id="fHospital" placeholder="e.g., Mount Sinai" />
+          </div>
+          <div class="input">
+            <label>Disposition</label>
+            <select id="fDisposition">
+              <option value="">All</option>
+              <option>Home</option>
+              <option>SNF</option>
+              <option>IRF</option>
+              <option>LTACH</option>
+              <option>Hospice</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="input">
+            <label>DC date from</label>
+            <input type="date" id="fDcFrom" />
+          </div>
+          <div class="input">
+            <label>DC date to</label>
+            <input type="date" id="fDcTo" />
+          </div>
+        </div>
+        <div class="tiny-note" style="margin-top:10px;">Filters are client-side for now (fast). We can move them server-side later if needed.</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost" id="btnFilterCancel">Cancel</button>
+        <button class="btn primary" id="btnFilterApply">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="settingsModal">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title"><span class="mint-accent"></span>Settings</div>
+      </div>
+      <div class="modal-body">
+        <div class="tiny-note">
+          This page uses the same “admin token / settings modal” pattern as SNF Admissions.
+          For Hospital Discharges, settings will expand later (e-fax, extraction profiles, etc.).
+        </div>
+        <div style="height:12px;"></div>
+        <div class="subcard" style="max-height:48vh;">
+          <div class="subhead">
+            <strong><span class="mint-accent"></span>Hospital Extraction Profiles</strong>
+          </div>
+          <div class="subbody">
+            <div class="tiny-note">
+              Backend table exists (<code>hospital_extraction_profiles</code>). Admin CRUD endpoints can be added next.
+              For now, the ingest endpoint automatically uses any saved profile mappings (when you add them).
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost" id="btnSettingsClose">Close</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const $ = (sel) => document.querySelector(sel);
+
+  function fmtDate(d){
+    if(!d) return "—";
+    return String(d).split("T")[0];
+  }
+  function safe(v){ return (v === null || v === undefined || v === "") ? "—" : String(v); }
+
+  let allItems = [];
+  let filteredItems = [];
+  let selectedVisitId = null;
+  let selectedDocId = null;
+
+  async function loadDischarges(){
+    $("#leftSub").textContent = "Loading…";
+    const res = await fetch("/api/hospital-discharges/list");
+    const data = await res.json();
+    if(!data.ok){
+      $("#leftSub").textContent = "Failed to load.";
+      return;
+    }
+    allItems = data.items || [];
+    applyFilters(false);
+    $("#leftSub").textContent = `${filteredItems.length} visits`;
+  }
+
+  function renderTable(){
+    const tbody = $("#dischargeTbody");
+    tbody.innerHTML = "";
+
+    if(filteredItems.length === 0){
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="5" class="muted">No discharges found.</td>`;
+      tbody.appendChild(tr);
+      return;
+    }
+
+    for(const row of filteredItems){
+      const tr = document.createElement("tr");
+      tr.dataset.visitId = row.visit_id || "";
+      if(selectedVisitId && row.visit_id === selectedVisitId) tr.classList.add("selected");
+
+      const admit = fmtDate(row.admit_date);
+      const dc = fmtDate(row.dc_date);
+      const dateRange = (admit === "—" && dc === "—") ? "—" : `${admit} – ${dc}`;
+
+      tr.innerHTML = `
+        <td class="cell-patient">
+          <strong>${safe(row.patient_name)}</strong>
+          <span class="sub">Visit ID: ${safe(row.visit_id)}</span>
+        </td>
+        <td>${safe(row.hospital_name)}</td>
+        <td class="muted">${dateRange}</td>
+        <td>${safe(row.disposition) === "—" ? '<span class="muted">—</span>' : safe(row.disposition)}</td>
+        <td><span class="status-chip">Doc</span></td>
+      `;
+      tr.addEventListener("click", () => selectVisit(row.visit_id));
+      tbody.appendChild(tr);
+    }
+  }
+
+  async function selectVisit(visitId){
+    if(!visitId) return;
+    selectedVisitId = visitId;
+    selectedDocId = null;
+    renderTable();
+
+    $("#rightSub").textContent = `Visit ID: ${visitId}`;
+    $("#visitDetailsBody").innerHTML = `<div class="tiny-note">Loading visit…</div>`;
+
+    const res = await fetch(`/api/hospital-discharges/visit/${encodeURIComponent(visitId)}`);
+    const data = await res.json();
+    if(!data.ok){
+      $("#visitDetailsBody").innerHTML = `<div class="tiny-note" style="color:var(--danger);">Failed to load visit.</div>`;
+      return;
+    }
+
+    const v = data.visit || {};
+    const docs = data.documents || [];
+    const sectionsByDoc = data.sections_by_doc || {};
+    const firstDocId = docs.length ? docs[0].id : null;
+    selectedDocId = firstDocId;
+
+    $("#visitDetailsBody").innerHTML = `
+      <div class="visit-summary">
+        <div class="field">
+          <label>Patient</label>
+          <div class="val">${safe(v.patient_name)}</div>
+          <div class="val muted">MRN: ${safe(v.patient_mrn)}</div>
+        </div>
+        <div class="field">
+          <label>Hospital</label>
+          <div class="val">${safe(v.hospital_name)}</div>
+          <div class="val muted">Disposition: ${safe(v.disposition)}</div>
+        </div>
+        <div class="field">
+          <label>Admit date</label>
+          <div class="val">${fmtDate(v.admit_date)}</div>
+          <div class="val muted">Updated: ${safe(v.updated_at)}</div>
+        </div>
+        <div class="field">
+          <label>DC date</label>
+          <div class="val">${fmtDate(v.dc_date)}</div>
+          <div class="val muted">Docs: ${docs.length}</div>
+        </div>
+      </div>
+
+      <div class="visit-panels">
+        <div class="subcard">
+          <div class="subhead">
+            <strong><span class="mint-accent"></span>Documents</strong>
+          </div>
+          <div class="subbody" id="docList"></div>
+        </div>
+
+        <div class="subcard">
+          <div class="subhead">
+            <strong><span class="mint-accent"></span>Document Sections</strong>
+          </div>
+          <div class="subbody" id="sectionList"></div>
+        </div>
+      </div>
+    `;
+
+    renderDocList(docs);
+
+    if(firstDocId && sectionsByDoc[String(firstDocId)]){
+      renderSections(sectionsByDoc[String(firstDocId)], docs.find(d=>d.id===firstDocId));
+    } else if(firstDocId){
+      await loadSections(firstDocId, docs.find(d=>d.id===firstDocId));
+    } else {
+      $("#sectionList").innerHTML = `<div class="tiny-note">No documents yet for this visit.</div>`;
+    }
+  }
+
+  function renderDocList(docs){
+    const el = $("#docList");
+    el.innerHTML = "";
+    if(!docs.length){
+      el.innerHTML = `<div class="tiny-note">No documents yet.</div>`;
+      return;
+    }
+    for(const d of docs){
+      const item = document.createElement("div");
+      item.className = "doc-item" + ((selectedDocId === d.id) ? " active" : "");
+      item.innerHTML = `
+        <div class="t">
+          <span>${safe(d.document_type)}</span>
+          <span class="muted" style="font-weight:900;">#${d.id}</span>
+        </div>
+        <div class="m">Doc DT: ${fmtDate(d.document_datetime)} • Added: ${fmtDate(d.created_at)}</div>
+      `;
+      item.addEventListener("click", async () => {
+        selectedDocId = d.id;
+        [...document.querySelectorAll(".doc-item")].forEach(x => x.classList.remove("active"));
+        item.classList.add("active");
+        await loadSections(d.id, d);
+      });
+      el.appendChild(item);
+    }
+  }
+
+  async function loadSections(docId, doc){
+    const el = $("#sectionList");
+    el.innerHTML = `<div class="tiny-note">Loading sections for ${safe(doc?.document_type)}…</div>`;
+    const res = await fetch(`/api/hospital-documents/${docId}/sections`);
+    const data = await res.json();
+    if(!data.ok){
+      el.innerHTML = `<div class="tiny-note" style="color:var(--danger);">Failed to load sections.</div>`;
+      return;
+    }
+    renderSections(data.items || [], doc);
+  }
+
+  function renderSections(items, doc){
+    const el = $("#sectionList");
+    if(!items.length){
+      el.innerHTML = `<div class="tiny-note">No sections found for this document.</div>`;
+      return;
+    }
+    el.innerHTML = items.map(s => `
+      <div class="section">
+        <h4>
+          ${safe(s.section_title) === "—" ? "Section" : safe(s.section_title)}
+          <span class="badge">${safe(s.section_key)}</span>
+        </h4>
+        <pre>${escapeHtml(s.section_text || "")}</pre>
+      </div>
+    `).join("");
+  }
+
+  function escapeHtml(str){
+    return String(str)
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
+  }
+
+  function applyFilters(rerender=true){
+    const h = ($("#fHospital")?.value || "").trim().toLowerCase();
+    const disp = ($("#fDisposition")?.value || "").trim().toLowerCase();
+    const dcFrom = $("#fDcFrom")?.value || "";
+    const dcTo = $("#fDcTo")?.value || "";
+
+    filteredItems = allItems.filter(r => {
+      const hosp = String(r.hospital_name || "").toLowerCase();
+      const d = String(r.disposition || "").toLowerCase();
+      const dc = fmtDate(r.dc_date);
+
+      if(h && !hosp.includes(h)) return false;
+      if(disp && d !== disp) return false;
+      if(dcFrom && (dc === "—" || dc < dcFrom)) return false;
+      if(dcTo && (dc === "—" || dc > dcTo)) return false;
+      return true;
+    });
+
+    if(rerender){
+      $("#leftSub").textContent = `${filteredItems.length} visits`;
+      renderTable();
+    }
+    updateFilterPills(h, disp, dcFrom, dcTo);
+  }
+
+  function updateFilterPills(h, disp, dcFrom, dcTo){
+    const pills = $("#activeFilterPills");
+    const p1 = h ? `Hospital: ${h}` : "All hospitals";
+    const p2 = disp ? `Disposition: ${disp}` : "All dispositions";
+    const p3 = (dcFrom || dcTo) ? `DC: ${dcFrom || "…"} → ${dcTo || "…"}`
+                               : null;
+
+    pills.innerHTML = `
+      <span class="pill"><span class="mini-dot"></span> ${p1}</span>
+      <span class="pill"><span class="mini-dot"></span> ${p2}</span>
+      ${p3 ? `<span class="pill"><span class="mini-dot"></span> ${p3}</span>` : ``}
+    `;
+  }
+
+  function openModal(id){ $(id).classList.add("open"); }
+  function closeModal(id){ $(id).classList.remove("open"); }
+
+  $("#btnFilter").addEventListener("click", () => openModal("#filterModal"));
+  $("#btnFilterCancel").addEventListener("click", () => closeModal("#filterModal"));
+  $("#btnFilterApply").addEventListener("click", () => { applyFilters(true); closeModal("#filterModal"); });
+
+  $("#btnSettings").addEventListener("click", () => openModal("#settingsModal"));
+  $("#btnSettingsClose").addEventListener("click", () => closeModal("#settingsModal"));
+
+  ["#filterModal","#settingsModal"].forEach(id=>{
+    $(id).addEventListener("click", (e)=>{
+      if(e.target.classList.contains("modal-backdrop")) closeModal(id);
+    });
+  });
+
+  function setAdminTokenStatus(isSet){
+    const dot = $("#adminDot");
+    const txt = $("#adminStatusText");
+    if(isSet){
+      dot.classList.add("ok");
+      txt.textContent = "Admin token: set";
+    } else {
+      dot.classList.remove("ok");
+      txt.textContent = "Admin token: not set";
+    }
+  }
+  setAdminTokenStatus(false);
+
+  loadDischarges().then(renderTable);
+</script>
+</body>
+</html>
