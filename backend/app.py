@@ -1650,6 +1650,26 @@ async def pad_hospital_documents_bulk(request: Request):
                     ),
                 )
 
+                # ✅ NEW: derive disposition from raw source_text (only if not already set)
+                cur.execute(
+                    "SELECT disposition FROM hospital_discharges WHERE visit_id = ?",
+                    (doc_payload["visit_id"],),
+                )
+                existing = cur.fetchone()
+                existing_disp = (existing["disposition"] if existing else None)
+
+                if not (existing_disp and str(existing_disp).strip()):
+                    dispo = analyze_discharge_disposition_with_llm(doc_payload["source_text"])
+                    if dispo and dispo.get("disposition"):
+                        cur.execute(
+                            """
+                            UPDATE hospital_discharges
+                            SET disposition = ?, updated_at = datetime('now')
+                            WHERE visit_id = ?
+                            """,
+                            (dispo["disposition"], doc_payload["visit_id"]),
+                        )
+
             # Store sections
             for i, s in enumerate(sections, start=1):
                 cur.execute(
@@ -1766,6 +1786,22 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
                 (visit_id, patient_mrn, patient_name, hospital_name, admit_date, dc_date),
             )
 
+            # ✅ NEW: derive disposition from raw source_text (only if not already set)
+            cur.execute("SELECT disposition FROM hospital_discharges WHERE visit_id = ?", (visit_id,))
+            existing = cur.fetchone()
+            existing_disp = (existing["disposition"] if existing else None)
+
+            if not (existing_disp and str(existing_disp).strip()):
+                dispo = analyze_discharge_disposition_with_llm(source_text)
+                if dispo and dispo.get("disposition"):
+                    cur.execute(
+                        """
+                        UPDATE hospital_discharges
+                        SET disposition = ?, updated_at = datetime('now')
+                        WHERE visit_id = ?
+                        """,
+                        (dispo["disposition"], visit_id),
+                    )
 
         # 2) Insert each section row
         for s in sections:
@@ -3585,6 +3621,155 @@ def analyze_patient_notes_with_llm(
         "confidence": conf,
         "rationale": rationale,
     }
+
+
+def _heuristic_disposition_from_text(source_text: str) -> Optional[str]:
+    """
+    Fast heuristic pass to avoid an LLM call when the disposition is obvious.
+    Returns a normalized disposition string or None if unclear.
+    """
+    t = (source_text or "").lower()
+
+    # strongest first
+    if re.search(r"\bexpired\b|\bdeceased\b|\bdeath\b", t):
+        return "Expired"
+    if re.search(r"\bhospice\b|\bcomfort care\b", t):
+        return "Hospice"
+    if re.search(r"\bama\b|against medical advice", t):
+        return "AMA"
+
+    # IRF / inpatient rehab
+    if re.search(r"\birf\b|inpatient rehab|inpatient rehabilitation|acute rehab", t):
+        return "IRF"
+
+    # SNF
+    if re.search(r"\bsnf\b|skilled nursing|inpatient snf", t):
+        return "SNF"
+
+    # LTACH
+    if re.search(r"\bltach\b|long[-\s]?term acute care", t):
+        return "LTACH"
+
+    # Home Health
+    if re.search(r"home health|hha\b|homecare services|home care services", t):
+        return "Home Health"
+
+    # Home self-care
+    if re.search(r"home[ /-]?self[ /-]?care|discharg(e|ed) home\b|\bhome\b.*self care", t):
+        return "Home Self-care"
+
+    # Generic rehab (when NOT clearly IRF)
+    if re.search(r"\brehab\b|rehabilitation facility|subacute rehab|sar\b", t):
+        return "Rehab"
+
+    return None
+
+
+def analyze_discharge_disposition_with_llm(source_text: str) -> Optional[Dict[str, Any]]:
+    """
+    Uses the LLM (with a heuristic shortcut) to determine discharge disposition from raw hospital source_text.
+    Returns: {"disposition": str, "confidence": float, "evidence": str}
+    """
+    if not source_text or not source_text.strip():
+        return None
+
+    # 1) Cheap heuristic shortcut
+    heuristic = _heuristic_disposition_from_text(source_text)
+    if heuristic:
+        return {"disposition": heuristic, "confidence": 0.85, "evidence": "heuristic"}
+
+    # 2) LLM pass (trim to reduce token cost)
+    text = source_text.strip()
+    if len(text) > 12000:
+        text = text[:12000]
+
+    system_msg = (
+        "You extract discharge disposition from messy hospital document text.\n"
+        "Return ONLY a JSON object.\n"
+        "Pick exactly ONE disposition from this list:\n"
+        "- Home Self-care\n"
+        "- Home Health\n"
+        "- SNF\n"
+        "- IRF\n"
+        "- Rehab\n"
+        "- LTACH\n"
+        "- Hospice\n"
+        "- AMA\n"
+        "- Expired\n"
+        "- Other\n"
+        "- Unknown\n"
+        "\n"
+        "Rules:\n"
+        "- Prefer explicit discharge disposition / discharge location lines if present.\n"
+        "- If it says 'home with home health' => Home Health.\n"
+        "- 'home' or 'home/self care' with no services => Home Self-care.\n"
+        "- 'SNF', 'skilled nursing facility', 'inpatient SNF' => SNF.\n"
+        "- 'IRF', 'inpatient rehab', 'acute rehab' => IRF.\n"
+        "- If only 'rehab' with no IRF language => Rehab.\n"
+        "- If unclear, use Unknown.\n"
+        "- Include a short evidence quote (<= 140 chars) copied from the text.\n"
+        "- Output schema:\n"
+        "  {\"disposition\":\"...\",\"confidence\":0.0-1.0,\"evidence\":\"...\"}\n"
+    )
+
+    user_msg = f"Source text:\n{text}\n\nExtract the discharge disposition."
+
+    try:
+        chat = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg},
+            ],
+        )
+        raw = (chat.choices[0].message.content or "").strip()
+    except Exception as e:
+        print("[dispo-llm] LLM error:", e)
+        return None
+
+    # Parse JSON (same robust pattern you used in snf-llm)
+    try:
+        data = json.loads(raw)
+    except Exception:
+        try:
+            start = raw.find("{")
+            end = raw.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                data = json.loads(raw[start : end + 1])
+            else:
+                print("[dispo-llm] Could not parse JSON from:", raw[:500])
+                return None
+        except Exception as e2:
+            print("[dispo-llm] JSON parse failed:", e2, " raw:", raw[:500])
+            return None
+
+    disp = str(data.get("disposition") or "").strip()
+    evidence = str(data.get("evidence") or "").strip()
+
+    try:
+        conf = float(data.get("confidence", 0.0))
+    except Exception:
+        conf = 0.0
+    conf = max(0.0, min(conf, 1.0))
+
+    allowed = {
+        "Home Self-care",
+        "Home Health",
+        "SNF",
+        "IRF",
+        "Rehab",
+        "LTACH",
+        "Hospice",
+        "AMA",
+        "Expired",
+        "Other",
+        "Unknown",
+    }
+    if disp not in allowed:
+        disp = "Unknown"
+
+    return {"disposition": disp, "confidence": conf, "evidence": evidence}
+
 
 
 
