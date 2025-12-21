@@ -816,12 +816,14 @@
       outline: 2px solid rgba(168,230,207,.95);
     }
 
-    /* Keep your special row background colors, but soften them */
-    tr.pending{  background: rgba(255, 237, 213, .55); }
-    tr.confirmed{background: rgba(220, 252, 231, .55); }
-    tr.corrected{background: rgba(224, 242, 254, .55); }
-    tr.rejected{ background: rgba(254, 226, 226, .55); }
-    tr.removed{  background: rgba(229, 231, 235, .70); }
+    /* Status rows: do NOT tint rows (keep zebra only) */
+    tr.pending,
+    tr.confirmed,
+    tr.corrected,
+    tr.rejected,
+    tr.removed{
+      background: transparent !important;
+    }
 
     /* Note panel area */
     .note-body{ background:#fff; }
@@ -930,7 +932,7 @@
       </div>
       <div class="panel-header" style="border-top:1px solid #e5e7eb;">
         <div class="flex-row">
-          <button class="btn btn-primary btn-small" onclick="sendEmails(false)">Send emails for date</button>
+          <button class="btn btn-primary btn-small" onclick="sendEmails(false)">Send Email</button>
           <button class="btn btn-small" onclick="sendEmails(true)">Test email</button>
           <input id="test-email-to" type="text" placeholder="test@example.com (for test only)" style="width:180px;" />
         </div>
