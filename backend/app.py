@@ -78,6 +78,7 @@ ASK_HTML = FRONTEND_DIR / "TEST Ask.html"
 ADMIN_HTML = FRONTEND_DIR / "TEST Admin.html"
 FACILITY_HTML = FRONTEND_DIR / "TEST  Facility_Details.html"  # note double space
 SNF_HTML = FRONTEND_DIR / "TEST SNF_Admissions.html"
+HOSPITAL_DISCHARGE_HTML = BASE_DIR / "Hospital_Discharge.html"
 
 
 
@@ -757,7 +758,7 @@ def init_db():
             patient_mrn        TEXT,
             patient_name       TEXT,
             dob                TEXT,
-            visit_id           TEXT,   -- ✅ SINGLE admission-level identifier
+            visit_id           TEXT,   --
 
             source_text        TEXT NOT NULL,
             source_system      TEXT DEFAULT 'EMR',
@@ -766,6 +767,18 @@ def init_db():
         )
         """
     )
+
+    # Ensure new columns exist on older hospital_documents tables (safe no-op if already exists)
+    try:
+        cur.execute("ALTER TABLE hospital_documents ADD COLUMN admit_date TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE hospital_documents ADD COLUMN dc_date TEXT")
+    except sqlite3.Error:
+        pass
+
 
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_hosp_docs_hosp_type_dt ON hospital_documents (hospital_name, document_type, document_datetime DESC)"
@@ -797,6 +810,38 @@ def init_db():
     )
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_doc_sections_key ON hospital_document_sections (section_key)"
+    )
+
+    # -------------------------------------------------------------------
+    # Hospital Discharges hub table (one row per visit_id) ✅ NEW
+    # -------------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS hospital_discharges (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            visit_id       TEXT NOT NULL,   -- group key (one "encounter / discharge packet")
+            patient_mrn    TEXT,
+            patient_name   TEXT,
+            hospital_name  TEXT,
+
+            admit_date     TEXT,
+            dc_date        TEXT,
+
+            disposition    TEXT,            -- AI-derived later (Home, SNF, IRF, etc.)
+            updated_at     TEXT DEFAULT (datetime('now')),
+            created_at     TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_hosp_discharge_visit ON hospital_discharges (visit_id)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_hosp_discharge_patient ON hospital_discharges (patient_mrn, patient_name)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_hosp_discharge_hosp_dates ON hospital_discharges (hospital_name, admit_date, dc_date)"
     )
 
     # SNF admissions derived from CM notes
@@ -1470,6 +1515,11 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
     patient_name = (payload.get("patient_name") or "").strip() or None
     dob = (payload.get("dob") or "").strip() or None
     visit_id = (payload.get("visit_id") or "").strip() or None
+
+    # ✅ NEW: admit/discharge dates (optional; PAD/API can send later)
+    admit_date = (payload.get("admit_date") or "").strip() or None
+    dc_date = (payload.get("dc_date") or "").strip() or None
+
     source_system = (payload.get("source_system") or "EMR").strip() or "EMR"
 
     conn = get_db()
@@ -1486,9 +1536,10 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
             INSERT INTO hospital_documents (
                 hospital_name, document_type, document_datetime,
                 patient_mrn, patient_name, dob, visit_id,
+                admit_date, dc_date,
                 source_text, source_system
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 hospital_name,
@@ -1498,12 +1549,37 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
                 patient_name,
                 dob,
                 visit_id,
+                admit_date,
+                dc_date,
                 source_text,
                 source_system,
             ),
         )
 
         document_id = cur.lastrowid
+        
+        # ✅ NEW: upsert the discharge "hub" row by visit_id (if provided)
+        if visit_id:
+            cur.execute(
+                """
+                INSERT INTO hospital_discharges (
+                    visit_id, patient_mrn, patient_name, hospital_name,
+                    admit_date, dc_date,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(visit_id) DO UPDATE SET
+                    patient_mrn   = COALESCE(excluded.patient_mrn, hospital_discharges.patient_mrn),
+                    patient_name  = COALESCE(excluded.patient_name, hospital_discharges.patient_name),
+                    hospital_name = COALESCE(excluded.hospital_name, hospital_discharges.hospital_name),
+                    admit_date    = COALESCE(excluded.admit_date, hospital_discharges.admit_date),
+                    dc_date       = COALESCE(excluded.dc_date, hospital_discharges.dc_date),
+                    updated_at    = datetime('now')
+                """
+                ,
+                (visit_id, patient_mrn, patient_name, hospital_name, admit_date, dc_date),
+            )
+
 
         # 2) Insert each section row
         for s in sections:
@@ -6490,6 +6566,108 @@ async def snf_secure_link_get(token: str, request: Request):
     finally:
         conn.close()
 
+@app.get("/api/hospital-discharges/list")
+async def hospital_discharges_list():
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+                visit_id,
+                patient_name,
+                patient_mrn,
+                hospital_name,
+                admit_date,
+                dc_date,
+                disposition,
+                updated_at
+            FROM hospital_discharges
+            ORDER BY COALESCE(dc_date, admit_date, updated_at) DESC, updated_at DESC
+            LIMIT 500
+            """
+        )
+        return {"ok": True, "items": [dict(r) for r in cur.fetchall()]}
+    finally:
+        conn.close()
+
+@app.get("/api/hospital-discharges/visit/{visit_id}")
+async def hospital_discharge_visit_details(visit_id: str):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT
+                visit_id, patient_name, patient_mrn, hospital_name,
+                admit_date, dc_date, disposition, updated_at
+            FROM hospital_discharges
+            WHERE visit_id = ?
+            """,
+            (visit_id,),
+        )
+        visit = cur.fetchone()
+        if not visit:
+            raise HTTPException(status_code=404, detail="visit_id not found")
+
+        cur.execute(
+            """
+            SELECT
+                id,
+                document_type,
+                document_datetime,
+                hospital_name,
+                created_at
+            FROM hospital_documents
+            WHERE visit_id = ?
+            ORDER BY COALESCE(document_datetime, created_at) DESC
+            """,
+            (visit_id,),
+        )
+        docs = [dict(r) for r in cur.fetchall()]
+
+        # Optionally include sections for the newest doc by default
+        sections_by_doc = {}
+        if docs:
+            first_doc_id = docs[0]["id"]
+            cur.execute(
+                """
+                SELECT section_key, section_title, section_order, section_text
+                FROM hospital_document_sections
+                WHERE document_id = ?
+                ORDER BY section_order ASC
+                """,
+                (first_doc_id,),
+            )
+            sections_by_doc[str(first_doc_id)] = [dict(r) for r in cur.fetchall()]
+
+        return {
+            "ok": True,
+            "visit": dict(visit),
+            "documents": docs,
+            "sections_by_doc": sections_by_doc,
+        }
+    finally:
+        conn.close()
+
+@app.get("/api/hospital-documents/{document_id}/sections")
+async def hospital_document_sections_get(document_id: int):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT section_key, section_title, section_order, section_text
+            FROM hospital_document_sections
+            WHERE document_id = ?
+            ORDER BY section_order ASC
+            """,
+            (document_id,),
+        )
+        return {"ok": True, "items": [dict(r) for r in cur.fetchall()]}
+    finally:
+        conn.close()
 
 @app.post("/snf/secure/{token}")
 async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] = Form(None)):
@@ -7038,6 +7216,11 @@ async def snf_admissions_ui():
     # New SNF admissions audit page
     return HTMLResponse(content=read_html(SNF_HTML))
 
+from fastapi.responses import FileResponse
+
+@app.get("/hospital-discharges", response_class=HTMLResponse)
+def hospital_discharges_page():
+    return read_html(HOSPITAL_DISCHARGE_HTML)
 
 @app.get("/facility", response_class=HTMLResponse)
 async def facility_ui():
