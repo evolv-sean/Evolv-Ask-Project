@@ -383,21 +383,15 @@
       color: #111827;
     }
 
-    tr.pending {
-      background: #fff7ed;
+    /* Status rows: no fill colors — keep zebra (white + cool grey) */
+    tr.pending,
+    tr.confirmed,
+    tr.corrected,
+    tr.rejected,
+    tr.removed{
+      background: transparent;
     }
-    tr.confirmed {
-      background: #ecfdf3;
-    }
-    tr.corrected {
-      background: #e0f2fe;
-    }
-    tr.rejected {
-      background: #fee2e2;
-    }
-    tr.removed {
-      background: #e5e7eb;
-    }
+
     tr.selected {
       outline: 2px solid #2563eb;
     }
@@ -679,10 +673,9 @@
     .icon-btn:active{ transform: translateY(0px); }
 
     /* Make your header <a> links look like icon buttons */
+    /* Keep header links as links, but allow icon-btn to control the box */
     a.email-link, a.admin-link{
-      width:auto; height:auto;
-      border:none; background:transparent;
-      padding:0; color:inherit;
+      color:inherit;
       text-decoration:none;
     }
 
@@ -728,11 +721,14 @@
       display:block;
       font-size:12px;
       color:#374151;
-      margin:0 0 6px;
+      margin:0 0 2px; /* tighter */
       font-weight:900;
       text-transform:none;
       letter-spacing:0;
     }
+
+    /* remove the extra line-gap created by the <br /> after labels in filters */
+    .filters br{ display:none; }
 
     /* Evolv inputs/selects for MAIN page (modals override later anyway) */
     input[type="text"],
@@ -858,7 +854,7 @@
 
       <!-- Settings link -->
       <a href="#"
-         class="admin-link"
+         class="admin-link icon-btn"
          aria-label="Open Settings"
          title="Settings"
          onclick="openSettingsModal(); return false;">
@@ -1022,7 +1018,7 @@
           <textarea id="edit-comments" placeholder="Notes on why SNF / corrections, etc."></textarea>
         </div>
         <div class="flex-row">
-          <button class="primary small" onclick="saveCurrent()">Save</button>
+          <button class="btn btn-primary btn-small" onclick="saveCurrent()">Save</button>
           <span id="note-message" class="message"></span>
         </div>
       </div>
