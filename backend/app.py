@@ -1650,25 +1650,17 @@ async def pad_hospital_documents_bulk(request: Request):
                     ),
                 )
 
-                # ✅ NEW: derive disposition from raw source_text (only if not already set)
-                cur.execute(
-                    "SELECT disposition FROM hospital_discharges WHERE visit_id = ?",
-                    (doc_payload["visit_id"],),
-                )
-                existing = cur.fetchone()
-                existing_disp = (existing["disposition"] if existing else None)
-
-                if not (existing_disp and str(existing_disp).strip()):
-                    dispo = analyze_discharge_disposition_with_llm(doc_payload["source_text"])
-                    if dispo and dispo.get("disposition"):
-                        cur.execute(
-                            """
-                            UPDATE hospital_discharges
-                            SET disposition = ?, updated_at = datetime('now')
-                            WHERE visit_id = ?
-                            """,
-                            (dispo["disposition"], doc_payload["visit_id"]),
-                        )
+                # ✅ UPDATED: always derive disposition from raw source_text on every new document insert
+                dispo = analyze_discharge_disposition_with_llm(doc_payload["source_text"])
+                if dispo and dispo.get("disposition"):
+                    cur.execute(
+                        """
+                        UPDATE hospital_discharges
+                        SET disposition = ?, updated_at = datetime('now')
+                        WHERE visit_id = ?
+                        """,
+                        (dispo["disposition"], doc_payload["visit_id"]),
+                    )
 
             # Store sections
             for i, s in enumerate(sections, start=1):
@@ -1786,22 +1778,17 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
                 (visit_id, patient_mrn, patient_name, hospital_name, admit_date, dc_date),
             )
 
-            # ✅ NEW: derive disposition from raw source_text (only if not already set)
-            cur.execute("SELECT disposition FROM hospital_discharges WHERE visit_id = ?", (visit_id,))
-            existing = cur.fetchone()
-            existing_disp = (existing["disposition"] if existing else None)
-
-            if not (existing_disp and str(existing_disp).strip()):
-                dispo = analyze_discharge_disposition_with_llm(source_text)
-                if dispo and dispo.get("disposition"):
-                    cur.execute(
-                        """
-                        UPDATE hospital_discharges
-                        SET disposition = ?, updated_at = datetime('now')
-                        WHERE visit_id = ?
-                        """,
-                        (dispo["disposition"], visit_id),
-                    )
+            # ✅ UPDATED: always derive disposition from raw source_text on every new document ingest
+            dispo = analyze_discharge_disposition_with_llm(source_text)
+            if dispo and dispo.get("disposition"):
+                cur.execute(
+                    """
+                    UPDATE hospital_discharges
+                    SET disposition = ?, updated_at = datetime('now')
+                    WHERE visit_id = ?
+                    """,
+                    (dispo["disposition"], visit_id),
+                )
 
         # 2) Insert each section row
         for s in sections:
