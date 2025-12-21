@@ -173,6 +173,136 @@ def compute_note_hash(patient_mrn: str, note_datetime: str, note_text: str) -> s
     base = f"{(patient_mrn or '').strip()}|{(note_datetime or '').strip()}|{_normalize_note_text_for_hash(note_text)}"
     return hashlib.md5(base.encode("utf-8")).hexdigest()
 
+def load_extraction_profile(conn: sqlite3.Connection, hospital_name: str, document_type: str) -> Optional[Dict[str, str]]:
+    """
+    Returns a dict like:
+      { "hospital course": "hospital_course", "discharge medications": "discharge_meds", ... }
+
+    Keys should be normalized (lowercase), because we'll match headings case-insensitively.
+    """
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT profile_json
+        FROM hospital_extraction_profiles
+        WHERE hospital_name = ?
+          AND document_type = ?
+          AND active = 1
+        """,
+        (hospital_name, document_type),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+
+    try:
+        prof = json.loads(row["profile_json"] if isinstance(row, sqlite3.Row) else row[0])
+    except Exception:
+        return None
+
+    # Normalize keys to lowercase for matching
+    out: Dict[str, str] = {}
+    if isinstance(prof, dict):
+        for k, v in prof.items():
+            if k and v:
+                out[str(k).strip().lower()] = str(v).strip()
+    return out or None
+
+def split_document_into_sections(source_text: str, heading_map_override: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+    """
+    Very simple, hospital-friendly section splitter.
+
+    It looks for known headings and captures the text until the next heading.
+
+    Returns:
+      [
+        { "section_key": "hospital_course", "section_title": "Hospital Course", "section_text": "..." , "order": 1 },
+        ...
+      ]
+    """
+    text = (source_text or "").replace("\r\n", "\n").replace("\r", "\n")
+    lines = [ln.rstrip() for ln in text.split("\n")]
+
+    # Headings we see in your JFK sample (you can add more later)
+    # NOTE: Keep these as they appear in the text (case-insensitive match below)
+    default_heading_map = {
+        "hospital course": "hospital_course",
+        "assessment and plan": "assessment_plan",
+        "results": "results",
+        "procedures": "procedures",
+        "labs from last 24 hours": "labs",
+        "objective": "objective",
+        "discharge plan": "discharge_plan",
+        "discharge medications": "discharge_meds",
+        "follow up appointments": "follow_up",
+    }
+
+    # Use hospital profile if provided; otherwise fall back to default
+    heading_map = heading_map_override or default_heading_map
+
+    def norm(s: str) -> str:
+        return re.sub(r"\s+", " ", (s or "").strip().lower())
+
+    # Find heading line indexes
+    heading_hits: List[Dict[str, Any]] = []
+    for i, ln in enumerate(lines):
+        key = norm(ln)
+        if key in heading_map:
+            heading_hits.append(
+                {
+                    "line_index": i,
+                    "section_key": heading_map[key],
+                    "section_title": ln.strip(),
+                }
+            )
+
+    # If we found no headings, store entire thing as one section
+    if not heading_hits:
+        return [
+            {
+                "section_key": "full_text",
+                "section_title": "Full Text",
+                "section_text": (source_text or "").strip(),
+                "order": 1,
+            }
+        ]
+
+    # Always include a "header" section from top-of-note until first heading
+    sections: List[Dict[str, Any]] = []
+    first_heading_line = heading_hits[0]["line_index"]
+    header_text = "\n".join(lines[:first_heading_line]).strip()
+    if header_text:
+        sections.append(
+            {
+                "section_key": "header",
+                "section_title": "Header",
+                "section_text": header_text,
+                "order": 1,
+            }
+        )
+
+    # Build each section from one heading to the next
+    for idx, hit in enumerate(heading_hits):
+        start = hit["line_index"] + 1
+        end = heading_hits[idx + 1]["line_index"] if idx + 1 < len(heading_hits) else len(lines)
+        body = "\n".join(lines[start:end]).strip()
+
+        # skip empty sections
+        if not body:
+            continue
+
+        sections.append(
+            {
+                "section_key": hit["section_key"],
+                "section_title": hit["section_title"],
+                "section_text": body,
+                "order": len(sections) + 1,
+            }
+        )
+
+    return sections
+
+
 
 
 # ============================
@@ -590,6 +720,82 @@ def init_db():
     )
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_cm_notes_raw_hash ON cm_notes_raw (note_hash)"
+    )
+
+    # -------------------------------------------------------------------
+        # Hospital extraction profiles (per hospital + document type) ✅ NEW
+        # -------------------------------------------------------------------
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS hospital_extraction_profiles (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                hospital_name  TEXT NOT NULL,
+                document_type  TEXT NOT NULL,
+                profile_json   TEXT NOT NULL,   -- JSON mapping of heading -> section_key
+                active         INTEGER DEFAULT 1,
+                updated_at     TEXT DEFAULT (datetime('now'))
+            )
+            """
+        )
+        cur.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_hexprof_unique ON hospital_extraction_profiles (hospital_name, document_type)"
+        )
+
+
+    # -------------------------------------------------------------------
+    # Hospital Documents (Raw + Sectioned)  ✅ NEW
+    # -------------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS hospital_documents (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            hospital_name      TEXT NOT NULL,
+            document_type      TEXT NOT NULL,
+            document_datetime  TEXT,
+            patient_mrn        TEXT,
+            patient_name       TEXT,
+            dob                TEXT,
+            visit_id           TEXT,   -- ✅ SINGLE admission-level identifier
+
+            source_text        TEXT NOT NULL,
+            source_system      TEXT DEFAULT 'EMR',
+
+            created_at         TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_hosp_docs_hosp_type_dt ON hospital_documents (hospital_name, document_type, document_datetime DESC)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_hosp_docs_mrn ON hospital_documents (patient_mrn)"
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS hospital_document_sections (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id    INTEGER NOT NULL,
+
+            section_key    TEXT NOT NULL,     -- your normalized key like 'hospital_course'
+            section_title  TEXT,              -- the raw heading like 'Hospital Course'
+            section_order  INTEGER NOT NULL,  -- 1,2,3...
+            section_text   TEXT NOT NULL,
+
+            created_at     TEXT DEFAULT (datetime('now')),
+
+            FOREIGN KEY(document_id) REFERENCES hospital_documents(id)
+        )
+        """
+    )
+
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_doc_sections_doc_order ON hospital_document_sections (document_id, section_order)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_doc_sections_key ON hospital_document_sections (section_key)"
     )
 
     # SNF admissions derived from CM notes
@@ -1237,7 +1443,94 @@ async def pad_cm_notes_bulk(
     }
 
 
+# ---------------------------------------------------------------------------
+# Hospital Document ingest (raw text -> document + sections) ✅ NEW
+# ---------------------------------------------------------------------------
+@app.post("/api/hospital-documents/ingest")
+async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
+    """
+    Ingest ONE hospital document (Discharge Summary, MD Progress Note, etc.)
+    as raw text, then auto-split into sections and store both.
+    """
+    hospital_name = (payload.get("hospital_name") or "").strip()
+    document_type = (payload.get("document_type") or "").strip()
+    source_text = (payload.get("source_text") or "").strip()
 
+    if not hospital_name:
+        raise HTTPException(status_code=400, detail="hospital_name is required")
+    if not document_type:
+        raise HTTPException(status_code=400, detail="document_type is required")
+    if not source_text:
+        raise HTTPException(status_code=400, detail="source_text is required")
+
+    document_datetime = (payload.get("document_datetime") or "").strip() or None
+
+    patient_mrn = (payload.get("patient_mrn") or "").strip() or None
+    patient_name = (payload.get("patient_name") or "").strip() or None
+    dob = (payload.get("dob") or "").strip() or None
+    visit_id = (payload.get("visit_id") or "").strip() or None
+    source_system = (payload.get("source_system") or "EMR").strip() or "EMR"
+
+    conn = get_db()
+    try:
+        profile_map = load_extraction_profile(conn, hospital_name, document_type)
+        sections = split_document_into_sections(source_text, heading_map_override=profile_map)
+
+        cur = conn.cursor()
+
+
+        # 1) Insert the document row
+        cur.execute(
+            """
+            INSERT INTO hospital_documents (
+                hospital_name, document_type, document_datetime,
+                patient_mrn, patient_name, dob, visit_id,
+                source_text, source_system
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                hospital_name,
+                document_type,
+                document_datetime,
+                patient_mrn,
+                patient_name,
+                dob,
+                visit_id,
+                source_text,
+                source_system,
+            ),
+        )
+
+        document_id = cur.lastrowid
+
+        # 2) Insert each section row
+        for s in sections:
+            cur.execute(
+                """
+                INSERT INTO hospital_document_sections (
+                    document_id, section_key, section_title, section_order, section_text
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    document_id,
+                    s["section_key"],
+                    s.get("section_title"),
+                    int(s["order"]),
+                    s["section_text"],
+                ),
+            )
+
+        conn.commit()
+
+        return {
+            "ok": True,
+            "document_id": document_id,
+            "sections_saved": len(sections),
+        }
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
