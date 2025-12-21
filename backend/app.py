@@ -723,23 +723,24 @@ def init_db():
     )
 
     # -------------------------------------------------------------------
-        # Hospital extraction profiles (per hospital + document type) ✅ NEW
-        # -------------------------------------------------------------------
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS hospital_extraction_profiles (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                hospital_name  TEXT NOT NULL,
-                document_type  TEXT NOT NULL,
-                profile_json   TEXT NOT NULL,   -- JSON mapping of heading -> section_key
-                active         INTEGER DEFAULT 1,
-                updated_at     TEXT DEFAULT (datetime('now'))
-            )
-            """
+    # Hospital extraction profiles (per hospital + document type) ✅ NEW
+    # -------------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS hospital_extraction_profiles (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            hospital_name  TEXT NOT NULL,
+            document_type  TEXT NOT NULL,
+            profile_json   TEXT NOT NULL,   -- JSON mapping of heading -> section_key
+            active         INTEGER DEFAULT 1,
+            updated_at     TEXT DEFAULT (datetime('now'))
         )
-        cur.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_hexprof_unique ON hospital_extraction_profiles (hospital_name, document_type)"
-        )
+        """
+    )
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_hexprof_unique ON hospital_extraction_profiles (hospital_name, document_type)"
+    )
+
 
 
     # -------------------------------------------------------------------
