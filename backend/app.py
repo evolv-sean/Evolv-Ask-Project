@@ -1523,8 +1523,25 @@ async def pad_hospital_documents_bulk(request: Request):
             raise HTTPException(status_code=400, detail="Could not parse request body as JSON")
         payload = json.loads(raw_text[start : end + 1])
 
-    if isinstance(payload, dict) and "DataTable" in payload:
-        docs = payload.get("DataTable") or []
+    def _to_clean_id(val) -> Optional[str]:
+        # Handles PAD floats like 12345678.0 -> "12345678"
+        if val is None:
+            return None
+        if isinstance(val, (int, float)):
+            if isinstance(val, float) and val.is_integer():
+                return str(int(val))
+            return str(val)
+        s = str(val).strip()
+        return s or None
+
+    # Accept multiple wrapper keys from PAD
+    if isinstance(payload, dict):
+        if "DataTable" in payload:
+            docs = payload.get("DataTable") or []
+        elif "discharge_visits" in payload:
+            docs = payload.get("discharge_visits") or []
+        else:
+            docs = payload
     else:
         docs = payload
 
@@ -1564,10 +1581,10 @@ async def pad_hospital_documents_bulk(request: Request):
                 "document_type": document_type,
                 "source_text": source_text,
                 "document_datetime": (str(row.get("document_datetime") or "").strip() or None),
-                "patient_mrn": (str(row.get("patient_mrn") or "").strip() or None),
+                "patient_mrn": _to_clean_id(row.get("patient_mrn")),
                 "patient_name": (str(row.get("patient_name") or "").strip() or None),
                 "dob": (str(row.get("dob") or "").strip() or None),
-                "visit_id": (str(row.get("visit_id") or "").strip() or None),
+                "visit_id": _to_clean_id(row.get("visit_id")),
                 "admit_date": (str(row.get("admit_date") or "").strip() or None),
                 "dc_date": (str(row.get("dc_date") or "").strip() or None),
                 "source_system": (str(row.get("source_system") or "EMR").strip() or "EMR"),
