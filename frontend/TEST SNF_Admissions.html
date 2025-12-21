@@ -585,6 +585,254 @@
     .message strong {
       color: #111827;
     }
+    
+    /* =========================================================
+       EVOLV — Palette A (Main Page Overhaul)
+       NOTE: Scoped to header/main/panels/table only.
+             Modals keep their existing styling.
+       ========================================================= */
+
+    :root{
+      --navy:#0D3B66;
+      --mint:#A8E6CF;
+      --sky:#4DA8DA; /* micro accent only */
+      --cool:#F5F7FA;
+
+      --surface:#ffffff;
+      --text:#0f172a;
+      --muted:#55657f;
+
+      --line: rgba(13,59,102,.14);
+      --line-strong: rgba(13,59,102,.22);
+
+      --shadow: 0 10px 28px rgba(0,0,0,.08);
+      --shadow-soft: 0 8px 18px rgba(13,59,102,.12);
+
+      --r-xl:18px;
+      --r-lg:16px;
+      --r-md:12px;
+      --r-sm:10px;
+
+      --ring: 0 0 0 3px rgba(168,230,207,.50);
+      --ring2: 0 0 0 4px rgba(168,230,207,.35);
+    }
+
+    /* Page background */
+    body{
+      background:
+        radial-gradient(900px 520px at 10% 0%, rgba(77,168,218,.10), transparent 55%),
+        radial-gradient(900px 520px at 95% 12%, rgba(168,230,207,.10), transparent 55%),
+        var(--cool);
+      color: var(--text);
+    }
+
+    /* Header becomes Evolv “glass card” (keep your same markup + JS) */
+    header{
+      position: sticky;
+      top: 12px;
+      z-index: 50;
+      margin: 12px 16px 0;
+      padding: 14px 16px;
+      border-radius: var(--r-xl);
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.78);
+      backdrop-filter: blur(6px);
+      box-shadow: var(--shadow);
+      color: var(--text);
+    }
+
+    header h1{
+      color: var(--navy);
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: .2px;
+    }
+
+    /* Right side chips */
+    .header-status{
+      font-size: 12px;
+      font-weight: 900;
+      color: rgba(13,59,102,.90);
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line-strong);
+      background: rgba(13,59,102,.04);
+      white-space: nowrap;
+    }
+
+    /* Icon buttons (Email Log / Settings) */
+    .icon-btn{
+      display:inline-flex; align-items:center; justify-content:center;
+      width:42px; height:38px;
+      border-radius:12px;
+      border:1px solid var(--line-strong);
+      background:#fff;
+      cursor:pointer;
+      transition: box-shadow .15s ease, border-color .15s ease, transform .15s ease;
+      color: var(--navy);
+    }
+    .icon-btn:hover{
+      border-color: rgba(168,230,207,.9);
+      box-shadow: var(--ring2);
+      transform: translateY(-1px);
+    }
+    .icon-btn:active{ transform: translateY(0px); }
+
+    /* Make your header <a> links look like icon buttons */
+    a.email-link, a.admin-link{
+      width:auto; height:auto;
+      border:none; background:transparent;
+      padding:0; color:inherit;
+      text-decoration:none;
+    }
+
+    /* Layout: keep your grid, but use Evolv spacing */
+    main{
+      padding: 16px;
+      gap: 16px;
+      height: calc(100vh - 110px); /* header is taller now */
+    }
+
+    /* Panels become Evolv cards */
+    .panel{
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.84);
+      backdrop-filter: blur(4px);
+      border-radius: var(--r-xl);
+      box-shadow: var(--shadow);
+    }
+
+    .panel-header{
+      border-bottom: 1px solid rgba(13,59,102,.10);
+      background: linear-gradient(180deg, rgba(13,59,102,.06), rgba(255,255,255,0));
+      padding: 12px 14px;
+    }
+
+    .panel-header h2{
+      margin: 0;
+      color: var(--navy);
+      font-size: 15px;
+      font-weight: 900;
+      letter-spacing: .2px;
+    }
+
+    /* Filters + labels */
+    .filters{
+      gap: 12px;
+      align-items: end;
+      font-size: 12px;
+    }
+    .filters label,
+    .note-footer label,
+    .panel-header label{
+      display:block;
+      font-size:12px;
+      color:#374151;
+      margin:0 0 6px;
+      font-weight:900;
+      text-transform:none;
+      letter-spacing:0;
+    }
+
+    /* Evolv inputs/selects for MAIN page (modals override later anyway) */
+    input[type="text"],
+    input[type="date"],
+    input[type="number"],
+    input[type="datetime-local"],
+    select,
+    textarea{
+      padding: 10px 12px;
+      font-size: 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(13,59,102,.18);
+      background:#fff;
+      outline:none;
+      transition: box-shadow .15s ease, border-color .15s ease;
+    }
+    input:focus, select:focus, textarea:focus{
+      border-color: rgba(168,230,207,.95);
+      box-shadow: var(--ring);
+    }
+
+    /* Buttons (MAIN page only) — use these classes in the HTML edits below */
+    .btn{
+      display:inline-flex; align-items:center; justify-content:center; gap:8px;
+      border-radius:12px; padding:10px 14px;
+      border:1px solid var(--line-strong);
+      background:#fff; color:var(--navy);
+      font-weight:900; font-size:13px;
+      cursor:pointer;
+      transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease, color .15s ease;
+    }
+    .btn:hover{ border-color: rgba(168,230,207,.9); box-shadow: var(--ring2); transform: translateY(-1px); }
+    .btn:active{ transform: translateY(0px); }
+    .btn-primary{ background: var(--navy); border-color: rgba(13,59,102,.95); color:#fff; box-shadow: var(--shadow-soft); }
+    .btn-primary:hover{ background:#0b3357; border-color:#0b3357; box-shadow: 0 10px 26px rgba(13,59,102,.18); }
+    .btn-small{ padding:8px 12px; border-radius:10px; font-size:12px; }
+
+    /* Message text */
+    .message{ color: var(--muted); font-size: 12px; font-weight: 800; }
+
+    /* Table wrapper becomes Evolv */
+    .table-wrapper{
+      border-radius: 16px;
+      border: 1px solid rgba(13,59,102,.14);
+      background:#fff;
+      overflow:auto;
+    }
+    thead{
+      background: rgba(13,59,102,.05);
+    }
+    th{
+      font-size:10px;
+      font-weight:900;
+      text-transform:uppercase;
+      letter-spacing:.09em;
+      color:#4b5563;
+      border-bottom:1px solid rgba(13,59,102,.12);
+      white-space:nowrap;
+    }
+    td{
+      border-bottom:1px solid rgba(13,59,102,.10);
+      color:#111827;
+      vertical-align:middle;
+    }
+    tbody tr:nth-child(even){ background: rgba(13,59,102,.02); }
+    tbody tr:hover{ background: rgba(168,230,207,.18); }
+
+    /* Status pill becomes subtle + navy-first */
+    .status-pill{
+      display:inline-flex;
+      align-items:center;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 900;
+      border: 1px solid rgba(13,59,102,.16);
+      background: rgba(13,59,102,.04);
+      color: rgba(13,59,102,.92);
+      text-transform: capitalize;
+      letter-spacing: .02em;
+    }
+
+    /* Selected row uses mint outline (instead of bright blue) */
+    tr.selected{
+      outline: 2px solid rgba(168,230,207,.95);
+    }
+
+    /* Keep your special row background colors, but soften them */
+    tr.pending{  background: rgba(255, 237, 213, .55); }
+    tr.confirmed{background: rgba(220, 252, 231, .55); }
+    tr.corrected{background: rgba(224, 242, 254, .55); }
+    tr.rejected{ background: rgba(254, 226, 226, .55); }
+    tr.removed{  background: rgba(229, 231, 235, .70); }
+
+    /* Note panel area */
+    .note-body{ background:#fff; }
+
+    /* Keep your notif dot, but make it micro-accent (sky) */
+    .notif-dot svg{ color: var(--sky); }
+
   </style>
 </head>
 <body>
@@ -597,7 +845,7 @@
 
       <!-- Email log link -->
       <a href="#"
-         class="email-link"
+         class="email-link icon-btn"
          aria-label="Open Email Log"
          title="Email Log"
          onclick="openEmailLogModal(); return false;">
@@ -678,16 +926,16 @@
             </select>
           </div>  
           <div style="margin-top:16px; display:flex; gap:4px; flex-wrap:wrap;">
-            <button class="primary small" onclick="loadAdmissions()">Load</button>
-            <button class="small" onclick="openFacilityModal('add')">Add facility</button>
-            <button class="small" onclick="openFacilityModal('edit')">Edit facility</button>
+            <button class="btn btn-primary btn-small" onclick="loadAdmissions()">Load</button>
+            <button class="btn btn-small" onclick="openFacilityModal('add')">Add facility</button>
+            <button class="btn btn-small" onclick="openFacilityModal('edit')">Edit facility</button>
           </div>
         </div>
       </div>
       <div class="panel-header" style="border-top:1px solid #e5e7eb;">
         <div class="flex-row">
-          <button class="small" onclick="sendEmails(false)">Send emails for date</button>
-          <button class="small" onclick="sendEmails(true)">Test email</button>
+          <button class="btn btn-primary btn-small" onclick="sendEmails(false)">Send emails for date</button>
+          <button class="btn btn-small" onclick="sendEmails(true)">Test email</button>
           <input id="test-email-to" type="text" placeholder="test@example.com (for test only)" style="width:180px;" />
         </div>
         <div id="list-message" class="message"></div>
