@@ -4775,6 +4775,349 @@ async def admin_snf_run_extraction(
     require_admin(request)
     return snf_run_extraction(days_back=days_back)
 
+# ===================== NEW: recompute SNF AI for one admission =====================
+
+def snf_recompute_for_admission(visit_id: str = "", patient_mrn: str = "") -> Dict[str, Any]:
+    """
+    Recompute SNF AI for exactly one admission group (visit_id preferred, else patient_mrn).
+    Uses ONLY non-ignored notes.
+    """
+    visit_id = (visit_id or "").strip()
+    patient_mrn = (patient_mrn or "").strip()
+    if not visit_id and not patient_mrn:
+        return {"ok": False, "message": "visit_id or patient_mrn is required"}
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Load facility alias map (dictionary.kind='facility_alias')
+        maps = load_dictionary_maps(conn)
+        facility_aliases = maps["facility_aliases"]
+
+        if visit_id:
+            cur.execute(
+                """
+                SELECT *
+                FROM cm_notes_raw
+                WHERE visit_id = ?
+                  AND (ignored IS NULL OR ignored = 0)
+                ORDER BY note_datetime, id
+                """,
+                (visit_id,),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT *
+                FROM cm_notes_raw
+                WHERE patient_mrn = ?
+                  AND (ignored IS NULL OR ignored = 0)
+                ORDER BY note_datetime, id
+                """,
+                (patient_mrn,),
+            )
+
+        notes = cur.fetchall()
+        if not notes:
+            # Nothing left → mark any matching snf_admissions row removed
+            if visit_id:
+                cur.execute(
+                    """
+                    UPDATE snf_admissions
+                    SET ai_is_snf_candidate = 0,
+                        status = 'removed',
+                        updated_at = datetime('now')
+                    WHERE visit_id = ?
+                    """,
+                    (visit_id,),
+                )
+            else:
+                cur.execute(
+                    """
+                    UPDATE snf_admissions
+                    SET ai_is_snf_candidate = 0,
+                        status = 'removed',
+                        updated_at = datetime('now')
+                    WHERE visit_id IS NULL
+                      AND patient_mrn = ?
+                    """,
+                    (patient_mrn,),
+                )
+            conn.commit()
+            return {"ok": True, "message": "No notes left; SNF row marked removed."}
+
+        has_snf_keywords = notes_mention_possible_snf(notes)
+        mrn_for_llm = (notes[0]["patient_mrn"] or "").strip()
+        result = analyze_patient_notes_with_llm(mrn_for_llm, notes)
+
+        # Identify latest note for identifying fields + linking
+        latest_note = sorted(notes, key=lambda r: (r["note_datetime"] or "", r["id"]))[-1]
+        visit_id_eff = (latest_note["visit_id"] or "").strip() if "visit_id" in latest_note.keys() else ""
+        visit_id_db = visit_id_eff or (visit_id or None)
+        mrn_eff = (latest_note["patient_mrn"] or "").strip() or patient_mrn
+        patient_name = latest_note["patient_name"] or ""
+        hospital_name = latest_note["hospital_name"] or ""
+        note_datetime = latest_note["note_datetime"] or ""
+
+        # If LLM says "not SNF", treat as removal unless denial is still contested
+        if result and not result.get("is_snf_candidate", False):
+            if denial_is_contested_or_pending(notes):
+                result = {
+                    "is_snf_candidate": True,
+                    "snf_name": None,
+                    "expected_transfer_date": None,
+                    "confidence": 0.35,
+                    "rationale": (
+                        "Insurance denial mentioned, but appeal/peer-to-peer/pending review is still in progress."
+                    ),
+                }
+            else:
+                # mark not candidate
+                if visit_id_db:
+                    cur.execute(
+                        """
+                        UPDATE snf_admissions
+                        SET raw_note_id = ?,
+                            note_datetime = ?,
+                            ai_is_snf_candidate = 0,
+                            status = CASE WHEN status='confirmed' THEN status ELSE 'removed' END,
+                            updated_at = datetime('now')
+                        WHERE visit_id = ?
+                        """,
+                        (latest_note["id"], note_datetime, visit_id_db),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        UPDATE snf_admissions
+                        SET raw_note_id = ?,
+                            note_datetime = ?,
+                            ai_is_snf_candidate = 0,
+                            status = CASE WHEN status='confirmed' THEN status ELSE 'removed' END,
+                            updated_at = datetime('now')
+                        WHERE visit_id IS NULL
+                          AND patient_mrn = ?
+                        """,
+                        (latest_note["id"], note_datetime, mrn_eff),
+                    )
+                conn.commit()
+                return {"ok": True, "message": "Recomputed: no longer SNF candidate."}
+
+        # If LLM gave nothing and there are no SNF-ish keywords, do nothing (but still update latest raw_note_id)
+        if not result and not has_snf_keywords:
+            # keep row as-is but ensure it points to latest note
+            if visit_id_db:
+                cur.execute(
+                    """
+                    UPDATE snf_admissions
+                    SET raw_note_id = ?,
+                        note_datetime = COALESCE(?, note_datetime),
+                        updated_at = datetime('now')
+                    WHERE visit_id = ?
+                    """,
+                    (latest_note["id"], note_datetime, visit_id_db),
+                )
+            else:
+                cur.execute(
+                    """
+                    UPDATE snf_admissions
+                    SET raw_note_id = ?,
+                        note_datetime = COALESCE(?, note_datetime),
+                        updated_at = datetime('now')
+                    WHERE visit_id IS NULL
+                      AND patient_mrn = ?
+                    """,
+                    (latest_note["id"], note_datetime, mrn_eff),
+                )
+            conn.commit()
+            return {"ok": True, "message": "Recomputed: no SNF signal found."}
+
+        # If LLM failed but keywords exist, force low-confidence candidate
+        if not result and has_snf_keywords:
+            result = {
+                "is_snf_candidate": True,
+                "snf_name": None,
+                "expected_transfer_date": None,
+                "confidence": 0.4,
+                "rationale": "Heuristic: SNF-ish terms present, but LLM did not return a structured plan.",
+            }
+
+        if not result or not result.get("is_snf_candidate", False):
+            # same “no longer candidate” treatment
+            if visit_id_db:
+                cur.execute(
+                    """
+                    UPDATE snf_admissions
+                    SET raw_note_id = ?,
+                        note_datetime = ?,
+                        ai_is_snf_candidate = 0,
+                        status = CASE WHEN status='confirmed' THEN status ELSE 'removed' END,
+                        updated_at = datetime('now')
+                    WHERE visit_id = ?
+                    """,
+                    (latest_note["id"], note_datetime, visit_id_db),
+                )
+            else:
+                cur.execute(
+                    """
+                    UPDATE snf_admissions
+                    SET raw_note_id = ?,
+                        note_datetime = ?,
+                        ai_is_snf_candidate = 0,
+                        status = CASE WHEN status='confirmed' THEN status ELSE 'removed' END,
+                        updated_at = datetime('now')
+                    WHERE visit_id IS NULL
+                      AND patient_mrn = ?
+                    """,
+                    (latest_note["id"], note_datetime, mrn_eff),
+                )
+            conn.commit()
+            return {"ok": True, "message": "Recomputed: not a SNF candidate."}
+
+        snf_name_raw = result.get("snf_name")
+        expected_date = result.get("expected_transfer_date")
+        conf = result.get("confidence", 0.0)
+        ai_facility_id = map_snf_name_to_facility_id(snf_name_raw, conn, facility_aliases)
+
+        # Update the existing snf_admissions row for this admission group
+        if visit_id_db:
+            cur.execute(
+                """
+                UPDATE snf_admissions
+                SET raw_note_id = ?,
+                    note_datetime = ?,
+                    ai_is_snf_candidate = 1,
+                    ai_snf_name_raw = ?,
+                    ai_snf_facility_id = ?,
+                    ai_expected_transfer_date = ?,
+                    ai_confidence = ?,
+                    status = CASE WHEN status='confirmed' THEN status ELSE 'pending' END,
+                    updated_at = datetime('now')
+                WHERE visit_id = ?
+                """,
+                (latest_note["id"], note_datetime, snf_name_raw, ai_facility_id, expected_date, conf, visit_id_db),
+            )
+        else:
+            cur.execute(
+                """
+                UPDATE snf_admissions
+                SET raw_note_id = ?,
+                    note_datetime = ?,
+                    ai_is_snf_candidate = 1,
+                    ai_snf_name_raw = ?,
+                    ai_snf_facility_id = ?,
+                    ai_expected_transfer_date = ?,
+                    ai_confidence = ?,
+                    status = CASE WHEN status='confirmed' THEN status ELSE 'pending' END,
+                    updated_at = datetime('now')
+                WHERE visit_id IS NULL
+                  AND patient_mrn = ?
+                """,
+                (latest_note["id"], note_datetime, snf_name_raw, ai_facility_id, expected_date, conf, mrn_eff),
+            )
+
+        conn.commit()
+        return {"ok": True, "message": "Recomputed: SNF candidate updated."}
+
+    finally:
+        conn.close()
+
+
+@app.post("/admin/snf/admission/recompute")
+async def admin_snf_admission_recompute(request: Request, payload: Dict[str, Any] = Body(...)):
+    """
+    Recompute SNF AI for one admission after note ignore.
+    Payload: { visit_id: "...", patient_mrn: "..." }
+    """
+    require_admin(request)
+    visit_id = (payload.get("visit_id") or "").strip()
+    patient_mrn = (payload.get("patient_mrn") or "").strip()
+    return snf_recompute_for_admission(visit_id=visit_id, patient_mrn=patient_mrn)
+
+
+# ===================== NEW: recompute SNF AI for ALL admissions =====================
+
+@app.post("/admin/snf/recompute-all")
+async def admin_snf_recompute_all(request: Request):
+    """
+    Recompute SNF AI for all admissions (admin-only).
+    - Uses ONLY non-ignored notes (snf_recompute_for_admission does that).
+    - Also covers admissions that now have 0 remaining notes (marks removed).
+    """
+    require_admin(request)
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Build a set of "admission groups" to recompute.
+        # Prefer visit_id when present; otherwise fall back to patient_mrn.
+        groups: set[tuple[str, str]] = set()
+
+        # 1) From SNF table (so we recompute rows that already exist)
+        cur.execute("SELECT DISTINCT COALESCE(visit_id, '') AS visit_id, COALESCE(patient_mrn, '') AS patient_mrn FROM snf_admissions")
+        for r in cur.fetchall():
+            v = (r["visit_id"] or "").strip()
+            m = (r["patient_mrn"] or "").strip()
+            if v or m:
+                groups.add((v, m))
+
+        # 2) From notes (so we also recompute any note-groups that might not yet have a row)
+        cur.execute(
+            """
+            SELECT DISTINCT
+                COALESCE(visit_id, '') AS visit_id,
+                COALESCE(patient_mrn, '') AS patient_mrn
+            FROM cm_notes_raw
+            WHERE (ignored IS NULL OR ignored = 0)
+            """
+        )
+        for r in cur.fetchall():
+            v = (r["visit_id"] or "").strip()
+            m = (r["patient_mrn"] or "").strip()
+            if v or m:
+                groups.add((v, m))
+
+        total = len(groups)
+        ok_count = 0
+        fail_count = 0
+        failures: list[dict[str, str]] = []
+
+        # IMPORTANT: snf_recompute_for_admission opens its own DB connection internally.
+        # So we keep this outer connection only for collecting groups, then recompute per group.
+    finally:
+        conn.close()
+
+    for (visit_id, patient_mrn) in sorted(groups):
+        try:
+            res = snf_recompute_for_admission(visit_id=visit_id, patient_mrn=patient_mrn)
+            if res and res.get("ok"):
+                ok_count += 1
+            else:
+                fail_count += 1
+                failures.append(
+                    {
+                        "visit_id": visit_id,
+                        "patient_mrn": patient_mrn,
+                        "error": (res.get("message") if isinstance(res, dict) else "ok=false"),
+                    }
+                )
+        except Exception as e:
+            fail_count += 1
+            failures.append(
+                {"visit_id": visit_id, "patient_mrn": patient_mrn, "error": str(e)}
+            )
+
+    # Keep response small but useful
+    return {
+        "ok": True,
+        "total_groups": total,
+        "recomputed_ok": ok_count,
+        "recomputed_failed": fail_count,
+        "failures_sample": failures[:20],
+    }
+
 
 @app.post("/admin/snf/clear")
 async def admin_snf_clear(
@@ -4784,6 +5127,7 @@ async def admin_snf_clear(
         description="If true, also delete all rows from cm_notes_raw.",
     ),
 ):
+
     """
     Admin-only endpoint to wipe SNF-related test data.
 
@@ -6167,6 +6511,14 @@ async def admin_snf_ignore_cm_note(
             )
 
         conn.commit()
+
+        # NEW: immediately recompute AI for this admission group so the UI updates instantly
+        try:
+            snf_recompute_for_admission(visit_id=visit_id, patient_mrn=mrn)
+        except Exception as e:
+            # Do not fail the ignore action if recompute has an issue
+            print("[snf-ignore] recompute failed:", e)
+
         return {"ok": True}
 
     finally:
