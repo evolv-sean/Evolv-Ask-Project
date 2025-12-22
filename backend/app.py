@@ -925,7 +925,8 @@ def init_db():
             emailed_at                  TEXT,
             email_run_id                TEXT,
 
-            created_at                  TEXT DEFAULT (datetime('now'))
+            created_at                  TEXT DEFAULT (datetime('now')),
+            updated_at                  TEXT DEFAULT (datetime('now'))
         )
         """
     )
@@ -940,6 +941,12 @@ def init_db():
     # Ensure new columns exist on older snf_admissions tables
     try:
         cur.execute("ALTER TABLE snf_admissions ADD COLUMN disposition TEXT")
+    except sqlite3.Error:
+        pass
+
+    # Ensure updated_at exists on older snf_admissions tables
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))")
     except sqlite3.Error:
         pass
 
