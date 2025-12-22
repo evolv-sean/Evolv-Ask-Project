@@ -828,12 +828,16 @@ def init_db():
             admit_date     TEXT,
             dc_date        TEXT,
 
-            disposition    TEXT,            -- AI-derived later (Home, SNF, IRF, etc.)
+            disposition    TEXT,            
+            dc_agency      TEXT,
+            dispo_source_dt     TEXT,
+            dispo_source_doc_id INTEGER,           
             updated_at     TEXT DEFAULT (datetime('now')),
             created_at     TEXT DEFAULT (datetime('now'))
         )
         """
     )
+
     cur.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_hosp_discharge_visit ON hospital_discharges (visit_id)"
     )
@@ -843,7 +847,26 @@ def init_db():
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_hosp_discharge_hosp_dates ON hospital_discharges (hospital_name, admit_date, dc_date)"
     )
+    
+    # Ensure new columns exist on older hospital_discharges tables (safe no-op if already exists)
+    try:
+        cur.execute("ALTER TABLE hospital_discharges ADD COLUMN dc_agency TEXT")
+    except sqlite3.Error:
+        pass
 
+    # Ensure dispo_source_dt / dispo_source_doc_id exist on older DBs
+    try:
+        cur.execute("ALTER TABLE hospital_discharges ADD COLUMN dispo_source_dt TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE hospital_discharges ADD COLUMN dispo_source_doc_id INTEGER")
+    except sqlite3.Error:
+        pass
+
+
+   
     # SNF admissions derived from CM notes
     cur.execute(
         """
@@ -1650,17 +1673,90 @@ async def pad_hospital_documents_bulk(request: Request):
                     ),
                 )
 
-                # ✅ UPDATED: always derive disposition from raw source_text on every new document insert
+                # ✅ UPDATED: derive disposition + dc_agency, but only let the "latest doc" win
                 dispo = analyze_discharge_disposition_with_llm(doc_payload["source_text"])
-                if dispo and dispo.get("disposition"):
+                new_dispo = (dispo.get("disposition") if dispo else None)
+                new_agency = (dispo.get("dc_agency") if dispo else None)
+
+                # Determine this document's effective timestamp:
+                # 1) document_datetime (from PAD) if present
+                # 2) else fallback to hospital_documents.created_at
+                cur.execute(
+                    "SELECT document_datetime, created_at FROM hospital_documents WHERE id = ?",
+                    (document_id,),
+                )
+                _doc_row = cur.fetchone() or {}
+                eff_dt = normalize_sortable_dt((_doc_row.get("document_datetime") if isinstance(_doc_row, dict) else _doc_row[0]) or None)
+                if not eff_dt:
+                    # fallback to created_at
+                    created_at_val = (_doc_row.get("created_at") if isinstance(_doc_row, dict) else _doc_row[1]) if _doc_row else None
+                    eff_dt = normalize_sortable_dt(created_at_val)
+
+                # Fetch current "winning" disposition source
+                cur.execute(
+                    "SELECT disposition, dispo_source_dt, dispo_source_doc_id FROM hospital_discharges WHERE visit_id = ?",
+                    (doc_payload["visit_id"],),
+                )
+                curr = cur.fetchone()
+
+                curr_source_dt = None
+                curr_source_doc_id = None
+                curr_dispo = None
+                if curr:
+                    # sqlite Row supports dict-like access
+                    try:
+                        curr_dispo = curr["disposition"]
+                        curr_source_dt = curr["dispo_source_dt"]
+                        curr_source_doc_id = curr["dispo_source_doc_id"]
+                    except Exception:
+                        curr_dispo = curr[0]
+                        curr_source_dt = curr[1]
+                        curr_source_doc_id = curr[2]
+
+                curr_source_dt = normalize_sortable_dt(curr_source_dt)
+
+                # Treat these as "no disposition mentioned" → do NOT overwrite an existing good value
+                NO_DISPO_VALUES = {None, "", "unknown", "n/a", "na"}
+
+                has_meaningful_dispo = (new_dispo is not None and str(new_dispo).strip().lower() not in NO_DISPO_VALUES)
+
+                # Compare timestamps (ISO strings sort correctly)
+                is_newer = False
+                if eff_dt and not curr_source_dt:
+                    is_newer = True
+                elif eff_dt and curr_source_dt:
+                    if eff_dt > curr_source_dt:
+                        is_newer = True
+                    elif eff_dt == curr_source_dt:
+                        # tie-breaker: higher doc id wins
+                        try:
+                            is_newer = int(document_id) > int(curr_source_doc_id or 0)
+                        except Exception:
+                            is_newer = False
+
+                # Update rules:
+                # - If we DON'T have a meaningful new dispo, keep existing
+                # - If we DO have a meaningful new dispo, only apply if this doc is newer
+                if has_meaningful_dispo and is_newer:
                     cur.execute(
                         """
                         UPDATE hospital_discharges
-                        SET disposition = ?, updated_at = datetime('now')
+                        SET disposition = ?,
+                            dc_agency = ?,
+                            dispo_source_dt = ?,
+                            dispo_source_doc_id = ?,
+                            updated_at = datetime('now')
                         WHERE visit_id = ?
                         """,
-                        (dispo["disposition"], doc_payload["visit_id"]),
+                        (
+                            new_dispo,
+                            (new_agency or None),
+                            eff_dt,
+                            int(document_id),
+                            doc_payload["visit_id"],
+                        ),
                     )
+
 
             # Store sections
             for i, s in enumerate(sections, start=1):
@@ -1778,17 +1874,96 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
                 (visit_id, patient_mrn, patient_name, hospital_name, admit_date, dc_date),
             )
 
-            # ✅ UPDATED: always derive disposition from raw source_text on every new document ingest
+            # ✅ UPDATED: derive disposition + dc_agency, but only let the "latest doc" win
             dispo = analyze_discharge_disposition_with_llm(source_text)
-            if dispo and dispo.get("disposition"):
+            new_dispo = (dispo.get("disposition") if dispo else None)
+            new_agency = (dispo.get("dc_agency") if dispo else None)
+
+            # Determine this document's effective timestamp:
+            # 1) document_datetime (from payload) if present
+            # 2) else fallback to hospital_documents.created_at
+            eff_dt = normalize_sortable_dt(document_datetime)
+
+            if not eff_dt:
+                cur.execute(
+                    "SELECT created_at FROM hospital_documents WHERE id = ?",
+                    (document_id,),
+                )
+                row = cur.fetchone()
+                created_at_val = None
+                if row:
+                    try:
+                        created_at_val = row["created_at"]
+                    except Exception:
+                        created_at_val = row[0]
+                eff_dt = normalize_sortable_dt(created_at_val)
+
+            # Fetch current "winning" disposition source for this visit_id
+            cur.execute(
+                "SELECT disposition, dispo_source_dt, dispo_source_doc_id FROM hospital_discharges WHERE visit_id = ?",
+                (visit_id,),
+            )
+            curr = cur.fetchone()
+
+            curr_source_dt = None
+            curr_source_doc_id = None
+            curr_dispo = None
+            if curr:
+                try:
+                    curr_dispo = curr["disposition"]
+                    curr_source_dt = curr["dispo_source_dt"]
+                    curr_source_doc_id = curr["dispo_source_doc_id"]
+                except Exception:
+                    curr_dispo = curr[0]
+                    curr_source_dt = curr[1]
+                    curr_source_doc_id = curr[2]
+
+            curr_source_dt = normalize_sortable_dt(curr_source_dt)
+
+            # Treat these as "no disposition mentioned" → do NOT overwrite an existing good value
+            NO_DISPO_VALUES = {None, "", "unknown", "n/a", "na"}
+
+            has_meaningful_dispo = (
+                new_dispo is not None and str(new_dispo).strip().lower() not in NO_DISPO_VALUES
+            )
+
+            # Compare timestamps (ISO strings sort correctly)
+            is_newer = False
+            if eff_dt and not curr_source_dt:
+                is_newer = True
+            elif eff_dt and curr_source_dt:
+                if eff_dt > curr_source_dt:
+                    is_newer = True
+                elif eff_dt == curr_source_dt:
+                    # tie-breaker: higher doc id wins
+                    try:
+                        is_newer = int(document_id) > int(curr_source_doc_id or 0)
+                    except Exception:
+                        is_newer = False
+
+            # Update rules:
+            # - If we DON'T have a meaningful new dispo, keep existing
+            # - If we DO have a meaningful new dispo, only apply if this doc is newer
+            if has_meaningful_dispo and is_newer:
                 cur.execute(
                     """
                     UPDATE hospital_discharges
-                    SET disposition = ?, updated_at = datetime('now')
+                    SET disposition = ?,
+                        dc_agency = ?,
+                        dispo_source_dt = ?,
+                        dispo_source_doc_id = ?,
+                        updated_at = datetime('now')
                     WHERE visit_id = ?
                     """,
-                    (dispo["disposition"], visit_id),
+                    (
+                        new_dispo,
+                        (new_agency or None),
+                        eff_dt,
+                        int(document_id),
+                        visit_id,
+                    ),
                 )
+
 
         # 2) Insert each section row
         for s in sections:
@@ -3199,6 +3374,45 @@ def _normalize_listables_sql_case(sql: str) -> str:
 
     return sql
 
+def normalize_sortable_dt(s: Optional[str]) -> Optional[str]:
+    """
+    Convert various incoming datetime strings to a sortable ISO-ish format:
+      YYYY-MM-DDTHH:MM:SS
+    Returns None if empty/unparseable.
+    """
+    if not s:
+        return None
+    raw = str(s).strip()
+    if not raw:
+        return None
+
+    # Already ISO-like
+    if "T" in raw and len(raw) >= 19:
+        return raw[:19]
+
+    # SQLite datetime('now') format: "YYYY-MM-DD HH:MM:SS"
+    if len(raw) >= 19 and raw[4] == "-" and raw[7] == "-" and raw[10] == " ":
+        return raw[:19].replace(" ", "T")
+
+    fmts = [
+        "%m/%d/%Y %I:%M:%S %p",   # 12/20/2025 2:32:00 PM
+        "%m/%d/%Y %I:%M %p",      # 12/20/2025 2:32 PM
+        "%m/%d/%Y %H:%M:%S",      # 12/20/2025 14:32:00
+        "%m/%d/%Y %H:%M",         # 12/20/2025 14:32
+        "%Y-%m-%d %H:%M:%S",      # 2025-12-20 14:32:00
+        "%Y-%m-%d %H:%M",         # 2025-12-20 14:32
+        "%m/%d/%Y",               # 12/20/2025
+        "%Y-%m-%d",               # 2025-12-20
+    ]
+
+    for f in fmts:
+        try:
+            d = dt.datetime.strptime(raw, f)
+            return d.replace(microsecond=0).isoformat()
+        except Exception:
+            continue
+
+    return None
 
 
 def try_llm_listables_query(
@@ -3654,8 +3868,16 @@ def _heuristic_disposition_from_text(source_text: str) -> Optional[str]:
 
 def analyze_discharge_disposition_with_llm(source_text: str) -> Optional[Dict[str, Any]]:
     """
-    Uses the LLM (with a heuristic shortcut) to determine discharge disposition from raw hospital source_text.
-    Returns: {"disposition": str, "confidence": float, "evidence": str}
+    Uses the LLM (with a heuristic shortcut) to determine discharge disposition AND discharge agency
+    from raw hospital source_text.
+
+    Returns:
+      {
+        "disposition": str,
+        "dc_agency": str | null,
+        "confidence": float,
+        "evidence": str
+      }
     """
     if not source_text or not source_text.strip():
         return None
@@ -3671,8 +3893,10 @@ def analyze_discharge_disposition_with_llm(source_text: str) -> Optional[Dict[st
         text = text[:12000]
 
     system_msg = (
-        "You extract discharge disposition from messy hospital document text.\n"
+        "You extract discharge disposition and discharge agency from messy hospital document text.\n"
         "Return ONLY a JSON object.\n"
+        "\n"
+        "1) Disposition:\n"
         "Pick exactly ONE disposition from this list:\n"
         "- Home Self-care\n"
         "- Home Health\n"
@@ -3686,8 +3910,15 @@ def analyze_discharge_disposition_with_llm(source_text: str) -> Optional[Dict[st
         "- Other\n"
         "- Unknown\n"
         "\n"
+        "2) dc_agency:\n"
+        "- If disposition is SNF/IRF/Rehab/LTACH/Hospice, try to extract the destination facility name.\n"
+        "- If disposition is Home Health, try to extract the home health agency name.\n"
+        "- If the text contains multiple candidates, choose the one that is clearly tied to discharge planning.\n"
+        "- If no agency/facility name is clearly present, set dc_agency to null.\n"
+        "- Do NOT guess.\n"
+        "\n"
         "Rules:\n"
-        "- Prefer explicit discharge disposition / discharge location lines if present.\n"
+        "- Prefer explicit discharge disposition / discharge destination lines if present.\n"
         "- If it says 'home with home health' => Home Health.\n"
         "- 'home' or 'home/self care' with no services => Home Self-care.\n"
         "- 'SNF', 'skilled nursing facility', 'inpatient SNF' => SNF.\n"
@@ -3695,11 +3926,15 @@ def analyze_discharge_disposition_with_llm(source_text: str) -> Optional[Dict[st
         "- If only 'rehab' with no IRF language => Rehab.\n"
         "- If unclear, use Unknown.\n"
         "- Include a short evidence quote (<= 140 chars) copied from the text.\n"
-        "- Output schema:\n"
-        "  {\"disposition\":\"...\",\"confidence\":0.0-1.0,\"evidence\":\"...\"}\n"
+        "\n"
+        "Output schema:\n"
+        "  {\"disposition\":\".\",\"dc_agency\":null,\"confidence\":0.0,\"evidence\":\".\"}\n"
+        "Notes:\n"
+        "- dc_agency must be either a string or null.\n"
+        "- confidence is 0.0-1.0.\n"
     )
 
-    user_msg = f"Source text:\n{text}\n\nExtract the discharge disposition."
+    user_msg = f"Source text:\n{text}\n\nExtract discharge disposition and dc_agency."
 
     try:
         chat = client.chat.completions.create(
@@ -6939,6 +7174,7 @@ async def hospital_discharges_list():
                 admit_date,
                 dc_date,
                 disposition,
+                dc_agency,
                 updated_at
             FROM hospital_discharges
             ORDER BY COALESCE(dc_date, admit_date, updated_at) DESC, updated_at DESC
@@ -6959,7 +7195,7 @@ async def hospital_discharge_visit_details(visit_id: str):
             """
             SELECT
                 visit_id, patient_name, patient_mrn, hospital_name,
-                admit_date, dc_date, disposition, updated_at
+                admit_date, dc_date, disposition, dc_agency, updated_at
             FROM hospital_discharges
             WHERE visit_id = ?
             """,
