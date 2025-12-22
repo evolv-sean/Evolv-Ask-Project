@@ -460,6 +460,47 @@
     .note-entry-body {
       color: #4b5563;
     }
+    
+    /* NEW: note header row with created_at + delete */
+    .note-entry-header-row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .note-entry-header-left{
+      min-width:0;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+    .note-entry-header-right{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      flex: 0 0 auto;
+    }
+    .note-created-at{
+      font-size:11px;
+      color:#6b7280;
+      font-weight:600;
+      white-space:nowrap;
+    }
+    .note-mini-btn{
+      width:28px;
+      height:28px;
+      border-radius:10px;
+      border:1px solid rgba(13,59,102,14);
+      background:#ffffff;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      cursor:pointer;
+      padding:0;
+    }
+    .note-mini-btn:hover{ background: rgba(13,59,102,04); }
+    .note-mini-btn svg{ width:14px; height:14px; color: rgba(13,59,102,78); }
+
 
     /* NEW: keyword highlight */
     .kw-hl {
@@ -839,6 +880,7 @@
 
     <div class="header-right">
       <div id="universal-pin-status-top" class="header-status">Universal PIN: …</div>
+      <div id="last-processed-status-top" class="header-status">Last API: …</div>
       <div id="admin-token-status-top" class="header-status">Admin Token: …</div>
 
       <!-- Email log link -->
@@ -1013,6 +1055,12 @@
                 <button class="small" onclick="saveAdminToken()">Save</button>
                 <span id="token-status" class="message"></span>
               </div>
+            </div>
+
+            <!-- Last processed API -->
+            <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa; margin-top:12px;">
+              <div style="font-weight:800; color:#111827;">Last processed API</div>
+              <div id="last-processed-status-modal" style="font-size:12px; color:#6b7280; margin-top:2px;">Last API: …</div>
             </div>
 
             <!-- Universal PIN -->
@@ -1299,6 +1347,35 @@
       // (modalStatus is your small “Saved.” message area; we won’t overwrite it here)
     }
 
+    async function loadLastProcessedStatus() {
+      const token = getAdminToken();
+
+      const top = document.getElementById("last-processed-status-top");
+      const modal = document.getElementById("last-processed-status-modal");
+      if (!token) {
+        if (top) top.textContent = "Last API: (token required)";
+        if (modal) modal.textContent = "Last API: (paste ADMIN_TOKEN above)";
+        return;
+      }
+
+      try {
+        const resp = await fetch("/admin/snf/last-processed", {
+          headers: { "X-Admin-Token": token }
+        });
+        let data = null;
+        try { data = await resp.json(); } catch (e) {}
+        if (!resp.ok || (data && data.ok === false)) throw new Error("HTTP " + resp.status);
+
+        const ts = (data && data.last_processed) ? data.last_processed : "(none yet)";
+        if (top) top.textContent = "Last API: " + ts;
+        if (modal) modal.textContent = "Last API: " + ts;
+      } catch (e) {
+        console.error("loadLastProcessedStatus error", e);
+        if (top) top.textContent = "Last API: (error)";
+        if (modal) modal.textContent = "Last API: (error)";
+      }
+    }
+
     function saveAdminToken() {
       const input = document.getElementById("admin-token-input");
       const token = (input?.value || "").trim();
@@ -1313,6 +1390,7 @@
 
       // Keep UI in sync everywhere
       updateAdminTokenStatus();
+      loadLastProcessedStatus();
 
       // Refresh SNF facility dropdowns using the new/cleared token
       loadSnfFacilities();
@@ -1331,6 +1409,7 @@
 
       // Update top-bar status text
       updateAdminTokenStatus();
+      loadLastProcessedStatus();
     }
 
     // ===============================
@@ -1345,6 +1424,7 @@
       if (input) input.value = localStorage.getItem("evolv_admin_token") || "";
 
       updateAdminTokenStatus();
+      loadLastProcessedStatus();
 
       // load keywords into textarea whenever opened
       loadKeywords();
@@ -2452,11 +2532,73 @@
 
           const header = document.createElement("div");
           header.className = "note-entry-header";
+
+          const headerRow = document.createElement("div");
+          headerRow.className = "note-entry-header-row";
+
+          const left = document.createElement("div");
+          left.className = "note-entry-header-left";
           const headerBits = [];
           if (n.note_datetime) headerBits.push(n.note_datetime);
           if (n.note_type) headerBits.push(n.note_type);
           if (n.note_author) headerBits.push("by " + n.note_author);
-          header.textContent = headerBits.join(" – ");
+          left.textContent = headerBits.join(" – ");
+
+          const right = document.createElement("div");
+          right.className = "note-entry-header-right";
+
+          const created = document.createElement("div");
+          created.className = "note-created-at";
+          created.textContent = n.created_at ? ("Added: " + n.created_at) : "";
+
+          const delBtn = document.createElement("button");
+          delBtn.className = "note-mini-btn";
+          delBtn.title = "Ignore this note (hide + AI ignore)";
+          delBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M9 3h6l1 2h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M6 5h12l-1 16H7L6 5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+              <path d="M10 11v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M14 11v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          `;
+          delBtn.onclick = async (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const token = getAdminToken();
+            if (!token) {
+              alert("Paste ADMIN_TOKEN in Settings first.");
+              return;
+            }
+            const ok = confirm("Ignore this note? It will be removed from the list and ignored by the AI.");
+            if (!ok) return;
+
+            try {
+              const resp2 = await fetch("/admin/snf/cm-note/ignore", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-Admin-Token": token },
+                body: JSON.stringify({ note_id: n.id })
+              });
+              let data2 = null;
+              try { data2 = await resp2.json(); } catch (e) {}
+              if (!resp2.ok || (data2 && data2.ok === false)) {
+                throw new Error((data2 && (data2.detail || data2.message)) || ("HTTP " + resp2.status));
+              }
+              if (selectedId != null) await selectRow(selectedId);
+            } catch (e) {
+              console.error(e);
+              alert("Could not ignore note: " + e);
+            }
+          };
+
+          right.appendChild(created);
+          right.appendChild(delBtn);
+
+          headerRow.appendChild(left);
+          headerRow.appendChild(right);
+
+          header.appendChild(headerRow);
+
 
           const body = document.createElement("div");
           body.className = "note-entry-body";
