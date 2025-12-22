@@ -46,7 +46,7 @@
     /* Fixed-height layout + internal scrolling */
     .grid{align-items:stretch;}
     .card{display:flex;flex-direction:column;min-height:0;}
-    .card.fixed-h{height:72vh;} /* adjust if you want taller/shorter */
+    .card.fixed-h{height:calc(100vh - 130px);} /* tweak 130px if header/footer changes */
     .card-body{min-height:0;}
     .card-body.scroll{overflow:auto;}
     .card{background:var(--white);border:1px solid var(--cool);border-radius:18px;box-shadow:0 16px 34px rgba(0,0,0,.06);overflow:hidden;display:flex;flex-direction:column;min-height:0;}
@@ -73,6 +73,91 @@
     .field label{font-size:10px;letter-spacing:.10em;text-transform:uppercase;color:#6B7280;font-weight:900;}
     .field .val{font-size:13px;font-weight:900;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
     .field .val.muted{color:#374151;font-weight:800;}
+    /* Compact Visit Details header (replaces the 4 little cards) */
+    .visit-head{
+      padding-bottom:12px;
+      border-bottom:1px solid #F1F5F9;
+      margin-bottom:12px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+
+    .vh-top{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+
+    .vh-name{
+      font-size:16px;
+      font-weight:1000;
+      color:var(--navy);
+      letter-spacing:-0.01em;
+    }
+
+    .vh-sub{
+      margin-top:3px;
+      font-size:12px;
+      color:var(--muted);
+      font-weight:800;
+    }
+
+    .vh-meta{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+
+    .vh-pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:7px 10px;
+      border-radius:999px;
+      border:1px solid var(--cool);
+      background:#FBFDFF;
+      font-size:12px;
+      font-weight:900;
+      color:var(--navy);
+      white-space:nowrap;
+    }
+
+    .vh-pill .mini-dot{
+      width:8px;height:8px;border-radius:999px;background:var(--cool-2);
+    }
+
+    .vh-kv{
+      display:grid;
+      grid-template-columns: 140px 1fr 140px 1fr;
+      gap:8px 12px;
+      font-size:12px;
+      align-items:center;
+    }
+
+    .vh-kv .k{
+      color:var(--muted);
+      font-weight:900;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      font-size:10px;
+    }
+
+    .vh-kv .v{
+      color:#111827;
+      font-weight:900;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+
+    @media (max-width: 640px){
+      .vh-kv{grid-template-columns: 120px 1fr;}
+    }    
     .visit-panels{display:grid;grid-template-columns:340px 1fr;gap:12px;min-height:0;height:100%;}
     .subcard{border:1px solid var(--cool);border-radius:16px;background:#FFFFFF;box-shadow:0 10px 24px rgba(0,0,0,.05);overflow:hidden;display:flex;flex-direction:column;min-height:0;}
     .subhead{padding:12px 12px 10px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between;gap:10px;}
@@ -107,6 +192,59 @@
     .tiny-note{font-size:12px;color:var(--muted);line-height:1.45;}
     @media (max-width:1120px){.grid{grid-template-columns:1fr;}}
     @media (max-width:640px){.visit-summary{grid-template-columns:1fr;}.visit-panels{grid-template-columns:1fr;}.form-grid{grid-template-columns:1fr;}}
+    .profile-split{
+      display:grid;
+      grid-template-columns: 1fr 1.6fr;
+      gap:12px;
+      min-height:260px;
+    }
+
+    .profile-list{
+      border:1px solid rgba(13,59,102,.14);
+      border-radius:16px;
+      background:#fff;
+      padding:12px;
+      overflow:auto;
+      min-height:260px;
+    }
+
+    .profile-item{
+      padding:12px 12px;
+      border:1px solid rgba(13,59,102,.12);
+      border-radius:14px;
+      background:#fff;
+      cursor:pointer;
+      transition: box-shadow .15s ease, border-color .15s ease, transform .15s ease;
+      box-shadow: 0 6px 16px rgba(0,0,0,.06);
+      margin-bottom:10px;
+    }
+
+    .profile-item:hover{
+      border-color: rgba(168,230,207,.95);
+      box-shadow: 0 10px 26px rgba(13,59,102,.10), 0 0 0 3px rgba(168,230,207,.28);
+      transform: translateY(-1px);
+    }
+
+    .profile-item.active{
+      border-color: rgba(168,230,207,.98);
+      box-shadow: 0 14px 34px rgba(13,59,102,.14), 0 0 0 4px rgba(168,230,207,.40);
+    }
+
+    .profile-item .t{
+      font-weight:1000;
+      color:var(--navy);
+      font-size:13px;
+    }
+
+    .profile-item .m{
+      margin-top:4px;
+      font-size:11px;
+      color:var(--muted);
+      font-weight:800;
+    }
+
+    .profile-editor{min-width:0;}
+    @media (max-width: 980px){ .profile-split{grid-template-columns:1fr;} }
   </style>
 </head>
 <body>
@@ -242,17 +380,67 @@
           For Hospital Discharges, settings will expand later (e-fax, extraction profiles, etc.).
         </div>
         <div style="height:12px;"></div>
-        <div class="subcard" style="max-height:48vh;">
+        <div class="subcard" style="max-height:60vh;">
           <div class="subhead">
             <strong><span class="mint-accent"></span>Hospital Extraction Profiles</strong>
+            <div class="stack" style="display:flex;gap:10px;align-items:center;">
+              <button class="btn ghost" id="btnProfileNew" style="padding:9px 12px;">New</button>
+              <button class="btn primary" id="btnProfileSave" style="padding:9px 12px;">Save</button>
+            </div>
           </div>
+
           <div class="subbody">
-            <div class="tiny-note">
-              Backend table exists (<code>hospital_extraction_profiles</code>). Admin CRUD endpoints can be added next.
-              For now, the ingest endpoint automatically uses any saved profile mappings (when you add them).
+            <div class="tiny-note" style="margin-bottom:10px;">
+              Manage section terminology per <b>Hospital + Document Type</b>.  
+              Mappings are stored as JSON in <code>hospital_extraction_profiles.profile_json</code>.
+            </div>
+
+            <div class="profile-split">
+              <div class="profile-list" id="profileList"></div>
+
+              <div class="profile-editor">
+                <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                  <div class="input">
+                    <label>Hospital</label>
+                    <input type="text" id="pHospital" placeholder="e.g. JFK Medical Center" />
+                  </div>
+                  <div class="input">
+                    <label>Document Type</label>
+                    <input type="text" id="pDocType" placeholder="e.g. Discharge Summary" />
+                  </div>
+                  <div class="input">
+                    <label>Active</label>
+                    <select id="pActive">
+                      <option value="1">Yes</option>
+                      <option value="0">No</option>
+                    </select>
+                  </div>
+                  <div class="input">
+                    <label>Updated</label>
+                    <input type="text" id="pUpdated" disabled />
+                  </div>
+                </div>
+
+                <div class="input">
+                  <label>Section mappings (one per line)</label>
+                  <textarea id="pMappings" rows="10" style="width:100%;padding:11px 12px;border-radius:12px;border:1px solid var(--cool-2);font-size:13px;outline:none;"></textarea>
+                  <div class="tiny-note" style="margin-top:6px;">
+                    Format: <b>section_key = heading term</b><br/>
+                    Example:<br/>
+                    <code>facesheet = Face Sheet</code><br/>
+                    <code>facesheet = Patient Information</code><br/>
+                    <code>hospital_course = Hospital Course</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="tiny-note" style="margin-top:10px;">
+              Tip: You can create a new document type (ex: <b>Facesheet</b>) by saving a profile for it here.
             </div>
           </div>
         </div>
+
       </div>
       <div class="modal-foot">
         <button class="btn ghost" id="btnSettingsClose">Close</button>
@@ -297,6 +485,142 @@
   let filteredItems = [];
   let selectedVisitId = null;
   let selectedDocId = null;
+
+  let profiles = [];
+  let selectedProfileKey = null; // "hospital|doctype"
+
+  function profileKey(h, t){ return `${(h||"").trim()}|${(t||"").trim()}`; }
+
+  function mappingsTextFromJson(profileJson){
+    // profileJson is dict: { "hospital course": "hospital_course", ... }
+    try{
+      const obj = (typeof profileJson === "string") ? JSON.parse(profileJson) : profileJson;
+      if(!obj || typeof obj !== "object") return "";
+      return Object.entries(obj)
+        .map(([heading, key]) => `${key} = ${heading}`)
+        .join("\n");
+    }catch(e){
+      return "";
+    }
+  }
+
+  function jsonFromMappingsText(txt){
+    // user enters:
+    // section_key = heading term
+    // We convert to dict heading->section_key (lowercased heading), matching app.py expectations
+    const out = {};
+    const lines = String(txt || "").split("\n").map(x=>x.trim()).filter(Boolean);
+    for(const line of lines){
+      const idx = line.indexOf("=");
+      if(idx === -1) continue;
+      const left = line.slice(0, idx).trim();   // section_key
+      const right = line.slice(idx+1).trim();   // heading term
+      if(!left || !right) continue;
+      out[right.toLowerCase()] = left;
+    }
+    return out;
+  }
+
+  function renderProfileList(){
+    const el = $("#profileList");
+    if(!el) return;
+    if(!profiles.length){
+      el.innerHTML = `<div class="tiny-note">No profiles yet. Click <b>New</b> to add one.</div>`;
+      return;
+    }
+    el.innerHTML = profiles.map(p=>{
+      const key = profileKey(p.hospital_name, p.document_type);
+      const activeClass = (selectedProfileKey === key) ? " active" : "";
+      const activeTxt = p.active ? "Active" : "Inactive";
+      return `
+        <div class="profile-item${activeClass}" data-k="${escapeHtml(key)}">
+          <div class="t">${escapeHtml(p.hospital_name)} • ${escapeHtml(p.document_type)}</div>
+          <div class="m">${activeTxt} • Updated: ${escapeHtml(p.updated_at || "—")}</div>
+        </div>
+      `;
+    }).join("");
+
+    [...el.querySelectorAll(".profile-item")].forEach(item=>{
+      item.addEventListener("click", ()=>{
+        const k = item.dataset.k || "";
+        const p = profiles.find(x => profileKey(x.hospital_name, x.document_type) === k);
+        if(!p) return;
+        selectedProfileKey = k;
+        [...el.querySelectorAll(".profile-item")].forEach(x=>x.classList.remove("active"));
+        item.classList.add("active");
+        fillProfileEditor(p);
+      });
+    });
+  }
+
+  function fillProfileEditor(p){
+    $("#pHospital").value = p.hospital_name || "";
+    $("#pDocType").value = p.document_type || "";
+    $("#pActive").value = String(p.active ? 1 : 0);
+    $("#pUpdated").value = p.updated_at || "";
+    $("#pMappings").value = mappingsTextFromJson(p.profile_json);
+  }
+
+  function clearProfileEditor(){
+    selectedProfileKey = null;
+    $("#pHospital").value = "";
+    $("#pDocType").value = "";
+    $("#pActive").value = "1";
+    $("#pUpdated").value = "";
+    $("#pMappings").value = "";
+    renderProfileList();
+  }
+
+  async function loadProfiles(){
+    const res = await fetch("/api/hospital-extraction-profiles/list");
+    const data = await res.json();
+    if(!data.ok){
+      $("#profileList").innerHTML = `<div class="tiny-note" style="color:var(--danger);">Failed to load profiles.</div>`;
+      return;
+    }
+    profiles = data.items || [];
+    renderProfileList();
+  }
+
+  async function saveProfile(){
+    const hospital_name = ($("#pHospital").value || "").trim();
+    const document_type = ($("#pDocType").value || "").trim();
+    const active = parseInt($("#pActive").value || "1", 10) ? 1 : 0;
+    const mappingDict = jsonFromMappingsText($("#pMappings").value || "");
+
+    if(!hospital_name || !document_type){
+      alert("Hospital + Document Type are required.");
+      return;
+    }
+    if(Object.keys(mappingDict).length === 0){
+      alert("Add at least one mapping line: section_key = heading term");
+      return;
+    }
+
+    const res = await fetch("/api/hospital-extraction-profiles/upsert", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        hospital_name,
+        document_type,
+        active,
+        profile_json: mappingDict
+      })
+    });
+    const data = await res.json();
+    if(!data.ok){
+      alert(data.error || "Failed to save profile.");
+      return;
+    }
+    await loadProfiles();
+
+    // auto-select the saved profile
+    const k = profileKey(hospital_name, document_type);
+    selectedProfileKey = k;
+    const p = profiles.find(x => profileKey(x.hospital_name, x.document_type) === k);
+    if(p) fillProfileEditor(p);
+  }
+
 
   async function loadDischarges(){
     $("#leftSub").textContent = "Loading…";
@@ -370,26 +694,33 @@
     selectedDocId = firstDocId;
 
     $("#visitDetailsBody").innerHTML = `
-      <div class="visit-summary">
-        <div class="field">
-          <label>Patient</label>
-          <div class="val">${safe(v.patient_name)}</div>
-          <div class="val muted">MRN: ${safe(v.patient_mrn)}</div>
+      <div class="visit-head">
+        <div class="vh-top">
+          <div>
+            <div class="vh-name">${safe(v.patient_name)}</div>
+            <div class="vh-sub">
+              Visit ID: <b>${safe(v.visit_id || selectedVisitId)}</b>
+              • Admit: <b>${fmtDateOnly(v.admit_date)}</b>
+              • DC: <b>${fmtDateOnly(v.dc_date)}</b>
+            </div>
+          </div>
+
+          <div class="vh-meta">
+            <span class="vh-pill"><span class="mini-dot"></span> ${safe(v.hospital_name)}</span>
+            <span class="vh-pill"><span class="mini-dot"></span> Dispo: ${safe(v.disposition)}</span>
+            <span class="vh-pill"><span class="mini-dot"></span> Docs: ${docs.length}</span>
+          </div>
         </div>
-        <div class="field">
-          <label>Hospital</label>
-          <div class="val">${safe(v.hospital_name)}</div>
-          <div class="val muted">Disposition: ${safe(v.disposition)}</div>
-        </div>
-        <div class="field">
-          <label>Admit date</label>
-          <div class="val">${fmtDate(v.admit_date)}</div>
-          <div class="val muted">Updated: ${safe(v.updated_at)}</div>
-        </div>
-        <div class="field">
-          <label>DC date</label>
-          <div class="val">${fmtDate(v.dc_date)}</div>
-          <div class="val muted">Docs: ${docs.length}</div>
+
+        <div class="vh-kv">
+          <div class="k">Visit ID</div><div class="v">${safe(v.visit_id || selectedVisitId)}</div>
+          <div class="k">Hospital</div><div class="v">${safe(v.hospital_name)}</div>
+
+          <div class="k">Admit</div><div class="v">${fmtDateOnly(v.admit_date)}</div>
+          <div class="k">Discharge</div><div class="v">${fmtDateOnly(v.dc_date)}</div>
+
+          <div class="k">Disposition</div><div class="v">${safe(v.disposition)}</div>
+          <div class="k">Updated</div><div class="v">${safe(v.updated_at)}</div>
         </div>
       </div>
 
@@ -533,8 +864,16 @@
   $("#btnFilterCancel").addEventListener("click", () => closeModal("#filterModal"));
   $("#btnFilterApply").addEventListener("click", () => { applyFilters(true); closeModal("#filterModal"); });
 
-  $("#btnSettings").addEventListener("click", () => openModal("#settingsModal"));
+  $("#btnSettings").addEventListener("click", () => {
+    openModal("#settingsModal");
+    loadProfiles();
+  });
+
   $("#btnSettingsClose").addEventListener("click", () => closeModal("#settingsModal"));
+
+  $("#btnProfileNew").addEventListener("click", () => clearProfileEditor());
+  $("#btnProfileSave").addEventListener("click", () => saveProfile());
+
 
   ["#filterModal","#settingsModal"].forEach(id=>{
     $(id).addEventListener("click", (e)=>{
