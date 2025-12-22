@@ -1812,6 +1812,12 @@
         if (filterSelect) {
           filterSelect.innerHTML = '<option value="">(All facilities)</option>';
 
+          // NEW: special filter option for starred facilities
+          const starredOpt = document.createElement("option");
+          starredOpt.value = "__starred__";
+          starredOpt.textContent = "(All Starred ★)";
+          filterSelect.appendChild(starredOpt);
+
           const withAttending = (snfFacilities || []).filter(f => (f.attending || "").trim());
           const withoutAttending = (snfFacilities || []).filter(f => !(f.attending || "").trim());
 
@@ -2358,6 +2364,58 @@
       }
     }
 
+    // ===============================
+    // Facility(AI) name resolution
+    // ===============================
+    function normFacilityStr(s) {
+      return String(s || "")
+        .toLowerCase()
+        .replace(/[\.\,\(\)\[\]\{\}\-_/\\]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function splitAliases(raw) {
+      return String(raw || "")
+        .split(/[,\|;]+/)
+        .map(a => a.trim())
+        .filter(Boolean);
+    }
+
+    function resolveAiToSystemFacility(aiRaw) {
+      const aiNorm = normFacilityStr(aiRaw);
+      if (!aiNorm) return null;
+
+      for (const f of (snfFacilities || [])) {
+        const name = f.facility_name || "";
+        const nameNorm = normFacilityStr(name);
+        if (nameNorm && (aiNorm.includes(nameNorm) || nameNorm.includes(aiNorm))) {
+          return f; // matched by facility_name
+        }
+
+        const aliases = splitAliases(f.aliases);
+        for (const a of aliases) {
+          const aNorm = normFacilityStr(a);
+          if (aNorm && (aiNorm.includes(aNorm) || aNorm.includes(aiNorm))) {
+            return f; // matched by alias
+          }
+        }
+      }
+      return null;
+    }
+
+    // What to display specifically in the "Facility (AI)" column
+    // - If AI matches a system facility (name or alias): show system name
+    // - If NO match: show raw AI text + " *" so you can spot it instantly
+    function getFacilityAiDisplayName(r) {
+      const aiRaw = (r.ai_snf_name_raw || "").trim();
+      const match = resolveAiToSystemFacility(aiRaw);
+
+      if (match && match.facility_name) return match.facility_name;
+
+      if (aiRaw) return aiRaw + " *";     // 👈 AI-only marker
+      return "(unknown)";
+    }
 
     async function loadAdmissions() {
       const token = getAdminToken();
@@ -2402,26 +2460,49 @@
         // Client-side facility name filter using SNF Admission Facilities
         const filtered = admissions.filter(r => {
           if (!facilityId) return true;
+
+          const rowText = normFacilityStr(
+            (r.effective_facility_name || "") + " " +
+            (r.final_snf_name_display || "") + " " +
+            (r.ai_snf_name_raw || "")
+          );
+
+          // NEW: Starred filter
+          if (facilityId === "__starred__") {
+            const starredFacilities = (snfFacilities || []).filter(f => (f.attending || "").trim());
+            if (!starredFacilities.length) return false;
+
+            // include row if it matches ANY starred facility name/alias
+            for (const f of starredFacilities) {
+              const tokens = [];
+              if (f.facility_name) tokens.push(f.facility_name);
+              splitAliases(f.aliases).forEach(a => tokens.push(a));
+
+              const hit = tokens
+                .map(t => normFacilityStr(t))
+                .filter(Boolean)
+                .some(tn => rowText.includes(tn));
+
+              if (hit) return true;
+            }
+            return false;
+          }
+
+          // Normal single-facility filter
           const fac = snfFacilities.find(f => String(f.id) === String(facilityId));
           if (!fac) return true;
 
           const tokens = [];
           if (fac.facility_name) tokens.push(fac.facility_name);
-          if (fac.aliases) {
-            fac.aliases.split(/[,\|;]+/).forEach(a => {
-              if (a && a.trim()) tokens.push(a.trim());
-            });
-          }
-
-          const rowText = (
-            (r.effective_facility_name || "") + " " +
-            (r.final_snf_name_display || "") + " " +
-            (r.ai_snf_name_raw || "")
-          ).toLowerCase();
+          splitAliases(fac.aliases).forEach(a => tokens.push(a));
 
           if (!tokens.length) return true;
-          return tokens.some(t => rowText.includes(t.toLowerCase()));
+          return tokens
+            .map(t => normFacilityStr(t))
+            .filter(Boolean)
+            .some(tn => rowText.includes(tn));
         });
+
 
         // Apply Sort by / Direction
         const sortBy = document.getElementById("sort-by")?.value || "";
@@ -2436,8 +2517,8 @@
               av = (a.patient_name || "").toLowerCase();
               bv = (b.patient_name || "").toLowerCase();
             } else if (sortBy === "facility") {
-              av = (getDisplayFacilityLabel(a) || "").toLowerCase();
-              bv = (getDisplayFacilityLabel(b) || "").toLowerCase();
+              av = (getSortFacilityLabel(a) || "").toLowerCase();
+              bv = (getSortFacilityLabel(b) || "").toLowerCase();
             }
 
             if (av < bv) return -1 * dir;
@@ -2460,16 +2541,42 @@
 
 
     function getDisplayFacilityLabel(r) {
-      if (r.final_snf_name_display) return r.final_snf_name_display;
-
-      const parts = [];
-      if (r.effective_facility_name) parts.push(r.effective_facility_name);
-      if (r.effective_facility_city || r.effective_facility_state) {
-        parts.push(`(${[r.effective_facility_city, r.effective_facility_state].filter(Boolean).join(", ")})`);
+      // 1) Manual override always wins
+      if (r.final_snf_name_display) {
+        return r.final_snf_name_display;
       }
-      return parts.join(" ") || (r.ai_snf_name_raw || "");
+
+      // 2) System facility name if AI matches name or aliases
+      const aiDisplay = getFacilityAiDisplayName(r);
+      if (aiDisplay) {
+        return aiDisplay;
+      }
+
+      // 3) Absolute fallback
+      return "";
     }
 
+    function getDisplayFacilityLabel(r) {
+      // 1) Manual override always wins
+      if (r.final_snf_name_display) {
+        return r.final_snf_name_display;
+      }
+
+      // 2) System facility name if AI matches name or aliases
+      const aiDisplay = getFacilityAiDisplayName(r);
+      if (aiDisplay) {
+        return aiDisplay;
+      }
+
+      // 3) Absolute fallback
+      return "";
+    }
+
+    // Sort-safe facility label (don’t let the " *" change ordering)
+    function getSortFacilityLabel(r) {
+      const label = (getDisplayFacilityLabel(r) || "").trim();
+      return label.replace(/\s*\*$/, "").trim();
+    }
 
     function renderTable(rows) {
       const tbody = document.getElementById("snf-body");
@@ -2479,7 +2586,7 @@
         tr.className = (r.status || "pending") + (r.id === selectedId ? " selected" : "");
         tr.onclick = () => selectRow(r.id);
         // Prefer the reviewer-confirmed / manual facility name if present,
-        // then fall back to the facility from the DB, then AI raw name.
+        // then fall back to the facility from the DB, then AI (mapped to system facility name if possible).
         let facLabel = "";
 
         if (r.final_snf_name_display) {
@@ -2493,8 +2600,13 @@
               `(${[r.effective_facility_city, r.effective_facility_state].filter(Boolean).join(", ")})`
             );
           }
-          facLabel = facLabelParts.join(" ") || (r.ai_snf_name_raw || "(unknown)");
+
+          // NEW: use mapped AI display (system facility name if matched; else raw AI)
+          const aiDisplay = getFacilityAiDisplayName(r);
+
+          facLabel = facLabelParts.join(" ") || aiDisplay || "(unknown)";
         }
+
 
         const underName = r.visit_id
           ? `Visit ${r.visit_id}`
