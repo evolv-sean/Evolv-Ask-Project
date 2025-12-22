@@ -946,9 +946,17 @@ def init_db():
 
     # Ensure updated_at exists on older snf_admissions tables
     try:
-        cur.execute("ALTER TABLE snf_admissions ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))")
+        cur.execute("PRAGMA table_info(snf_admissions)")
+        cols = [r[1] for r in cur.fetchall()]
+        if "updated_at" not in cols:
+            cur.execute("ALTER TABLE snf_admissions ADD COLUMN updated_at TEXT")
+            # Backfill so existing rows don't have NULL
+            cur.execute(
+                "UPDATE snf_admissions SET updated_at = COALESCE(updated_at, created_at) WHERE updated_at IS NULL"
+            )
     except sqlite3.Error:
         pass
+
 
     try:
         cur.execute("ALTER TABLE snf_admissions ADD COLUMN facility_free_text TEXT")
