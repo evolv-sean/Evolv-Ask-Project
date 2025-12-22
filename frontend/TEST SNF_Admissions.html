@@ -2556,10 +2556,11 @@
           delBtn.title = "Ignore this note (hide + AI ignore)";
           delBtn.innerHTML = `
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M9 3h6l1 2h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M6 5h12l-1 16H7L6 5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-              <path d="M10 11v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-              <path d="M14 11v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <!-- circle -->
+              <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" />
+              <!-- perfectly centered X -->
+              <path d="M9 9l6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <path d="M15 9l-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             </svg>
           `;
           delBtn.onclick = async (ev) => {
