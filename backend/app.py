@@ -7159,6 +7159,87 @@ async def snf_secure_link_get(token: str, request: Request):
     finally:
         conn.close()
 
+# ---------------------------------------------------------------------------
+# Hospital extraction profiles CRUD (Admin)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/hospital-extraction-profiles/list")
+def api_hex_profiles_list():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, hospital_name, document_type, profile_json, active, updated_at
+            FROM hospital_extraction_profiles
+            ORDER BY hospital_name ASC, document_type ASC
+            """
+        )
+        rows = cur.fetchall()
+        items = []
+        for r in rows:
+            rr = dict(r)
+            # profile_json stays as string for the UI to parse safely
+            items.append(rr)
+        return {"ok": True, "items": items}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/hospital-extraction-profiles/upsert")
+def api_hex_profiles_upsert(payload: dict):
+    """
+    payload:
+      {
+        hospital_name: str,
+        document_type: str,
+        active: 0|1,
+        profile_json: dict   # heading(lowercased) -> section_key
+      }
+    """
+    try:
+        hospital_name = (payload.get("hospital_name") or "").strip()
+        document_type = (payload.get("document_type") or "").strip()
+        active = 1 if int(payload.get("active", 1) or 1) else 0
+        profile_obj = payload.get("profile_json") or {}
+
+        if not hospital_name or not document_type:
+            return {"ok": False, "error": "hospital_name and document_type are required"}
+
+        if not isinstance(profile_obj, dict) or len(profile_obj) == 0:
+            return {"ok": False, "error": "profile_json must be a non-empty object"}
+
+        # Normalize keys to lowercase for consistent matching
+        normalized = {}
+        for k, v in profile_obj.items():
+            kk = (str(k) or "").strip().lower()
+            vv = (str(v) or "").strip()
+            if kk and vv:
+                normalized[kk] = vv
+
+        if len(normalized) == 0:
+            return {"ok": False, "error": "profile_json produced no valid mappings"}
+
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO hospital_extraction_profiles (hospital_name, document_type, profile_json, active, updated_at)
+            VALUES (?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(hospital_name, document_type)
+            DO UPDATE SET
+              profile_json = excluded.profile_json,
+              active = excluded.active,
+              updated_at = datetime('now')
+            """,
+            (hospital_name, document_type, json.dumps(normalized), active),
+        )
+        conn.commit()
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.get("/api/hospital-discharges/list")
 async def hospital_discharges_list():
     conn = get_db()
