@@ -712,6 +712,17 @@ def init_db():
     except sqlite3.Error:
         pass
 
+    # NEW: allow soft-deleting/ignoring specific notes (UI cleanup + AI ignore)
+    try:
+        cur.execute("ALTER TABLE cm_notes_raw ADD COLUMN ignored INTEGER DEFAULT 0")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE cm_notes_raw ADD COLUMN ignored_at TEXT")
+    except sqlite3.Error:
+        pass
+
     # Indexes to speed up typical queries on cm_notes_raw
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_cm_notes_raw_mrn ON cm_notes_raw (patient_mrn)"
@@ -721,6 +732,9 @@ def init_db():
     )
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_cm_notes_raw_hash ON cm_notes_raw (note_hash)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cm_notes_raw_ignored ON cm_notes_raw (ignored)"
     )
 
     # -------------------------------------------------------------------
@@ -4503,6 +4517,7 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
             SELECT *
             FROM cm_notes_raw
             WHERE created_at >= datetime('now', ?)
+              AND (ignored IS NULL OR ignored = 0)
             ORDER BY patient_mrn, note_datetime, id
             """,
             (f"-{days_back} days",),
@@ -5976,6 +5991,8 @@ async def admin_snf_get_note(
             "note_text": note["note_text"],
             "source_system": note["source_system"],
             "pad_run_id": note["pad_run_id"],
+            "created_at": note["created_at"],
+            "ignored": int(note["ignored"] or 0) if "ignored" in note.keys() else 0,
         }
 
         # Also return all notes for this admission (visit_id if present, otherwise MRN)
@@ -5987,6 +6004,7 @@ async def admin_snf_get_note(
                     SELECT *
                     FROM cm_notes_raw
                     WHERE visit_id = ?
+                      AND (ignored IS NULL OR ignored = 0)
                     ORDER BY note_datetime, id
                     """,
                     (adm["visit_id"],),
@@ -6020,6 +6038,7 @@ async def admin_snf_get_note(
                         "note_text": n["note_text"],
                         "source_system": n["source_system"],
                         "pad_run_id": n["pad_run_id"],
+                        "created_at": n["created_at"],
                     }
                 )
         except sqlite3.Error:
@@ -6030,6 +6049,113 @@ async def admin_snf_get_note(
     finally:
         conn.close()
 
+class IgnoreCmNoteRequest(BaseModel):
+    note_id: int
+
+
+@app.get("/admin/snf/last-processed")
+async def admin_snf_last_processed(request: Request):
+    """Return the latest successful CM note ingestion timestamp."""
+    require_admin(request)
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(created_at) AS last_processed FROM cm_notes_raw")
+        row = cur.fetchone()
+        return {"ok": True, "last_processed": (row["last_processed"] if row else None)}
+    finally:
+        conn.close()
+
+
+@app.post("/admin/snf/cm-note/ignore")
+async def admin_snf_ignore_cm_note(
+    request: Request,
+    payload: IgnoreCmNoteRequest,
+):
+    """Soft-delete a CM note so it is hidden in the UI and ignored by the AI."""
+    require_admin(request)
+
+    note_id = int(payload.note_id or 0)
+    if not note_id:
+        raise HTTPException(status_code=400, detail="note_id is required")
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        cur.execute("SELECT * FROM cm_notes_raw WHERE id = ?", (note_id,))
+        note = cur.fetchone()
+        if not note:
+            raise HTTPException(status_code=404, detail="Note not found")
+
+        # Mark ignored
+        cur.execute(
+            "UPDATE cm_notes_raw SET ignored = 1, ignored_at = datetime('now') WHERE id = ?",
+            (note_id,),
+        )
+
+        # If any SNF admission currently points to this raw note, repoint it to the latest remaining note
+        visit_id = (note["visit_id"] or "").strip() if "visit_id" in note.keys() else ""
+        mrn = (note["patient_mrn"] or "").strip()
+
+        latest_keep = None
+        if visit_id:
+            cur.execute(
+                """
+                SELECT *
+                FROM cm_notes_raw
+                WHERE visit_id = ?
+                  AND (ignored IS NULL OR ignored = 0)
+                ORDER BY note_datetime DESC, id DESC
+                LIMIT 1
+                """,
+                (visit_id,),
+            )
+            latest_keep = cur.fetchone()
+        elif mrn:
+            cur.execute(
+                """
+                SELECT *
+                FROM cm_notes_raw
+                WHERE patient_mrn = ?
+                  AND (ignored IS NULL OR ignored = 0)
+                ORDER BY note_datetime DESC, id DESC
+                LIMIT 1
+                """,
+                (mrn,),
+            )
+            latest_keep = cur.fetchone()
+
+        if latest_keep:
+            cur.execute(
+                """
+                UPDATE snf_admissions
+                SET raw_note_id = ?,
+                    note_datetime = COALESCE(?, note_datetime),
+                    status = CASE WHEN status = 'confirmed' THEN status ELSE 'pending' END,
+                    updated_at = datetime('now')
+                WHERE raw_note_id = ?
+                """,
+                (latest_keep["id"], latest_keep["note_datetime"], note_id),
+            )
+        else:
+            # No notes left for that admission; mark any linked admission as removed
+            cur.execute(
+                """
+                UPDATE snf_admissions
+                SET status = 'removed',
+                    updated_at = datetime('now')
+                WHERE raw_note_id = ?
+                """,
+                (note_id,),
+            )
+
+        conn.commit()
+        return {"ok": True}
+
+    finally:
+        conn.close()
 
 
 @app.post("/admin/snf/update")
