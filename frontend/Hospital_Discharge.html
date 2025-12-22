@@ -34,8 +34,21 @@
     .icon-btn{width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;border:1px solid var(--cool);background:var(--white);box-shadow:0 10px 24px rgba(0,0,0,.06);cursor:pointer;transition:transform .08s ease, box-shadow .08s ease, border-color .08s ease;position:relative;}
     .icon-btn:hover{transform:translateY(-1px);border-color:var(--mint);box-shadow:0 14px 28px rgba(0,0,0,.08);}
     .icon-btn:active{transform:translateY(0px);}
-    .icon-btn svg{width:18px;height:18px;fill:var(--navy);}
+    .icon-btn svg{
+      width:18px;height:18px;
+      stroke:var(--navy);
+      fill:none;
+      stroke-width:1.6;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+    }
     .grid{display:grid;grid-template-columns:520px 1fr;gap:14px;align-items:stretch;min-height:calc(100vh - 120px);}
+    /* Fixed-height layout + internal scrolling */
+    .grid{align-items:stretch;}
+    .card{display:flex;flex-direction:column;min-height:0;}
+    .card.fixed-h{height:72vh;} /* adjust if you want taller/shorter */
+    .card-body{min-height:0;}
+    .card-body.scroll{overflow:auto;}
     .card{background:var(--white);border:1px solid var(--cool);border-radius:18px;box-shadow:0 16px 34px rgba(0,0,0,.06);overflow:hidden;display:flex;flex-direction:column;min-height:0;}
     .card-head{padding:14px 16px 10px;border-bottom:1px solid #F1F5F9;display:flex;align-items:flex-end;justify-content:space-between;gap:10px;}
     .card-title{font-size:14px;font-weight:900;color:var(--navy);display:flex;gap:10px;align-items:center;}
@@ -100,29 +113,34 @@
   <div class="page">
     <div class="topbar">
       <div class="titleblock">
-        <div class="kicker">Discharge Packet Hub</div>
+        <div class="kicker">Documentation Hub</div>
         <div class="pagetitle">Hospital Discharges</div>
-        <div class="subtitle">One row per Visit ID • documents and sections update as new records arrive</div>
+        <div class="subtitle">Documents and sections update as new records arrive</div>
       </div>
       <div class="actions">
         <div class="token-pill" title="Admin token status (placeholder)">
           <span class="dot" id="adminDot"></span>
           <span id="adminStatusText">Admin token: unknown</span>
         </div>
-        <button class="icon-btn" id="btnFilter" title="Filters">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5a1 1 0 0 1 1-1h16a1 1 0 0 1 .8 1.6l-6.6 8.8a1 1 0 0 0-.2.6v3.6a1 1 0 0 1-.55.9l-3 1.5A1 1 0 0 1 9 20.1V15a1 1 0 0 0-.2-.6L2.2 5.6A1 1 0 0 1 3 5z"/></svg>
-        </button>
-        <button class="icon-btn" id="btnSettings" title="Settings">
-  <!-- sliders -->
+<button class="icon-btn" id="btnFilter" title="Filters">
   <svg viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M4 21v-7h2v7H4zm0-11V3h2v7H4zm7 11V3h2v18h-2zm7 0v-9h2v9h-2zm0-13V3h2v5h-2z"/>
+    <path d="M4 6h16"></path>
+    <path d="M7 12h10"></path>
+    <path d="M10 18h4"></path>
+  </svg>
+</button>
+
+<button class="icon-btn" id="btnSettings" title="Settings">
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M7 10V8a5 5 0 0 1 10 0v2"></path>
+    <rect x="5" y="10" width="14" height="10" rx="2"></rect>
   </svg>
 </button>
       </div>
     </div>
 
     <div class="grid">
-      <div class="card">
+      <div class="card fixed-h">
         <div class="card-head">
           <div>
             <div class="card-title"><span class="mint-accent"></span>Discharges</div>
@@ -133,7 +151,7 @@
             <span class="pill"><span class="mini-dot"></span> All dispositions</span>
           </div>
         </div>
-        <div class="card-body">
+        <div class="card-body scroll">
           <table>
             <thead>
               <tr>
@@ -152,7 +170,7 @@
         </div>
       </div>
 
-      <div class="card">
+      <div class="card fixed-h">
         <div class="card-head">
           <div>
             <div class="card-title"><span class="mint-accent"></span>Visit Details</div>
@@ -163,7 +181,7 @@
             <span class="pill" title="Reserved for future AI status"><span class="mini-dot"></span> AI: —</span>
           </div>
         </div>
-        <div class="card-body" id="visitDetailsBody">
+        <div class="card-body scroll" id="visitDetailsBody">
           <div class="tiny-note">Nothing selected yet.</div>
         </div>
       </div>
@@ -178,8 +196,10 @@
       <div class="modal-body">
         <div class="form-grid">
           <div class="input">
-            <label>Hospital name contains</label>
-            <input type="text" id="fHospital" placeholder="e.g., Mount Sinai" />
+            <label>Hospital Name</label>
+            <select id="fHospital">
+              <option value="">All</option>
+            </select>
           </div>
           <div class="input">
             <label>Disposition</label>
@@ -247,6 +267,30 @@
     if(!d) return "—";
     return String(d).split("T")[0];
   }
+
+  function populateHospitalDropdown(){
+    const sel = $("#fHospital");
+    if(!sel) return;
+
+    const names = Array.from(new Set(
+      (allItems || [])
+        .map(x => (x.hospital_name || "").trim())
+        .filter(Boolean)
+    )).sort((a,b)=>a.localeCompare(b));
+
+    sel.innerHTML = `<option value="">All</option>` + names.map(n =>
+      `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`
+    ).join("");
+  }
+
+  /* Discharges table needs date-only even when backend sends "MM/DD/YYYY HH:MM:SS AM" */
+  function fmtDateOnly(d){
+    if(!d) return "—";
+    const s = String(d).trim();
+    if(s.includes("T")) return s.split("T")[0];
+    if(s.includes(" ")) return s.split(" ")[0];
+    return s;
+  }
   function safe(v){ return (v === null || v === undefined || v === "") ? "—" : String(v); }
 
   let allItems = [];
@@ -263,6 +307,7 @@
       return;
     }
     allItems = data.items || [];
+    populateHospitalDropdown();
     applyFilters(false);
     $("#leftSub").textContent = `${filteredItems.length} visits`;
   }
@@ -283,8 +328,8 @@
       tr.dataset.visitId = row.visit_id || "";
       if(selectedVisitId && row.visit_id === selectedVisitId) tr.classList.add("selected");
 
-      const admit = fmtDate(row.admit_date);
-      const dc = fmtDate(row.dc_date);
+      const admit = fmtDateOnly(row.admit_date);
+      const dc = fmtDateOnly(row.dc_date);
       const dateRange = (admit === "—" && dc === "—") ? "—" : `${admit} – ${dc}`;
 
       tr.innerHTML = `
@@ -448,11 +493,11 @@
     const dcTo = $("#fDcTo")?.value || "";
 
     filteredItems = allItems.filter(r => {
-      const hosp = String(r.hospital_name || "").toLowerCase();
+      const hosp = String(r.hospital_name || "").trim().toLowerCase();
       const d = String(r.disposition || "").toLowerCase();
       const dc = fmtDate(r.dc_date);
 
-      if(h && !hosp.includes(h)) return false;
+      if(h && hosp !== h) return false;
       if(disp && d !== disp) return false;
       if(dcFrom && (dc === "—" || dc < dcFrom)) return false;
       if(dcTo && (dc === "—" || dc > dcTo)) return false;
@@ -468,7 +513,8 @@
 
   function updateFilterPills(h, disp, dcFrom, dcTo){
     const pills = $("#activeFilterPills");
-    const p1 = h ? `Hospital: ${h}` : "All hospitals";
+    const selHospLabel = ($("#fHospital")?.value || "").trim();
+    const p1 = selHospLabel ? `Hospital: ${selHospLabel}` : "All hospitals";
     const p2 = disp ? `Disposition: ${disp}` : "All dispositions";
     const p3 = (dcFrom || dcTo) ? `DC: ${dcFrom || "…"} → ${dcTo || "…"}`
                                : null;
