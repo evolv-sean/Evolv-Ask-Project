@@ -1100,6 +1100,18 @@
               </div>
             </div>
 
+            <!-- Global recompute -->
+            <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa; margin-top:12px;">
+              <div style="font-weight:800; color:#111827; margin-bottom:6px;">Global recompute</div>
+              <div style="font-size:12px; color:#6b7280; margin-bottom:10px;">
+                Re-runs SNF AI using only non-ignored notes. Use this after removing notes if you want every row refreshed.
+              </div>
+              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <button class="btn btn-primary btn-small" onclick="globalRecomputeSnfAi()">Recompute SNF AI (All)</button>
+                <span id="global-recompute-status" class="message"></span>
+              </div>
+            </div>
+
             <!-- Facilities -->
             <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa; margin-top:12px;">
               <div style="font-weight:800; color:#111827; margin-bottom:8px;">SNF facilities</div>
@@ -1537,7 +1549,6 @@
           }
         } catch (uiErr) {
           console.error("Post-save UI refresh error (keywords):", uiErr);
-          // Keep "Saved." — backend update already happened
         }
 
         setTimeout(() => { if (status) status.textContent = ""; }, 2000);
@@ -1548,8 +1559,62 @@
     }
 
     // ===============================
+    // Global recompute SNF AI (admin)
+    // ===============================
+    async function globalRecomputeSnfAi() {
+      const token = getAdminToken();
+      const statusEl = document.getElementById("global-recompute-status");
+
+      if (!token) {
+        if (statusEl) statusEl.textContent = "Paste ADMIN_TOKEN above first.";
+        return;
+      }
+
+      const ok = confirm(
+        "This will recompute SNF AI for ALL admissions using only non-ignored notes.\n\nContinue?"
+      );
+      if (!ok) return;
+
+      if (statusEl) statusEl.textContent = "Recomputing…";
+
+      try {
+        const resp = await fetch("/admin/snf/recompute-all", {
+          method: "POST",
+          headers: { "X-Admin-Token": token }
+        });
+
+        let data = null;
+        try { data = await resp.json(); } catch (e) {}
+
+        if (!resp.ok) {
+          const detail = data && (data.detail || data.message);
+          throw new Error("HTTP " + resp.status + (detail ? " – " + detail : ""));
+        }
+        if (data && data.ok === false) throw new Error(data.detail || "ok=false");
+
+        const msg =
+          `Done. Groups=${data.total_groups}, OK=${data.recomputed_ok}, Failed=${data.recomputed_failed}`;
+        if (statusEl) statusEl.textContent = msg;
+
+        // Refresh the table so Facility(AI) updates immediately
+        try { await loadAdmissions(); } catch (e2) {}
+
+        // Re-select row if user had one open
+        if (selectedId != null) {
+          try { await selectRow(selectedId); } catch (e3) {}
+        }
+
+        setTimeout(() => { if (statusEl) statusEl.textContent = ""; }, 4000);
+      } catch (e) {
+        console.error("globalRecomputeSnfAi error", e);
+        if (statusEl) statusEl.textContent = "Recompute failed: " + e;
+      }
+    }
+
+    // ===============================
     // Filters modal (open/close/apply)
     // ===============================
+
     function openFiltersModal() {
       const m = document.getElementById("filters-modal");
       if (m) m.classList.add("open");
@@ -2593,7 +2658,25 @@
               if (!resp2.ok || (data2 && data2.ok === false)) {
                 throw new Error((data2 && (data2.detail || data2.message)) || ("HTTP " + resp2.status));
               }
+              // NEW: recompute AI for this admission immediately after ignoring a note
+              try {
+                const payload3 = {
+                  visit_id: (adm && adm.visit_id) ? String(adm.visit_id) : "",
+                  patient_mrn: (adm && adm.patient_mrn) ? String(adm.patient_mrn) : ""
+                };
+                await fetch("/admin/snf/admission/recompute", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "X-Admin-Token": token },
+                  body: JSON.stringify(payload3)
+                });
+              } catch (e3) {
+                console.warn("Recompute failed (non-fatal):", e3);
+              }
+
               if (selectedId != null) await selectRow(selectedId);
+              // Optional: refresh the left list too so the facility column updates instantly
+              try { await loadAdmissions(); } catch (e4) {}
+
             } catch (e) {
               console.error(e);
               alert("Could not ignore note: " + e);
