@@ -486,21 +486,29 @@
       font-weight:600;
       white-space:nowrap;
     }
+    /* NOTE delete icon — no button box, icon-only */
     .note-mini-btn{
-      width:28px;
-      height:28px;
-      border-radius:10px;
-      border:1px solid rgba(13,59,102,14);
-      background:#ffffff;
+      border:none;
+      background:transparent;
+      width:auto;
+      height:auto;
+      padding:0;
+      margin:0;
       display:inline-flex;
       align-items:center;
       justify-content:center;
       cursor:pointer;
-      padding:0;
     }
-    .note-mini-btn:hover{ background: rgba(13,59,102,04); }
-    .note-mini-btn svg{ width:14px; height:14px; color: rgba(13,59,102,78); }
 
+    .note-mini-btn:hover{
+      opacity:0.65;   /* subtle hover, no box */
+    }
+
+    .note-mini-btn svg{
+      width:16px;
+      height:16px;
+      color: rgba(13,59,102,0.78);
+    }
 
     /* NEW: keyword highlight */
     .kw-hl {
