@@ -515,7 +515,7 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
       <div class="content">
         <h1>Accountable Care Hospitalist Group (ACHG) Notification</h1>
         <p>
-          Our Hospitalists have identified upcoming patients expected to discharge to your facility.
+          Our Hospitalists at HCA Florida JFK Hospital have identified upcoming patients expected to discharge to your facility.
           Please use the View List button below to download today's list (Facility PIN required).
         </p>
 
@@ -6785,17 +6785,18 @@ async def admin_snf_update(
         if disposition == "SNF":
             new_ai_is_candidate = 1
 
-            # Prefer the manually-entered Facility free text
             if facility_free_text:
+                # Manual override ON
                 maps = load_dictionary_maps(conn)
                 facility_aliases = maps["facility_aliases"]
                 mapped_id = map_snf_name_to_facility_id(facility_free_text, conn, facility_aliases)
                 new_final_facility_id = mapped_id
                 new_final_name_display = facility_free_text
             else:
-                # No manual name; at least confirm the AI name as the final display
-                if not new_final_name_display and ai_snf_name_raw:
-                    new_final_name_display = ai_snf_name_raw
+                # Manual override OFF (user selected "(none)")
+                # Clear the final override so UI falls back to AI (or Unknown if AI is unknown).
+                new_final_facility_id = None
+                new_final_name_display = None
 
         # NOTE: for non-SNF dispositions we leave ai_is_snf_candidate alone,
         # but still record disposition and facility_free_text for audit.
@@ -7660,7 +7661,7 @@ def build_snf_pdf_html(
             </span>
           </div>
           <p class="header-description">
-            Our Hospitalists have identified the following patients as expected discharges to your facility. Please contact Doug Neal (Doug.Neal@medrina.com) or Stephanie Sellers (ssellers@startevolv.com) if you have questions or would like to add additional recipients to future emails.
+            Our Hospitalists at HCA Florida JFK Hospital have identified the following patients as expected discharges to your facility. Please contact Doug Neal (Doug.Neal@medrina.com) or Stephanie Sellers (ssellers@startevolv.com) if you have questions or would like to add additional recipients to future emails.
           </p>
 
 {provider_callout}
