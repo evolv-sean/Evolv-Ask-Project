@@ -968,6 +968,14 @@ def init_db():
             emailed_at                  TEXT,
             email_run_id                TEXT,
 
+            -- SNF Physician Assignment (NEW)
+            assignment_confirmation     TEXT DEFAULT 'Unknown',  -- Unknown / Assigned / Assigned Out
+            billing_confirmed           INTEGER DEFAULT 0,       -- 0/1
+            confirmation_call_dt        TEXT,                    -- datetime-local string
+            snf_staff_name              TEXT,
+            physician_assigned          TEXT,
+            assignment_notes            TEXT,
+
             created_at                  TEXT DEFAULT (datetime('now')),
             updated_at                  TEXT DEFAULT (datetime('now'))
         )
@@ -1048,6 +1056,37 @@ def init_db():
 
     try:
         cur.execute("ALTER TABLE snf_admissions ADD COLUMN notification_details TEXT")
+    except sqlite3.Error:
+        pass
+
+    # SNF Physician Assignment (NEW)
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN assignment_confirmation TEXT DEFAULT 'Unknown'")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN billing_confirmed INTEGER DEFAULT 0")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN confirmation_call_dt TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN snf_staff_name TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN physician_assigned TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN assignment_notes TEXT")
     except sqlite3.Error:
         pass
 
@@ -6401,7 +6440,21 @@ async def admin_snf_list(
                     "patient_mrn": r["patient_mrn"],
                     "patient_name": r["patient_name"],
                     "hospital_name": r["hospital_name"],
+
+                    # Notification fields
                     "notified_by_hospital": int(r["notified_by_hospital"] or 0),
+                    "notified_by": r["notified_by"] or "",
+                    "notification_dt": r["notification_dt"] or "",
+                    "hospital_reported_facility": r["hospital_reported_facility"] or "",
+                    "notification_details": r["notification_details"] or "",
+
+                    # SNF Physician Assignment (NEW)
+                    "assignment_confirmation": r["assignment_confirmation"] or "Unknown",
+                    "billing_confirmed": int(r["billing_confirmed"] or 0),
+                    "confirmation_call_dt": r["confirmation_call_dt"] or "",
+                    "snf_staff_name": r["snf_staff_name"] or "",
+                    "physician_assigned": r["physician_assigned"] or "",
+                    "assignment_notes": r["assignment_notes"] or "",
 
                     "note_datetime": r["note_datetime"],
                     "note_datetime_et": utc_text_to_eastern_display(r["note_datetime"]),
@@ -6494,6 +6547,14 @@ async def admin_snf_get_note(
             "notification_dt": adm["notification_dt"] or "",
             "hospital_reported_facility": adm["hospital_reported_facility"] or "",
             "notification_details": adm["notification_details"] or "",
+
+            # SNF Physician Assignment (NEW)
+            "assignment_confirmation": adm["assignment_confirmation"] or "Unknown",
+            "billing_confirmed": int(adm["billing_confirmed"] or 0),
+            "confirmation_call_dt": adm["confirmation_call_dt"] or "",
+            "snf_staff_name": adm["snf_staff_name"] or "",
+            "physician_assigned": adm["physician_assigned"] or "",
+            "assignment_notes": adm["assignment_notes"] or "",
         }
 
         note_data = {
@@ -6738,6 +6799,17 @@ async def admin_snf_update(
     hospital_reported_facility = (payload.get("hospital_reported_facility") or "").strip()
     notification_details = (payload.get("notification_details") or "").strip()
 
+    # SNF Physician Assignment (NEW)
+    assignment_confirmation = (payload.get("assignment_confirmation") or "Unknown").strip() or "Unknown"
+    if assignment_confirmation not in ("Unknown", "Assigned", "Assigned Out"):
+        raise HTTPException(status_code=400, detail="Invalid assignment_confirmation")
+
+    billing_confirmed = 1 if payload.get("billing_confirmed") else 0
+    confirmation_call_dt = (payload.get("confirmation_call_dt") or "").strip()
+    snf_staff_name = (payload.get("snf_staff_name") or "").strip()
+    physician_assigned = (payload.get("physician_assigned") or "").strip()
+    assignment_notes = (payload.get("assignment_notes") or "").strip()
+
 
     # New: disposition + manual facility free text
     raw_disp = (payload.get("disposition") or "").strip()
@@ -6832,7 +6904,14 @@ async def admin_snf_update(
                    notified_by = ?,
                    notification_dt = ?,
                    hospital_reported_facility = ?,
-                   notification_details = ?
+                   notification_details = ?,
+
+                   assignment_confirmation = ?,
+                   billing_confirmed = ?,
+                   confirmation_call_dt = ?,
+                   snf_staff_name = ?,
+                   physician_assigned = ?,
+                   assignment_notes = ?
              WHERE id = ?
             """,
             (
@@ -6850,6 +6929,14 @@ async def admin_snf_update(
                 notification_dt,
                 hospital_reported_facility,
                 notification_details,
+
+                assignment_confirmation,
+                billing_confirmed,
+                confirmation_call_dt,
+                snf_staff_name,
+                physician_assigned,
+                assignment_notes,
+
                 snf_id,
             ),
         )
