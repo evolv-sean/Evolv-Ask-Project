@@ -1435,9 +1435,11 @@
         try { data = await resp.json(); } catch (e) {}
         if (!resp.ok || (data && data.ok === false)) throw new Error("HTTP " + resp.status);
 
-        const ts = (data && data.last_processed) ? data.last_processed : "(none yet)";
-        if (top) top.textContent = "Last API: " + ts;
-        if (modal) modal.textContent = "Last API: " + ts;
+        const ts = (data && (data.last_processed_et || data.last_processed))
+          ? (data.last_processed_et || data.last_processed)
+          : "(none yet)";
+        if (top) top.textContent = "Last API: " + ts + " ET";
+        if (modal) modal.textContent = "Last API: " + ts + " ET";
       } catch (e) {
         console.error("loadLastProcessedStatus error", e);
         if (top) top.textContent = "Last API: (error)";
@@ -2371,7 +2373,9 @@
             card.innerHTML = `
               <div class="open-top">
                 <span class="pin-pill ${pillClass}">${escapeHtml(pinType)}</span>
-                <div style="font-size:11px;color:#111827;font-weight:700;">${escapeHtml(r.accessed_at_local || r.accessed_at || "")}</div>
+                <div style="font-size:11px;color:#111827;font-weight:700;">
+                  ${escapeHtml((r.accessed_at_et || r.accessed_at_local || r.accessed_at || "") + " ET")}
+                </div>
               </div>
               <div class="open-sub">
                 <div><strong>IP:</strong> ${escapeHtml(r.ip || "")}</div>
@@ -2696,7 +2700,7 @@
             <span class="status-pill ${r.status || "pending"}">${r.status || "pending"}</span>
           </td>
           <td>${emailed}</td>
-          <td>${formatISOToMDY(r.last_seen_active_date)}</td>
+          <td>${formatISOToMDY(r.last_seen_active_date_et || r.last_seen_active_date)}</td>
         `;
         tbody.appendChild(tr);
       });
@@ -2790,7 +2794,9 @@
 
           const created = document.createElement("div");
           created.className = "note-created-at";
-          created.textContent = n.created_at ? ("Added: " + n.created_at) : "";
+          const addedTs = n.created_at_et || n.created_at;
+          created.textContent = addedTs ? ("Added: " + addedTs + " ET") : "";
+
 
           const delBtn = document.createElement("button");
           delBtn.className = "note-mini-btn";
