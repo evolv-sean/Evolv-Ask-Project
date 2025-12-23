@@ -936,6 +936,15 @@
         </div>
 
         <div class="flex-row" style="gap:8px;">
+          <!-- Live search (patient name + visit_id) -->
+          <input
+            id="snf-search"
+            type="text"
+            placeholder="Search patient or visit…"
+            style="width:220px;"
+            oninput="onSnfSearchInput()"
+          />
+
           <!-- Load (icon button) -->
           <button class="icon-btn" title="Load" aria-label="Load" onclick="loadAdmissions()">
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
@@ -2481,6 +2490,111 @@
       return "(unknown)";
     }
 
+    let snfSearchTerm = "";
+
+    function onSnfSearchInput() {
+      const el = document.getElementById("snf-search");
+      snfSearchTerm = (el ? el.value : "").trim().toLowerCase();
+      applyClientFiltersAndRender(); // re-render instantly (no API call)
+    }
+
+    function applyClientFiltersAndRender() {
+      const facilityId = document.getElementById("filter-facility").value || "";
+
+      // Start from the latest fetched admissions
+      let filtered = (admissions || []).slice();
+
+      // -------------------------------
+      // Client-side facility name filter using SNF Admission Facilities
+      // (this is your existing logic, moved here)
+      // -------------------------------
+      filtered = filtered.filter(r => {
+        if (!facilityId) return true;
+
+        const rowText = normFacilityStr(
+          (r.effective_facility_name || "") + " " +
+          (r.final_snf_name_display || "") + " " +
+          (r.ai_snf_name_raw || "")
+        );
+
+        // Starred filter
+        if (facilityId === "__starred__") {
+          const starredFacilities = (snfFacilities || []).filter(f => (f.attending || "").trim());
+          if (!starredFacilities.length) return false;
+
+          for (const f of starredFacilities) {
+            const tokens = [];
+            if (f.facility_name) tokens.push(f.facility_name);
+            splitAliases(f.aliases).forEach(a => tokens.push(a));
+
+            const hit = tokens
+              .map(t => normFacilityStr(t))
+              .filter(Boolean)
+              .some(tn => rowText.includes(tn));
+
+            if (hit) return true;
+          }
+          return false;
+        }
+
+        // Normal single-facility filter
+        const fac = snfFacilities.find(f => String(f.id) === String(facilityId));
+        if (!fac) return true;
+
+        const tokens = [];
+        if (fac.facility_name) tokens.push(fac.facility_name);
+        splitAliases(fac.aliases).forEach(a => tokens.push(a));
+
+        if (!tokens.length) return true;
+        return tokens
+          .map(t => normFacilityStr(t))
+          .filter(Boolean)
+          .some(tn => rowText.includes(tn));
+      });
+
+      // -------------------------------
+      // NEW: Free-text search (patient_name + visit_id)
+      // -------------------------------
+      if (snfSearchTerm) {
+        filtered = filtered.filter(r => {
+          const pn = String(r.patient_name || "").toLowerCase();
+          const vid = String(r.visit_id || "").toLowerCase();
+          return pn.includes(snfSearchTerm) || vid.includes(snfSearchTerm);
+        });
+      }
+
+      // -------------------------------
+      // Apply Sort by / Direction (your existing logic)
+      // -------------------------------
+      const sortBy = document.getElementById("sort-by")?.value || "";
+      const sortDir = document.getElementById("sort-dir")?.value || "asc";
+      const dir = (sortDir === "desc") ? -1 : 1;
+
+      if (sortBy) {
+        filtered.sort((a, b) => {
+          let av = "", bv = "";
+
+          if (sortBy === "patient") {
+            av = (a.patient_name || "").toLowerCase();
+            bv = (b.patient_name || "").toLowerCase();
+          } else if (sortBy === "facility") {
+            av = (getSortFacilityLabel(a) || "").toLowerCase();
+            bv = (getSortFacilityLabel(b) || "").toLowerCase();
+          }
+
+          if (av < bv) return -1 * dir;
+          if (av > bv) return  1 * dir;
+          return 0;
+        });
+      }
+
+      currentRows = filtered;
+      renderTable(filtered);
+
+      document.getElementById("list-message").innerHTML =
+        `<strong>${filtered.length}</strong> rows (from ${admissions.length} total).`;
+    }
+
     async function loadAdmissions() {
       const token = getAdminToken();
       if (!token) {
@@ -2519,83 +2633,12 @@
         if (!data.ok) {
           throw new Error(data.detail || "Server returned ok=false");
         }
-        admissions = data.items || [];
 
-        // Client-side facility name filter using SNF Admission Facilities
-        const filtered = admissions.filter(r => {
-          if (!facilityId) return true;
+         admissions = data.items || [];
 
-          const rowText = normFacilityStr(
-            (r.effective_facility_name || "") + " " +
-            (r.final_snf_name_display || "") + " " +
-            (r.ai_snf_name_raw || "")
-          );
+         // Re-render using facility filters + NEW search term + sort
+         applyClientFiltersAndRender();
 
-          // NEW: Starred filter
-          if (facilityId === "__starred__") {
-            const starredFacilities = (snfFacilities || []).filter(f => (f.attending || "").trim());
-            if (!starredFacilities.length) return false;
-
-            // include row if it matches ANY starred facility name/alias
-            for (const f of starredFacilities) {
-              const tokens = [];
-              if (f.facility_name) tokens.push(f.facility_name);
-              splitAliases(f.aliases).forEach(a => tokens.push(a));
-
-              const hit = tokens
-                .map(t => normFacilityStr(t))
-                .filter(Boolean)
-                .some(tn => rowText.includes(tn));
-
-              if (hit) return true;
-            }
-            return false;
-          }
-
-          // Normal single-facility filter
-          const fac = snfFacilities.find(f => String(f.id) === String(facilityId));
-          if (!fac) return true;
-
-          const tokens = [];
-          if (fac.facility_name) tokens.push(fac.facility_name);
-          splitAliases(fac.aliases).forEach(a => tokens.push(a));
-
-          if (!tokens.length) return true;
-          return tokens
-            .map(t => normFacilityStr(t))
-            .filter(Boolean)
-            .some(tn => rowText.includes(tn));
-        });
-
-
-        // Apply Sort by / Direction
-        const sortBy = document.getElementById("sort-by")?.value || "";
-        const sortDir = document.getElementById("sort-dir")?.value || "asc";
-        const dir = (sortDir === "desc") ? -1 : 1;
-
-        if (sortBy) {
-          filtered.sort((a, b) => {
-            let av = "", bv = "";
-
-            if (sortBy === "patient") {
-              av = (a.patient_name || "").toLowerCase();
-              bv = (b.patient_name || "").toLowerCase();
-            } else if (sortBy === "facility") {
-              av = (getSortFacilityLabel(a) || "").toLowerCase();
-              bv = (getSortFacilityLabel(b) || "").toLowerCase();
-            }
-
-            if (av < bv) return -1 * dir;
-            if (av > bv) return  1 * dir;
-            return 0;
-          });
-        }
-
-        currentRows = filtered;
-
-        renderTable(filtered);
-        document.getElementById("list-message").innerHTML =
-          `<strong>${filtered.length}</strong> rows (from ${admissions.length} total).`;
 
       } catch (err) {
         console.error("loadAdmissions error", err);
@@ -2685,7 +2728,10 @@
             <div style="color:#6b7280;">${underName}</div>
           </td>
           <td>
-            ${escapeHtml(r.hospital_name || "")}
+            <div>${escapeHtml(r.hospital_name || "")}</div>
+            <div style="color:#6b7280;">
+              ${r.admit_date ? `Admit: ${escapeHtml(formatISOToMDY(r.admit_date))}` : ""}
+            </div>
             ${
               r.notified_by_hospital
                 ? ` <span class="notif-dot" title="Notified by Hospital" aria-label="Notified by Hospital">
