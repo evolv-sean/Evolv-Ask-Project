@@ -2316,7 +2316,9 @@
         const count = (item.patient_count != null) ? item.patient_count : "";
         const when = item.sent_at_local || item.sent_at || "";
         const to = item.sent_to || "";
-        const openCount = (item.open_count != null) ? item.open_count : 0;
+        const facilityOpens = (item.facility_open_count != null) ? item.facility_open_count : 0;
+        const universalOpens = (item.universal_open_count != null) ? item.universal_open_count : 0;
+
 
         div.innerHTML = `
           <div class="email-item-top">
@@ -2326,7 +2328,8 @@
                 <div><strong>Patients:</strong> ${escapeHtml(String(count))}</div>
                 <div><strong>Sent:</strong> ${escapeHtml(when)}</div>
                 <div><strong>Recipients:</strong> ${escapeHtml(to)}</div>
-                <div><strong>Total opens:</strong> ${escapeHtml(String(openCount))}</div>
+                <div><strong>Facility Opens:</strong> ${escapeHtml(String(facilityOpens))}</div>
+                <div><strong>Universal Opens:</strong> ${escapeHtml(String(universalOpens))}</div>
               </div>
             </div>
 
