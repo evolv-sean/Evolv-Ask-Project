@@ -1114,6 +1114,7 @@ def init_db():
     # --- Secure link + facility PIN support ---
     # Store a per-facility PIN hash (optional). If blank, we fall back to SNF_DEFAULT_PIN env var.
     ensure_column(conn, "snf_admission_facilities", "pin_hash", "pin_hash TEXT")
+    ensure_column(conn, "snf_admission_facilities", "pin_hash", "pin_hash TEXT")
 
     # Secure expiring links table (store only token HASH, never the raw token)
     cur.execute(
@@ -7137,12 +7138,18 @@ async def admin_snf_email_log_list(request: Request):
                 l.sent_to,
                 l.admission_ids,
                 f.facility_name AS snf_facility_name,
-                COALESCE(o.open_count, 0) AS open_count
+                COALESCE(o.facility_open_count, 0)  AS facility_open_count,
+                COALESCE(o.universal_open_count, 0) AS universal_open_count,
+                COALESCE(o.open_count, 0)           AS open_count
             FROM snf_secure_links l
             LEFT JOIN snf_admission_facilities f
               ON f.id = l.snf_facility_id
             LEFT JOIN (
-                SELECT secure_link_id, COUNT(*) AS open_count
+                SELECT
+                    secure_link_id,
+                    SUM(CASE WHEN LOWER(COALESCE(pin_type,'')) = 'facility' THEN 1 ELSE 0 END)  AS facility_open_count,
+                    SUM(CASE WHEN LOWER(COALESCE(pin_type,'')) = 'universal' THEN 1 ELSE 0 END) AS universal_open_count,
+                    COUNT(*) AS open_count
                 FROM snf_secure_link_access_log
                 GROUP BY secure_link_id
             ) o
@@ -7174,7 +7181,9 @@ async def admin_snf_email_log_list(request: Request):
                     "sent_at_et": utc_text_to_eastern_display(sent_at),
                     "sent_to": (r["sent_to"] or "").strip(),
                     "patient_count": patient_count,
-                    "open_count": int(r["open_count"] or 0),
+                    "facility_open_count": int(r["facility_open_count"] or 0),
+                    "universal_open_count": int(r["universal_open_count"] or 0),
+                    "open_count": int(r["open_count"] or 0),  # keep for compatibility
                 }
             )
 
