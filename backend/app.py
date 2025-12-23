@@ -6778,6 +6778,12 @@ async def admin_snf_update(
         new_final_name_display = existing_final_name_display
         new_ai_is_candidate = existing_ai_is_candidate
 
+        # If user selected "(none)" in the Facility dropdown, always clear any prior final override.
+        # This ensures the UI falls back to AI (or Unknown) instead of snapping back to a previous manual choice.
+        if not facility_free_text:
+            new_final_facility_id = None
+            new_final_name_display = None
+
         # If the reviewer explicitly sets disposition = SNF,
         # treat this as an authoritative override:
         #  - ensure it is marked as a SNF candidate
