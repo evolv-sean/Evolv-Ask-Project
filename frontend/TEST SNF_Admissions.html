@@ -1338,15 +1338,64 @@
         .filter(Boolean);
     }
 
+    /**
+     * Auto-keywords: all system facility names + aliases (NOT shown in the textarea).
+     * Uses the already-loaded snfFacilities array from /admin/snf-facilities/list.
+     */
+    function getAutoFacilityHighlightKeywords() {
+      const out = [];
+      for (const f of (snfFacilities || [])) {
+        const name = (f.facility_name || "").trim();
+        if (name) out.push(name);
+
+        // reuse your existing alias splitter
+        splitAliases(f.aliases).forEach(a => {
+          const aa = (a || "").trim();
+          if (aa) out.push(aa);
+        });
+      }
+      return out;
+    }
+
+    /**
+     * Combine user-entered highlightKeywords + auto facility keywords
+     * without crowding the UI field. Dedup case-insensitively.
+     */
+    function getEffectiveHighlightKeywords() {
+      const user = Array.isArray(highlightKeywords) ? highlightKeywords : [];
+      const auto = getAutoFacilityHighlightKeywords();
+
+      const seen = new Set();
+      const merged = [];
+
+      // Keep longer tokens; skip ultra-short tokens to avoid noise
+      const add = (k) => {
+        const kk = String(k || "").trim();
+        if (!kk) return;
+        if (kk.length < 3) return; // safety: prevents highlighting "St", "of", etc.
+        const key = kk.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        merged.push(kk);
+      };
+
+      user.forEach(add);
+      auto.forEach(add);
+
+      return merged;
+    }
+
     function highlightText(rawText, keywords) {
       const safe = escapeHtml(rawText);
-      if (!keywords || !keywords.length) return safe;
+
+      const list = Array.isArray(keywords) ? keywords : [];
+      if (!list.length) return safe;
 
       // longest-first prevents partial masking of longer phrases
-      const sorted = [...keywords].sort((a, b) => b.length - a.length);
+      const sorted = [...list].sort((a, b) => b.length - a.length);
 
       // build a single alternation regex
-      const escaped = sorted.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+      const escaped = sorted.map(k => String(k).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
 
       const re = new RegExp("(" + escaped.join("|") + ")", "gi");
       return safe.replace(re, `<span class="kw-hl">$1</span>`);
@@ -1863,6 +1912,13 @@
             editSelect.appendChild(opt);
           });
         }
+        // If a row is open, refresh the note so facility/alias highlighting updates immediately
+        try {
+          if (selectedId != null) await selectRow(selectedId);
+        } catch (e) {
+          // non-fatal
+        }
+
       } catch (err) {
         console.error("loadSnfFacilities error", err);
       }
@@ -2806,7 +2862,7 @@
 
           const body = document.createElement("div");
           body.className = "note-entry-body";
-          body.innerHTML = highlightText(n.note_text || "", highlightKeywords);
+          body.innerHTML = highlightText(n.note_text || "", getEffectiveHighlightKeywords());
 
 
           wrapper.appendChild(header);
