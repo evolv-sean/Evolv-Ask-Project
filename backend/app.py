@@ -469,7 +469,7 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
       <div class="topbar" aria-hidden="true"></div>
 
       <div class="content">
-        <h1>Accountable Care Hospitalist Group (ACHG)</h1>
+        <h1>Accountable Care Hospitalist Group (ACHG) Notification</h1>
         <p>
           Our Hospitalists have identified upcoming patients expected to discharge to your facility.
           Please use the View List button below to download today's list (Facility PIN required).
@@ -485,7 +485,7 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
 
         <p class="meta">
           Questions or need to add recipients to these notifications?
-          Please contact Anthony Aguirre (Anthony.Aguirre@accountablecarehg.com) or Stephanie Sellers (ssellers@startevolv.com).
+          Please contact Doug Neal (Doug.Neal@medrina.com) or Stephanie Sellers (ssellers@startevolv.com).
         </p>
       </div>
 
@@ -496,7 +496,6 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
       </div>
 
       <div class="fine">
-        If you did not expect this email, you can ignore it. For security, do not forward this message outside of your organization.
       </div>
 
       <div class="divider"></div>
@@ -3707,6 +3706,104 @@ def get_system_prompt(conn: sqlite3.Connection) -> str:
 # SNF admissions: AI extraction from CM notes
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# SNF admissions: AI extraction from CM notes
+# ---------------------------------------------------------------------------
+
+def _snf_latest_note_says_choice_is_not_final(latest_note_text: str) -> bool:
+    """
+    Returns True when the most recent note suggests the SNF choice is not finalized,
+    is changing, or authorization isn't actually moving forward yet.
+    This prevents stale facility names (ex: "The Luxe") from sticking as "probable"
+    when the latest story is: undecided / changed mind / refused auth / etc.
+    """
+    t = (latest_note_text or "").lower()
+
+    # "Choice not determined" / "will let me know" / "refused to give OK" signals uncertainty
+    uncertainty_phrases = [
+        "choice not determine",
+        "choice not determined",
+        "choice not finalize",
+        "choice not final",
+        "not determined by family",
+        "not yet determined",
+        "will let me know",
+        "she will let me know",
+        "he will let me know",
+        "refused to give",
+        "refused to give me the ok",
+        "refused to give ok",
+        "refused to authorize",
+        "did not give consent",
+        "no ok to request the auth",
+        "no ok to request auth",
+        "changed her mind",
+        "changed his mind",
+        "changed mind",
+        "prefers",
+        "now wants",
+        "one more time",
+    ]
+    if any(p in t for p in uncertainty_phrases):
+        return True
+
+    return False
+
+
+def _snf_note_text_has_negative_facility_outcome(note_text: str) -> bool:
+    """
+    True when the note indicates a facility is not viable (declined / no bed / not in network).
+    """
+    t = (note_text or "").lower()
+    negative_phrases = [
+        "declined",
+        "no bed",
+        "no beds",
+        "not in network",
+        "out of network",
+        "denied the case",
+        "denied case",
+        "unable to accept",
+        "cannot accept",
+        "can't accept",
+    ]
+    return any(p in t for p in negative_phrases)
+
+
+def _snf_should_clear_facility_name(notes: List[sqlite3.Row], snf_name: Optional[str]) -> Optional[str]:
+    """
+    If the latest note suggests the choice is not final, clear snf_name.
+    Also clear snf_name if the most recent mention of that facility is negative (declined/no bed/out-of-network).
+    Returns a short reason string if we cleared it, otherwise None.
+    """
+    if not snf_name or not notes:
+        return None
+
+    sorted_notes = sorted(notes, key=lambda r: (r["note_datetime"] or "", r["id"]))
+    latest_text = (sorted_notes[-1]["note_text"] or "").strip()
+
+    # 1) Latest note says choice isn't final / keeps changing
+    if _snf_latest_note_says_choice_is_not_final(latest_text):
+        return "Latest CM note indicates SNF choice is not finalized / is changing; cleared probable SNF name."
+
+    # 2) If the latest *mention* of this facility is negative (declined / no bed / out-of-network), clear it
+    snf_lower = snf_name.lower()
+    for r in reversed(sorted_notes):
+        txt = (r["note_text"] or "").lower()
+        if snf_lower and snf_lower in txt:
+            if _snf_note_text_has_negative_facility_outcome(txt):
+                return "Most recent mention of that facility indicates it is not viable (declined/no bed/out-of-network); cleared probable SNF name."
+            break
+
+    return None
+
+
+def analyze_patient_notes_with_llm(
+    patient_mrn: str,
+    notes: List[sqlite3.Row],
+) -> Optional[Dict[str, Any]]:
+
+
 def analyze_patient_notes_with_llm(
     patient_mrn: str,
     notes: List[sqlite3.Row],
@@ -3775,7 +3872,11 @@ def analyze_patient_notes_with_llm(
         "Rules:\n"
         "- Read the notes in time order. Later notes override earlier notes.\n"
         "- If the patient is clearly accepted to a SNF, set is_snf_candidate to true.\n"
-        "- If multiple SNFs are mentioned over time, choose the FINAL accepted facility or the latest facility based on the latest note.\n"
+        "- If SNF is being pursued but the facility choice is NOT FINAL (family changing mind, 'choice not determined', waiting for family decision, refused to authorize),\n"
+        "  set is_snf_candidate = TRUE but set snf_name = null and use lower confidence.\n"
+        "- If multiple SNFs are mentioned over time, ONLY choose a facility name if the latest notes indicate that facility is the CURRENT selected/active plan\n"
+        "  (examples: auth being started/submitted for that facility, confirmed placement, 'selected', 'accepted and proceeding').\n"
+        "- Do NOT choose a facility as snf_name if notes indicate it was declined, has no bed, is out-of-network, or the family changed to another choice after it.\n"
         "\n"
         "- IMPORTANT: Insurance authorization language must be interpreted carefully:\n"
         "  • If notes say SNF authorization is PENDING / UNDER REVIEW / REQUEST SUBMITTED / REF# present / awaiting decision,\n"
@@ -3843,6 +3944,19 @@ def analyze_patient_notes_with_llm(
     conf = max(0.0, min(conf, 1.0))
 
     rationale = str(data.get("rationale", "") or "").strip()
+
+    # Plan A: protect against stale facility names when the latest notes say the plan is changing/uncertain
+    cleared_reason = _snf_should_clear_facility_name(notes, snf_name)
+    if cleared_reason:
+        snf_name = None
+        # keep candidate true (SNF still being pursued), but reduce confidence
+        if is_snf_candidate:
+            conf = min(conf, 0.45)
+        # append rationale so you can see why it cleared
+        if rationale:
+            rationale = f"{rationale} | {cleared_reason}"
+        else:
+            rationale = cleared_reason
 
     return {
         "is_snf_candidate": is_snf_candidate,
@@ -7494,7 +7608,7 @@ def build_snf_pdf_html(
             </span>
           </div>
           <p class="header-description">
-            Our Hospitalists have identified the following patients as expected discharges to your facility. Please contact Anthony Aguirre (Anthony.Aguirre@accountablecarehg.com ) or Stephanie Sellers (ssellers@startevolv.com) if you have questions or would like to add additional recipients to future emails.
+            Our Hospitalists have identified the following patients as expected discharges to your facility. Please contact Doug Neal (Doug.Neal@medrina.com) or Stephanie Sellers (ssellers@startevolv.com) if you have questions or would like to add additional recipients to future emails.
           </p>
 
 {provider_callout}
@@ -8169,7 +8283,7 @@ async def admin_snf_email_pdf(
         secure_url = f"{base_url}/snf/secure/{raw_token}"
 
         # ✅ NEW: build the outbound email (HTML + plain text)
-        subject = f"SNF Admissions List – {facility_name} – {for_date}"
+        subject = f"Pending SNF Admissions for {facility_name} – {for_date} PLEASE REVIEW"
         if test_only:
             subject = "[TEST] " + subject
 
