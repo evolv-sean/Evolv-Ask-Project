@@ -555,6 +555,17 @@
       color: #A8E6CF;      /* mint when checked */
     }
 
+    /* NEW: user-check icon sizing to match bell */
+    .icon-btn .usercheck{
+      width: 56%;
+      height: 56%;
+      display: block;
+      color: #9ca3af;
+    }
+    .icon-btn.on .usercheck{
+      color: #A8E6CF;
+    }
+
     /* NEW: subtle list icon */
     .notif-dot {
       display: inline-flex;
@@ -1003,6 +1014,18 @@
             </svg>
           </button>
 
+          <!-- NEW: SNF Physician Assignment -->
+          <button class="icon-btn" id="phys-assign-btn" title="SNF Physician Assignment" onclick="openPhysAssignModal()">
+            <svg class="usercheck" viewBox="0 0 24 24" aria-hidden="true" fill="none">
+              <!-- head (slightly larger) -->
+              <circle cx="10" cy="8" r="3.4" stroke="currentColor" stroke-width="2"></circle>
+              <!-- shoulders/body (slightly larger) -->
+              <path d="M3.8 19.2c.9-3.6 3.7-5.6 6.2-5.6s5.3 2 6.2 5.6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+              <!-- check badge (larger) -->
+              <path d="M13.2 15.2l2.2 2.2 4.8-4.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </button>
+
           <div id="note-header-summary" class="message"></div>
         </div>
       </div>
@@ -1323,6 +1346,67 @@
           </div>
         </div>
       </div>
+  <!-- SNF Physician Assignment modal (NEW) -->
+  <div id="phys-assign-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="phys-assign-modal-title">
+    <div class="modal-card" style="width:min(780px,100%);">
+      <div class="modal-head">
+        <div>
+          <div id="phys-assign-modal-title" class="modal-title">SNF Physician Assignment</div>
+          <div class="modal-sub">Track assignment confirmation and billing confirmation for this admission.</div>
+        </div>
+        <button class="modal-x" onclick="closePhysAssignModal()" aria-label="Close">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="grid2" style="margin-top:0;">
+          <div>
+            <label for="pa-confirmation">Assignment Confirmation</label>
+            <select id="pa-confirmation" onchange="onPhysAssignChanged()">
+              <option value="Unknown">Unknown</option>
+              <option value="Assigned">Assigned</option>
+              <option value="Assigned Out">Assigned Out</option>
+            </select>
+          </div>
+
+          <div style="display:flex; flex-direction:column;">
+            <label style="visibility:hidden;">Spacer</label>
+            <input id="pa-billing-confirmed" type="checkbox" onchange="onPhysAssignChanged()" style="display:none;" />
+            <button id="pa-billing-btn"
+                    type="button"
+                    class="toggle-pill"
+                    aria-pressed="false"
+                    onclick="togglePaBilling()"
+                    style="align-self:flex-start;">
+              Billing Confirmed
+            </button>
+          </div>
+        </div>
+
+        <div class="grid2" style="margin-top:10px;">
+          <div>
+            <label for="pa-call-dt">Confirmation Call Date</label>
+            <input id="pa-call-dt" type="datetime-local" />
+          </div>
+
+          <div>
+            <label for="pa-staff">SNF Staff Name</label>
+            <input id="pa-staff" type="text" placeholder="Staff name (optional)" />
+          </div>
+        </div>
+
+        <label for="pa-physician">Physician Assigned</label>
+        <input id="pa-physician" type="text" placeholder="Physician name (optional)" />
+
+        <label for="pa-notes">Assignment Notes</label>
+        <textarea id="pa-notes" rows="4" placeholder="Notes…"></textarea>
+
+        <div class="flex-row" style="margin-top:10px;">
+          <button class="btn-primary" onclick="savePhysAssign()">Save assignment</button>
+          <span id="pa-status" class="message"></span>
+        </div>
+      </div>
+    </div>
+  </div>
 
   </main>
 
@@ -1841,7 +1925,151 @@
         if (status) status.textContent = "Save failed.";
       }
     }
+    // ===============================
+    // SNF Physician Assignment modal (NEW)
+    // ===============================
+    function openPhysAssignModal() {
+      const m = document.getElementById("phys-assign-modal");
+      if (m) m.classList.add("open");
 
+      const adm = admissions.find(x => x.id === selectedId);
+      if (!adm) return;
+
+      document.getElementById("pa-confirmation").value = adm.assignment_confirmation || "Unknown";
+      document.getElementById("pa-billing-confirmed").checked = !!adm.billing_confirmed;
+      document.getElementById("pa-call-dt").value = adm.confirmation_call_dt || "";
+      document.getElementById("pa-staff").value = adm.snf_staff_name || "";
+      document.getElementById("pa-physician").value = adm.physician_assigned || "";
+      document.getElementById("pa-notes").value = adm.assignment_notes || "";
+
+      onPhysAssignChanged();
+    }
+
+    function closePhysAssignModal() {
+      const m = document.getElementById("phys-assign-modal");
+      if (m) m.classList.remove("open");
+    }
+
+    function togglePaBilling() {
+      const cb = document.getElementById("pa-billing-confirmed");
+      if (!cb) return;
+      cb.checked = !cb.checked;
+      onPhysAssignChanged();
+    }
+
+    function onPhysAssignChanged() {
+      const adm = admissions.find(x => x.id === selectedId);
+      const conf = (document.getElementById("pa-confirmation")?.value || adm?.assignment_confirmation || "Unknown");
+      const billing = !!document.getElementById("pa-billing-confirmed")?.checked;
+
+      // Toggle-pill styling
+      const tbtn = document.getElementById("pa-billing-btn");
+      if (tbtn) {
+        tbtn.classList.toggle("active", billing);
+        tbtn.setAttribute("aria-pressed", billing ? "true" : "false");
+      }
+
+      // Icon button highlight if anything meaningful is set
+      const btn = document.getElementById("phys-assign-btn");
+      if (btn) {
+        const hasData = billing || (conf && conf !== "Unknown");
+        btn.classList.toggle("on", !!hasData);
+      }
+    }
+
+    async function savePhysAssign() {
+      const status = document.getElementById("pa-status");
+      if (status) status.textContent = "Saving…";
+
+      const adm = admissions.find(x => x.id === selectedId);
+      if (!adm) {
+        if (status) status.textContent = "No admission selected.";
+        return;
+      }
+
+      const token = getAdminToken();
+      if (!token) {
+        if (status) status.textContent = "Paste ADMIN_TOKEN in Settings first.";
+        return;
+      }
+
+      const payload = {
+        assignment_confirmation: document.getElementById("pa-confirmation").value || "Unknown",
+        billing_confirmed: document.getElementById("pa-billing-confirmed").checked,
+        confirmation_call_dt: document.getElementById("pa-call-dt").value || "",
+        snf_staff_name: document.getElementById("pa-staff").value || "",
+        physician_assigned: document.getElementById("pa-physician").value || "",
+        assignment_notes: document.getElementById("pa-notes").value || ""
+      };
+
+      try {
+        // backend endpoint requires base fields too (same pattern as saveNotif)
+        const statusVal = (document.getElementById("edit-status")?.value || adm.status || "pending");
+        const dispositionVal = (document.getElementById("edit-disposition")?.value || adm.disposition || "");
+        const dateVal = (document.getElementById("edit-date")?.value || adm.final_expected_transfer_date || (adm.ai_expected_transfer_date || "") || "");
+
+        const facilitySelect = document.getElementById("edit-facility-select");
+        const facilityLabel =
+          facilitySelect && facilitySelect.value
+            ? facilitySelect.options[facilitySelect.selectedIndex].text
+            : "";
+
+        const commentsVal = (document.getElementById("edit-comments")?.value || adm.review_comments || "");
+
+        const resp = await fetch(`/admin/snf/update`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Token": token
+          },
+          body: JSON.stringify({
+            // required base fields
+            id: adm.id,
+            status: statusVal,
+            disposition: dispositionVal,
+            final_expected_transfer_date: dateVal || null,
+            facility_free_text: facilityLabel || "",
+            review_comments: commentsVal || "",
+
+            // NEW: physician assignment fields
+            assignment_confirmation: payload.assignment_confirmation,
+            billing_confirmed: payload.billing_confirmed,
+            confirmation_call_dt: payload.confirmation_call_dt,
+            snf_staff_name: payload.snf_staff_name,
+            physician_assigned: payload.physician_assigned,
+            assignment_notes: payload.assignment_notes
+          })
+        });
+
+        let data = null;
+        try { data = await resp.json(); } catch (e) {}
+
+        if (!resp.ok) {
+          const detail = data && (data.detail || data.message);
+          throw new Error("HTTP " + resp.status + (detail ? " – " + detail : ""));
+        }
+        if (data && data.ok === false) throw new Error(data.detail || "ok=false");
+
+        // Update local copy so icon highlight stays correct
+        adm.assignment_confirmation = payload.assignment_confirmation;
+        adm.billing_confirmed = payload.billing_confirmed ? 1 : 0;
+        adm.confirmation_call_dt = payload.confirmation_call_dt;
+        adm.snf_staff_name = payload.snf_staff_name;
+        adm.physician_assigned = payload.physician_assigned;
+        adm.assignment_notes = payload.assignment_notes;
+
+        onPhysAssignChanged();
+        if (status) status.textContent = "Saved.";
+
+        // optional: refresh list rendering
+        try { renderRows(currentRows); } catch (e2) {}
+
+        setTimeout(() => { if (status) status.textContent = ""; }, 2000);
+      } catch (e) {
+        console.error(e);
+        if (status) status.textContent = "Save failed.";
+      }
+    }
 
     function initDate() {
       // Default to no date selected so the backend returns all dates
@@ -3194,8 +3422,17 @@
     @media(max-width:760px){.grid2{grid-template-columns:1fr;}}
 
     .modal-body label{display:block;font-size:12px;font-weight:700;color:#374151;margin:10px 0 6px;}
-    .modal-body input,.modal-body textarea{
-      width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:12px;padding:10px 12px;font-size:14px;min-width:0;
+    .modal-body input,
+    .modal-body textarea,
+    .modal-body select{
+      width:100%;
+      box-sizing:border-box;
+      border:1px solid #d1d5db;
+      border-radius:12px;
+      padding:10px 12px;
+      font-size:14px;
+      min-width:0;
+      background:#fff;
     }
     .modal-body textarea{resize:vertical;}
     .modal-body input:focus,.modal-body textarea:focus{
