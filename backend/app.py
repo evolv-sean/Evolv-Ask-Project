@@ -59,6 +59,50 @@ def normalize_email_list(raw: str) -> str:
     parts = [p.strip() for p in parts if p.strip()]
     return ", ".join(parts)
 
+# --- TIMEZONE DISPLAY HELPERS (UTC -> US/Eastern) ---
+from zoneinfo import ZoneInfo
+
+_EASTERN_TZ = ZoneInfo("America/New_York")
+_UTC_TZ = dt.timezone.utc
+
+def utc_text_to_eastern_display(value: Any) -> str:
+    """
+    Convert common timestamp strings (UTC) into US/Eastern for DISPLAY ONLY.
+    - Accepts: "YYYY-MM-DD HH:MM:SS", "YYYY-MM-DDTHH:MM:SS", "...Z", etc.
+    - If timezone info is missing, we assume the stored value is UTC.
+    - Returns: "YYYY-MM-DD HH:MM:SS" (Eastern)
+    """
+    if value is None:
+        return ""
+    s = str(value).strip()
+    if not s:
+        return ""
+
+    # Date-only values should remain as-is
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        return s
+
+    try:
+        raw = s
+
+        # Handle trailing Z
+        if raw.endswith("Z"):
+            raw = raw[:-1]
+
+        # Handle SQLite "YYYY-MM-DD HH:MM:SS"
+        if " " in raw and "T" not in raw and len(raw) >= 19:
+            d = dt.datetime.strptime(raw[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=_UTC_TZ)
+        else:
+            # ISO-ish
+            d = dt.datetime.fromisoformat(raw)
+            if d.tzinfo is None:
+                d = d.replace(tzinfo=_UTC_TZ)
+
+        return d.astimezone(_EASTERN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        # If parsing fails, return original string unchanged
+        return s
+
 
 # ---------------------------------------------------------------------------
 # DB PATH – wired for Render, but still overrideable via DB_PATH
@@ -3802,12 +3846,6 @@ def analyze_patient_notes_with_llm(
     patient_mrn: str,
     notes: List[sqlite3.Row],
 ) -> Optional[Dict[str, Any]]:
-
-
-def analyze_patient_notes_with_llm(
-    patient_mrn: str,
-    notes: List[sqlite3.Row],
-) -> Optional[Dict[str, Any]]:
     """
     Given all CM notes for a single patient (as rows from cm_notes_raw),
     call the LLM to decide:
@@ -6363,7 +6401,10 @@ async def admin_snf_list(
                     "patient_name": r["patient_name"],
                     "hospital_name": r["hospital_name"],
                     "notified_by_hospital": int(r["notified_by_hospital"] or 0),
+
                     "note_datetime": r["note_datetime"],
+                    "note_datetime_et": utc_text_to_eastern_display(r["note_datetime"]),
+
                     "ai_snf_name_raw": r["ai_snf_name_raw"],
                     "ai_expected_transfer_date": r["ai_expected_transfer_date"],
                     "ai_confidence": r["ai_confidence"],
@@ -6372,14 +6413,20 @@ async def admin_snf_list(
                     "final_snf_name_display": r["final_snf_name_display"],
                     "final_expected_transfer_date": r["final_expected_transfer_date"],
                     "review_comments": r["review_comments"],
+
                     "emailed_at": r["emailed_at"],
+                    "emailed_at_et": utc_text_to_eastern_display(r["emailed_at"]),
+
                     "email_run_id": r["email_run_id"],
                     "effective_date": r["effective_date"],
                     "effective_facility_id": r["effective_facility_id"],
                     "effective_facility_name": r["effective_facility_name"],
                     "effective_facility_city": r["effective_facility_city"],
                     "effective_facility_state": r["effective_facility_state"],
+
                     "last_seen_active_date": r["last_seen_active_date"],
+                    "last_seen_active_date_et": utc_text_to_eastern_display(r["last_seen_active_date"]),
+
                     "dob": r["dob"],
                     "attending": r["attending"],
                     "admit_date": r["admit_date"],
@@ -6464,7 +6511,7 @@ async def admin_snf_get_note(
             "note_text": note["note_text"],
             "source_system": note["source_system"],
             "pad_run_id": note["pad_run_id"],
-            "created_at": note["created_at"],
+            "created_at_et": utc_text_to_eastern_display(note["created_at"]),
             "ignored": int(note["ignored"] or 0) if "ignored" in note.keys() else 0,
         }
 
@@ -6512,6 +6559,7 @@ async def admin_snf_get_note(
                         "source_system": n["source_system"],
                         "pad_run_id": n["pad_run_id"],
                         "created_at": n["created_at"],
+                        "created_at_et": utc_text_to_eastern_display(n["created_at"]),
                     }
                 )
         except sqlite3.Error:
@@ -6536,7 +6584,13 @@ async def admin_snf_last_processed(request: Request):
         cur = conn.cursor()
         cur.execute("SELECT MAX(created_at) AS last_processed FROM cm_notes_raw")
         row = cur.fetchone()
-        return {"ok": True, "last_processed": (row["last_processed"] if row else None)}
+
+        last_processed = (row["last_processed"] if row else None)
+        return {
+            "ok": True,
+            "last_processed": last_processed,
+            "last_processed_et": utc_text_to_eastern_display(last_processed),
+        }
     finally:
         conn.close()
 
@@ -7101,9 +7155,7 @@ async def admin_snf_email_log_list(request: Request):
             except Exception:
                 patient_count = 0
 
-            # Simple local display string (SQLite stores local server time in datetime('now'))
             sent_at = (r["sent_at"] or "").strip()
-            sent_at_local = sent_at.replace("T", " ") if "T" in sent_at else sent_at
 
             items.append(
                 {
@@ -7112,12 +7164,13 @@ async def admin_snf_email_log_list(request: Request):
                     "snf_facility_name": (r["snf_facility_name"] or "").strip(),
                     "for_date": (r["for_date"] or "").strip(),
                     "sent_at": sent_at,
-                    "sent_at_local": sent_at_local,
+                    "sent_at_et": utc_text_to_eastern_display(sent_at),
                     "sent_to": (r["sent_to"] or "").strip(),
                     "patient_count": patient_count,
                     "open_count": int(r["open_count"] or 0),
                 }
             )
+
 
         return {"ok": True, "items": items}
     finally:
@@ -7146,12 +7199,11 @@ async def admin_snf_email_log_opens(request: Request, secure_link_id: int):
         items = []
         for r in rows:
             accessed_at = (r["accessed_at"] or "").strip()
-            accessed_at_local = accessed_at.replace("T", " ") if "T" in accessed_at else accessed_at
             items.append(
                 {
                     "pin_type": (r["pin_type"] or "").strip(),
                     "accessed_at": accessed_at,
-                    "accessed_at_local": accessed_at_local,
+                    "accessed_at_et": utc_text_to_eastern_display(accessed_at),
                     "ip": (r["ip"] or "").strip(),
                     "user_agent": (r["user_agent"] or "").strip(),
                 }
