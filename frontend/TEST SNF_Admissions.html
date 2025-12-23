@@ -385,6 +385,7 @@
 
     /* Status rows: no fill colors — keep zebra (white + cool grey) */
     tr.pending,
+    tr.projected,
     tr.confirmed,
     tr.corrected,
     tr.rejected,
@@ -867,6 +868,7 @@
 
     /* Status rows: do NOT tint rows (keep zebra only) */
     tr.pending,
+    tr.projected,
     tr.confirmed,
     tr.corrected,
     tr.rejected,
@@ -1006,6 +1008,7 @@
           <label for="edit-status">Status</label>
           <select id="edit-status">
             <option value="pending">Pending</option>
+            <option value="projected">Projected</option>
             <option value="confirmed">Confirmed</option>
             <option value="corrected">Corrected</option>
             <option value="rejected">Rejected</option>
@@ -1208,6 +1211,7 @@
                 <label for="filter-status">Status</label>
                 <select id="filter-status">
                   <option value="pending">Pending</option>
+                  <option value="projected">Projected</option>
                   <option value="confirmed">Confirmed</option>
                   <option value="corrected">Corrected</option>
                   <option value="rejected">Rejected</option>
@@ -1766,7 +1770,7 @@
         const facilityLabel =
           facilitySelect && facilitySelect.value
             ? facilitySelect.options[facilitySelect.selectedIndex].text
-            : (adm.facility_free_text || "");
+            : "";
 
         const commentsVal = (document.getElementById("edit-comments")?.value || adm.review_comments || "");
 
