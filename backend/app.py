@@ -1408,6 +1408,29 @@ def init_db():
 
 init_db()
 
+
+class ManualCmNoteIn(BaseModel):
+    patient_mrn: str
+    patient_name: Optional[str] = None
+    dob: Optional[str] = None
+
+    visit_id: str
+    encounter_id: Optional[str] = None
+    hospital_name: Optional[str] = None
+    unit_name: Optional[str] = None
+    admission_date: Optional[str] = None
+    admit_date: Optional[str] = None
+    attending: Optional[str] = None
+
+    note_datetime: str
+    note_author: Optional[str] = None
+    note_type: Optional[str] = "Case Management"
+    note_text: str
+
+    source_system: Optional[str] = "EMR"
+    pad_run_id: Optional[str] = None
+    ocr_confidence: Optional[float] = None
+    
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
@@ -4708,6 +4731,129 @@ def denial_is_contested_or_pending(notes: List[sqlite3.Row]) -> bool:
     ])
     return not clearly_not_snf_now
 
+def snf_upsert_from_notes_for_visit(conn: sqlite3.Connection, visit_id: str) -> bool:
+    """
+    Runs the same 'create/update SNF admission from notes + AI facility mapping' logic
+    for a single visit_id (used by manual note add).
+    Returns True if a SNF admission row exists/was updated, False if not a SNF candidate.
+    """
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT *
+        FROM cm_notes_raw
+        WHERE visit_id = ?
+          AND (ignored IS NULL OR ignored = 0)
+        ORDER BY datetime(note_datetime) DESC, id DESC
+        """,
+        (visit_id,),
+    )
+    notes = cur.fetchall()
+    if not notes:
+        return False
+
+    latest = notes[0]
+    patient_mrn = latest["patient_mrn"]
+    patient_name = latest["patient_name"]
+    hospital_name = latest["hospital_name"]
+    admit_date = latest["admit_date"] or latest["admission_date"]
+    attending = latest["attending"] or latest["note_author"]
+
+    # Build a combined note text similar to the pipeline
+    note_blob = "\n\n".join([(n["note_text"] or "") for n in notes if (n["note_text"] or "").strip()])
+
+    # Use your existing SNF detection helper(s)
+    is_candidate = False
+    try:
+        # Prefer your helper if present in your file
+        if "notes_mention_possible_snf" in globals():
+            is_candidate = bool(notes_mention_possible_snf(note_blob))
+        else:
+            # Basic fallback: do not change pipeline behavior if helper exists
+            is_candidate = "snf" in note_blob.lower()
+    except Exception:
+        is_candidate = False
+
+    if not is_candidate:
+        return False
+
+    # Run your existing AI extraction (same function used in snf_run_extraction)
+    ai = analyze_patient_notes_with_llm(note_blob)
+
+    snf_name_raw = (ai.get("snf_name") or "").strip()
+    transfer_date = ai.get("transfer_date") or None
+    disposition = ai.get("disposition") or "SNF"
+    status = ai.get("status") or "pending"
+    note_summary = ai.get("summary") or None
+
+    facility_id = None
+    facility_label = None
+
+    # Map facility name → facility_id using your existing mapping helper if present
+    try:
+        if "map_snf_name_to_facility_id" in globals():
+            facility_id, facility_label = map_snf_name_to_facility_id(conn, snf_name_raw)
+    except Exception:
+        facility_id, facility_label = None, None
+
+    # Upsert into snf_admissions (same pattern as snf_run_extraction)
+    cur.execute(
+        """
+        INSERT INTO snf_admissions (
+            visit_id,
+            patient_mrn,
+            patient_name,
+            hospital_name,
+            admit_date,
+            attending,
+            ai_disposition,
+            ai_snf_name_raw,
+            ai_transfer_date,
+            ai_summary,
+            facility_id,
+            facility_label,
+            status,
+            created_at,
+            updated_at,
+            last_seen_active_date
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), date('now'))
+        ON CONFLICT(visit_id) DO UPDATE SET
+            patient_mrn = excluded.patient_mrn,
+            patient_name = excluded.patient_name,
+            hospital_name = excluded.hospital_name,
+            admit_date = excluded.admit_date,
+            attending = excluded.attending,
+            ai_disposition = excluded.ai_disposition,
+            ai_snf_name_raw = excluded.ai_snf_name_raw,
+            ai_transfer_date = excluded.ai_transfer_date,
+            ai_summary = excluded.ai_summary,
+            facility_id = excluded.facility_id,
+            facility_label = excluded.facility_label,
+            status = excluded.status,
+            updated_at = datetime('now'),
+            last_seen_active_date = date('now')
+        """,
+        (
+            visit_id,
+            patient_mrn,
+            patient_name,
+            hospital_name,
+            admit_date,
+            attending,
+            disposition,
+            snf_name_raw,
+            transfer_date,
+            note_summary,
+            facility_id,
+            facility_label,
+            status,
+        ),
+    )
+
+    return True
+
 
 def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
     """
@@ -4951,6 +5097,97 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
             "patients_processed": patients_processed,
             "snf_candidates": snf_candidates,
         }
+    finally:
+        conn.close()
+
+@app.post("/admin/snf/cm-notes/manual-add")
+def admin_manual_add_cm_note(payload: ManualCmNoteIn, admin=Depends(require_admin)):
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+
+        patient_mrn = (payload.patient_mrn or "").strip()
+        visit_id = (payload.visit_id or "").strip()
+        note_datetime = (payload.note_datetime or "").strip()
+        note_text = payload.note_text or ""
+
+        if not patient_mrn or not visit_id or not note_datetime or not note_text.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="patient_mrn, visit_id, note_datetime, and note_text are required",
+            )
+
+        # Normalize (match PAD behavior)
+        note_hash = compute_note_hash(patient_mrn, note_datetime, note_text)
+
+        # Skip if already exists
+        cur.execute("SELECT 1 FROM cm_notes_raw WHERE note_hash = ?", (note_hash,))
+        if cur.fetchone():
+            return {"ok": True, "message": "Duplicate note (same hash) already exists. No changes made."}
+
+        # Keep admissions marked active when a note arrives
+        cur.execute(
+            "UPDATE snf_admissions SET last_seen_active_date = date('now') WHERE visit_id = ?",
+            (visit_id,),
+        )
+
+        cur.execute(
+            """
+            INSERT INTO cm_notes_raw (
+                patient_mrn,
+                patient_name,
+                dob,
+                visit_id,
+                encounter_id,
+                hospital_name,
+                unit_name,
+                admission_date,
+                admit_date,
+                attending,
+                note_datetime,
+                note_author,
+                note_type,
+                note_text,
+                source_system,
+                pad_run_id,
+                ocr_confidence,
+                note_hash,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            """,
+            (
+                patient_mrn,
+                payload.patient_name,
+                payload.dob,
+                visit_id or None,
+                payload.encounter_id,
+                payload.hospital_name,
+                payload.unit_name,
+                payload.admission_date,
+                payload.admit_date or payload.admission_date,
+                payload.attending or payload.note_author,
+                note_datetime,
+                payload.note_author,
+                payload.note_type or "Case Management",
+                note_text,
+                payload.source_system or "EMR",
+                payload.pad_run_id,
+                payload.ocr_confidence,
+                note_hash,
+            ),
+        )
+
+        # Run the same SNF + AI logic for this visit_id
+        updated = snf_upsert_from_notes_for_visit(conn, visit_id)
+
+        conn.commit()
+
+        if updated:
+            return {"ok": True, "message": f"Manual CM note added. SNF admission AI updated for visit_id={visit_id}."}
+        else:
+            return {"ok": True, "message": f"Manual CM note added. Visit {visit_id} not flagged as SNF candidate by AI logic."}
+
     finally:
         conn.close()
 
