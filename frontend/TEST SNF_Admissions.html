@@ -2630,7 +2630,7 @@
       }
     }
 
-    function openManualCmNoteModal(){
+    async function openManualCmNoteModal(){
       const m = document.getElementById("manual-cm-note-modal");
       if (m) m.classList.add("open");
 
@@ -2694,6 +2694,7 @@
         const sel = document.getElementById("mcn-hospital-name");
         if (sel) sel.value = hosp;
       }
+    } // ✅ IMPORTANT: close the function properly
 
 
     function closeManualCmNoteModal(){
@@ -3749,9 +3750,12 @@
       min-width:0;
       background:#fff;
     }
-    .modal-body textarea{resize:vertical;}
-    .modal-body input:focus,.modal-body textarea:focus{
-      outline:none;border-color:#A8E6CF;box-shadow:0 0 0 3px rgba(168,230,207,.35);
+    .modal-body input:focus,
+    .modal-body textarea:focus,
+    .modal-body select:focus{
+      outline:none;
+      border-color:#A8E6CF;
+      box-shadow:0 0 0 3px rgba(168,230,207,0.35);
     }
 
     .modal-msg{display:none;margin-bottom:10px;padding:10px 12px;border-radius:12px;border:1px solid #e5e7eb;font-size:13px;}
