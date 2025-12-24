@@ -2690,8 +2690,15 @@
     }
 
     function getFacilityAiPhone(r) {
-      const aiRaw = String(r.ai_snf_name_raw || "").trim();
-      const match = resolveAiToSystemFacility(aiRaw);
+      // IMPORTANT:
+      // Phone should follow what the user is actually seeing as the facility label.
+      // So try Manual override -> Effective facility -> AI raw (fallback)
+      const candidate =
+        String(r.final_snf_name_display || "").trim() ||
+        String(r.effective_facility_name || "").trim() ||
+        String(r.ai_snf_name_raw || "").trim();
+
+      const match = resolveAiToSystemFacility(candidate);
       return (match && (match.facility_phone || "").trim()) || "";
     }
 
