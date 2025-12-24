@@ -7668,8 +7668,8 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
             FROM hospital_discharges h
             LEFT JOIN snf_admissions s
               ON s.visit_id = h.visit_id
-            LEFT JOIN facilities f
-              ON f.facility_id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id)
+            LEFT JOIN snf_admission_facilities f
+              ON f.id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id)
             WHERE h.dc_date IS NOT NULL
               AND date(h.dc_date) >= date(?)
               AND date(h.dc_date) <= date(?)
