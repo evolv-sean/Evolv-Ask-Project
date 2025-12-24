@@ -2270,6 +2270,7 @@
         facilityModalId = fac.id;
         setFacilityModalValues({
           facility_name: fac.facility_name || "",
+          facility_phone: fac.facility_phone || "",
           attending: fac.attending || "",
           notes: fac.notes || "",
           notes2: fac.notes2 || "",
@@ -2291,6 +2292,7 @@
 
     function setFacilityModalValues(f) {
       document.getElementById("facility-name").value = f.facility_name || "";
+      document.getElementById("facility-phone").value = f.facility_phone || "";
       document.getElementById("facility-attending").value = f.attending || "";
       document.getElementById("facility-notes").value = f.notes || "";
       document.getElementById("facility-notes2").value = f.notes2 || "";
@@ -2317,6 +2319,7 @@
       const payload = {
         id: facilityModalMode === "edit" ? facilityModalId : null,
         facility_name: name,
+        facility_phone: (document.getElementById("facility-phone").value || "").trim(),
         attending: (document.getElementById("facility-attending").value || "").trim(),
         notes: (document.getElementById("facility-notes").value || "").trim(),
         notes2: (document.getElementById("facility-notes2").value || "").trim(),
@@ -2686,6 +2689,12 @@
         .filter(Boolean);
     }
 
+    function getFacilityAiPhone(r) {
+      const aiRaw = String(r.ai_snf_name_raw || "").trim();
+      const match = resolveAiToSystemFacility(aiRaw);
+      return (match && (match.facility_phone || "").trim()) || "";
+    }
+
     function resolveAiToSystemFacility(aiRaw) {
       const aiNorm = normFacilityStr(aiRaw);
       if (!aiNorm) return null;
@@ -2974,7 +2983,16 @@
                 : ""
             }
           </td>
-          <td>${facLabel}</td>
+          <td>
+            <div style="font-weight:600; line-height:1.15;">${escapeHtml(facLabel)}</div>
+            ${
+              (getFacilityAiPhone(r) || "").trim()
+                ? `<div style="font-size:10.5px; color:rgba(255,255,255,0.65); margin-top:2px; line-height:1.15;">
+                     ${escapeHtml(getFacilityAiPhone(r))}
+                   </div>`
+                : ""
+            }
+          </td>
           <td>${formatISOToMDY(r.effective_date)}</td>
           <td>${(r.ai_confidence != null ? r.ai_confidence.toFixed(2) : "")}</td>
           <td>
@@ -3340,12 +3358,15 @@
       </div>
 
       <div class="modal-body">
-        <div id="facility-modal-msg" class="modal-msg info"></div>
+        <div id="facility-modal-msg" class="modal-msg" style="display:none;"></div>
 
         <div class="grid2">
           <div>
             <label>Facility name *</label>
             <input id="facility-name" type="text" placeholder="e.g., Luxe Rehab" />
+            
+            <label class="label" style="margin-top:10px;">Facility Phone</label>
+            <input id="facility-phone" class="input" type="text" placeholder="e.g., (555) 123-4567" />
           </div>
           <div>
             <label>Attending(s)</label>
