@@ -31,7 +31,7 @@ try:
 except Exception:
     HAVE_WEASYPRINT = False
 
-from fastapi import FastAPI, HTTPException, Request, Form, Query, Body
+from fastapi import FastAPI, HTTPException, Request, Form, Query, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
