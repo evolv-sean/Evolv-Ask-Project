@@ -931,6 +931,22 @@
         </svg>
       </a>
 
+      <!-- Reports link -->
+      <a href="#"
+         class="reports-link icon-btn"
+         aria-label="Open Reports"
+         title="Reports"
+         onclick="openReportsModal(); return false;">
+        <!-- bar chart icon (SVG) -->
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <path d="M4 19V5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M4 19h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M7 19v-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M12 19v-11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M17 19v-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </a>
+
       <!-- Settings link -->
       <a href="#"
          class="admin-link icon-btn"
@@ -1316,6 +1332,53 @@
 
           <div class="modal-foot">
             <button class="btn-lite" onclick="closeEmailLogModal()">Close</button>
+          </div>
+        </div>
+      </div>
+
+<!-- Reports modal -->
+      <div id="reports-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="reports-modal-title">
+        <div class="modal-card" style="width:min(920px,100%);">
+          <div class="modal-head">
+            <div>
+              <div id="reports-modal-title" class="modal-title">Reports</div>
+              <div class="modal-sub">Run summary reports using SNF Admissions + Hospital Discharges.</div>
+            </div>
+            <button class="modal-x" onclick="closeReportsModal()" aria-label="Close">✕</button>
+          </div>
+
+          <div class="modal-body">
+            <div class="message" style="margin-bottom:10px;">
+              Select a report to run. (We’ll add report tiles + filters next.)
+            </div>
+
+            <div class="grid2">
+              <div>
+                <label for="report-select">Report</label>
+                <select id="report-select">
+                  <option value="snf_admission_summary" selected>SNF Admission Summary</option>
+                </select>
+              </div>
+
+              <div>
+                <label for="report-dc-from">Discharge Date From</label>
+                <input id="report-dc-from" type="date" />
+              </div>
+
+              <div>
+                <label for="report-dc-to">Discharge Date To</label>
+                <input id="report-dc-to" type="date" />
+              </div>
+            </div>
+
+            <div id="reports-output" class="card" style="margin-top:12px;">
+              <div class="muted">Report output will render here.</div>
+            </div>
+          </div>
+
+          <div class="modal-foot">
+            <button class="btn-lite" onclick="closeReportsModal()">Close</button>
+            <button class="btn btn-primary" onclick="runSelectedReport()">Run Report</button>
           </div>
         </div>
       </div>
@@ -2783,6 +2846,178 @@
       modal.classList.remove("open"); // ✅ must match .modal.open CSS
     }
 
+    // ------- Reports modal -------
+    function openReportsModal() {
+      const modal = document.getElementById("reports-modal");
+      if (!modal) return;
+      modal.classList.add("open");
+    }
+
+    function closeReportsModal() {
+      const modal = document.getElementById("reports-modal");
+      if (!modal) return;
+      modal.classList.remove("open");
+    }
+
+    function setReportsMsg(text, type) {
+      const el = document.getElementById("reports-msg");
+      if (!el) return;
+      if (!text) {
+        el.style.display = "none";
+        el.textContent = "";
+        return;
+      }
+      el.style.display = "block";
+      el.textContent = text;
+      el.style.border = "1px solid #e5e7eb";
+      el.style.background = "#fff";
+      if (type === "error") { el.style.borderColor = "#fecaca"; el.style.background = "#fef2f2"; }
+      if (type === "success") { el.style.borderColor = "#bbf7d0"; el.style.background = "#f0fdf4"; }
+    }
+
+    async function runSelectedReport() {
+      const token = getAdminToken();
+      if (!token) {
+        showToast("Please paste your ADMIN_TOKEN first.", "error");
+        return;
+      }
+
+      const reportKey = (document.getElementById("report-select") || {}).value || "";
+      const dcFrom = (document.getElementById("report-dc-from") || {}).value || "";
+      const dcTo = (document.getElementById("report-dc-to") || {}).value || "";
+
+      if (!dcFrom || !dcTo) {
+        setReportsMsg("Please select both DC Date From and DC Date To.", "error");
+        return;
+      }
+
+      setReportsMsg("", "");
+      const out = document.getElementById("reports-output");
+      if (out) out.innerHTML = `<div class="message">Running report…</div>`;
+
+      try {
+        const resp = await fetch("/admin/snf/reports/run", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Token": token
+          },
+          body: JSON.stringify({
+            report_key: reportKey,
+            dc_from: dcFrom,
+            dc_to: dcTo
+          })
+        });
+
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.ok) {
+          throw new Error(data.detail || ("HTTP " + resp.status));
+        }
+
+        renderSnfAdmissionSummaryReport(data);
+
+      } catch (err) {
+        console.error("runSelectedReport error", err);
+        if (out) out.innerHTML = `<div class="message">Error running report.</div>`;
+        setReportsMsg("Error running report: " + (err?.message || err), "error");
+      }
+    }
+
+    function renderSnfAdmissionSummaryReport(data) {
+      const out = document.getElementById("reports-output");
+      if (!out) return;
+
+      const m = data.metrics || {};
+      const t = data.totals || {};
+      const top = Array.isArray(data.top_facilities) ? data.top_facilities : [];
+
+      const notifiedPct = m.notified_pct != null ? m.notified_pct : 0;
+      const unopenedPct = m.facility_pin_unopened_pct != null ? m.facility_pin_unopened_pct : 0;
+      const openedPct = m.facility_pin_opened_pct != null ? m.facility_pin_opened_pct : 0;
+      const aiAccPct = m.ai_accuracy_pct != null ? m.ai_accuracy_pct : 0;
+
+      const aPct = (m.assignment_pct || {});
+      const assignedPct = aPct["Assigned"] != null ? aPct["Assigned"] : 0;
+      const assignedOutPct = aPct["Assigned Out"] != null ? aPct["Assigned Out"] : 0;
+      const unknownPct = aPct["Unknown"] != null ? aPct["Unknown"] : 0;
+
+      const dcFrom = escapeHtml((data.filters && data.filters.dc_from) || "");
+      const dcTo = escapeHtml((data.filters && data.filters.dc_to) || "");
+
+      out.innerHTML = `
+        <div class="report-head">
+          <div class="report-title">SNF Admission Summary</div>
+          <div class="report-sub">Filtered by Hospital Discharge DC Date: <strong>${dcFrom}</strong> → <strong>${dcTo}</strong></div>
+        </div>
+
+        <div class="report-kpis">
+          ${reportKpi("Emails opened (Facility PIN)", `${openedPct}%`, `${t.emails_in_cohort || 0} emails in cohort`)}
+          ${reportKpi("Emails unopened (Facility PIN)", `${unopenedPct}%`, "1 open max per email")}
+          ${reportKpi("Notified by Hospital", `${notifiedPct}%`, `${m.notified_count || 0} / ${t.snf_rows || 0}`)}
+          ${reportKpi("AI candidate accuracy", `${aiAccPct}%`, `${m.ai_accuracy_correct || 0} / ${m.ai_accuracy_total || 0} scored`)}
+        </div>
+
+        <div class="report-grid">
+          <div class="report-card">
+            <div class="report-card-title">SNF Physician Assignment</div>
+            <div class="report-row"><span>Assigned</span><strong>${assignedPct}%</strong></div>
+            <div class="report-row"><span>Assigned Out</span><strong>${assignedOutPct}%</strong></div>
+            <div class="report-row"><span>Unknown</span><strong>${unknownPct}%</strong></div>
+          </div>
+
+          <div class="report-card">
+            <div class="report-card-title">Top 10 SNFs by Volume</div>
+            <div class="report-list">
+              ${top.length ? top.map((x, i) => {
+                const name = escapeHtml(x.facility || "(Unknown)");
+                const star = x.is_starred ? " <span class='report-star'>★</span>" : "";
+                const count = (x.count != null) ? x.count : 0;
+                return `<div class="report-list-item">
+                          <div class="report-list-left">
+                            <div class="report-rank">${i + 1}</div>
+                            <div class="report-fac">${name}${star}</div>
+                          </div>
+                          <div class="report-pill">${count}</div>
+                        </div>`;
+              }).join("") : `<div class="message">No facility data in this range.</div>`}
+            </div>
+          </div>
+        </div>
+
+        <div class="report-foot muted" style="margin-top:10px;">
+          Cohort rows (discharges): <strong>${t.joined_rows || 0}</strong> • SNF rows joined: <strong>${t.snf_rows || 0}</strong> • AI scored rows: <strong>${t.scored_ai_rows || 0}</strong>
+        </div>
+      `;
+    }
+
+    function reportKpi(label, value, sub) {
+      return `
+        <div class="report-kpi">
+          <div class="report-kpi-label">${escapeHtml(label)}</div>
+          <div class="report-kpi-value">${escapeHtml(String(value))}</div>
+          <div class="report-kpi-sub">${escapeHtml(sub || "")}</div>
+        </div>
+      `;
+    }
+
+    // Safe stub for now (so button works without backend yet)
+    function runSelectedReport() {
+      const out = document.getElementById("reports-output");
+      if (!out) return;
+
+      const reportKey = (document.getElementById("report-select") || {}).value || "";
+      const dcFrom = (document.getElementById("report-dc-from") || {}).value || "";
+      const dcTo = (document.getElementById("report-dc-to") || {}).value || "";
+
+      out.innerHTML = `
+        <div style="font-weight:900; color:var(--navy); margin-bottom:6px;">${escapeHtml(reportKey || "report")}</div>
+        <div class="muted">Filters:</div>
+        <div class="muted">DC Date From: ${escapeHtml(dcFrom || "(none)")}</div>
+        <div class="muted">DC Date To: ${escapeHtml(dcTo || "(none)")}</div>
+        <div class="muted" style="margin-top:10px;">(Next step: wire to backend + render the real summary cards.)</div>
+      `;
+    }
+
     async function loadEmailLog() {
       const token = getAdminToken();
       if (!token) {
@@ -3807,7 +4042,75 @@
     .btn-primary:hover{background:#0b3357;}
     .btn-lite{background:#fff;color:#111827;border:1px solid #e5e7eb;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer;}
     .btn-lite:hover{background:#f9fafb;}
+
+    /* --- Reports UI (keeps your clean navy + mint styling) --- */
+    .report-head{display:flex;flex-direction:column;gap:4px;margin-bottom:12px;}
+    .report-title{font-size:16px;font-weight:900;color:#111827;}
+    .report-sub{font-size:12px;color:#6b7280;}
+
+    .report-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+    @media(max-width:980px){.report-kpis{grid-template-columns:repeat(2,1fr);}}
+    @media(max-width:520px){.report-kpis{grid-template-columns:1fr;}}
+
+    .report-kpi{
+      border:1px solid #e5e7eb;
+      background:#ffffff;
+      border-radius:14px;
+      padding:10px 12px;
+      box-shadow:0 10px 24px rgba(15,23,42,0.06);
+    }
+    .report-kpi-label{font-size:11px;color:#6b7280;font-weight:800;letter-spacing:.02em;text-transform:uppercase;}
+    .report-kpi-value{font-size:18px;font-weight:950;color:#0D3B66;margin-top:4px;}
+    .report-kpi-sub{font-size:12px;color:#6b7280;margin-top:2px;}
+
+    .report-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;}
+    @media(max-width:860px){.report-grid{grid-template-columns:1fr;}}
+
+    .report-card{
+      border:1px solid #e5e7eb;
+      background:#ffffff;
+      border-radius:16px;
+      padding:12px 12px;
+      box-shadow:0 12px 30px rgba(15,23,42,0.07);
+    }
+    .report-card-title{font-size:13px;font-weight:950;color:#111827;margin-bottom:10px;}
+    .report-row{display:flex;align-items:center;justify-content:space-between;padding:8px 2px;border-top:1px solid #f3f4f6;}
+    .report-row:first-of-type{border-top:0;}
+    .report-row span{font-size:12px;color:#6b7280;font-weight:800;}
+    .report-row strong{font-size:13px;color:#111827;font-weight:950;}
+
+    .report-list{display:flex;flex-direction:column;gap:8px;}
+    .report-list-item{
+      border:1px solid #e5e7eb;
+      background:#fafafa;
+      border-radius:14px;
+      padding:10px 10px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .report-list-left{display:flex;align-items:center;gap:10px;min-width:0;}
+    .report-rank{
+      width:24px;height:24px;border-radius:10px;
+      display:flex;align-items:center;justify-content:center;
+      font-size:12px;font-weight:950;color:#0D3B66;
+      border:1px solid rgba(13,59,102,.16);
+      background:rgba(13,59,102,.04);
+      flex:0 0 auto;
+    }
+    .report-fac{font-size:13px;font-weight:900;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .report-star{color:#A8E6CF;font-weight:950;margin-left:6px;}
+    .report-pill{
+      font-size:12px;font-weight:950;
+      padding:6px 10px;border-radius:999px;
+      border:1px solid rgba(168,230,207,0.65);
+      background:rgba(168,230,207,0.12);
+      color:#0D3B66;
+      flex:0 0 auto;
+    }
   </style>
+
 
   
 </body>
