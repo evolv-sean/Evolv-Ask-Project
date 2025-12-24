@@ -4513,6 +4513,46 @@ def require_pad_api_key(request: Request):
     if header.strip() != api_key.strip():
         raise HTTPException(status_code=401, detail="invalid PAD api key")
 
+def require_pad_api_key(request: Request):
+    """
+    Optional guard for PAD → API calls.
+    If PAD_API_KEY is set in env, require header X-PAD-API-Key to match.
+    If PAD_API_KEY is not set, this is a no-op.
+    """
+    api_key = os.getenv("PAD_API_KEY")
+    if not api_key:
+        return  # no key configured; allow all
+    header = request.headers.get("x-pad-api-key") or ""
+    if header.strip() != api_key.strip():
+        raise HTTPException(status_code=401, detail="invalid PAD api key")
+
+
+def _is_snf_disposition(dispo: str) -> bool:
+    """
+    True if Hospital Discharge disposition indicates SNF / Skilled Nursing.
+    """
+    s = (dispo or "").strip().lower()
+    if not s:
+        return False
+    return ("snf" in s) or ("skilled nursing" in s) or ("skilled" in s and "nursing" in s)
+
+
+def _facility_display(final_display: str, effective_name: str, ai_raw: str) -> str:
+    """
+    Must match what the SNF Admissions Facility column shows:
+      final_snf_name_display -> effective_facility_name -> ai_snf_name_raw
+    """
+    fd = (final_display or "").strip()
+    if fd:
+        return fd
+    en = (effective_name or "").strip()
+    if en:
+        return en
+    ar = (ai_raw or "").strip()
+    if ar:
+        return ar
+    return "(Unknown)"
+
 
 @app.get("/admin/ulog/list")
 async def admin_ulog_list(
@@ -7578,6 +7618,204 @@ async def admin_snf_email_log_opens(request: Request, secure_link_id: int):
     finally:
         conn.close()
 
+@app.post("/admin/snf/reports/run")
+async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body(...)):
+    """
+    Runs report calculations for the SNF Admissions reporting modal.
+
+    Current reports:
+      - snf_admission_summary
+
+    Filters:
+      - dc_from (YYYY-MM-DD) : Hospital discharge dc_date start
+      - dc_to   (YYYY-MM-DD) : Hospital discharge dc_date end
+    """
+    require_admin(request)
+
+    report_key = (payload.get("report_key") or "").strip()
+    dc_from = (payload.get("dc_from") or "").strip()
+    dc_to = (payload.get("dc_to") or "").strip()
+
+    if report_key != "snf_admission_summary":
+        raise HTTPException(status_code=400, detail="Unknown report_key")
+
+    if not dc_from or not dc_to:
+        raise HTTPException(status_code=400, detail="dc_from and dc_to are required (YYYY-MM-DD)")
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Cohort = hospital discharges in date range, joined to SNF admissions by visit_id
+        cur.execute(
+            """
+            SELECT
+                h.visit_id,
+                h.dc_date,
+                h.disposition AS dc_disposition,
+
+                s.id AS snf_id,
+                s.ai_is_snf_candidate,
+                s.notified_by_hospital,
+                s.assignment_confirmation,
+
+                s.final_snf_name_display,
+                s.ai_snf_name_raw,
+                f.facility_name AS effective_facility_name,
+                f.attending AS facility_attending,
+
+                COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id) AS effective_facility_id
+            FROM hospital_discharges h
+            LEFT JOIN snf_admissions s
+              ON s.visit_id = h.visit_id
+            LEFT JOIN facilities f
+              ON f.facility_id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id)
+            WHERE h.dc_date IS NOT NULL
+              AND date(h.dc_date) >= date(?)
+              AND date(h.dc_date) <= date(?)
+            """,
+            (dc_from, dc_to),
+        )
+        rows = cur.fetchall()
+
+        # Metrics should be computed only where we actually have an SNF admission row
+        snf_rows = [r for r in rows if r["snf_id"] is not None]
+
+        total_joined = len(rows)
+        total_snf = len(snf_rows)
+
+        # -----------------------------
+        # Facility volume (top 10)
+        # -----------------------------
+        volume_map: Dict[str, Dict[str, Any]] = {}
+        for r in snf_rows:
+            fac_label = _facility_display(r["final_snf_name_display"], r["effective_facility_name"], r["ai_snf_name_raw"])
+            is_starred = bool((r["facility_attending"] or "").strip())  # matches your dropdown star logic
+            if fac_label not in volume_map:
+                volume_map[fac_label] = {"facility": fac_label, "count": 0, "is_starred": False}
+            volume_map[fac_label]["count"] += 1
+            if is_starred:
+                volume_map[fac_label]["is_starred"] = True
+
+        top_facilities = sorted(volume_map.values(), key=lambda x: x["count"], reverse=True)[:10]
+
+        # -----------------------------
+        # Notified by Hospital
+        # -----------------------------
+        notified_count = sum(1 for r in snf_rows if int(r["notified_by_hospital"] or 0) == 1)
+        notified_pct = (notified_count / total_snf * 100.0) if total_snf else 0.0
+
+        # -----------------------------
+        # Assignment confirmation distribution
+        # -----------------------------
+        assign_counts = {"Assigned": 0, "Assigned Out": 0, "Unknown": 0}
+        for r in snf_rows:
+            v = (r["assignment_confirmation"] or "Unknown").strip()
+            if v not in assign_counts:
+                v = "Unknown"
+            assign_counts[v] += 1
+
+        assign_pct = {
+            k: (assign_counts[k] / total_snf * 100.0) if total_snf else 0.0
+            for k in assign_counts
+        }
+
+        # -----------------------------
+        # AI candidate accuracy vs discharge disposition (SNF vs not SNF)
+        # -----------------------------
+        # Only score where discharge disposition exists and we have an ai_is_snf_candidate value
+        scored = 0
+        correct = 0
+        for r in snf_rows:
+            dc_dispo = (r["dc_disposition"] or "").strip()
+            if not dc_dispo:
+                continue
+            scored += 1
+            actual_is_snf = _is_snf_disposition(dc_dispo)
+            predicted_is_snf = bool(int(r["ai_is_snf_candidate"] or 0) == 1)
+            if actual_is_snf == predicted_is_snf:
+                correct += 1
+
+        ai_accuracy_pct = (correct / scored * 100.0) if scored else 0.0
+
+        # -----------------------------
+        # Percent of emails opened with FACILITY PIN (de-duped to 1 open per email)
+        # Cohort emails = secure links whose admission_ids include a cohort snf_id
+        # -----------------------------
+        cohort_admission_ids = set(int(r["snf_id"]) for r in snf_rows if r["snf_id"] is not None)
+
+        cur.execute(
+            """
+            SELECT id, admission_ids
+            FROM snf_secure_links
+            WHERE sent_at IS NOT NULL AND sent_at <> ''
+            ORDER BY sent_at DESC
+            """
+        )
+        link_rows = cur.fetchall()
+
+        cohort_link_ids: List[int] = []
+        for lr in link_rows:
+            try:
+                ids = json.loads(lr["admission_ids"] or "[]")
+                if not isinstance(ids, list):
+                    continue
+                if any(int(x) in cohort_admission_ids for x in ids if str(x).isdigit()):
+                    cohort_link_ids.append(int(lr["id"]))
+            except Exception:
+                continue
+
+        total_emails = len(cohort_link_ids)
+
+        opened_email_ids: set[int] = set()
+        if cohort_link_ids:
+            placeholders = ",".join("?" for _ in cohort_link_ids)
+            cur.execute(
+                f"""
+                SELECT DISTINCT secure_link_id
+                FROM snf_secure_link_access_log
+                WHERE LOWER(COALESCE(pin_type,'')) = 'facility'
+                  AND secure_link_id IN ({placeholders})
+                """,
+                cohort_link_ids,
+            )
+            opened_email_ids = set(int(x[0]) for x in cur.fetchall())
+
+        opened_count = len(opened_email_ids)
+        opened_pct = (opened_count / total_emails * 100.0) if total_emails else 0.0
+        unopened_pct = 100.0 - opened_pct if total_emails else 0.0
+
+        return {
+            "ok": True,
+            "report_key": report_key,
+            "filters": {"dc_from": dc_from, "dc_to": dc_to},
+
+            "totals": {
+                "joined_rows": total_joined,
+                "snf_rows": total_snf,
+                "scored_ai_rows": scored,
+                "emails_in_cohort": total_emails,
+            },
+
+            "top_facilities": top_facilities,
+
+            "metrics": {
+                "notified_count": notified_count,
+                "notified_pct": round(notified_pct, 1),
+
+                "facility_pin_opened_pct": round(opened_pct, 1),
+                "facility_pin_unopened_pct": round(unopened_pct, 1),
+
+                "assignment_counts": assign_counts,
+                "assignment_pct": {k: round(assign_pct[k], 1) for k in assign_pct},
+
+                "ai_accuracy_correct": correct,
+                "ai_accuracy_total": scored,
+                "ai_accuracy_pct": round(ai_accuracy_pct, 1),
+            },
+        }
+    finally:
+        conn.close()
 
 @app.get("/admin/snf/email-log/pdf/{secure_link_id}")
 async def admin_snf_email_log_pdf(request: Request, secure_link_id: int):
