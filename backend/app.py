@@ -1137,6 +1137,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS snf_admission_facilities (
             id             INTEGER PRIMARY KEY AUTOINCREMENT,
             facility_name  TEXT NOT NULL,
+            facility_phone TEXT,
             attending      TEXT,
             notes          TEXT,
             notes2         TEXT,
@@ -1153,7 +1154,10 @@ def init_db():
     # --- Secure link + facility PIN support ---
     # Store a per-facility PIN hash (optional). If blank, we fall back to SNF_DEFAULT_PIN env var.
     ensure_column(conn, "snf_admission_facilities", "pin_hash", "pin_hash TEXT")
-    ensure_column(conn, "snf_admission_facilities", "pin_hash", "pin_hash TEXT")
+
+    # NEW: facility phone
+    ensure_column(conn, "snf_admission_facilities", "facility_phone", "facility_phone TEXT")
+
 
     # Secure expiring links table (store only token HASH, never the raw token)
     cur.execute(
@@ -6243,7 +6247,7 @@ async def admin_snf_facilities_list(request: Request):
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT id, facility_name, attending, notes, notes2, aliases, facility_emails, pin_hash
+            SELECT id, facility_name, facility_phone, attending, notes, notes2, aliases, facility_emails, pin_hash
             FROM snf_admission_facilities
             ORDER BY facility_name COLLATE NOCASE
             """
@@ -6273,6 +6277,7 @@ async def admin_snf_facilities_upsert(
         raise HTTPException(status_code=400, detail="facility_name is required")
 
     fac_id = payload.get("id")
+    facility_phone = (payload.get("facility_phone") or "").strip()
     attending = (payload.get("attending") or "").strip()
     notes = (payload.get("notes") or "").strip()
     notes2 = (payload.get("notes2") or "").strip()
@@ -6305,6 +6310,7 @@ async def admin_snf_facilities_upsert(
                     """
                     UPDATE snf_admission_facilities
                        SET facility_name   = ?,
+                           facility_phone  = ?,
                            attending       = ?,
                            notes           = ?,
                            notes2          = ?,
@@ -6312,13 +6318,14 @@ async def admin_snf_facilities_upsert(
                            facility_emails = ?
                      WHERE id = ?
                     """,
-                    (name, attending, notes, notes2, aliases, facility_emails, fac_id),
+                    (name, facility_phone, attending, notes, notes2, aliases, facility_emails, fac_id)
                 )
             else:
                 cur.execute(
                     """
                     UPDATE snf_admission_facilities
                        SET facility_name   = ?,
+                           facility_phone  = ?,
                            attending       = ?,
                            notes           = ?,
                            notes2          = ?,
@@ -6327,7 +6334,7 @@ async def admin_snf_facilities_upsert(
                            pin_hash        = ?
                      WHERE id = ?
                     """,
-                    (name, attending, notes, notes2, aliases, facility_emails, new_pin_hash, fac_id),
+                    (name, facility_phone, attending, notes, notes2, aliases, facility_emails, new_pin_hash, fac_id)
                 )
 
             if cur.rowcount == 0:
@@ -6343,10 +6350,10 @@ async def admin_snf_facilities_upsert(
             cur.execute(
                 """
                 INSERT INTO snf_admission_facilities
-                  (facility_name, attending, notes, notes2, aliases, facility_emails, pin_hash)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                  (facility_name, facility_phone, attending, notes, notes2, aliases, facility_emails, pin_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (name, attending, notes, notes2, aliases, facility_emails, new_pin_hash),
+                (name, facility_phone, attending, notes, notes2, aliases, facility_emails, new_pin_hash)
             )
             new_id = cur.lastrowid
 
