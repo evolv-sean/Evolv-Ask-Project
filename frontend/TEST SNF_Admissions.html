@@ -910,11 +910,11 @@
          onclick="openManualCmNoteModal(); return false;"
          aria-label="Add patient (manual CM note)"
          title="Add patient (manual CM note)">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M10 12H6a4 4 0 0 0-4 4v1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-          <path d="M14 16h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-          <path d="M16 14v4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-          <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></circle>
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none">
+          <circle cx="10" cy="8" r="4" stroke="currentColor" stroke-width="1.8"></circle>
+          <path d="M4 20c1-3 3.8-5.5 6-5.5s5 2 6 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+          <path d="M18 8v8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+          <path d="M15 11h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
         </svg>
       </a>
 
@@ -1191,7 +1191,7 @@
            NEW: Manual CM Note Add Modal (writes to cm_notes_raw)
            ========================================================= -->
       <div id="manual-cm-note-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="manual-cm-note-modal-title">
-        <div class="modal-card" style="width:min(900px,100%); max-height: calc(100vh - 120px);">
+        <div class="modal-card" style="width:min(900px,100%); max-height: calc(100vh - 120px); display:flex; flex-direction:column;">
           <div class="modal-head">
             <div>
               <div id="manual-cm-note-modal-title" class="modal-title">Add Patient / Manual CM Note</div>
@@ -1201,7 +1201,7 @@
           </div>
 
           <!-- SCROLLING BODY -->
-          <div class="modal-body" style="overflow:auto;">
+          <div class="modal-body" style="flex:1; overflow:auto;">
             <div class="email-log-card" style="margin:0;">
               <div class="email-log-card-head">
                 <div class="email-log-card-title">Patient + Note Details</div>
@@ -1231,23 +1231,10 @@
                   </div>
 
                   <div>
-                    <label>Encounter ID</label>
-                    <input id="mcn-encounter-id" type="text" placeholder="Encounter ID" />
-                  </div>
-
-                  <div>
                     <label>Hospital Name</label>
-                    <input id="mcn-hospital-name" type="text" placeholder="Hospital" />
-                  </div>
-
-                  <div>
-                    <label>Unit Name</label>
-                    <input id="mcn-unit-name" type="text" placeholder="Unit" />
-                  </div>
-
-                  <div>
-                    <label>Admission Date</label>
-                    <input id="mcn-admission-date" type="text" placeholder="YYYY-MM-DD (or your format)" />
+                    <select id="mcn-hospital-name">
+                      <option value="">(select)</option>
+                    </select>
                   </div>
 
                   <div>
@@ -1266,11 +1253,6 @@
                   </div>
 
                   <div>
-                    <label>Note Author</label>
-                    <input id="mcn-note-author" type="text" placeholder="Author" />
-                  </div>
-
-                  <div>
                     <label>Note Type</label>
                     <input id="mcn-note-type" type="text" value="Case Management" />
                   </div>
@@ -1278,16 +1260,6 @@
                   <div>
                     <label>Source System</label>
                     <input id="mcn-source-system" type="text" value="EMR" />
-                  </div>
-
-                  <div>
-                    <label>PAD Run ID</label>
-                    <input id="mcn-pad-run-id" type="text" placeholder="(optional)" />
-                  </div>
-
-                  <div>
-                    <label>OCR Confidence</label>
-                    <input id="mcn-ocr-confidence" type="number" step="0.01" placeholder="(optional)" />
                   </div>
                 </div>
 
@@ -2611,9 +2583,59 @@
       setTimeout(() => el.className = "toast", 2600);
     }
 
+    async function loadHospitalOptionsForManualModal() {
+      const token = getAdminToken();
+      const sel = document.getElementById("mcn-hospital-name");
+      if (!sel) return;
+
+      // reset options
+      sel.innerHTML = `<option value="">(select)</option>`;
+
+      if (!token) return; // allow modal to open; dropdown stays minimal until token exists
+
+      try {
+        const resp = await fetch("/admin/snf/cm-notes/hospitals", {
+          headers: { "X-Admin-Token": token }
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+        const data = await resp.json();
+        const hospitals = Array.isArray(data?.hospitals) ? data.hospitals : [];
+
+        hospitals.forEach(h => {
+          const name = (h || "").toString().trim();
+          if (!name) return;
+          const opt = document.createElement("option");
+          opt.value = name;
+          opt.textContent = name;
+          sel.appendChild(opt);
+        });
+      } catch (e) {
+        console.warn("loadHospitalOptionsForManualModal failed:", e);
+      }
+    }
+
+    function ensureHospitalOption(name) {
+      const sel = document.getElementById("mcn-hospital-name");
+      if (!sel) return;
+      const v = (name || "").toString().trim();
+      if (!v) return;
+
+      const exists = Array.from(sel.options).some(o => o.value === v);
+      if (!exists) {
+        const opt = document.createElement("option");
+        opt.value = v;
+        opt.textContent = v;
+        sel.appendChild(opt);
+      }
+    }
+
     function openManualCmNoteModal(){
       const m = document.getElementById("manual-cm-note-modal");
       if (m) m.classList.add("open");
+
+      // load hospital dropdown values
+      await loadHospitalOptionsForManualModal();
 
       // always clear status message
       const msg = document.getElementById("mcn-msg");
@@ -2625,16 +2647,10 @@
         "mcn-patient-name",
         "mcn-dob",
         "mcn-visit-id",
-        "mcn-encounter-id",
         "mcn-hospital-name",
-        "mcn-unit-name",
-        "mcn-admission-date",
         "mcn-admit-date",
         "mcn-attending",
         "mcn-note-datetime",
-        "mcn-note-author",
-        "mcn-pad-run-id",
-        "mcn-ocr-confidence",
         "mcn-note-text"
       ];
 
@@ -2668,14 +2684,17 @@
       setVal("mcn-patient-name", adm.patient_name);
       setVal("mcn-dob", adm.dob);
       setVal("mcn-visit-id", adm.visit_id);
-      setVal("mcn-encounter-id", adm.encounter_id);
-      setVal("mcn-hospital-name", adm.hospital_name || adm.from_hospital_name);
-      setVal("mcn-unit-name", adm.unit_name);
-      setVal("mcn-admission-date", adm.admission_date);
       setVal("mcn-admit-date", adm.admit_date);
       setVal("mcn-attending", adm.attending);
-      setVal("mcn-note-author", adm.note_author);
-    }
+
+      // hospital dropdown: ensure options loaded, then select matching value
+      const hosp = (adm.hospital_name || adm.from_hospital_name || "").toString();
+      if (hosp.trim() !== "") {
+        ensureHospitalOption(hosp);
+        const sel = document.getElementById("mcn-hospital-name");
+        if (sel) sel.value = hosp;
+      }
+
 
     function closeManualCmNoteModal(){
       const m = document.getElementById("manual-cm-note-modal");
@@ -2691,24 +2710,13 @@
         patient_name: (document.getElementById("mcn-patient-name")?.value || "").trim(),
         dob: (document.getElementById("mcn-dob")?.value || "").trim(),
         visit_id: (document.getElementById("mcn-visit-id")?.value || "").trim(),
-        encounter_id: (document.getElementById("mcn-encounter-id")?.value || "").trim(),
         hospital_name: (document.getElementById("mcn-hospital-name")?.value || "").trim(),
-        unit_name: (document.getElementById("mcn-unit-name")?.value || "").trim(),
-        admission_date: (document.getElementById("mcn-admission-date")?.value || "").trim(),
         admit_date: (document.getElementById("mcn-admit-date")?.value || "").trim(),
         attending: (document.getElementById("mcn-attending")?.value || "").trim(),
         note_datetime: (document.getElementById("mcn-note-datetime")?.value || "").trim(),
-        note_author: (document.getElementById("mcn-note-author")?.value || "").trim(),
         note_type: (document.getElementById("mcn-note-type")?.value || "Case Management").trim(),
         note_text: (document.getElementById("mcn-note-text")?.value || "").trim(),
-        source_system: (document.getElementById("mcn-source-system")?.value || "EMR").trim(),
-        pad_run_id: (document.getElementById("mcn-pad-run-id")?.value || "").trim(),
-        ocr_confidence: (() => {
-          const v = document.getElementById("mcn-ocr-confidence")?.value;
-          if (v === "" || v == null) return null;
-          const f = parseFloat(v);
-          return Number.isFinite(f) ? f : null;
-        })()
+        source_system: (document.getElementById("mcn-source-system")?.value || "EMR").trim()
       };
 
       if (!payload.patient_mrn || !payload.visit_id || !payload.note_datetime || !payload.note_text){
