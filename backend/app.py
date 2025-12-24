@@ -5102,7 +5102,7 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
 
 @app.post("/admin/snf/cm-notes/manual-add")
 def admin_manual_add_cm_note(payload: ManualCmNoteIn, admin=Depends(require_admin)):
-    conn = get_conn()
+    conn = get_db()
     try:
         cur = conn.cursor()
 
