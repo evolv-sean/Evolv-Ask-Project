@@ -5100,6 +5100,25 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
     finally:
         conn.close()
 
+@app.get("/admin/snf/cm-notes/hospitals")
+def admin_cm_notes_hospitals(admin=Depends(require_admin)):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT DISTINCT TRIM(hospital_name) AS hospital_name
+            FROM cm_notes_raw
+            WHERE hospital_name IS NOT NULL
+              AND TRIM(hospital_name) <> ''
+            ORDER BY TRIM(hospital_name) COLLATE NOCASE
+            """
+        )
+        hospitals = [r["hospital_name"] for r in cur.fetchall() if r["hospital_name"]]
+        return {"ok": True, "hospitals": hospitals}
+    finally:
+        conn.close()
+
 @app.post("/admin/snf/cm-notes/manual-add")
 def admin_manual_add_cm_note(payload: ManualCmNoteIn, admin=Depends(require_admin)):
     conn = get_db()
