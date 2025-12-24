@@ -2718,11 +2718,17 @@
 
       try{
         // Uses the same admin token pattern as your other admin calls
+        const token = getAdminToken();
+        if (!token) {
+          if (msg) msg.textContent = "Please paste your ADMIN_TOKEN in Settings first.";
+          return;
+        }
+
         const res = await fetch("/admin/snf/cm-notes/manual-add", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-Admin-Token": (window.ADMIN_TOKEN || "")
+            "X-Admin-Token": token
           },
           body: JSON.stringify(payload)
         });
