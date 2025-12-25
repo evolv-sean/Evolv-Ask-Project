@@ -103,6 +103,46 @@ def utc_text_to_eastern_display(value: Any) -> str:
         # If parsing fails, return original string unchanged
         return s
 
+def utc_text_to_eastern_display(value: Any) -> str:
+    ...
+    except Exception:
+        # If parsing fails, return original string unchanged
+        return s
+
+
+def normalize_date_to_iso(value: Any) -> Optional[str]:
+    """
+    Normalize common date inputs into ISO YYYY-MM-DD so SQLite date() works.
+    Accepts:
+      - YYYY-MM-DD
+      - MM/DD/YYYY or MM-DD-YYYY
+      - MM/DD/YY or MM-DD-YY   (assumes 20YY for 00-69, else 19YY)
+    """
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+
+    # Already ISO date
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        return s
+
+    cleaned = s.replace("-", "/")
+
+    m = re.fullmatch(r"(\d{2})/(\d{2})/(\d{4})", cleaned)
+    if m:
+        mm, dd, yyyy = m.group(1), m.group(2), m.group(3)
+        return f"{yyyy}-{mm}-{dd}"
+
+    m = re.fullmatch(r"(\d{2})/(\d{2})/(\d{2})", cleaned)
+    if m:
+        mm, dd, yy = m.group(1), m.group(2), int(m.group(3))
+        yyyy = 2000 + yy if yy <= 69 else 1900 + yy
+        return f"{yyyy:04d}-{mm}-{dd}"
+
+    # If it’s some other format we don’t recognize, don’t destroy it
+    return s
 
 # ---------------------------------------------------------------------------
 # DB PATH – wired for Render, but still overrideable via DB_PATH
@@ -836,10 +876,42 @@ def init_db():
     except sqlite3.Error:
         pass
 
+    
+    # -------------------------------------------------------------------
+    # Legacy date normalization (hospital_documents): MM/DD/YY -> YYYY-MM-DD
+    # Ensures SQLite date() filters work in reports.
+    # -------------------------------------------------------------------
+    try:
+        rows = cur.execute(
+            """
+            SELECT id, admit_date, dc_date
+            FROM hospital_documents
+            WHERE admit_date IS NOT NULL OR dc_date IS NOT NULL
+            """
+        ).fetchall()
+
+        for doc_id, admit_date_raw, dc_date_raw in rows:
+            admit_date_norm = normalize_date_to_iso(admit_date_raw)
+            dc_date_norm = normalize_date_to_iso(dc_date_raw)
+
+            # Only write if something actually changes
+            if admit_date_norm != admit_date_raw or dc_date_norm != dc_date_raw:
+                cur.execute(
+                    """
+                    UPDATE hospital_documents
+                    SET admit_date = ?, dc_date = ?
+                    WHERE id = ?
+                    """,
+                    (admit_date_norm, dc_date_norm, doc_id),
+                )
+    except sqlite3.Error:
+        # Never block app startup on a migration cleanup
+        pass
 
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_hosp_docs_hosp_type_dt ON hospital_documents (hospital_name, document_type, document_datetime DESC)"
     )
+    
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_hosp_docs_mrn ON hospital_documents (patient_mrn)"
     )
@@ -922,6 +994,36 @@ def init_db():
     except sqlite3.Error:
         pass
 
+    # -------------------------------------------------------------------
+    # Legacy date normalization (hospital_discharges): MM/DD/YY -> YYYY-MM-DD
+    # Ensures SQLite date() filters work in reports.
+    # -------------------------------------------------------------------
+    try:
+        rows = cur.execute(
+            """
+            SELECT id, admit_date, dc_date
+            FROM hospital_discharges
+            WHERE admit_date IS NOT NULL OR dc_date IS NOT NULL
+            """
+        ).fetchall()
+
+        for discharge_id, admit_date_raw, dc_date_raw in rows:
+            admit_date_norm = normalize_date_to_iso(admit_date_raw)
+            dc_date_norm = normalize_date_to_iso(dc_date_raw)
+
+            # Only write if something actually changes
+            if admit_date_norm != admit_date_raw or dc_date_norm != dc_date_raw:
+                cur.execute(
+                    """
+                    UPDATE hospital_discharges
+                    SET admit_date = ?, dc_date = ?
+                    WHERE id = ?
+                    """,
+                    (admit_date_norm, dc_date_norm, discharge_id),
+                )
+    except sqlite3.Error:
+        # Never block app startup on a migration cleanup
+        pass
 
    
     # SNF admissions derived from CM notes
@@ -1969,8 +2071,12 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
     visit_id = (payload.get("visit_id") or "").strip() or None
 
     # ✅ NEW: admit/discharge dates (optional; PAD/API can send later)
-    admit_date = (payload.get("admit_date") or "").strip() or None
-    dc_date = (payload.get("dc_date") or "").strip() or None
+    admit_date_raw = (payload.get("admit_date") or "").strip() or None
+    dc_date_raw = (payload.get("dc_date") or "").strip() or None
+
+    # Normalize to ISO so reports using date() work reliably
+    admit_date = normalize_date_to_iso(admit_date_raw)
+    dc_date = normalize_date_to_iso(dc_date_raw)
 
     source_system = (payload.get("source_system") or "EMR").strip() or "EMR"
 
