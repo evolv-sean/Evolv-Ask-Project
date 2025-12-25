@@ -103,12 +103,6 @@ def utc_text_to_eastern_display(value: Any) -> str:
         # If parsing fails, return original string unchanged
         return s
 
-def utc_text_to_eastern_display(value: Any) -> str:
-    ...
-    except Exception:
-        # If parsing fails, return original string unchanged
-        return s
-
 
 def normalize_date_to_iso(value: Any) -> Optional[str]:
     """
