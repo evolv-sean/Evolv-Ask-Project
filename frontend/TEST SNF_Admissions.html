@@ -2084,6 +2084,9 @@
           // Keep "Saved." — backend update already happened
         }
 
+        // Auto-close modal after a beat so user sees "Saved."
+        setTimeout(() => closeNotifModal(), 450);
+
         setTimeout(() => { if (status) status.textContent = ""; }, 2000);
       } catch (e) {
         console.error(e);
@@ -2228,6 +2231,9 @@
 
         // optional: refresh list rendering
         try { renderRows(currentRows); } catch (e2) {}
+
+        // Auto-close modal after a beat so user sees "Saved."
+        setTimeout(() => closePhysAssignModal(), 450);
 
         setTimeout(() => { if (status) status.textContent = ""; }, 2000);
       } catch (e) {
@@ -3445,7 +3451,6 @@
         let facLabel = "";
 
         if (r.final_snf_name_display) {
-          // Manual override from the Facility (free text) field
           facLabel = r.final_snf_name_display;
         } else {
           const facLabelParts = [];
@@ -3456,15 +3461,14 @@
             );
           }
 
-          // NEW: use mapped AI display (system facility name if matched; else raw AI)
+          // NOTE: intentionally NOT appending attending name here
           const aiDisplay = getFacilityAiDisplayName(r);
 
           facLabel = facLabelParts.join(" ") || aiDisplay || "(unknown)";
         }
 
-
         const underName = r.visit_id
-          ? `Visit ${r.visit_id}`
+          ? `${r.visit_id}`
           : (r.patient_mrn ? `MRN ${r.patient_mrn}` : "");
 
         const emailed = r.emailed_at ? "Yes" : "No";
@@ -3886,7 +3890,8 @@
         <input id="facility-aliases" type="text" placeholder="e.g., Luxe Rehab at Wellington, Luxe Wellington" />
 
         <label>Facility email recipients (comma separated)</label>
-        <input id="facility-emails" type="text" placeholder="admissions@…, referrals@…" />
+        <textarea id="facility-emails" rows="3" placeholder="admissions@…, referrals@…"
+                  style="resize:vertical;"></textarea>
 
         <div class="grid2">
           <div>
