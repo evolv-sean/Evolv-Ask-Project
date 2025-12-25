@@ -1430,7 +1430,26 @@ class ManualCmNoteIn(BaseModel):
     source_system: Optional[str] = "EMR"
     pad_run_id: Optional[str] = None
     ocr_confidence: Optional[float] = None
-    
+
+class ManualHospitalDocumentIn(BaseModel):
+    # must match /api/hospital-documents/ingest payload keys
+    hospital_name: str
+    document_type: str
+    source_text: str
+
+    # recommended for Hospital Discharge UI
+    visit_id: Optional[str] = None
+
+    # optional metadata (same as ingest supports)
+    document_datetime: Optional[str] = None
+    patient_mrn: Optional[str] = None
+    patient_name: Optional[str] = None
+    dob: Optional[str] = None
+    admit_date: Optional[str] = None
+    dc_date: Optional[str] = None
+    source_system: Optional[str] = "EMR"
+
+
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
@@ -5158,6 +5177,62 @@ def admin_cm_notes_hospitals(admin=Depends(require_admin)):
         return {"ok": True, "hospitals": hospitals}
     finally:
         conn.close()
+
+@app.get("/admin/hospital-documents/hospitals")
+def admin_hospital_documents_hospitals(admin=Depends(require_admin)):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT hospital_name FROM (
+              SELECT DISTINCT TRIM(hospital_name) AS hospital_name
+              FROM hospital_documents
+              WHERE hospital_name IS NOT NULL AND TRIM(hospital_name) <> ''
+              UNION
+              SELECT DISTINCT TRIM(hospital_name) AS hospital_name
+              FROM hospital_discharges
+              WHERE hospital_name IS NOT NULL AND TRIM(hospital_name) <> ''
+            )
+            ORDER BY hospital_name COLLATE NOCASE
+            """
+        )
+        hospitals = [r[0] for r in cur.fetchall() if r and r[0]]
+        return {"ok": True, "hospitals": hospitals}
+    finally:
+        conn.close()
+
+
+@app.post("/admin/hospital-documents/manual-add")
+async def admin_hospital_documents_manual_add(payload: ManualHospitalDocumentIn, admin=Depends(require_admin)):
+    """
+    Manual hospital document add for the Hospital Discharge HTML page.
+
+    IMPORTANT: This intentionally calls the SAME ingest function used by the API:
+      /api/hospital-documents/ingest
+    so it triggers the same downstream behavior (section splitting, discharge upsert, etc.).
+    """
+    ingest_payload = {
+        "hospital_name": (payload.hospital_name or "").strip(),
+        "document_type": (payload.document_type or "").strip(),
+        "source_text": (payload.source_text or "").strip(),
+        "visit_id": (payload.visit_id or "").strip() or None,
+        "document_datetime": (payload.document_datetime or "").strip() or None,
+        "patient_mrn": (payload.patient_mrn or "").strip() or None,
+        "patient_name": (payload.patient_name or "").strip() or None,
+        "dob": (payload.dob or "").strip() or None,
+        "admit_date": (payload.admit_date or "").strip() or None,
+        "dc_date": (payload.dc_date or "").strip() or None,
+        "source_system": (payload.source_system or "EMR").strip() or "EMR",
+    }
+
+    # extra guardrails for Hospital Discharge page usability
+    if not ingest_payload["visit_id"]:
+        raise HTTPException(status_code=400, detail="visit_id is required for manual add from Hospital Discharge page")
+
+    # Calls the real ingest logic (same as API path)
+    return await hospital_documents_ingest(ingest_payload)
+
 
 @app.post("/admin/snf/cm-notes/manual-add")
 def admin_manual_add_cm_note(payload: ManualCmNoteIn, admin=Depends(require_admin)):
