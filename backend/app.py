@@ -4638,19 +4638,6 @@ def require_pad_api_key(request: Request):
     if header.strip() != api_key.strip():
         raise HTTPException(status_code=401, detail="invalid PAD api key")
 
-def require_pad_api_key(request: Request):
-    """
-    Optional guard for PAD → API calls.
-    If PAD_API_KEY is set in env, require header X-PAD-API-Key to match.
-    If PAD_API_KEY is not set, this is a no-op.
-    """
-    api_key = os.getenv("PAD_API_KEY")
-    if not api_key:
-        return  # no key configured; allow all
-    header = request.headers.get("x-pad-api-key") or ""
-    if header.strip() != api_key.strip():
-        raise HTTPException(status_code=401, detail="invalid PAD api key")
-
 
 def _is_snf_disposition(dispo: str) -> bool:
     """
