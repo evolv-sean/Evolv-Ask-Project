@@ -268,6 +268,16 @@
   </svg>
 </button>
 
+<!-- NEW: manual add hospital document (same icon concept as SNF Admissions) -->
+<button class="icon-btn" id="btnManualHospDoc" title="Add patient (manual hospital document)">
+  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none">
+    <circle cx="10" cy="8" r="4" stroke="currentColor" stroke-width="1.8"></circle>
+    <path d="M4 20c1-3 3.8-5.5 6-5.5s5 2 6 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+    <path d="M18 8v8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+    <path d="M15 11h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+  </svg>
+</button>
+
 <button class="icon-btn" id="btnSettings" title="Settings">
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <path d="M7 10V8a5 5 0 0 1 10 0v2"></path>
@@ -447,6 +457,99 @@
       </div>
     </div>
   </div>
+
+  <!-- =========================================================
+       NEW: Manual Hospital Document Add Modal (writes via ingest logic)
+       ========================================================= -->
+  <div id="manualHospDocModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="manualHospDocTitle">
+    <div class="modal-card" style="width:min(900px,100%); max-height: calc(100vh - 120px); display:flex; flex-direction:column;">
+      <div class="modal-head">
+        <div>
+          <div id="manualHospDocTitle" class="modal-title">Add Patient / Manual Hospital Document</div>
+          <div class="modal-sub">Creates a hospital_documents record and triggers the same ingest processing (sections + discharge upsert).</div>
+        </div>
+        <button class="modal-x" id="btnManualHospDocCloseX" aria-label="Close">✕</button>
+      </div>
+
+      <!-- SCROLLING BODY -->
+      <div class="modal-body" style="flex:1; overflow:auto;">
+        <div class="subcard" style="margin:0; border:none; box-shadow:none;">
+          <div class="subhead">
+            <strong>Document Details</strong>
+            <span id="mhd-msg" class="tiny-note"></span>
+          </div>
+
+          <div style="padding:12px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+              <div>
+                <label>Visit ID <span style="color:var(--danger);">*</span></label>
+                <input id="mhd-visit-id" type="text" placeholder="Visit ID" />
+              </div>
+
+              <div>
+                <label>Hospital Name <span style="color:var(--danger);">*</span></label>
+                <select id="mhd-hospital-name">
+                  <option value="">(select)</option>
+                </select>
+              </div>
+
+              <div>
+                <label>Patient MRN</label>
+                <input id="mhd-patient-mrn" type="text" placeholder="MRN" />
+              </div>
+
+              <div>
+                <label>Patient Name</label>
+                <input id="mhd-patient-name" type="text" placeholder="Last, First" />
+              </div>
+
+              <div>
+                <label>DOB</label>
+                <input id="mhd-dob" type="text" placeholder="MM/DD/YYYY" />
+              </div>
+
+              <div>
+                <label>Document Type <span style="color:var(--danger);">*</span></label>
+                <input id="mhd-document-type" type="text" placeholder="Discharge Summary, Progress Note, ..." />
+              </div>
+
+              <div>
+                <label>Document Date/Time</label>
+                <input id="mhd-document-datetime" type="text" placeholder="YYYY-MM-DD HH:MM (or your format)" />
+              </div>
+
+              <div>
+                <label>Source System</label>
+                <input id="mhd-source-system" type="text" value="EMR" />
+              </div>
+
+              <div>
+                <label>Admit Date</label>
+                <input id="mhd-admit-date" type="text" placeholder="YYYY-MM-DD (or your format)" />
+              </div>
+
+              <div>
+                <label>DC Date</label>
+                <input id="mhd-dc-date" type="text" placeholder="YYYY-MM-DD (or your format)" />
+              </div>
+            </div>
+
+            <div style="margin-top:12px;">
+              <label>Source Text <span style="color:var(--danger);">*</span></label>
+              <textarea id="mhd-source-text" rows="10" placeholder="Paste the hospital document text here."></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STICKY FOOTER ACTIONS -->
+      <div class="modal-foot">
+        <button class="btn-lite" id="btnManualHospDocCancel">Cancel</button>
+        <button class="btn" id="btnManualHospDocSubmit">Add Document</button>
+      </div>
+    </div>
+  </div>
+
 
 <script>
   const $ = (sel) => document.querySelector(sel);
@@ -713,13 +816,6 @@
         </div>
 
         <div class="vh-kv">
-          <div class="k">Visit ID</div><div class="v">${safe(v.visit_id || selectedVisitId)}</div>
-          <div class="k">Hospital</div><div class="v">${safe(v.hospital_name)}</div>
-
-          <div class="k">Admit</div><div class="v">${fmtDateOnly(v.admit_date)}</div>
-          <div class="k">Discharge</div><div class="v">${fmtDateOnly(v.dc_date)}</div>
-
-          <div class="k">Disposition</div><div class="v">${safe(v.disposition)}</div>
           <div class="k">Updated</div><div class="v">${safe(v.updated_at)}</div>
         </div>
       </div>
@@ -874,6 +970,150 @@
   $("#btnProfileNew").addEventListener("click", () => clearProfileEditor());
   $("#btnProfileSave").addEventListener("click", () => saveProfile());
 
+  /* ============================
+     NEW: Manual Hospital Doc modal
+     ============================ */
+
+  function getAdminToken(){
+    // matches the same token pattern used by SNF Admissions manual add flow
+    return (localStorage.getItem("evolv_admin_token") || "").trim();
+  }
+
+  async function loadHospitalOptionsForManualHospDoc(){
+    const token = getAdminToken();
+    const sel = document.getElementById("mhd-hospital-name");
+    if(!sel) return;
+
+    sel.innerHTML = `<option value="">(select)</option>`;
+    if(!token) return;
+
+    try{
+      const resp = await fetch("/admin/hospital-documents/hospitals", {
+        headers: { "X-Admin-Token": token }
+      });
+      if(!resp.ok) throw new Error("HTTP " + resp.status);
+      const data = await resp.json();
+      const hospitals = Array.isArray(data?.hospitals) ? data.hospitals : [];
+      hospitals.forEach(h => {
+        const name = (h || "").toString().trim();
+        if(!name) return;
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        sel.appendChild(opt);
+      });
+    }catch(e){
+      console.warn("loadHospitalOptionsForManualHospDoc failed:", e);
+    }
+  }
+
+  function setManualHospDocMsg(text, isError=false){
+    const el = document.getElementById("mhd-msg");
+    if(!el) return;
+    el.textContent = text || "";
+    el.style.color = isError ? "var(--danger)" : "var(--muted)";
+  }
+
+  async function openManualHospDocModal(){
+    openModal("#manualHospDocModal");
+    setManualHospDocMsg("");
+
+    // clear fields
+    [
+      "mhd-visit-id",
+      "mhd-hospital-name",
+      "mhd-patient-mrn",
+      "mhd-patient-name",
+      "mhd-dob",
+      "mhd-document-type",
+      "mhd-document-datetime",
+      "mhd-source-system",
+      "mhd-admit-date",
+      "mhd-dc-date",
+      "mhd-source-text"
+    ].forEach(id => {
+      const el = document.getElementById(id);
+      if(el) el.value = "";
+    });
+
+    // defaults
+    const src = document.getElementById("mhd-source-system");
+    if(src && !src.value) src.value = "EMR";
+
+    // prefill from currently selected visit (if any)
+    if(typeof selectedVisitId !== "undefined" && selectedVisitId){
+      const el = document.getElementById("mhd-visit-id");
+      if(el) el.value = selectedVisitId;
+    }
+
+    await loadHospitalOptionsForManualHospDoc();
+  }
+
+  function closeManualHospDocModal(){
+    closeModal("#manualHospDocModal");
+  }
+
+  async function submitManualHospDoc(){
+    setManualHospDocMsg("");
+
+    const payload = {
+      visit_id: (document.getElementById("mhd-visit-id")?.value || "").trim(),
+      hospital_name: (document.getElementById("mhd-hospital-name")?.value || "").trim(),
+      patient_mrn: (document.getElementById("mhd-patient-mrn")?.value || "").trim(),
+      patient_name: (document.getElementById("mhd-patient-name")?.value || "").trim(),
+      dob: (document.getElementById("mhd-dob")?.value || "").trim(),
+      document_type: (document.getElementById("mhd-document-type")?.value || "").trim(),
+      document_datetime: (document.getElementById("mhd-document-datetime")?.value || "").trim(),
+      source_system: (document.getElementById("mhd-source-system")?.value || "EMR").trim(),
+      admit_date: (document.getElementById("mhd-admit-date")?.value || "").trim(),
+      dc_date: (document.getElementById("mhd-dc-date")?.value || "").trim(),
+      source_text: (document.getElementById("mhd-source-text")?.value || "").trim()
+    };
+
+    if(!payload.visit_id || !payload.hospital_name || !payload.document_type || !payload.source_text){
+      setManualHospDocMsg("Visit ID, Hospital Name, Document Type, and Source Text are required.", true);
+      return;
+    }
+
+    const token = getAdminToken();
+    if(!token){
+      setManualHospDocMsg("Please paste your ADMIN_TOKEN in Settings first.", true);
+      return;
+    }
+
+    try{
+      const res = await fetch("/admin/hospital-documents/manual-add", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Token": token
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json().catch(()=> ({}));
+      if(!res.ok){
+        setManualHospDocMsg(data?.detail || "Failed to add document.", true);
+        return;
+      }
+
+      setManualHospDocMsg(`Added. document_id=${data.document_id || "?"} • sections=${data.sections_saved || "?"}`);
+
+      // Refresh left list + reload selected visit so the new doc shows immediately
+      if(typeof loadDischarges === "function") await loadDischarges();
+      if(typeof selectVisit === "function") await selectVisit(payload.visit_id);
+
+      setTimeout(() => closeManualHospDocModal(), 350);
+    }catch(err){
+      setManualHospDocMsg("Error adding document: " + (err?.message || err), true);
+    }
+  }
+
+  // Button wiring
+  $("#btnManualHospDoc").addEventListener("click", () => openManualHospDocModal());
+  $("#btnManualHospDocCancel").addEventListener("click", () => closeManualHospDocModal());
+  $("#btnManualHospDocCloseX").addEventListener("click", () => closeManualHospDocModal());
+  $("#btnManualHospDocSubmit").addEventListener("click", () => submitManualHospDoc());
 
   ["#filterModal","#settingsModal"].forEach(id=>{
     $(id).addEventListener("click", (e)=>{
