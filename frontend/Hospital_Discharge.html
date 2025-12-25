@@ -175,15 +175,58 @@
     .modal-backdrop{position:fixed;inset:0;background:rgba(17,24,39,.45);display:none;align-items:center;justify-content:center;padding:16px;z-index:999;}
     .modal-backdrop.open{display:flex;}
     .modal{width:min(760px, 100%);background:var(--white);border:1px solid var(--cool);border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,.22);overflow:hidden;display:flex;flex-direction:column;max-height:80vh;min-height:0;}
+    /* NEW: manual modal wrapper uses .modal-card; make it behave like .modal */
+    .modal-card{
+      width:min(760px, 100%);
+      background:var(--white);
+      border:1px solid var(--cool);
+      border-radius:18px;
+      box-shadow:0 30px 80px rgba(0,0,0,.22);
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+      max-height:80vh;
+      min-height:0;
+    }
     .modal-head{padding:14px 16px 12px;border-bottom:1px solid #F1F5F9;display:flex;align-items:flex-end;justify-content:space-between;gap:10px;}
     .modal-title{font-size:14px;font-weight:900;color:var(--navy);display:flex;align-items:center;gap:10px;}
     .modal-body{padding:14px 16px;overflow:auto;min-height:0;}
     .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
     .input{display:flex;flex-direction:column;gap:6px;}
     .input label{font-size:10px;letter-spacing:.10em;text-transform:uppercase;color:#6B7280;font-weight:900;}
-    input[type="text"], input[type="date"], select{width:100%;padding:11px 12px;border-radius:12px;border:1px solid var(--cool-2);font-size:13px;outline:none;background:#FFFFFF;}
+    input[type="text"], input[type="date"], select, textarea{
+      width:100%;
+      padding:11px 12px;
+      border-radius:12px;
+      border:1px solid var(--cool-2);
+      font-size:13px;
+      outline:none;
+      background:#FFFFFF;
+    }
+
+    input[type="text"]:focus, input[type="date"]:focus, select:focus, textarea:focus{
+      border-color:var(--mint);
+      box-shadow:0 0 0 3px var(--mint-2);
+    }
+
+    /* NEW: make textareas feel “designed” not browser-default */
+    textarea{
+      resize:vertical;
+      min-height:180px; /* gives Source Text a stable shape */
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+      line-height:1.45;
+    }
+
     input[type="text"]:focus, input[type="date"]:focus, select:focus{border-color:var(--mint);box-shadow:0 0 0 3px var(--mint-2);}
-    .modal-foot{padding:12px 16px;border-top:1px solid #F1F5F9;display:flex;align-items:center;justify-content:center;gap:10px;}
+    .modal-foot{
+      padding:12px 16px;
+      border-top:1px solid #F1F5F9;
+      display:flex;
+      align-items:center;
+      justify-content:flex-end; /* NEW */
+      gap:10px;
+    }
+
     .btn{border:none;padding:11px 16px;border-radius:12px;cursor:pointer;font-weight:900;font-size:13px;box-shadow:0 12px 26px rgba(0,0,0,.08);}
     .btn.primary{background:var(--navy);color:#fff;}
     .btn.primary:hover{background:var(--navy-2);}
@@ -207,6 +250,55 @@
       overflow:auto;
       min-height:260px;
     }
+
+    /* NEW: manual modal helper text */
+    .modal-sub{
+      font-size:12px;
+      color:var(--muted);
+      font-weight:700;
+      margin-top:2px;
+    }
+
+    /* NEW: close “X” button */
+    .modal-x{
+      width:38px;height:38px;
+      border-radius:12px;
+      border:1px solid var(--cool);
+      background:#fff;
+      color:var(--navy);
+      font-weight:1000;
+      cursor:pointer;
+      box-shadow:0 10px 24px rgba(0,0,0,.06);
+    }
+    .modal-x:hover{ border-color:var(--mint); }
+
+    /* NEW: lightweight button to match design */
+    .btn-lite{
+      border:1px solid var(--cool);
+      background:#fff;
+      color:var(--navy);
+      padding:11px 16px;
+      border-radius:12px;
+      cursor:pointer;
+      font-weight:900;
+      font-size:13px;
+      box-shadow:none;
+    }
+    .btn-lite:hover{ border-color:var(--mint); }
+
+    /* NEW: make .btn usable without needing .primary */
+    .btn{
+      border:none;
+      padding:11px 16px;
+      border-radius:12px;
+      cursor:pointer;
+      font-weight:900;
+      font-size:13px;
+      box-shadow:0 12px 26px rgba(0,0,0,.08);
+      background:var(--navy);
+      color:#fff;
+    }
+    .btn:hover{ background:var(--navy-2); }
 
     .profile-item{
       padding:12px 12px;
@@ -588,6 +680,8 @@
   let filteredItems = [];
   let selectedVisitId = null;
   let selectedDocId = null;
+  // NEW: cache the currently loaded visit object for modal prefills
+  let selectedVisitData = null;
 
   let profiles = [];
   let selectedProfileKey = null; // "hospital|doctype"
@@ -791,6 +885,7 @@
     }
 
     const v = data.visit || {};
+    selectedVisitData = v; // NEW: keep for manual modal prefills
     const docs = data.documents || [];
     const sectionsByDoc = data.sections_by_doc || {};
     const firstDocId = docs.length ? docs[0].id : null;
@@ -1040,13 +1135,59 @@
     const src = document.getElementById("mhd-source-system");
     if(src && !src.value) src.value = "EMR";
 
-    // prefill from currently selected visit (if any)
+    // load hospital dropdown options first (so we can set the selected value cleanly)
+    await loadHospitalOptionsForManualHospDoc();
+
+    // helper: set value only if non-empty
+    const setVal = (id, v) => {
+      const el = document.getElementById(id);
+      if(!el) return;
+      const val = (v == null) ? "" : String(v);
+      if(val.trim() !== "") el.value = val;
+    };
+
+    // helper: if hospital not in dropdown list, add it
+    const ensureHospOption = (name) => {
+      const sel = document.getElementById("mhd-hospital-name");
+      const v = (name || "").toString().trim();
+      if(!sel || !v) return;
+      const exists = Array.from(sel.options).some(o => o.value === v);
+      if(!exists){
+        const opt = document.createElement("option");
+        opt.value = v;
+        opt.textContent = v;
+        sel.appendChild(opt);
+      }
+    };
+
+    // PREFILL ONLY if a visit is selected
     if(typeof selectedVisitId !== "undefined" && selectedVisitId){
-      const el = document.getElementById("mhd-visit-id");
-      if(el) el.value = selectedVisitId;
+      setVal("mhd-visit-id", selectedVisitId);
+
+      // prefer the fully loaded visit object from /api/hospital-discharges/visit/:id
+      const v = selectedVisitData || {};
+
+      // fallback: find the row in allItems (list endpoint) if needed
+      const row = (Array.isArray(allItems) && selectedVisitId)
+        ? allItems.find(x => String(x.visit_id) === String(selectedVisitId))
+        : null;
+
+      const hospitalName = (v.hospital_name || row?.hospital_name || "").toString();
+      const patientName = (v.patient_name || row?.patient_name || "").toString();
+
+      // some fields may or may not exist on v depending on API payload; we set only when present
+      setVal("mhd-patient-name", patientName);
+      setVal("mhd-patient-mrn", v.patient_mrn || v.mrn); // if your API includes it
+      setVal("mhd-dob", v.dob);                          // if your API includes it
+      setVal("mhd-admit-date", v.admit_date || row?.admit_date);
+      setVal("mhd-dc-date", v.dc_date || row?.dc_date);
+
+      if(hospitalName.trim() !== ""){
+        ensureHospOption(hospitalName);
+        setVal("mhd-hospital-name", hospitalName);
+      }
     }
 
-    await loadHospitalOptionsForManualHospDoc();
   }
 
   function closeManualHospDocModal(){
