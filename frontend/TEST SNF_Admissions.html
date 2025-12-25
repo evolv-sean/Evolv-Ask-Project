@@ -1443,6 +1443,11 @@
                 </select>
               </div>
             </div>
+            
+            <div style="margin-top:10px;">
+              <label for="filter-email-at">Emailed on</label>
+              <input id="filter-email-at" type="date" />
+            </div>
 
             <div style="margin-top:10px;">
               <label for="filter-notified">Notified</label>
@@ -2305,7 +2310,6 @@
             opt.value = String(f.id);
 
             let label = f.facility_name || "(no name)";
-            if (f.attending) label += " – " + f.attending;
 
             settingsSelect.appendChild(opt);
             opt.textContent = label;
@@ -2319,9 +2323,6 @@
             const opt = document.createElement("option");
             opt.value = String(f.id);
             let label = f.facility_name || "(no name)";
-            if (f.attending) {
-              label += " – " + f.attending;
-            }
             opt.textContent = label;   // 👈 add this line
             editSelect.appendChild(opt);
           });
@@ -3365,6 +3366,9 @@
       const dateIso = parseMDYToISO(date);
       if (dateIso) params.set("for_date", dateIso);
       if (days) params.set("days_ahead", days);
+      
+      const emailAt = document.getElementById("filter-email-at")?.value || "";
+      if (emailAt) params.set("email_at", emailAt);
       
       const notified = document.getElementById("filter-notified").value;
       if (notified) params.set("notified_only", notified);
