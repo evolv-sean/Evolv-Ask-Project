@@ -5197,9 +5197,7 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                                  THEN snf_admissions.status
                                ELSE 'pending'
                             END,
-                    last_seen_active_date     = snf_admissions.last_seen_active_date,
-                    emailed_at                = NULL,
-                    email_run_id              = NULL
+                    last_seen_active_date     = snf_admissions.last_seen_active_date
                 ;
                 """,
                 (
@@ -6830,6 +6828,7 @@ async def admin_snf_list(
     for_date: Optional[str] = Query(None),   # 'YYYY-MM-DD'
     days_ahead: int = Query(0, ge=0, le=30),
     notified_only: int = Query(0),
+    email_at: Optional[str] = Query(None),  # YYYY-MM-DD; filters by DATE(s.emailed_at)
 ):
     """
     List SNF admissions for the SNF Admissions page.
@@ -6859,6 +6858,14 @@ async def admin_snf_list(
         # NEW: Notified-only filter
         if int(notified_only or 0) == 1:
             where.append("COALESCE(s.notified_by_hospital, 0) = 1")
+            
+        # NEW: Email-at date filter (matches the day, regardless of time)
+        email_at_s = (email_at or "").strip()
+        if email_at_s:
+            if not re.match(r"^\d{4}-\d{2}-\d{2}$", email_at_s):
+                raise HTTPException(status_code=400, detail="email_at must be YYYY-MM-DD")
+            where.append("s.emailed_at IS NOT NULL AND date(s.emailed_at) = ?")
+            params.append(email_at_s)
 
         # Date filter: use last_seen_active_date so the list shows "active admissions"
         # - If days_ahead = 0: show only that exact date
