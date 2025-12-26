@@ -661,6 +661,10 @@
 
             if(job.status === "done"){
               setUploadProgress("Complete.", 100);
+
+              // ✅ allow user to actually see completion
+              await new Promise(r => setTimeout(r, 1200));
+
               break;
             }
             if(job.status === "error"){
@@ -693,8 +697,10 @@
           // ✅ refresh facility dropdown (new facility names may have been added by this upload)
           await refreshFacilityDropdown(true);
 
-          // ✅ close modal
-          closeUpload();
+          // ✅ only close if we actually processed files
+          if(finalStatus && finalStatus.job && Number(finalStatus.job.total_files) > 0){
+            closeUpload();
+          }
 
         }catch(e){
           alert(`Upload failed: ${e && e.message ? e.message : e}`);
