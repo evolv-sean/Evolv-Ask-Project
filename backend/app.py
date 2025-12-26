@@ -57,6 +57,17 @@ FRONTEND_DIR = BASE_DIR.parent / "frontend"
 
 SNF_DEFAULT_PIN = (os.getenv("SNF_DEFAULT_PIN") or "").strip()
 
+
+def require_admin(request: Request):
+    """Simple header-based admin guard via ADMIN_TOKEN env var."""
+    token = os.getenv("ADMIN_TOKEN")
+    if not token:
+        return
+    header = request.headers.get("x-admin-token") or ""
+    if header.strip() != token.strip():
+        raise HTTPException(status_code=403, detail="invalid admin token")
+
+
 # ============================
 # Email helper utilities
 # ============================
@@ -5131,16 +5142,6 @@ async def ulog_quality_public(
         return {"ok": True, "id": id, "a_quality": qv}
     finally:
         conn.close()
-
-
-def require_admin(request: Request):
-    """Simple header-based admin guard via ADMIN_TOKEN env var."""
-    token = os.getenv("ADMIN_TOKEN")
-    if not token:
-        return
-    header = request.headers.get("x-admin-token") or ""
-    if header.strip() != token.strip():
-        raise HTTPException(status_code=403, detail="invalid admin token")
 
 
 def require_pad_api_key(request: Request):
