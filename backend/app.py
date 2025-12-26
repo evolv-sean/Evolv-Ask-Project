@@ -11,6 +11,9 @@ import secrets
 import hashlib
 import io
 import csv
+import uuid
+import logging
+import tempfile
 
 try:
     import pdfplumber
@@ -179,6 +182,14 @@ FACILITY_HTML = FRONTEND_DIR / "TEST  Facility_Details.html"  # note double spac
 SNF_HTML = FRONTEND_DIR / "TEST SNF_Admissions.html"
 HOSPITAL_DISCHARGE_HTML = FRONTEND_DIR / "Hospital_Discharge.html"
 CENSUS_HTML = FRONTEND_DIR / "Census.html"
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("evolv")
+
+CENSUS_UPLOAD_TMP = Path(
+    os.getenv("CENSUS_UPLOAD_TMP", os.path.join(tempfile.gettempdir(), "evolv_census_uploads"))
+)
+CENSUS_UPLOAD_TMP.mkdir(parents=True, exist_ok=True)
 
 
 
@@ -1001,6 +1012,40 @@ def init_db():
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_census_patients_run ON census_run_patients (run_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_census_patients_key ON census_run_patients (facility_name, patient_key)")
+
+    # ----------------------------
+    # Census upload jobs (Option A)
+    # ----------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS census_upload_jobs (
+            job_id            TEXT PRIMARY KEY,
+            status            TEXT NOT NULL, -- queued | running | done | error
+            total_files       INTEGER DEFAULT 0,
+            processed_files   INTEGER DEFAULT 0,
+            message           TEXT,
+            created_at        TEXT DEFAULT (datetime('now')),
+            updated_at        TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS census_upload_job_files (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id           TEXT NOT NULL,
+            filename         TEXT,
+            status           TEXT NOT NULL, -- ok | skipped | error
+            detail           TEXT,
+            run_id           INTEGER,
+            rows_inserted    INTEGER DEFAULT 0,
+            created_at       TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY(job_id) REFERENCES census_upload_jobs(job_id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_census_upload_job_files_job ON census_upload_job_files (job_id)")
+
 
     # Seed default system prompt
     cur.execute("SELECT value FROM ai_settings WHERE key='system_prompt'")
@@ -3389,93 +3434,241 @@ def fetch_facility_knowledge(
     return snippets
 
 
+from fastapi import BackgroundTasks  # <-- put this with your other fastapi imports (near UploadFile/File/Form)
+
 @app.post("/admin/census/upload")
 async def admin_census_upload(
+    background_tasks: BackgroundTasks,
     facility_name: str = Form(""),  # optional now (filename drives facility)
     facility_code: str = Form(""),
     files: list[UploadFile] = File(...),
     admin=Depends(require_admin),
 ):
+    if not files:
+        raise HTTPException(status_code=400, detail="No files uploaded")
+
+    job_id = uuid.uuid4().hex
+
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            INSERT INTO census_upload_jobs (job_id, status, total_files, processed_files, message)
+            VALUES (?, 'queued', ?, 0, '')
+            """,
+            (job_id, len(files)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Save uploads to disk immediately (so request can return fast)
+    job_dir = CENSUS_UPLOAD_TMP / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+
+    saved_paths: list[str] = []
+    for f in files:
+        data = await f.read()
+        out_path = job_dir / (f.filename or f"upload_{uuid.uuid4().hex}.pdf")
+        out_path.write_bytes(data)
+        saved_paths.append(str(out_path))
+
+    logger.info("Census upload queued job_id=%s files=%s", job_id, len(saved_paths))
+
+    background_tasks.add_task(
+        _process_census_upload_job,
+        job_id,
+        saved_paths,
+        (facility_name or "").strip(),
+        (facility_code or "").strip(),
+    )
+
+    return {"ok": True, "job_id": job_id}
+
+
+def _job_set(conn: sqlite3.Connection, job_id: str, status: str, processed: int | None = None, message: str | None = None):
+    cur = conn.cursor()
+    if processed is None and message is None:
+        cur.execute(
+            "UPDATE census_upload_jobs SET status=?, updated_at=datetime('now') WHERE job_id=?",
+            (status, job_id),
+        )
+    elif processed is None:
+        cur.execute(
+            "UPDATE census_upload_jobs SET status=?, message=?, updated_at=datetime('now') WHERE job_id=?",
+            (status, message or "", job_id),
+        )
+    elif message is None:
+        cur.execute(
+            "UPDATE census_upload_jobs SET status=?, processed_files=?, updated_at=datetime('now') WHERE job_id=?",
+            (status, processed, job_id),
+        )
+    else:
+        cur.execute(
+            "UPDATE census_upload_jobs SET status=?, processed_files=?, message=?, updated_at=datetime('now') WHERE job_id=?",
+            (status, processed, message or "", job_id),
+        )
+
+
+def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name_override: str, facility_code_override: str):
     conn = get_db()
     cur = conn.cursor()
 
-    inserted_runs = []
+    processed = 0
     try:
-        for f in files:
-            pdf_bytes = await f.read()
-            sha = hashlib.sha256(pdf_bytes).hexdigest()
+        _job_set(conn, job_id, "running", processed=0, message="Starting…")
+        conn.commit()
 
-            parsed = parse_pcc_admission_records_from_pdf_bytes(pdf_bytes)
+        for p in file_paths:
+            filename = Path(p).name
+            try:
+                pdf_bytes = Path(p).read_bytes()
+                sha = hashlib.sha256(pdf_bytes).hexdigest()
 
-            # Facility name: filename (AUTHORITATIVE) > UI override > PDF content
-            fac_name = extract_facility_name_from_filename(f.filename)
-            if not fac_name:
-                fac_name = (facility_name or "").strip() or (parsed[0]["facility_name"] if parsed else "")
+                # skip if already uploaded
+                exists = cur.execute(
+                    "SELECT id FROM census_runs WHERE source_sha256=? LIMIT 1",
+                    (sha,),
+                ).fetchone()
+                if exists:
+                    cur.execute(
+                        """
+                        INSERT INTO census_upload_job_files (job_id, filename, status, detail, run_id, rows_inserted)
+                        VALUES (?, ?, 'skipped', ?, NULL, 0)
+                        """,
+                        (job_id, filename, "Duplicate file (same SHA256)"),
+                    )
+                    processed += 1
+                    _job_set(conn, job_id, "running", processed=processed, message=f"Skipped duplicate: {filename}")
+                    conn.commit()
+                    continue
 
-            # Facility code: UI override > filename (AUTHORITATIVE)
-            fac_code = (facility_code or "").strip()
-            if not fac_code:
-                fac_code = extract_facility_code_from_filename(f.filename)
+                parsed = parse_pcc_admission_records_from_pdf_bytes(pdf_bytes)
 
-            # ✅ Create a new run row FIRST, then use its ID
-            cur.execute(
-                """
-                INSERT INTO census_runs (
-                    facility_name, facility_code, report_dt,
-                    source_filename, source_sha256
-                ) VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    fac_name,
-                    fac_code,
-                    None,          # (optional) you can set this later if you parse a report date
-                    f.filename,
-                    sha,
-                ),
-            )
-            run_id = cur.lastrowid
+                # Facility name: filename (AUTHORITATIVE) > UI override > PDF content
+                fac_name = extract_facility_name_from_filename(filename)
+                if not fac_name:
+                    fac_name = facility_name_override or (parsed[0]["facility_name"] if parsed else "")
 
-            for row in parsed:
+                # Facility code: UI override > filename (AUTHORITATIVE) > PDF content
+                fac_code = facility_code_override or extract_facility_code_from_filename(filename) or (parsed[0].get("facility_code") if parsed else "")
+
+                report_dt = (parsed[0].get("report_dt") if parsed else None)
+
+                # INSERT the run (this was missing before)
                 cur.execute(
                     """
-                    INSERT INTO census_run_patients (
-                        run_id, facility_name, facility_code, patient_key,
-                        first_name, last_name, dob, home_phone,
-                        address, city, state, zip,
-                        primary_ins, primary_number,
-                        primary_care_phys, attending_phys,
-                        admission_date, discharge_date,
-                        room_number, reason_admission,
-                        tag, raw_text
-                    ) VALUES (
-                        ?, ?, ?, ?,
-                        ?, ?, ?, ?,
-                        ?, ?, ?, ?,
-                        ?, ?,
-                        ?, ?,
-                        ?, ?,
-                        ?, ?,
-                        ?, ?
-                    )
+                    INSERT INTO census_runs (facility_name, facility_code, report_dt, source_filename, source_sha256)
+                    VALUES (?, ?, ?, ?, ?)
                     """,
-                    (
-                        run_id, fac_name, fac_code, row["_patient_key"],
-                        row["First Name"], row["Last Name"], row["DOB"], row["Home Phone"],
-                        row["Address"], row["City"], row["State"], row["Zip"],
-                        row["Primary Ins"], row["Primary Number"],
-                        row["Primary Care Physician"], row["Attending Physician"],
-                        row["Admission Date"], row["Discharge Date"],
-                        row["Room Number"], row["Reason for admission"],
-                        row["Tag"], row["_raw"],
-                    ),
+                    (fac_name, fac_code, report_dt, filename, sha),
+                )
+                run_id = cur.lastrowid
+
+                rows_inserted = 0
+                for row in parsed:
+                    cur.execute(
+                        """
+                        INSERT INTO census_run_patients (
+                            run_id, facility_name, facility_code, patient_key,
+                            first_name, last_name, dob, home_phone,
+                            address, city, state, zip,
+                            primary_ins, primary_number,
+                            primary_care_phys, attending_phys,
+                            admission_date, discharge_date,
+                            room_number, reason_admission,
+                            tag, raw_text
+                        ) VALUES (
+                            ?, ?, ?, ?,
+                            ?, ?, ?, ?,
+                            ?, ?, ?, ?,
+                            ?, ?,
+                            ?, ?,
+                            ?, ?,
+                            ?, ?,
+                            ?, ?
+                        )
+                        """,
+                        (
+                            run_id, fac_name, fac_code, row["_patient_key"],
+                            row["First Name"], row["Last Name"], row["DOB"], row["Home Phone"],
+                            row["Address"], row["City"], row["State"], row["Zip"],
+                            row["Primary Ins"], row["Primary Number"],
+                            row["Primary Care Physician"], row["Attending Physician"],
+                            row["Admission Date"], row["Discharge Date"],
+                            row["Room Number"], row["Reason for admission"],
+                            row["Tag"], row["_raw"],
+                        ),
+                    )
+                    rows_inserted += 1
+
+                cur.execute(
+                    """
+                    INSERT INTO census_upload_job_files (job_id, filename, status, detail, run_id, rows_inserted)
+                    VALUES (?, ?, 'ok', ?, ?, ?)
+                    """,
+                    (job_id, filename, "Inserted", run_id, rows_inserted),
                 )
 
-            inserted_runs.append({"run_id": run_id, "rows": len(parsed), "filename": f.filename})
+                processed += 1
+                _job_set(conn, job_id, "running", processed=processed, message=f"Processed: {filename}")
+                conn.commit()
 
+            except Exception as e:
+                logger.exception("Census job file failed job_id=%s file=%s", job_id, filename)
+                cur.execute(
+                    """
+                    INSERT INTO census_upload_job_files (job_id, filename, status, detail, run_id, rows_inserted)
+                    VALUES (?, ?, 'error', ?, NULL, 0)
+                    """,
+                    (job_id, filename, str(e)),
+                )
+                processed += 1
+                _job_set(conn, job_id, "running", processed=processed, message=f"Error: {filename}")
+                conn.commit()
+
+        _job_set(conn, job_id, "done", processed=processed, message="Complete")
         conn.commit()
-        return {"ok": True, "runs": inserted_runs}
+
+    except Exception as e:
+        logger.exception("Census job failed job_id=%s", job_id)
+        _job_set(conn, job_id, "error", processed=processed, message=str(e))
+        conn.commit()
     finally:
         conn.close()
+
+
+@app.get("/admin/census/upload-status")
+def admin_census_upload_status(job_id: str, admin=Depends(require_admin)):
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        job = cur.execute(
+            "SELECT job_id, status, total_files, processed_files, message, created_at, updated_at FROM census_upload_jobs WHERE job_id=?",
+            (job_id,),
+        ).fetchone()
+        if not job:
+            raise HTTPException(status_code=404, detail="job not found")
+
+        files = cur.execute(
+            """
+            SELECT filename, status, detail, run_id, rows_inserted, created_at
+            FROM census_upload_job_files
+            WHERE job_id=?
+            ORDER BY id ASC
+            """,
+            (job_id,),
+        ).fetchall()
+
+        return {
+            "ok": True,
+            "job": dict(job),
+            "files": [dict(r) for r in files],
+        }
+    finally:
+        conn.close()
+
 
 @app.get("/admin/census/facilities")
 def admin_census_facilities(admin=Depends(require_admin)):
