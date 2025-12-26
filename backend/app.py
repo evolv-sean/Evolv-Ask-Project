@@ -11,7 +11,14 @@ import secrets
 import hashlib
 import io
 import csv
-import pdfplumber
+
+try:
+    import pdfplumber
+    HAVE_PDFPLUMBER = True
+except Exception:
+    pdfplumber = None
+    HAVE_PDFPLUMBER = False
+
 from fastapi import UploadFile, File, Form
 from email.message import EmailMessage
 from pathlib import Path
@@ -243,6 +250,12 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
     Parses PCC-style 'ADMISSION RECORD' PDFs like your samples.
     Returns rows already mapped to your Sensys CSV columns.
     """
+    if not HAVE_PDFPLUMBER:
+        raise HTTPException(
+            status_code=500,
+            detail="PDF parsing support is not installed (pdfplumber). Please add 'pdfplumber' to your environment."
+        )
+
     out: list[dict] = []
 
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
