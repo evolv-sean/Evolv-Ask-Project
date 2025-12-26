@@ -851,6 +851,13 @@ def init_db():
             dob                TEXT,
             visit_id           TEXT,   --
 
+            admit_date         TEXT,
+            dc_date            TEXT,
+
+            attending          TEXT,
+            pcp                TEXT,
+            insurance          TEXT,
+
             source_text        TEXT NOT NULL,
             source_system      TEXT DEFAULT 'EMR',
 
@@ -870,7 +877,21 @@ def init_db():
     except sqlite3.Error:
         pass
 
-    
+    try:
+        cur.execute("ALTER TABLE hospital_documents ADD COLUMN attending TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE hospital_documents ADD COLUMN pcp TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE hospital_documents ADD COLUMN insurance TEXT")
+    except sqlite3.Error:
+        pass
+
     # -------------------------------------------------------------------
     # Legacy date normalization (hospital_documents): MM/DD/YY -> YYYY-MM-DD
     # Ensures SQLite date() filters work in reports.
@@ -951,10 +972,14 @@ def init_db():
             admit_date     TEXT,
             dc_date        TEXT,
 
-            disposition    TEXT,            
+            attending      TEXT,
+            pcp            TEXT,
+            insurance      TEXT,
+
+            disposition    TEXT,
             dc_agency      TEXT,
             dispo_source_dt     TEXT,
-            dispo_source_doc_id INTEGER,           
+            dispo_source_doc_id INTEGER,
             updated_at     TEXT DEFAULT (datetime('now')),
             created_at     TEXT DEFAULT (datetime('now'))
         )
@@ -985,6 +1010,21 @@ def init_db():
 
     try:
         cur.execute("ALTER TABLE hospital_discharges ADD COLUMN dispo_source_doc_id INTEGER")
+    except sqlite3.Error:
+        pass
+ 
+    try:
+        cur.execute("ALTER TABLE hospital_discharges ADD COLUMN attending TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE hospital_discharges ADD COLUMN pcp TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE hospital_discharges ADD COLUMN insurance TEXT")
     except sqlite3.Error:
         pass
 
@@ -1543,6 +1583,11 @@ class ManualHospitalDocumentIn(BaseModel):
     dob: Optional[str] = None
     admit_date: Optional[str] = None
     dc_date: Optional[str] = None
+    
+    attending: Optional[str] = None
+    pcp: Optional[str] = None
+    insurance: Optional[str] = None
+    
     source_system: Optional[str] = "EMR"
 
 
@@ -1864,6 +1909,9 @@ async def pad_hospital_documents_bulk(request: Request):
                 "visit_id": _to_clean_id(row.get("visit_id")),
                 "admit_date": (str(row.get("admit_date") or "").strip() or None),
                 "dc_date": (str(row.get("dc_date") or "").strip() or None),
+                "attending": (str(row.get("attending") or "").strip() or None),
+                "pcp": (str(row.get("pcp") or "").strip() or None),
+                "insurance": (str(row.get("insurance") or "").strip() or None),
                 "source_system": (str(row.get("source_system") or "EMR").strip() or "EMR"),
             }
 
@@ -1879,9 +1927,10 @@ async def pad_hospital_documents_bulk(request: Request):
                     hospital_name, document_type, document_datetime,
                     patient_mrn, patient_name, dob, visit_id,
                     admit_date, dc_date,
+                    attending, pcp, insurance,
                     source_text, source_system
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     doc_payload["hospital_name"],
@@ -1893,6 +1942,9 @@ async def pad_hospital_documents_bulk(request: Request):
                     doc_payload["visit_id"],
                     doc_payload["admit_date"],
                     doc_payload["dc_date"],
+                    doc_payload["attending"],
+                    doc_payload["pcp"],
+                    doc_payload["insurance"],    
                     doc_payload["source_text"],
                     doc_payload["source_system"],
                 ),
@@ -1906,15 +1958,19 @@ async def pad_hospital_documents_bulk(request: Request):
                     INSERT INTO hospital_discharges (
                         visit_id, patient_mrn, patient_name, hospital_name,
                         admit_date, dc_date,
+                        attending, pcp, insurance,
                         updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                     ON CONFLICT(visit_id) DO UPDATE SET
                         patient_mrn   = COALESCE(excluded.patient_mrn, hospital_discharges.patient_mrn),
                         patient_name  = COALESCE(excluded.patient_name, hospital_discharges.patient_name),
                         hospital_name = COALESCE(excluded.hospital_name, hospital_discharges.hospital_name),
                         admit_date    = COALESCE(excluded.admit_date, hospital_discharges.admit_date),
                         dc_date       = COALESCE(excluded.dc_date, hospital_discharges.dc_date),
+                        attending     = COALESCE(excluded.attending, hospital_discharges.attending),
+                        pcp           = COALESCE(excluded.pcp, hospital_discharges.pcp),
+                        insurance     = COALESCE(excluded.insurance, hospital_discharges.insurance),
                         updated_at    = datetime('now')
                     """,
                     (
@@ -1924,6 +1980,9 @@ async def pad_hospital_documents_bulk(request: Request):
                         doc_payload["hospital_name"],
                         doc_payload["admit_date"],
                         doc_payload["dc_date"],
+                        doc_payload["attending"],
+                        doc_payload["pcp"],
+                        doc_payload["insurance"],
                     ),
                 )
 
@@ -2063,6 +2122,10 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
     patient_name = (payload.get("patient_name") or "").strip() or None
     dob = (payload.get("dob") or "").strip() or None
     visit_id = (payload.get("visit_id") or "").strip() or None
+    attending = (payload.get("attending") or "").strip() or None
+    pcp = (payload.get("pcp") or "").strip() or None
+    insurance = (payload.get("insurance") or "").strip() or None
+
 
     # ✅ NEW: admit/discharge dates (optional; PAD/API can send later)
     admit_date_raw = (payload.get("admit_date") or "").strip() or None
@@ -2089,9 +2152,10 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
                 hospital_name, document_type, document_datetime,
                 patient_mrn, patient_name, dob, visit_id,
                 admit_date, dc_date,
+                attending, pcp, insurance,
                 source_text, source_system
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 hospital_name,
@@ -2103,6 +2167,9 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
                 visit_id,
                 admit_date,
                 dc_date,
+                attending,
+                pcp,
+                insurance,
                 source_text,
                 source_system,
             ),
@@ -2117,19 +2184,23 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
                 INSERT INTO hospital_discharges (
                     visit_id, patient_mrn, patient_name, hospital_name,
                     admit_date, dc_date,
+                    attending, pcp, insurance,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 ON CONFLICT(visit_id) DO UPDATE SET
                     patient_mrn   = COALESCE(excluded.patient_mrn, hospital_discharges.patient_mrn),
                     patient_name  = COALESCE(excluded.patient_name, hospital_discharges.patient_name),
                     hospital_name = COALESCE(excluded.hospital_name, hospital_discharges.hospital_name),
                     admit_date    = COALESCE(excluded.admit_date, hospital_discharges.admit_date),
                     dc_date       = COALESCE(excluded.dc_date, hospital_discharges.dc_date),
+                    attending     = COALESCE(excluded.attending, hospital_discharges.attending),
+                    pcp           = COALESCE(excluded.pcp, hospital_discharges.pcp),
+                    insurance     = COALESCE(excluded.insurance, hospital_discharges.insurance),
                     updated_at    = datetime('now')
                 """
                 ,
-                (visit_id, patient_mrn, patient_name, hospital_name, admit_date, dc_date),
+                (visit_id, patient_mrn, patient_name, hospital_name, admit_date, dc_date, attending, pcp, insurance),
             )
 
             # ✅ UPDATED: derive disposition + dc_agency, but only let the "latest doc" win
@@ -5308,6 +5379,9 @@ async def admin_hospital_documents_manual_add(payload: ManualHospitalDocumentIn,
         "dob": (payload.dob or "").strip() or None,
         "admit_date": (payload.admit_date or "").strip() or None,
         "dc_date": (payload.dc_date or "").strip() or None,
+        "attending": (payload.attending or "").strip() or None,
+        "pcp": (payload.pcp or "").strip() or None,
+        "insurance": (payload.insurance or "").strip() or None,
         "source_system": (payload.source_system or "EMR").strip() or "EMR",
     }
 
@@ -8686,6 +8760,9 @@ async def hospital_discharges_list():
                 hospital_name,
                 admit_date,
                 dc_date,
+                attending,
+                pcp,
+                insurance,
                 disposition,
                 dc_agency,
                 updated_at
@@ -8708,7 +8785,9 @@ async def hospital_discharge_visit_details(visit_id: str):
             """
             SELECT
                 visit_id, patient_name, patient_mrn, hospital_name,
-                admit_date, dc_date, disposition, dc_agency, updated_at
+                admit_date, dc_date,
+                attending, pcp, insurance,
+                disposition, dc_agency, updated_at
             FROM hospital_discharges
             WHERE visit_id = ?
             """,
