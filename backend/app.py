@@ -373,24 +373,50 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
                 zip_code = madd2.group(4).strip()
                 home_phone = _fmt_phone(madd2.group(5).strip())
 
+        # -----------------------------
+        # Insurance (Primary) extraction
+        # PCC PDFs vary a lot:
+        # - Some show "Insurance Name #1" / "#2"
+        # - Some only show PAYER INFORMATION rows like "Primary Payer Medicare A ..."
+        # - Some show "Insurance Name:" label but no value next to it
+        # -----------------------------
         primary_ins = primary_number = ""
-        mins = re.search(
-            r"Primary Insurance Name\s+Primary Insurance Policy #.*?\n([A-Za-z0-9 .\-]+)\s+([A-Za-z0-9\-]+)\s*$",
-            chunk,
-            flags=re.MULTILINE,
-        )
-        if mins:
-            primary_ins = mins.group(1).strip()
-            primary_number = mins.group(2).strip()
-        else:
-            mins2 = re.search(
-                r"Managed Care Insurance Name\s+Managed Care Policy #.*?\n([A-Za-z0-9 .\-]+)\s+([A-Za-z0-9\-]+)\s*$",
-                chunk,
-                flags=re.MULTILINE,
-            )
-            if mins2:
-                primary_ins = mins2.group(1).strip()
-                primary_number = mins2.group(2).strip()
+
+        # Pattern 1: "Insurance Name #1" then value on next line (Luxe Jupiter format)
+        m_ins1 = re.search(r"^Insurance Name\s*#1\s*\n([^\n]+)$", chunk, flags=re.MULTILINE)
+        if m_ins1:
+            primary_ins = m_ins1.group(1).strip()
+
+            # Try to capture the matching Policy #1 if present nearby
+            m_pol1 = re.search(r"^Insurance Policy\s*#1\s*\n([A-Za-z0-9\-]+)$", chunk, flags=re.MULTILINE)
+            if m_pol1:
+                primary_number = m_pol1.group(1).strip()
+
+        # Pattern 2: If not found, use PAYER INFORMATION "Primary Payer ..." line
+        if not primary_ins:
+            m_pay = re.search(r"^Primary Payer\s+(.+?)\s+(?:Medicare|Medicaid|Mngd|Managed|Insurance|HMO|PPO)\b",
+                              chunk, flags=re.MULTILINE)
+            if m_pay:
+                # Example: "Medicare A" or "MCD Simply FL" often appears right after "Primary Payer"
+                primary_ins = m_pay.group(1).strip()
+
+            # Grab an ID if present (Medicare # / Medicaid # / Policy #)
+            m_id = re.search(r"\b(Medicare|Medicaid)\s*#\s*([A-Za-z0-9]+)\b", chunk)
+            if m_id:
+                primary_number = m_id.group(2).strip()
+            else:
+                m_pol = re.search(r"^Policy\s*#:\s*\n?([A-Za-z0-9\-]+)\b", chunk, flags=re.MULTILINE)
+                if m_pol:
+                    primary_number = m_pol.group(1).strip()
+
+        # Pattern 3: Fallback — sometimes there is "Insurance Name:" with a value on the next line
+        if not primary_ins:
+            m_ins_label = re.search(r"^Insurance Name:\s*\n([^\n]+)$", chunk, flags=re.MULTILINE)
+            if m_ins_label:
+                val = m_ins_label.group(1).strip()
+                # Guard against cases where the "value" line is just another header
+                if val and not val.lower().startswith("insurance policy"):
+                    primary_ins = val
 
         primary_care = ""
         mpcp = re.search(
@@ -3587,8 +3613,67 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                 run_id = cur.lastrowid
 
                 rows_inserted = 0
+
                 for row in parsed:
-                    ...
+                    patient_key = (row.get("_patient_key") or "").strip()
+                    if not patient_key:
+                        # fallback key if parser didn't generate one
+                        patient_key = "|".join([
+                            (fac_name or "").upper(),
+                            (row.get("Last Name") or "").upper(),
+                            (row.get("First Name") or "").upper(),
+                            (row.get("DOB") or "").upper(),
+                            (row.get("Admission Date") or "").upper(),
+                        ]).strip("|")
+
+                    cur.execute(
+                        """
+                        INSERT INTO census_run_patients (
+                            run_id, facility_name, facility_code, patient_key,
+                            first_name, last_name, dob, home_phone,
+                            address, city, state, zip,
+                            primary_ins, primary_number,
+                            primary_care_phys, attending_phys,
+                            admission_date, discharge_date,
+                            room_number, reason_admission,
+                            tag, raw_text
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            run_id,
+                            fac_name,
+                            fac_code,
+                            patient_key,
+
+                            (row.get("First Name") or "").strip(),
+                            (row.get("Last Name") or "").strip(),
+                            (row.get("DOB") or "").strip(),
+                            (row.get("Home Phone") or "").strip(),
+
+                            (row.get("Address") or "").strip(),
+                            (row.get("City") or "").strip(),
+                            (row.get("State") or "").strip(),
+                            (row.get("Zip") or "").strip(),
+
+                            (row.get("Primary Insurance") or "").strip(),
+                            (row.get("Primary Number") or "").strip(),
+
+                            (row.get("Primary Care Physician") or "").strip(),
+                            (row.get("Attending Physician") or "").strip(),
+
+                            (row.get("Admission Date") or "").strip(),
+                            (row.get("Discharge Date") or "").strip(),
+
+                            (row.get("Room Number") or "").strip(),
+                            (row.get("Reason for admission") or "").strip(),
+
+                            (row.get("Tag") or "").strip(),
+                            (row.get("_raw") or ""),
+                        ),
+                    )
+                    rows_inserted += 1
+
                 cur.execute(
                     """
                     INSERT INTO census_upload_job_files (job_id, filename, status, detail, run_id, rows_inserted)
