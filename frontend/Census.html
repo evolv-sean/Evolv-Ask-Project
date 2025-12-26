@@ -334,9 +334,9 @@
     const btnExport = document.getElementById("btnExport");
     const uploadOpenBtn = document.getElementById("btnOpenUpload");
 
-    if(uploadOpenBtn) uploadOpenBtn.disabled = isLoading;
+    if(btnLoad) btnLoad.disabled = isLoading;
     if(btnExport) btnExport.disabled = isLoading;
-    if(uploadBtn) uploadBtn.disabled = isLoading;
+    if(uploadOpenBtn) uploadOpenBtn.disabled = isLoading;
   }
 
   function openSettings(){
@@ -624,6 +624,8 @@
           return;
         }
 
+        setLoading(true, "Uploading PDFs…", "Processing and updating census runs");
+
         try{
           setUploadProgress("Starting upload…", 2);
 
@@ -670,7 +672,7 @@
             if(Date.now() - started > 15 * 60 * 1000) break;
           }
 
-          // ✅ After job completes: warn about scanned PDFs we skipped
+          // warn about scanned PDFs we skipped
           try{
             const files = (finalStatus && finalStatus.files) ? finalStatus.files : [];
             const scannedSkipped = files.filter(f =>
@@ -687,6 +689,18 @@
           }catch(e){
             // don't block UX if alert formatting fails
           }
+
+          // ✅ refresh facility dropdown (new facility names may have been added by this upload)
+          await refreshFacilityDropdown(true);
+
+          // ✅ close modal
+          closeUpload();
+
+        }catch(e){
+          alert(`Upload failed: ${e && e.message ? e.message : e}`);
+        }finally{
+          setLoading(false);
+        }
       });
     }
   }
