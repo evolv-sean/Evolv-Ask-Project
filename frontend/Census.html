@@ -246,6 +246,12 @@
           font-weight:900;
           color: var(--navy);
           text-align:center;
+
+          min-height:180px;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          flex-direction:column;
         ">
           Drag files here<br/>
           <span style="font-weight:800;color:var(--muted);font-size:12px;">or use Browse</span>
@@ -520,14 +526,27 @@
 
   let selectedUploadFiles = [];
 
-  function openUpload(){
-    const ov = document.getElementById("uploadOverlay");
-    if(ov) ov.style.display = "flex";
+  function resetUploadState(){
+    // clear the in-memory list
+    selectedUploadFiles = [];
+
+    // clear the hidden file input so browser doesn't keep "3 files selected"
+    const fileInput = document.getElementById("uploadFiles");
+    if(fileInput) fileInput.value = "";
+
+    // reset UI
     renderUploadCount();
     setUploadProgress("", 0);
   }
 
+  function openUpload(){
+    resetUploadState(); // ✅ always start fresh when opening
+    const ov = document.getElementById("uploadOverlay");
+    if(ov) ov.style.display = "flex";
+  }
+
   function closeUpload(){
+    resetUploadState(); // ✅ cancel/close resets too
     const ov = document.getElementById("uploadOverlay");
     if(ov) ov.style.display = "none";
   }
@@ -658,9 +677,15 @@
             await load();
           }
 
+          // ✅ finished run: clear selection + close modal
+          closeUpload();
+
         } catch(err){
           console.error("Upload error:", err);
           alert(`Upload error: ${err?.message || err}`);
+
+          // ✅ error run: also reset so it doesn't reopen showing stale files
+          resetUploadState();
         }
       });
     }
