@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Census</title>
+  <style>
+    :root{
+      --navy:#0D3B66;
+      --mint:#A8E6CF;
+      --bg:#F5F7FA;
+      --text:#111827;
+      --muted:#6b7280;
+      --line:#e5e7eb;
+      --card:#ffffff;
+      --shadow:0 10px 28px rgba(0,0,0,.08);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:var(--text)}
+    .topbar{background:var(--navy);color:#fff;padding:14px 18px;font-weight:900}
+    .shell{max-width:1320px;margin:0 auto;padding:16px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}
+    .hdr{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+    label{font-size:12px;color:var(--muted);font-weight:800}
+    .ipt{height:38px;border-radius:12px;border:1px solid #d1d5db;padding:0 12px;background:#fff;min-width:260px}
+    .btn{height:38px;border-radius:12px;border:1px solid #d1d5db;background:#fff;padding:0 12px;font-weight:900;cursor:pointer}
+    .btn-primary{background:var(--navy);border-color:var(--navy);color:#fff}
+    .pillrow{display:flex;gap:8px;align-items:center}
+    .pill{border-radius:999px;border:1px solid #d1d5db;background:#fff;padding:8px 12px;font-weight:900;font-size:12px;cursor:pointer}
+    .pill[aria-pressed="true"]{border-color:var(--mint);box-shadow:0 10px 18px rgba(168,230,207,.25)}
+    .split{display:grid;grid-template-columns:420px 1fr;min-height:640px}
+    .list{border-right:1px solid var(--line);background:#fff}
+    .item{padding:12px 14px;border-bottom:1px solid #f1f5f9;cursor:pointer}
+    .item:hover{background:#f8fafc}
+    .item.active{outline:2px solid var(--mint);box-shadow:0 10px 18px rgba(168,230,207,.25)}
+    .title{font-weight:900}
+    .sub{font-size:12px;color:var(--muted);margin-top:3px}
+    .detail{padding:14px 16px}
+    .kv{display:grid;grid-template-columns:180px 1fr;gap:8px 12px;font-size:13px}
+    .kv div:nth-child(odd){color:var(--muted);font-weight:900}
+    .divider{height:1px;background:#eef2f7;margin:12px 0}
+    .hint{font-size:12px;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="topbar">Census — Full / New Admissions / Discharges</div>
+
+  <div class="shell">
+    <div class="card">
+      <div class="hdr">
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+          <div>
+            <label>Facility</label><br/>
+            <input id="facility" class="ipt" placeholder="Type facility name exactly as stored"/>
+          </div>
+
+          <div class="pillrow" style="margin-bottom:2px">
+            <button class="pill" id="vFull" aria-pressed="true">Full Census</button>
+            <button class="pill" id="vNew" aria-pressed="false">New Admissions</button>
+            <button class="pill" id="vDis" aria-pressed="false">Discharges</button>
+          </div>
+
+          <button class="btn" id="btnLoad">Load</button>
+          <button class="btn btn-primary" id="btnExport">Export CSV</button>
+        </div>
+
+        <form id="uploadForm" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <input type="file" id="pdfs" multiple accept="application/pdf"/>
+          <button class="btn" type="submit">Upload PDFs</button>
+        </form>
+      </div>
+
+      <div class="split">
+        <div class="list" id="list"></div>
+        <div class="detail" id="detail">
+          <div class="hint">Select a patient to review details.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  let currentView = "full";
+  let rows = [];
+  let selectedIndex = -1;
+
+  function setView(v){
+    currentView = v;
+    document.getElementById("vFull").setAttribute("aria-pressed", v==="full");
+    document.getElementById("vNew").setAttribute("aria-pressed", v==="new");
+    document.getElementById("vDis").setAttribute("aria-pressed", v==="discharged");
+  }
+
+  async function load(){
+    const facility = document.getElementById("facility").value.trim();
+    if(!facility){ alert("Enter a facility name."); return; }
+
+    const res = await fetch(`/admin/census/view?facility_name=${encodeURIComponent(facility)}&view=${encodeURIComponent(currentView)}`);
+    const data = await res.json();
+    rows = (data.rows || []);
+    selectedIndex = -1;
+    renderList();
+    renderDetail();
+  }
+
+  function renderList(){
+    const el = document.getElementById("list");
+    el.innerHTML = "";
+    if(rows.length === 0){
+      el.innerHTML = `<div class="item"><div class="title">No rows</div><div class="sub">Upload PDFs, then Load.</div></div>`;
+      return;
+    }
+    rows.forEach((r, idx) => {
+      const name = `${r.last_name||""}, ${r.first_name||""}`.replace(/^,\s*/,"").trim() || "(No name)";
+      const sub = [
+        r.room_number ? `Room ${r.room_number}` : "",
+        r.admission_date ? `Adm ${r.admission_date}` : "",
+        r.dob ? `DOB ${r.dob}` : ""
+      ].filter(Boolean).join(" • ");
+
+      const div = document.createElement("div");
+      div.className = "item" + (idx===selectedIndex ? " active":"");
+      div.innerHTML = `<div class="title">${escapeHtml(name)}</div><div class="sub">${escapeHtml(sub)}</div>`;
+      div.onclick = () => { selectedIndex = idx; renderList(); renderDetail(); };
+      el.appendChild(div);
+    });
+  }
+
+  function renderDetail(){
+    const el = document.getElementById("detail");
+    if(selectedIndex < 0 || !rows[selectedIndex]){
+      el.innerHTML = `<div class="hint">Select a patient to review details.</div>`;
+      return;
+    }
+    const r = rows[selectedIndex];
+    el.innerHTML = `
+      <div class="title" style="font-size:18px">${escapeHtml((r.first_name||"") + " " + (r.last_name||""))}</div>
+      <div class="sub">${escapeHtml(r.facility_name||"")}</div>
+      <div class="divider"></div>
+      <div class="kv">
+        <div>DOB</div><div>${escapeHtml(r.dob||"")}</div>
+        <div>Phone</div><div>${escapeHtml(r.home_phone||"")}</div>
+        <div>Address</div><div>${escapeHtml([r.address,r.city,r.state,r.zip].filter(Boolean).join(", "))}</div>
+        <div>Room</div><div>${escapeHtml(r.room_number||"")}</div>
+        <div>Admission</div><div>${escapeHtml(r.admission_date||"")}</div>
+        <div>Discharge</div><div>${escapeHtml(r.discharge_date||"")}</div>
+        <div>Insurance</div><div>${escapeHtml(r.primary_ins||"")} ${escapeHtml(r.primary_number||"")}</div>
+        <div>PCP</div><div>${escapeHtml(r.primary_care_phys||"")}</div>
+        <div>Attending</div><div>${escapeHtml(r.attending_phys||"")}</div>
+        <div>Reason</div><div>${escapeHtml(r.reason_admission||"")}</div>
+      </div>
+    `;
+  }
+
+  function exportCsv(){
+    const facility = document.getElementById("facility").value.trim();
+    if(!facility){ alert("Enter a facility name."); return; }
+    window.location = `/admin/census/export.csv?facility_name=${encodeURIComponent(facility)}&view=${encodeURIComponent(currentView)}`;
+  }
+
+  document.getElementById("vFull").onclick = () => { setView("full"); load(); };
+  document.getElementById("vNew").onclick  = () => { setView("new"); load(); };
+  document.getElementById("vDis").onclick  = () => { setView("discharged"); load(); };
+  document.getElementById("btnLoad").onclick = load;
+  document.getElementById("btnExport").onclick = exportCsv;
+
+  document.getElementById("uploadForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const facility = document.getElementById("facility").value.trim();
+    const files = document.getElementById("pdfs").files;
+    if(!facility){ alert("Enter a facility name first."); return; }
+    if(!files || files.length===0){ alert("Choose one or more PDFs."); return; }
+
+    const fd = new FormData();
+    fd.append("facility_name", facility);
+    for(const f of files) fd.append("files", f);
+
+    const res = await fetch("/admin/census/upload", { method:"POST", body: fd });
+    const data = await res.json();
+    if(!data.ok){ alert("Upload failed."); return; }
+    await load();
+  });
+
+  function escapeHtml(str){
+    return (str||"").replace(/[&<>"']/g, (m) => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[m]));
+  }
+</script>
+</body>
+</html>
