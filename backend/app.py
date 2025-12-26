@@ -267,6 +267,22 @@ def _split_name(full: str) -> tuple[str, str]:
         return ("", parts[0])
     return (parts[0], parts[-1])
 
+class ScannedPdfError(Exception):
+    """Raised when a PDF has no extractable text (likely scanned/image-only)."""
+    pass
+
+
+def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
+    """
+    Parses PCC-style 'ADMISSION RECORD' PDFs like your samples.
+    Returns rows already mapped to your Sensys CSV columns.
+    """
+    if not HAVE_PDFPLUMBER:
+        raise HTTPException(
+            status_code=500,
+            detail="PDF parsing support is not installed (pdfplumber). Please add 'pdfplumber' to your environment."
+        )
+
 def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
     """
     Parses PCC-style 'ADMISSION RECORD' PDFs like your samples.
@@ -282,6 +298,10 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
 
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         text = "\n".join((p.extract_text() or "") for p in pdf.pages)
+
+    # If there's no selectable text, this is very likely a scanned/image PDF
+    if not (text or "").strip():
+        raise ScannedPdfError("Scanned/image PDF detected (no extractable text)")
 
     chunks = [c.strip() for c in text.split("ADMISSION RECORD") if c.strip()]
     for chunk in chunks:
@@ -3556,7 +3576,7 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
 
                 report_dt = (parsed[0].get("report_dt") if parsed else None)
 
-                # INSERT the run (this was missing before)
+                # INSERT the run
                 cur.execute(
                     """
                     INSERT INTO census_runs (facility_name, facility_code, report_dt, source_filename, source_sha256)
@@ -3568,41 +3588,7 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
 
                 rows_inserted = 0
                 for row in parsed:
-                    cur.execute(
-                        """
-                        INSERT INTO census_run_patients (
-                            run_id, facility_name, facility_code, patient_key,
-                            first_name, last_name, dob, home_phone,
-                            address, city, state, zip,
-                            primary_ins, primary_number,
-                            primary_care_phys, attending_phys,
-                            admission_date, discharge_date,
-                            room_number, reason_admission,
-                            tag, raw_text
-                        ) VALUES (
-                            ?, ?, ?, ?,
-                            ?, ?, ?, ?,
-                            ?, ?, ?, ?,
-                            ?, ?,
-                            ?, ?,
-                            ?, ?,
-                            ?, ?,
-                            ?, ?
-                        )
-                        """,
-                        (
-                            run_id, fac_name, fac_code, row["_patient_key"],
-                            row["First Name"], row["Last Name"], row["DOB"], row["Home Phone"],
-                            row["Address"], row["City"], row["State"], row["Zip"],
-                            row["Primary Ins"], row["Primary Number"],
-                            row["Primary Care Physician"], row["Attending Physician"],
-                            row["Admission Date"], row["Discharge Date"],
-                            row["Room Number"], row["Reason for admission"],
-                            row["Tag"], row["_raw"],
-                        ),
-                    )
-                    rows_inserted += 1
-
+                    ...
                 cur.execute(
                     """
                     INSERT INTO census_upload_job_files (job_id, filename, status, detail, run_id, rows_inserted)
@@ -3614,6 +3600,33 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                 processed += 1
                 _job_set(conn, job_id, "running", processed=processed, message=f"Processed: {filename}")
                 conn.commit()
+
+            except ScannedPdfError as e:
+                # ✅ Treat scanned/image PDFs as "skipped" (not an error)
+                cur.execute(
+                    """
+                    INSERT INTO census_upload_job_files (job_id, filename, status, detail, run_id, rows_inserted)
+                    VALUES (?, ?, 'skipped', ?, NULL, 0)
+                    """,
+                    (job_id, filename, str(e)),
+                )
+                processed += 1
+                _job_set(conn, job_id, "running", processed=processed, message=f"Skipped scanned PDF: {filename}")
+                conn.commit()
+
+            except Exception as e:
+                logger.exception("Census job file failed job_id=%s file=%s", job_id, filename)
+                cur.execute(
+                    """
+                    INSERT INTO census_upload_job_files (job_id, filename, status, detail, run_id, rows_inserted)
+                    VALUES (?, ?, 'error', ?, NULL, 0)
+                    """,
+                    (job_id, filename, str(e)),
+                )
+                processed += 1
+                _job_set(conn, job_id, "running", processed=processed, message=f"Error: {filename}")
+                conn.commit()
+
 
             except Exception as e:
                 logger.exception("Census job file failed job_id=%s file=%s", job_id, filename)
