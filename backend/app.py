@@ -10,6 +10,9 @@ import ssl
 import secrets
 import hashlib
 import io
+import csv
+import pdfplumber
+from fastapi import UploadFile, File, Form
 from email.message import EmailMessage
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -157,6 +160,7 @@ ADMIN_HTML = FRONTEND_DIR / "TEST Admin.html"
 FACILITY_HTML = FRONTEND_DIR / "TEST  Facility_Details.html"  # note double space
 SNF_HTML = FRONTEND_DIR / "TEST SNF_Admissions.html"
 HOSPITAL_DISCHARGE_HTML = FRONTEND_DIR / "Hospital_Discharge.html"
+CENSUS_HTML = FRONTEND_DIR / "Census.html"
 
 
 
@@ -216,6 +220,157 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _safe(s: str) -> str:
+    return (s or "").strip()
+
+def _split_name(full: str) -> tuple[str, str]:
+    full = _safe(full)
+    if not full:
+        return ("", "")
+    if "," in full:
+        last, rest = [x.strip() for x in full.split(",", 1)]
+        first = rest.split(" ")[0].strip() if rest else ""
+        return (first, last)
+    parts = full.split()
+    if len(parts) == 1:
+        return ("", parts[0])
+    return (parts[0], parts[-1])
+
+def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
+    """
+    Parses PCC-style 'ADMISSION RECORD' PDFs like your samples.
+    Returns rows already mapped to your Sensys CSV columns.
+    """
+    out: list[dict] = []
+
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        text = "\n".join((p.extract_text() or "") for p in pdf.pages)
+
+    chunks = [c.strip() for c in text.split("ADMISSION RECORD") if c.strip()]
+    for chunk in chunks:
+        lines = [l.strip() for l in chunk.splitlines() if l.strip()]
+        facility_name = lines[0] if lines else ""
+
+        report_dt = ""
+        for l in lines[:12]:
+            if re.search(r"\bET\b", l) and re.search(r"\b\d{4}\b", l):
+                report_dt = l
+                break
+
+        # Resident info row (name + room + admit + resident #)
+        m = re.search(
+            r"^([A-Za-z'\- ]+,\s*[A-Za-z'\- ]+)\s+.*?\s+([A-Za-z0-9\-]+)\s+(\d{2}/\d{2}/\d{4}).*?\s+([A-Za-z0-9]+)\s*$",
+            chunk,
+            flags=re.MULTILINE,
+        )
+        resident_name = m.group(1).strip() if m else ""
+        room_number = m.group(2).strip() if m else ""
+        admission_date = m.group(3).strip() if m else ""
+        resident_num = m.group(4).strip() if m else ""
+
+        first_name, last_name = _split_name(resident_name)
+
+        dob = ""
+        mdob = re.search(r"^[MF]\s+(\d{2}/\d{2}/\d{4})\s+\d+\b", chunk, flags=re.MULTILINE)
+        if mdob:
+            dob = mdob.group(1).strip()
+
+        address = city = state = zip_code = home_phone = ""
+        madd = re.search(
+            r"^(.+?),\s*([A-Za-z .]+),\s*([A-Z]{2}),\s*(\d{5}).*?(\(\d{3}\)\s*\d{3}-\d{4})",
+            chunk,
+            flags=re.MULTILINE,
+        )
+        if madd:
+            address = madd.group(1).strip()
+            city = madd.group(2).strip()
+            state = madd.group(3).strip()
+            zip_code = madd.group(4).strip()
+            home_phone = madd.group(5).strip()
+
+        primary_ins = primary_number = ""
+        mins = re.search(
+            r"Primary Insurance Name\s+Primary Insurance Policy #.*?\n([A-Za-z0-9 .\-]+)\s+([A-Za-z0-9\-]+)\s*$",
+            chunk,
+            flags=re.MULTILINE,
+        )
+        if mins:
+            primary_ins = mins.group(1).strip()
+            primary_number = mins.group(2).strip()
+        else:
+            mins2 = re.search(
+                r"Managed Care Insurance Name\s+Managed Care Policy #.*?\n([A-Za-z0-9 .\-]+)\s+([A-Za-z0-9\-]+)\s*$",
+                chunk,
+                flags=re.MULTILINE,
+            )
+            if mins2:
+                primary_ins = mins2.group(1).strip()
+                primary_number = mins2.group(2).strip()
+
+        primary_care = ""
+        mpcp = re.search(
+            r"Primary Physician.*?\n.*?\n([A-Za-z'\- ]+,\s*[A-Za-z'\- ]+)",
+            chunk,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+        if mpcp:
+            primary_care = mpcp.group(1).strip()
+
+        attending = primary_care
+
+        reason = ""
+        mdiag = re.search(
+            r"^[A-Z0-9]\S*\s+([A-Z0-9 \(\)\,\.\-\/]+)\s+\d{2}/\d{2}/\d{4}\s+Diagnosis",
+            chunk,
+            flags=re.MULTILINE,
+        )
+        if mdiag:
+            reason = mdiag.group(1).strip()
+
+        facility_code = ""
+        if resident_num and re.match(r"^[A-Za-z]{2}", resident_num):
+            facility_code = resident_num[:2].upper()
+
+        patient_key = "|".join([
+            facility_name.upper(),
+            (resident_num or "").upper(),
+            last_name.upper(),
+            first_name.upper(),
+            dob
+        ])
+
+        out.append({
+            "facility_name": facility_name,
+            "facility_code": facility_code,
+            "report_dt": report_dt,
+
+            "First Name": first_name,
+            "Last Name": last_name,
+            "DOB": dob,
+            "Home Phone": home_phone,
+            "Address": address,
+            "City": city,
+            "State": state,
+            "Zip": zip_code,
+            "Primary Ins": primary_ins,
+            "Primary Number": primary_number,
+            "Primary Care Physician": primary_care,
+            "Tag": "",
+            "Facility_Code": facility_code,
+            "Admission Date": admission_date,
+            "Discharge Date": "",
+            "Room Number": room_number,
+            "Reason for admission": reason,
+            "Attending Physician": attending,
+
+            "_patient_key": patient_key,
+            "_raw": chunk[:8000],
+        })
+
+    return out
+
 
 # ---------------------------------------------------------------------------
 # DB helpers
@@ -724,6 +879,57 @@ def init_db():
         """
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_pad_api_runs_received ON pad_api_runs (received_at DESC)")
+    
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS census_runs (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            facility_name   TEXT NOT NULL,
+            facility_code   TEXT,
+            report_dt       TEXT,
+            source_filename TEXT,
+            source_sha256   TEXT,
+            created_at      TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_census_runs_fac_dt ON census_runs (facility_name, created_at DESC)")
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS census_run_patients (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id             INTEGER NOT NULL,
+            facility_name      TEXT NOT NULL,
+            facility_code      TEXT,
+            patient_key        TEXT NOT NULL,
+
+            first_name         TEXT,
+            last_name          TEXT,
+            dob                TEXT,
+            home_phone         TEXT,
+            address            TEXT,
+            city               TEXT,
+            state              TEXT,
+            zip                TEXT,
+            primary_ins        TEXT,
+            primary_number     TEXT,
+            primary_care_phys  TEXT,
+            attending_phys     TEXT,
+            admission_date     TEXT,
+            discharge_date     TEXT,
+            room_number        TEXT,
+            reason_admission   TEXT,
+            tag                TEXT,
+
+            raw_text           TEXT,
+            created_at         TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY(run_id) REFERENCES census_runs(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_census_patients_run ON census_run_patients (run_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_census_patients_key ON census_run_patients (facility_name, patient_key)")
 
     # Seed default system prompt
     cur.execute("SELECT value FROM ai_settings WHERE key='system_prompt'")
@@ -3112,6 +3318,183 @@ def fetch_facility_knowledge(
     return snippets
 
 
+@app.post("/admin/census/upload")
+async def admin_census_upload(
+    facility_name: str = Form(...),
+    facility_code: str = Form(""),
+    files: list[UploadFile] = File(...),
+    admin=Depends(require_admin),
+):
+    conn = get_db()
+    cur = conn.cursor()
+
+    inserted_runs = []
+    try:
+        for f in files:
+            pdf_bytes = await f.read()
+            sha = hashlib.sha256(pdf_bytes).hexdigest()
+
+            parsed = parse_pcc_admission_records_from_pdf_bytes(pdf_bytes)
+
+            fac_name = (facility_name or "").strip() or (parsed[0]["facility_name"] if parsed else "")
+            fac_code = (facility_code or "").strip() or (parsed[0]["Facility_Code"] if parsed else "")
+            report_dt = parsed[0].get("report_dt") if parsed else ""
+
+            cur.execute(
+                """
+                INSERT INTO census_runs (facility_name, facility_code, report_dt, source_filename, source_sha256)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (fac_name, fac_code, report_dt, f.filename, sha),
+            )
+            run_id = cur.lastrowid
+
+            for row in parsed:
+                cur.execute(
+                    """
+                    INSERT INTO census_run_patients (
+                        run_id, facility_name, facility_code, patient_key,
+                        first_name, last_name, dob, home_phone,
+                        address, city, state, zip,
+                        primary_ins, primary_number,
+                        primary_care_phys, attending_phys,
+                        admission_date, discharge_date,
+                        room_number, reason_admission,
+                        tag, raw_text
+                    ) VALUES (
+                        ?, ?, ?, ?,
+                        ?, ?, ?, ?,
+                        ?, ?, ?, ?,
+                        ?, ?,
+                        ?, ?,
+                        ?, ?,
+                        ?, ?,
+                        ?, ?
+                    )
+                    """,
+                    (
+                        run_id, fac_name, fac_code, row["_patient_key"],
+                        row["First Name"], row["Last Name"], row["DOB"], row["Home Phone"],
+                        row["Address"], row["City"], row["State"], row["Zip"],
+                        row["Primary Ins"], row["Primary Number"],
+                        row["Primary Care Physician"], row["Attending Physician"],
+                        row["Admission Date"], row["Discharge Date"],
+                        row["Room Number"], row["Reason for admission"],
+                        row["Tag"], row["_raw"],
+                    ),
+                )
+
+            inserted_runs.append({"run_id": run_id, "rows": len(parsed), "filename": f.filename})
+
+        conn.commit()
+        return {"ok": True, "runs": inserted_runs}
+    finally:
+        conn.close()
+
+
+@app.get("/admin/census/view")
+def admin_census_view(
+    facility_name: str,
+    view: str = "full",   # full | new | discharged
+    admin=Depends(require_admin),
+):
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        runs = cur.execute(
+            """
+            SELECT id
+            FROM census_runs
+            WHERE facility_name = ?
+            ORDER BY id DESC
+            LIMIT 2
+            """,
+            (facility_name,),
+        ).fetchall()
+
+        if not runs:
+            return {"ok": True, "rows": [], "meta": {"facility_name": facility_name}}
+
+        latest_id = runs[0]["id"]
+        prev_id = runs[1]["id"] if len(runs) > 1 else None
+
+        latest_rows = cur.execute(
+            "SELECT * FROM census_run_patients WHERE run_id = ?",
+            (latest_id,),
+        ).fetchall()
+
+        if view == "full" or not prev_id:
+            return {"ok": True, "rows": [dict(r) for r in latest_rows], "meta": {"latest_run_id": latest_id, "prev_run_id": prev_id}}
+
+        prev_keys = {r["patient_key"] for r in cur.execute(
+            "SELECT patient_key FROM census_run_patients WHERE run_id = ?",
+            (prev_id,),
+        ).fetchall()}
+
+        latest_keys = {r["patient_key"] for r in latest_rows}
+
+        if view == "new":
+            rows = [dict(r) for r in latest_rows if r["patient_key"] not in prev_keys]
+        elif view == "discharged":
+            prev_rows = cur.execute(
+                "SELECT * FROM census_run_patients WHERE run_id = ?",
+                (prev_id,),
+            ).fetchall()
+            rows = [dict(r) for r in prev_rows if r["patient_key"] not in latest_keys]
+        else:
+            raise HTTPException(status_code=400, detail="view must be full|new|discharged")
+
+        return {"ok": True, "rows": rows, "meta": {"latest_run_id": latest_id, "prev_run_id": prev_id}}
+    finally:
+        conn.close()
+
+
+@app.get("/admin/census/export.csv")
+def admin_census_export_csv(
+    facility_name: str,
+    view: str = "new",
+    admin=Depends(require_admin),
+):
+    data = admin_census_view(facility_name=facility_name, view=view, admin=admin)
+    rows = data["rows"]
+
+    headers = [
+        "First Name","Last Name","DOB","Home Phone","Address","City","State","Zip",
+        "Primary Ins","Primary Number","Primary Care Physician","Tag","Facility_Code",
+        "Admission Date","Discharge Date","Room Number","Reason for admission","Attending Physician"
+    ]
+
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=headers)
+    w.writeheader()
+
+    for r in rows:
+        w.writerow({
+            "First Name": r.get("first_name",""),
+            "Last Name": r.get("last_name",""),
+            "DOB": r.get("dob",""),
+            "Home Phone": r.get("home_phone",""),
+            "Address": r.get("address",""),
+            "City": r.get("city",""),
+            "State": r.get("state",""),
+            "Zip": r.get("zip",""),
+            "Primary Ins": r.get("primary_ins",""),
+            "Primary Number": r.get("primary_number",""),
+            "Primary Care Physician": r.get("primary_care_phys",""),
+            "Tag": r.get("tag",""),
+            "Facility_Code": r.get("facility_code",""),
+            "Admission Date": r.get("admission_date",""),
+            "Discharge Date": r.get("discharge_date",""),
+            "Room Number": r.get("room_number",""),
+            "Reason for admission": r.get("reason_admission",""),
+            "Attending Physician": r.get("attending_phys",""),
+        })
+
+    return Response(
+        content=buf.getvalue().encode("utf-8"),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="census_{facility_name}_{view}.csv"'},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -9510,6 +9893,10 @@ async def admin_ui():
 async def snf_admissions_ui():
     # New SNF admissions audit page
     return HTMLResponse(content=read_html(SNF_HTML))
+    
+@app.get("/census", response_class=HTMLResponse)
+async def census_ui():
+    return HTMLResponse(content=read_html(CENSUS_HTML))
 
 from fastapi.responses import FileResponse
 
