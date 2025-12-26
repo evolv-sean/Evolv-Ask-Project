@@ -17,7 +17,26 @@
     }
     *{box-sizing:border-box}
     body{margin:0;background:var(--bg);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:var(--text)}
-    .topbar{background:var(--navy);color:#fff;padding:14px 18px;font-weight:900}
+    .topbar{
+      background:var(--navy);
+      color:#fff;
+      padding:14px 18px;
+      font-weight:900;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
+
+    .topbar-btn{
+      background:transparent;
+      border:1px solid rgba(255,255,255,.28);
+    }
+    .topbar-btn svg{stroke:#fff}
+    .topbar-btn:hover{
+      border-color: rgba(168,230,207,.9);
+      box-shadow: 0 0 0 4px rgba(168,230,207,.25);
+    }
     .shell{max-width:1320px;margin:0 auto;padding:16px}
     .card{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}
     .hdr{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
@@ -157,7 +176,17 @@
   </style>
 </head>
 <body>
-  <div class="topbar">Census — Full / New Admissions / Discharges</div>
+  <div class="topbar">
+    <div>Census — Full / New Admissions / Discharges</div>
+
+    <!-- moved settings button into top blue bar -->
+    <button class="icon-btn topbar-btn" id="btnSettings" title="Settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24">
+        <path d="M7 10V8a5 5 0 0 1 10 0v2"></path>
+        <rect x="5" y="10" width="14" height="10" rx="2"></rect>
+      </svg>
+    </button>
+  </div>
   <!-- ✅ Loading overlay -->
   <div class="loading-overlay" id="loadingOverlay" aria-live="polite" aria-busy="true">
     <div class="loading-box">
@@ -199,10 +228,12 @@
     <div class="card">
       <div class="hdr">
         <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
-          <div>
-            <label>Facility</label><br/>
-            <input id="facility" class="ipt" placeholder="Type facility name exactly as stored"/>
-          </div>
+        <div>
+          <label>Facility</label><br/>
+          <select id="facility" class="ipt">
+            <option value="">Select facility…</option>
+          </select>
+        </div>
 
           <div class="pillrow" style="margin-bottom:2px">
             <button class="pill" id="vFull" aria-pressed="true">Full Census</button>
@@ -215,12 +246,6 @@
         </div>
 
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-          <button class="icon-btn" id="btnSettings" title="Settings" aria-label="Settings">
-            <svg viewBox="0 0 24 24">
-              <path d="M7 10V8a5 5 0 0 1 10 0v2"></path>
-              <rect x="5" y="10" width="14" height="10" rx="2"></rect>
-            </svg>
-          </button>
 
           <form id="uploadForm" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <input type="file" id="pdfs" multiple accept="application/pdf"/>
@@ -338,9 +363,28 @@
     document.getElementById("vDis").setAttribute("aria-pressed", v==="discharged");
   }
 
+  async function refreshFacilityDropdown(keepValue){
+    const sel = document.getElementById("facility");
+    if(!sel) return;
+
+    const prev = (keepValue !== undefined) ? keepValue : sel.value;
+
+    const res = await adminFetch(`/admin/census/facilities`);
+    const data = await res.json();
+
+    const facilities = (data.facilities || []).filter(Boolean);
+
+    sel.innerHTML = `<option value="">Select facility…</option>` +
+      facilities.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join("");
+
+    if(prev && facilities.includes(prev)){
+      sel.value = prev;
+    }
+  }
+
   async function load(){
-    const facility = document.getElementById("facility").value.trim();
-    if(!facility){ alert("Enter a facility name."); return; }
+    const facility = (document.getElementById("facility").value || "").trim();
+    if(!facility){ alert("Select a facility."); return; }
 
     const res = await adminFetch(`/admin/census/view?facility_name=${encodeURIComponent(facility)}&view=${encodeURIComponent(currentView)}`);
     const data = await res.json();
@@ -431,16 +475,14 @@
 
   document.getElementById("uploadForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const facility = document.getElementById("facility").value.trim();
     const files = document.getElementById("pdfs").files;
-    if(!facility){ alert("Enter a facility name first."); return; }
     if(!files || files.length===0){ alert("Choose one or more PDFs."); return; }
 
     try{
       setLoading(true, "Uploading PDFs…", "Parsing and saving census records");
 
       const fd = new FormData();
-      fd.append("facility_name", facility);
+      // facility_name no longer needed; backend derives it from filename
       for(const f of files) fd.append("files", f);
 
       const res = await adminFetch("/admin/census/upload", { method:"POST", body: fd });
@@ -452,8 +494,19 @@
         return;
       }
 
+      await refreshFacilityDropdown(document.getElementById("facility").value);
+
       setLoading(true, "Refreshing list…", "Loading results");
-      await load();
+      // If a facility is selected, reload it; otherwise just leave list alone
+      const selected = (document.getElementById("facility").value || "").trim();
+      if(selected){
+        await load();
+      } else {
+        rows = [];
+        selectedIndex = -1;
+        renderList();
+        renderDetail();
+      }
     } finally {
       setLoading(false);
     }
@@ -465,7 +518,7 @@
     }[m]));
   }
   
-initTokenUI();
+refreshFacilityDropdown();
 
 </script>
 </body>
