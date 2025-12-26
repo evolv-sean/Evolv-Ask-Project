@@ -3417,6 +3417,22 @@ async def admin_census_upload(
             if not fac_code:
                 fac_code = extract_facility_code_from_filename(f.filename)
 
+            # ✅ Create a new run row FIRST, then use its ID
+            cur.execute(
+                """
+                INSERT INTO census_runs (
+                    facility_name, facility_code, report_dt,
+                    source_filename, source_sha256
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    fac_name,
+                    fac_code,
+                    None,          # (optional) you can set this later if you parse a report date
+                    f.filename,
+                    sha,
+                ),
+            )
             run_id = cur.lastrowid
 
             for row in parsed:
