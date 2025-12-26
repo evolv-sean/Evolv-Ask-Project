@@ -224,6 +224,55 @@
     </div>
   </div>
 
+  <!-- ✅ Upload PDFs modal (drag + drop, multi-file) -->
+  <div class="modal-overlay" id="uploadOverlay" role="dialog" aria-modal="true" aria-labelledby="uploadTitle">
+    <div class="modal">
+      <div class="modal-bar">
+        <div id="uploadTitle">Upload PDFs</div>
+        <button class="icon-btn" id="btnUploadClose" type="button" title="Close" aria-label="Close">
+          <svg viewBox="0 0 24 24">
+            <path d="M6 6l12 12"></path>
+            <path d="M18 6l-12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div id="dropzone" style="
+          border:1px dashed rgba(13,59,102,.22);
+          border-radius:16px;
+          padding:14px;
+          background: rgba(13,59,102,.03);
+          font-weight:900;
+          color: var(--navy);
+          text-align:center;
+        ">
+          Drag files here<br/>
+          <span style="font-weight:800;color:var(--muted);font-size:12px;">or use Browse</span>
+        </div>
+
+        <input id="uploadFiles" type="file" accept="application/pdf" multiple style="display:none"/>
+
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;">
+          <button class="btn" id="btnBrowse" type="button">Browse</button>
+          <div class="hint" id="fileCount">No files selected.</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="hint" id="uploadStatusText"></div>
+        <div style="height:10px;border-radius:999px;border:1px solid rgba(13,59,102,.14);overflow:hidden;background:#fff;">
+          <div id="uploadBar" style="height:100%;width:0%;background: var(--mint);"></div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="btnUploadCancel" type="button">Cancel</button>
+        <button class="btn btn-primary" id="btnUploadProcess" type="button">Process Upload</button>
+      </div>
+    </div>
+  </div>
+
   <div class="shell">
     <div class="card">
       <div class="hdr">
@@ -246,11 +295,7 @@
         </div>
 
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-
-          <form id="uploadForm" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-            <input type="file" id="pdfs" multiple accept="application/pdf"/>
-            <button class="btn" type="submit">Upload PDFs</button>
-          </form>
+          <button class="btn" id="btnOpenUpload" type="button">Upload PDFs</button>
         </div>
       </div>
 
@@ -281,9 +326,9 @@
     // Disable key buttons while loading (prevents double submits)
     const btnLoad = document.getElementById("btnLoad");
     const btnExport = document.getElementById("btnExport");
-    const uploadBtn = document.querySelector('#uploadForm button[type="submit"]');
+    const uploadOpenBtn = document.getElementById("btnOpenUpload");
 
-    if(btnLoad) btnLoad.disabled = isLoading;
+    if(uploadOpenBtn) uploadOpenBtn.disabled = isLoading;
     if(btnExport) btnExport.disabled = isLoading;
     if(uploadBtn) uploadBtn.disabled = isLoading;
   }
@@ -473,44 +518,153 @@
   document.getElementById("btnLoad").onclick = load;
   document.getElementById("btnExport").onclick = () => exportCsv();
 
-  document.getElementById("uploadForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const files = document.getElementById("pdfs").files;
-    if(!files || files.length===0){ alert("Choose one or more PDFs."); return; }
+  let selectedUploadFiles = [];
 
-    try{
-      setLoading(true, "Uploading PDFs…", "Parsing and saving census records");
+  function openUpload(){
+    const ov = document.getElementById("uploadOverlay");
+    if(ov) ov.style.display = "flex";
+    renderUploadCount();
+    setUploadProgress("", 0);
+  }
 
-      const fd = new FormData();
-      // facility_name no longer needed; backend derives it from filename
-      for(const f of files) fd.append("files", f);
+  function closeUpload(){
+    const ov = document.getElementById("uploadOverlay");
+    if(ov) ov.style.display = "none";
+  }
 
-      const res = await adminFetch("/admin/census/upload", { method:"POST", body: fd });
-      const data = await res.json();
+  function renderUploadCount(){
+    const el = document.getElementById("fileCount");
+    if(!el) return;
+    const n = selectedUploadFiles.length;
+    el.textContent = n ? `${n} file(s) selected.` : "No files selected.";
+  }
 
-      if(!res.ok || !data.ok){
-        setLoading(false);
-        alert(`Upload failed (${res.status}).`);
-        return;
-      }
+  function setUploadProgress(text, pct){
+    const t = document.getElementById("uploadStatusText");
+    const bar = document.getElementById("uploadBar");
+    if(t) t.textContent = text || "";
+    if(bar) bar.style.width = `${Math.max(0, Math.min(100, pct || 0))}%`;
+  }
 
-      await refreshFacilityDropdown(document.getElementById("facility").value);
+  function initUploadModal(){
+    const btnOpen = document.getElementById("btnOpenUpload");
+    const btnClose = document.getElementById("btnUploadClose");
+    const btnCancel = document.getElementById("btnUploadCancel");
+    const btnBrowse = document.getElementById("btnBrowse");
+    const btnProcess = document.getElementById("btnUploadProcess");
+    const overlay = document.getElementById("uploadOverlay");
+    const fileInput = document.getElementById("uploadFiles");
+    const drop = document.getElementById("dropzone");
 
-      setLoading(true, "Refreshing list…", "Loading results");
-      // If a facility is selected, reload it; otherwise just leave list alone
-      const selected = (document.getElementById("facility").value || "").trim();
-      if(selected){
-        await load();
-      } else {
-        rows = [];
-        selectedIndex = -1;
-        renderList();
-        renderDetail();
-      }
-    } finally {
-      setLoading(false);
+    if(btnOpen) btnOpen.addEventListener("click", openUpload);
+    if(btnClose) btnClose.addEventListener("click", closeUpload);
+    if(btnCancel) btnCancel.addEventListener("click", closeUpload);
+
+    if(overlay){
+      overlay.addEventListener("click", (e) => {
+        if(e.target === overlay) closeUpload();
+      });
     }
-  });
+
+    if(btnBrowse && fileInput){
+      btnBrowse.addEventListener("click", () => fileInput.click());
+    }
+
+    if(fileInput){
+      fileInput.addEventListener("change", () => {
+        selectedUploadFiles = Array.from(fileInput.files || []);
+        renderUploadCount();
+      });
+    }
+
+    if(drop){
+      drop.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        drop.style.boxShadow = "0 0 0 4px rgba(168,230,207,.35)";
+      });
+      drop.addEventListener("dragleave", () => {
+        drop.style.boxShadow = "";
+      });
+      drop.addEventListener("drop", (e) => {
+        e.preventDefault();
+        drop.style.boxShadow = "";
+        const files = Array.from(e.dataTransfer.files || []).filter(f => f.type === "application/pdf");
+        selectedUploadFiles = files;
+        if(fileInput){
+          // keep the input consistent for the user
+          // (can't programmatically set FileList reliably across all browsers, so we track in selectedUploadFiles)
+        }
+        renderUploadCount();
+      });
+    }
+
+    if(btnProcess){
+      btnProcess.addEventListener("click", async () => {
+        if(!selectedUploadFiles.length){
+          alert("Select one or more PDFs.");
+          return;
+        }
+
+        try{
+          setUploadProgress("Starting upload…", 2);
+
+          const fd = new FormData();
+          for(const f of selectedUploadFiles) fd.append("files", f);
+
+          const res = await adminFetch("/admin/census/upload", { method:"POST", body: fd });
+          const data = await res.json().catch(() => null);
+
+          if(!res.ok || !data || !data.ok || !data.job_id){
+            alert(`Upload failed (${res.status}). ${(data && (data.detail || data.message)) ? (data.detail || data.message) : ""}`);
+            return;
+          }
+
+          // Poll job status
+          const jobId = data.job_id;
+          setUploadProgress("Processing…", 5);
+
+          const started = Date.now();
+          while(true){
+            const stRes = await adminFetch(`/admin/census/upload-status?job_id=${encodeURIComponent(jobId)}`);
+            const st = await stRes.json();
+
+            const job = st.job || {};
+            const total = Number(job.total_files || 0);
+            const done = Number(job.processed_files || 0);
+            const pct = total ? Math.round((done / total) * 100) : 0;
+
+            setUploadProgress(job.message || job.status || "Working…", Math.max(5, pct));
+
+            if(job.status === "done"){
+              setUploadProgress("Complete.", 100);
+              break;
+            }
+            if(job.status === "error"){
+              alert(`Upload job error: ${job.message || "Unknown error"}`);
+              break;
+            }
+
+            // small delay
+            await new Promise(r => setTimeout(r, 900));
+            // optional: safety break
+            if(Date.now() - started > 15 * 60 * 1000) break;
+          }
+
+          await refreshFacilityDropdown(document.getElementById("facility").value);
+
+          // Auto-load if facility is selected
+          const selected = (document.getElementById("facility").value || "").trim();
+          if(selected){
+            await load();
+          }
+
+        } catch(err){
+          console.error("Upload error:", err);
+          alert(`Upload error: ${err?.message || err}`);
+        }
+      });
+    }
+  }
 
   function escapeHtml(str){
     return (str||"").replace(/[&<>"']/g, (m) => ({
@@ -518,7 +672,16 @@
     }[m]));
   }
   
-refreshFacilityDropdown();
+document.addEventListener("DOMContentLoaded", () => {
+  // Settings modal (Admin token)
+  initTokenUI();
+
+  // Upload PDFs modal (drag/drop + browse + process)
+  initUploadModal();
+
+  // Populate facility dropdown on first load
+  refreshFacilityDropdown();
+});
 
 </script>
 </body>
