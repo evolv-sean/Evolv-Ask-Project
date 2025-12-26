@@ -706,6 +706,25 @@ def init_db():
         """
     )
 
+    # PAD API run log (one row per API call, even if 0 inserts)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pad_api_runs (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            endpoint      TEXT NOT NULL,
+            received_at   TEXT NOT NULL,   -- UTC datetime string
+            pad_run_id    TEXT,
+            rows_received INTEGER DEFAULT 0,
+            inserted      INTEGER DEFAULT 0,
+            skipped       INTEGER DEFAULT 0,
+            error_count   INTEGER DEFAULT 0,
+            status        TEXT NOT NULL,   -- 'ok' | 'error'
+            message       TEXT
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_pad_api_runs_received ON pad_api_runs (received_at DESC)")
+
     # Seed default system prompt
     cur.execute("SELECT value FROM ai_settings WHERE key='system_prompt'")
     row = cur.fetchone()
@@ -1679,6 +1698,26 @@ async def pad_cm_notes_bulk(
     conn = get_db()
     cur = conn.cursor()
 
+    received_at = dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Best-effort: take a pad_run_id from the first row (if present)
+    pad_run_id = None
+    try:
+        if isinstance(notes, list) and notes and isinstance(notes[0], dict):
+            pad_run_id = notes[0].get("pad_run_id")
+    except Exception:
+        pad_run_id = None
+
+    cur.execute(
+        """
+        INSERT INTO pad_api_runs (endpoint, received_at, pad_run_id, rows_received, status, message)
+        VALUES (?, ?, ?, ?, 'ok', 'received')
+        """,
+        (request.url.path, received_at, pad_run_id, len(notes)),
+    )
+    run_log_id = cur.lastrowid
+    conn.commit()
+
     inserted = 0
     skipped = 0
     errors: List[Dict[str, Any]] = []
@@ -1803,11 +1842,29 @@ async def pad_cm_notes_bulk(
     except Exception as e:
         print("[pad_cm_notes_bulk] failed to trigger SNF extraction:", e)
 
+    # Finalize run log
+    try:
+        cur2 = get_db().cursor()
+        cur2.execute(
+            """
+            UPDATE pad_api_runs
+            SET inserted = ?, skipped = ?, error_count = ?, status = ?, message = ?
+            WHERE id = ?
+            """,
+            (inserted, skipped, len(errors), "ok", "completed", run_log_id),
+        )
+        cur2.connection.commit()
+        cur2.connection.close()
+    except Exception as e:
+        print("[pad_cm_notes_bulk] failed to update pad_api_runs:", e)
+
     return {
         "ok": True,
         "inserted": inserted,
         "skipped": skipped,
         "errors": errors,
+        "run_log_id": run_log_id,
+        "received_at": received_at,
     }
 
 
@@ -5923,6 +5980,30 @@ async def admin_snf_clear_browser(
     }
 
 
+@app.get("/admin/snf/pad-runs")
+async def admin_snf_pad_runs(request: Request, limit: int = 10):
+    require_admin(request)
+
+    limit = max(1, min(50, int(limit or 10)))
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, endpoint, received_at, pad_run_id, rows_received, inserted, skipped, error_count, status, message
+            FROM pad_api_runs
+            ORDER BY received_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        rows = cur.fetchall()
+        return {"ok": True, "runs": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Admin: Q&A list/add/update/delete  (used by TEST Admin.html "Q&A" tab)
 # ---------------------------------------------------------------------------
@@ -7184,20 +7265,48 @@ class IgnoreCmNoteRequest(BaseModel):
 
 @app.get("/admin/snf/last-processed")
 async def admin_snf_last_processed(request: Request):
-    """Return the latest successful CM note ingestion timestamp."""
+    """
+    Return the latest PAD API received timestamp (from pad_api_runs).
+    Fallback to latest cm_notes_raw insert timestamp if the log table isn't present yet.
+    """
     require_admin(request)
 
     conn = get_db()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT MAX(created_at) AS last_processed FROM cm_notes_raw")
-        row = cur.fetchone()
 
-        last_processed = (row["last_processed"] if row else None)
+        last_api = None
+
+        # Preferred: latest API run received_at (even if 0 inserts)
+        try:
+            SNF_PAD_ENDPOINT = "/api/pad/cm-notes/bulk"
+
+            cur.execute(
+                """
+                SELECT received_at
+                FROM pad_api_runs
+                WHERE endpoint = ?
+                ORDER BY received_at DESC
+                LIMIT 1
+                """,
+                (SNF_PAD_ENDPOINT,),
+            )
+            r = cur.fetchone()
+            last_api = (r["received_at"] if r else None)
+        except Exception:
+            # table doesn't exist yet, or older DB
+            last_api = None
+
+        # Fallback: legacy behavior (latest inserted cm note)
+        if not last_api:
+            cur.execute("SELECT MAX(created_at) AS last_processed FROM cm_notes_raw")
+            row = cur.fetchone()
+            last_api = (row["last_processed"] if row else None)
+
         return {
             "ok": True,
-            "last_processed": last_processed,
-            "last_processed_et": utc_text_to_eastern_display(last_processed),
+            "last_processed": last_api,
+            "last_processed_et": utc_text_to_eastern_display(last_api),
         }
     finally:
         conn.close()
