@@ -640,7 +640,61 @@
     .message strong {
       color: #111827;
     }
-    
+
+    /* ===============================
+       Facility hover tooltip (Attendings)
+       =============================== */
+    .fac-hover{
+      position:relative;
+      display:inline-block;
+      cursor:help;
+    }
+
+    .fac-tip{
+      position:absolute;
+      left:0;
+      top:100%;
+      margin-top:8px;
+      width:max-content;
+      max-width:320px;
+
+      background:#ffffff;
+      border:1px solid rgba(13,59,102,18);
+      border-radius:14px;
+      box-shadow: 0 10px 22px rgba(13,59,102,14);
+      padding:10px 12px;
+
+      z-index:50;
+      display:none;
+    }
+
+    .fac-hover:hover .fac-tip{
+      display:block;
+    }
+
+    .fac-tip .fac-tip-title{
+      font-size:11px;
+      font-weight:900;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      color:rgba(13,59,102,85);
+      margin-bottom:6px;
+    }
+
+    .fac-tip .fac-tip-body{
+      font-size:12px;
+      font-weight:800;
+      color:#0f172a;
+      line-height:1.25;
+      white-space:pre-line; /* allows newline formatting */
+    }
+
+    .fac-tip .fac-tip-empty{
+      font-size:12px;
+      font-weight:800;
+      color:#55657f;
+    }
+
     /* =========================================================
        EVOLV — Palette A (Main Page Overhaul)
        NOTE: Scoped to header/main/panels/table only.
@@ -3232,6 +3286,27 @@
       return null;
     }
 
+    function getFacilityAttendingsForRow(r) {
+      // Match the same “what user is seeing” logic:
+      // Manual override -> Effective facility -> AI raw
+      const candidate =
+        String(r.final_snf_name_display || "").trim() ||
+        String(r.effective_facility_name || "").trim() ||
+        String(r.ai_snf_name_raw || "").trim();
+
+      const match = resolveAiToSystemFacility(candidate);
+      const raw = (match && match.attending) ? String(match.attending).trim() : "";
+      if (!raw) return "";
+
+      // Normalize separators (commas, pipes, semicolons, newlines) into newlines for tooltip
+      const parts = raw
+        .split(/[\n,;|]+/g)
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      return parts.join("\n");
+    }
+
     // What to display specifically in the "Facility (AI)" column
     // - If AI matches a system facility (name or alias): show system name
     // - If NO match: show raw AI text + " *" so you can spot it instantly
@@ -3500,7 +3575,25 @@
             }
           </td>
           <td>
-            <div style="font-weight:600; line-height:1.15;">${escapeHtml(facLabel)}</div>
+            ${
+              (() => {
+                const att = getFacilityAttendingsForRow(r);
+                if (att) {
+                  return `
+                    <div class="fac-hover" style="font-weight:600; line-height:1.15;">
+                      ${escapeHtml(facLabel)}
+                      <div class="fac-tip" role="tooltip">
+                        <div class="fac-tip-title">Attendings</div>
+                        <div class="fac-tip-body">${escapeHtml(att)}</div>
+                      </div>
+                    </div>
+                  `;
+                }
+                // No attendings configured → just show the label normally (no tooltip)
+                return `<div style="font-weight:600; line-height:1.15;">${escapeHtml(facLabel)}</div>`;
+              })()
+            }
+
             ${
               (getFacilityAiPhone(r) || "").trim()
                 ? `<div style="font-size:10.5px; color:#6b7280; margin-top:2px; line-height:1.15;">
