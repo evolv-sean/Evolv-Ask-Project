@@ -643,9 +643,12 @@
           setUploadProgress("Processing…", 5);
 
           const started = Date.now();
+          let finalStatus = null;
+
           while(true){
             const stRes = await adminFetch(`/admin/census/upload-status?job_id=${encodeURIComponent(jobId)}`);
             const st = await stRes.json();
+            finalStatus = st;
 
             const job = st.job || {};
             const total = Number(job.total_files || 0);
@@ -663,30 +666,27 @@
               break;
             }
 
-            // small delay
             await new Promise(r => setTimeout(r, 900));
-            // optional: safety break
             if(Date.now() - started > 15 * 60 * 1000) break;
           }
 
-          await refreshFacilityDropdown(document.getElementById("facility").value);
+          // ✅ After job completes: warn about scanned PDFs we skipped
+          try{
+            const files = (finalStatus && finalStatus.files) ? finalStatus.files : [];
+            const scannedSkipped = files.filter(f =>
+              (f.status === "skipped") && String(f.detail || "").toLowerCase().includes("no extractable text")
+            );
 
-          // Auto-load if facility is selected
-          const selected = (document.getElementById("facility").value || "").trim();
-          if(selected){
-            await load();
+            if(scannedSkipped.length){
+              const names = scannedSkipped.map(f => `• ${f.filename}`).join("\n");
+              alert(
+                `Some PDFs appear to be scanned/image-only and were skipped:\n\n${names}\n\n` +
+                `Tip: Re-export from the EMR as a text PDF if possible.`
+              );
+            }
+          }catch(e){
+            // don't block UX if alert formatting fails
           }
-
-          // ✅ finished run: clear selection + close modal
-          closeUpload();
-
-        } catch(err){
-          console.error("Upload error:", err);
-          alert(`Upload error: ${err?.message || err}`);
-
-          // ✅ error run: also reset so it doesn't reopen showing stale files
-          resetUploadState();
-        }
       });
     }
   }
