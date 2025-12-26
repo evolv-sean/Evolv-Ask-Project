@@ -3391,7 +3391,7 @@ def fetch_facility_knowledge(
 
 @app.post("/admin/census/upload")
 async def admin_census_upload(
-    facility_name: str = Form(""),   # optional now (UI no longer types this)
+    facility_name: str = Form(""),  # optional now (filename drives facility)
     facility_code: str = Form(""),
     files: list[UploadFile] = File(...),
     admin=Depends(require_admin),
@@ -3478,6 +3478,28 @@ def admin_census_facilities(admin=Depends(require_admin)):
     finally:
         conn.close()
 
+@app.get("/admin/census/facilities")
+def admin_census_facilities(admin=Depends(require_admin)):
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        rows = cur.execute(
+            """
+            SELECT facility_name
+            FROM census_runs
+            GROUP BY facility_name
+            ORDER BY facility_name
+            """
+        ).fetchall()
+
+        facilities = []
+        for r in rows:
+            # works whether row is sqlite3.Row or tuple
+            facilities.append(r["facility_name"] if isinstance(r, sqlite3.Row) else r[0])
+
+        return {"ok": True, "facilities": facilities}
+    finally:
+        conn.close()
 
 @app.get("/admin/census/view")
 def admin_census_view(
