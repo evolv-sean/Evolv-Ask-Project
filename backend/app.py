@@ -597,6 +597,19 @@ def extract_facility_code_from_filename(filename: str) -> str:
         return ""
     return filename.split(".", 1)[0].strip().upper()
 
+def extract_facility_name_from_filename(filename: str) -> str:
+    """
+    Extracts facility name from filename.
+    Example: 'FLHIEWCGHR.Westchester Gardens.pcc.pdf' -> 'Westchester Gardens'
+    """
+    if not filename:
+        return ""
+    parts = [p for p in filename.split(".") if p is not None]
+    # expected: [CODE, FACILITY NAME, 'pcc', 'pdf'?]
+    if len(parts) >= 2:
+        return (parts[1] or "").strip()
+    return ""
+
 # ============================
 # SNF Secure Link + PIN helpers
 # ============================
@@ -3378,7 +3391,7 @@ def fetch_facility_knowledge(
 
 @app.post("/admin/census/upload")
 async def admin_census_upload(
-    facility_name: str = Form(...),
+    facility_name: str = Form(""),   # optional now (UI no longer types this)
     facility_code: str = Form(""),
     files: list[UploadFile] = File(...),
     admin=Depends(require_admin),
@@ -3394,22 +3407,15 @@ async def admin_census_upload(
 
             parsed = parse_pcc_admission_records_from_pdf_bytes(pdf_bytes)
 
-            # Facility name: UI override > PDF content
-            fac_name = (facility_name or "").strip() or (parsed[0]["facility_name"] if parsed else "")
+            # Facility name: filename (AUTHORITATIVE) > UI override > PDF content
+            fac_name = extract_facility_name_from_filename(f.filename)
+            if not fac_name:
+                fac_name = (facility_name or "").strip() or (parsed[0]["facility_name"] if parsed else "")
 
             # Facility code: UI override > filename (AUTHORITATIVE)
             fac_code = (facility_code or "").strip()
             if not fac_code:
                 fac_code = extract_facility_code_from_filename(f.filename)
-
-            report_dt = parsed[0].get("report_dt") if parsed else ""
-
-            cur.execute(
-                """
-                INSERT INTO census_runs (facility_name, facility_code, report_dt, source_filename, source_sha256)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (fac_name, fac_code, report_dt, f.filename, sha),
             )
             run_id = cur.lastrowid
 
@@ -3452,6 +3458,23 @@ async def admin_census_upload(
 
         conn.commit()
         return {"ok": True, "runs": inserted_runs}
+    finally:
+        conn.close()
+
+@app.get("/admin/census/facilities")
+def admin_census_facilities(admin=Depends(require_admin)):
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        rows = cur.execute(
+            """
+            SELECT DISTINCT facility_name
+            FROM census_runs
+            WHERE facility_name IS NOT NULL AND TRIM(facility_name) != ''
+            ORDER BY facility_name ASC
+            """
+        ).fetchall()
+        return {"ok": True, "facilities": [r["facility_name"] for r in rows]}
     finally:
         conn.close()
 
