@@ -52,6 +52,12 @@
           <div>
             <label>Facility</label><br/>
             <input id="facility" class="ipt" placeholder="Type facility name exactly as stored"/>
+
+            <div style="margin-top:10px">
+              <label>Admin Token</label><br/>
+              <input id="adminToken" class="ipt" placeholder="Paste ADMIN_TOKEN (saved in browser)" />
+              <div class="hint" style="margin-top:6px">Required for upload/view/export.</div>
+            </div>
           </div>
 
           <div class="pillrow" style="margin-bottom:2px">
@@ -84,6 +90,34 @@
   let rows = [];
   let selectedIndex = -1;
 
+  function getAdminToken(){
+    return (localStorage.getItem("census_admin_token") || "").trim();
+  }
+
+  function setAdminToken(v){
+    localStorage.setItem("census_admin_token", (v || "").trim());
+  }
+
+  async function adminFetch(url, opts){
+    const token = getAdminToken();
+    if(!token){
+      alert("Admin Token is required.");
+      throw new Error("Missing admin token");
+    }
+    const headers = Object.assign({}, (opts && opts.headers) ? opts.headers : {}, {
+      "x-admin-token": token
+    });
+    return fetch(url, Object.assign({}, opts || {}, { headers }));
+  }
+
+  function initTokenUI(){
+    const el = document.getElementById("adminToken");
+    if(!el) return;
+    el.value = getAdminToken();
+    el.addEventListener("change", () => setAdminToken(el.value));
+    el.addEventListener("blur", () => setAdminToken(el.value));
+  }
+
   function setView(v){
     currentView = v;
     document.getElementById("vFull").setAttribute("aria-pressed", v==="full");
@@ -95,7 +129,7 @@
     const facility = document.getElementById("facility").value.trim();
     if(!facility){ alert("Enter a facility name."); return; }
 
-    const res = await fetch(`/admin/census/view?facility_name=${encodeURIComponent(facility)}&view=${encodeURIComponent(currentView)}`);
+    const res = await adminFetch(`/admin/census/view?facility_name=${encodeURIComponent(facility)}&view=${encodeURIComponent(currentView)}`);
     const data = await res.json();
     rows = (data.rows || []);
     selectedIndex = -1;
@@ -152,17 +186,35 @@
     `;
   }
 
-  function exportCsv(){
+  async function exportCsv(){
     const facility = document.getElementById("facility").value.trim();
     if(!facility){ alert("Enter a facility name."); return; }
-    window.location = `/admin/census/export.csv?facility_name=${encodeURIComponent(facility)}&view=${encodeURIComponent(currentView)}`;
+
+    const url = `/admin/census/export.csv?facility_name=${encodeURIComponent(facility)}&view=${encodeURIComponent(currentView)}`;
+    const res = await adminFetch(url, { method: "GET" });
+
+    if(!res.ok){
+      const txt = await res.text().catch(()=> "");
+      alert(`Export failed (${res.status}). ${txt}`);
+      return;
+    }
+
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    const objUrl = URL.createObjectURL(blob);
+    a.href = objUrl;
+    a.download = `census_${facility.replace(/\s+/g,"_")}_${currentView}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objUrl);
   }
 
   document.getElementById("vFull").onclick = () => { setView("full"); load(); };
   document.getElementById("vNew").onclick  = () => { setView("new"); load(); };
   document.getElementById("vDis").onclick  = () => { setView("discharged"); load(); };
   document.getElementById("btnLoad").onclick = load;
-  document.getElementById("btnExport").onclick = exportCsv;
+  document.getElementById("btnExport").onclick = () => exportCsv();
 
   document.getElementById("uploadForm").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -175,7 +227,7 @@
     fd.append("facility_name", facility);
     for(const f of files) fd.append("files", f);
 
-    const res = await fetch("/admin/census/upload", { method:"POST", body: fd });
+    const res = await adminFetch("/admin/census/upload", { method:"POST", body: fd });
     const data = await res.json();
     if(!data.ok){ alert("Upload failed."); return; }
     await load();
@@ -186,6 +238,9 @@
       "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
     }[m]));
   }
+  
+initTokenUI();
+
 </script>
 </body>
 </html>
