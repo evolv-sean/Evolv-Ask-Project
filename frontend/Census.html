@@ -28,22 +28,172 @@
     .pillrow{display:flex;gap:8px;align-items:center}
     .pill{border-radius:999px;border:1px solid #d1d5db;background:#fff;padding:8px 12px;font-weight:900;font-size:12px;cursor:pointer}
     .pill[aria-pressed="true"]{border-color:var(--mint);box-shadow:0 10px 18px rgba(168,230,207,.25)}
-    .split{display:grid;grid-template-columns:420px 1fr;min-height:640px}
-    .list{border-right:1px solid var(--line);background:#fff}
+    .split{
+      display:grid;
+      grid-template-columns:420px 1fr;
+      height:calc(100vh - 260px); /* locks panel height under header */
+    }
+    .list{
+      border-right:1px solid var(--line);
+      background:#fff;
+      overflow-y:auto;      /* ✅ left side scrolls */
+      overscroll-behavior: contain;
+    }
     .item{padding:12px 14px;border-bottom:1px solid #f1f5f9;cursor:pointer}
     .item:hover{background:#f8fafc}
     .item.active{outline:2px solid var(--mint);box-shadow:0 10px 18px rgba(168,230,207,.25)}
+    .list::after{
+      content:"";
+      display:block;
+      height:12px;
+    }
     .title{font-weight:900}
     .sub{font-size:12px;color:var(--muted);margin-top:3px}
-    .detail{padding:14px 16px}
+    .detail{
+      padding:14px 16px;
+      overflow-y:hidden;   /* ✅ right side does NOT scroll */
+    }
     .kv{display:grid;grid-template-columns:180px 1fr;gap:8px 12px;font-size:13px}
     .kv div:nth-child(odd){color:var(--muted);font-weight:900}
     .divider{height:1px;background:#eef2f7;margin:12px 0}
     .hint{font-size:12px;color:var(--muted)}
+
+    /* ✅ Loading overlay */
+    .loading-overlay{
+      position:fixed; inset:0;
+      background:rgba(245,247,250,.72);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:9999;
+      backdrop-filter: blur(2px);
+    }
+    .loading-box{
+      background:#fff;
+      border:1px solid var(--line);
+      border-radius:18px;
+      box-shadow: var(--shadow);
+      padding:16px 18px;
+      display:flex;
+      gap:12px;
+      align-items:center;
+      min-width: 320px;
+    }
+    .spinner{
+      width:22px; height:22px;
+      border-radius:999px;
+      border:3px solid #d1d5db;
+      border-top-color: var(--navy);
+      animation: spin 0.9s linear infinite;
+      flex:0 0 auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text{
+      font-weight:900;
+      color: var(--text);
+      font-size:13px;
+      line-height:1.2;
+    }
+    .loading-sub{
+      margin-top:3px;
+      font-size:12px;
+      color: var(--muted);
+      font-weight:800;
+    }
+
+    /* ✅ Icon button (matches Evolv template) */
+    .icon-btn{
+      display:inline-flex; align-items:center; justify-content:center;
+      width:42px; height:38px;
+      border-radius:12px;
+      border:1px solid rgba(13,59,102,.22);
+      background:#fff;
+      cursor:pointer;
+      transition: box-shadow .15s ease, border-color .15s ease, transform .15s ease;
+    }
+    .icon-btn svg{width:18px;height:18px;stroke:var(--navy);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+    .icon-btn:hover{border-color: rgba(168,230,207,.9); box-shadow: 0 0 0 4px rgba(168,230,207,.35); transform: translateY(-1px);}
+    .icon-btn:active{transform: translateY(0px)}
+
+    /* ✅ Settings modal (matches Evolv template) */
+    .modal-overlay{
+      position:fixed; inset:0;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      background:rgba(245,247,250,.72);
+      backdrop-filter: blur(2px);
+      z-index:10000;
+      padding:16px;
+    }
+    .modal{
+      width:min(720px, 100%);
+      border-radius:18px;
+      border:1px solid rgba(13,59,102,.14);
+      background:#fff;
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .modal-bar{
+      background: var(--navy);
+      color:#fff;
+      padding:14px 16px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      font-weight:900;
+      letter-spacing:.2px;
+    }
+    .modal-body{padding:14px 16px}
+    .modal-actions{
+      padding:0 16px 16px;
+      display:flex;
+      justify-content:flex-end;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .btn-ghost{background:transparent}
+    .help{margin-top:6px;font-size:12px;color:var(--muted);font-weight:800}
   </style>
 </head>
 <body>
   <div class="topbar">Census — Full / New Admissions / Discharges</div>
+  <!-- ✅ Loading overlay -->
+  <div class="loading-overlay" id="loadingOverlay" aria-live="polite" aria-busy="true">
+    <div class="loading-box">
+      <div class="spinner"></div>
+      <div>
+        <div class="loading-text" id="loadingText">Loading…</div>
+        <div class="loading-sub" id="loadingSub">Please wait</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ Settings modal -->
+  <div class="modal-overlay" id="settingsOverlay" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="modal">
+      <div class="modal-bar">
+        <div id="settingsTitle">Settings</div>
+        <button class="icon-btn" id="btnSettingsClose" title="Close" aria-label="Close">
+          <svg viewBox="0 0 24 24">
+            <path d="M6 6l12 12"></path>
+            <path d="M18 6l-12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <label>Admin Token</label>
+        <input id="adminToken" class="ipt" placeholder="Paste ADMIN_TOKEN (saved in browser)" />
+        <div class="help">Required for upload / view / export.</div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="btnSettingsCancel" type="button">Cancel</button>
+        <button class="btn btn-primary" id="btnSettingsSave" type="button">Save</button>
+      </div>
+    </div>
+  </div>
 
   <div class="shell">
     <div class="card">
@@ -52,12 +202,6 @@
           <div>
             <label>Facility</label><br/>
             <input id="facility" class="ipt" placeholder="Type facility name exactly as stored"/>
-
-            <div style="margin-top:10px">
-              <label>Admin Token</label><br/>
-              <input id="adminToken" class="ipt" placeholder="Paste ADMIN_TOKEN (saved in browser)" />
-              <div class="hint" style="margin-top:6px">Required for upload/view/export.</div>
-            </div>
           </div>
 
           <div class="pillrow" style="margin-bottom:2px">
@@ -70,10 +214,19 @@
           <button class="btn btn-primary" id="btnExport">Export CSV</button>
         </div>
 
-        <form id="uploadForm" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-          <input type="file" id="pdfs" multiple accept="application/pdf"/>
-          <button class="btn" type="submit">Upload PDFs</button>
-        </form>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="icon-btn" id="btnSettings" title="Settings" aria-label="Settings">
+            <svg viewBox="0 0 24 24">
+              <path d="M7 10V8a5 5 0 0 1 10 0v2"></path>
+              <rect x="5" y="10" width="14" height="10" rx="2"></rect>
+            </svg>
+          </button>
+
+          <form id="uploadForm" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <input type="file" id="pdfs" multiple accept="application/pdf"/>
+            <button class="btn" type="submit">Upload PDFs</button>
+          </form>
+        </div>
       </div>
 
       <div class="split">
@@ -90,6 +243,41 @@
   let rows = [];
   let selectedIndex = -1;
 
+  function setLoading(isLoading, text, sub){
+    const ov = document.getElementById("loadingOverlay");
+    const t = document.getElementById("loadingText");
+    const s = document.getElementById("loadingSub");
+
+    if(t) t.textContent = text || "Loading…";
+    if(s) s.textContent = sub || "Please wait";
+
+    if(ov) ov.style.display = isLoading ? "flex" : "none";
+
+    // Disable key buttons while loading (prevents double submits)
+    const btnLoad = document.getElementById("btnLoad");
+    const btnExport = document.getElementById("btnExport");
+    const uploadBtn = document.querySelector('#uploadForm button[type="submit"]');
+
+    if(btnLoad) btnLoad.disabled = isLoading;
+    if(btnExport) btnExport.disabled = isLoading;
+    if(uploadBtn) uploadBtn.disabled = isLoading;
+  }
+
+  function openSettings(){
+    const ov = document.getElementById("settingsOverlay");
+    if(ov) ov.style.display = "flex";
+    const inp = document.getElementById("adminToken");
+    if(inp){
+      inp.value = getAdminToken();
+      setTimeout(() => inp.focus(), 0);
+    }
+  }
+
+  function closeSettings(){
+    const ov = document.getElementById("settingsOverlay");
+    if(ov) ov.style.display = "none";
+  }
+
   function getAdminToken(){
     return (localStorage.getItem("census_admin_token") || "").trim();
   }
@@ -101,7 +289,7 @@
   async function adminFetch(url, opts){
     const token = getAdminToken();
     if(!token){
-      alert("Admin Token is required.");
+      openSettings();
       throw new Error("Missing admin token");
     }
     const headers = Object.assign({}, (opts && opts.headers) ? opts.headers : {}, {
@@ -112,10 +300,35 @@
 
   function initTokenUI(){
     const el = document.getElementById("adminToken");
-    if(!el) return;
-    el.value = getAdminToken();
-    el.addEventListener("change", () => setAdminToken(el.value));
-    el.addEventListener("blur", () => setAdminToken(el.value));
+    if(el) el.value = getAdminToken();
+
+    const btnOpen = document.getElementById("btnSettings");
+    const btnClose = document.getElementById("btnSettingsClose");
+    const btnCancel = document.getElementById("btnSettingsCancel");
+    const btnSave = document.getElementById("btnSettingsSave");
+    const overlay = document.getElementById("settingsOverlay");
+
+    if(btnOpen) btnOpen.addEventListener("click", openSettings);
+    if(btnClose) btnClose.addEventListener("click", closeSettings);
+    if(btnCancel) btnCancel.addEventListener("click", closeSettings);
+
+    if(btnSave) btnSave.addEventListener("click", () => {
+      const v = (el ? el.value : "").trim();
+      setAdminToken(v);
+      closeSettings();
+    });
+
+    // click outside modal closes
+    if(overlay){
+      overlay.addEventListener("click", (e) => {
+        if(e.target === overlay) closeSettings();
+      });
+    }
+
+    // ESC closes
+    document.addEventListener("keydown", (e) => {
+      if(e.key === "Escape") closeSettings();
+    });
   }
 
   function setView(v){
@@ -223,14 +436,27 @@
     if(!facility){ alert("Enter a facility name first."); return; }
     if(!files || files.length===0){ alert("Choose one or more PDFs."); return; }
 
-    const fd = new FormData();
-    fd.append("facility_name", facility);
-    for(const f of files) fd.append("files", f);
+    try{
+      setLoading(true, "Uploading PDFs…", "Parsing and saving census records");
 
-    const res = await adminFetch("/admin/census/upload", { method:"POST", body: fd });
-    const data = await res.json();
-    if(!data.ok){ alert("Upload failed."); return; }
-    await load();
+      const fd = new FormData();
+      fd.append("facility_name", facility);
+      for(const f of files) fd.append("files", f);
+
+      const res = await adminFetch("/admin/census/upload", { method:"POST", body: fd });
+      const data = await res.json();
+
+      if(!res.ok || !data.ok){
+        setLoading(false);
+        alert(`Upload failed (${res.status}).`);
+        return;
+      }
+
+      setLoading(true, "Refreshing list…", "Loading results");
+      await load();
+    } finally {
+      setLoading(false);
+    }
   });
 
   function escapeHtml(str){
