@@ -285,7 +285,8 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
 
         # Resident info row (name + room + admit + resident #)
         m = re.search(
-            r"^([A-Za-z'\- ]+,\s*[A-Za-z'\- ]+)\s+.*?\s+([A-Za-z0-9\-]+)\s+(\d{2}/\d{2}/\d{4}).*?\s+([A-Za-z0-9]+)\s*$",
+            # allow periods in names (e.g., "Myra E.")
+            r"^([A-Za-z'\-\. ]+,\s*[A-Za-z'\-\. ]+)\s+.*?\s+([A-Za-z0-9\-]+)\s+(\d{2}/\d{2}/\d{4}).*?\s+([A-Za-z0-9]+)\s*$",
             chunk,
             flags=re.MULTILINE,
         )
@@ -294,6 +295,12 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
         admission_date = m.group(3).strip() if m else ""
         resident_num = m.group(4).strip() if m else ""
 
+        # Fallback: sometimes the row format shifts — grab the first "Last, First" we see after "Resident Name"
+        if not resident_name:
+            m2 = re.search(r"Resident Name.*?\n([A-Za-z'\-\. ]+,\s*[A-Za-z'\-\. ]+)", chunk, flags=re.MULTILINE | re.DOTALL)
+            if m2:
+                resident_name = m2.group(1).strip()
+
         first_name, last_name = _split_name(resident_name)
 
         dob = ""
@@ -301,9 +308,17 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
         if mdob:
             dob = mdob.group(1).strip()
 
+        def _fmt_phone(s: str) -> str:
+            s = re.sub(r"\D+", "", (s or ""))
+            if len(s) == 10:
+                return f"({s[0:3]}) {s[3:6]}-{s[6:10]}"
+            return (s or "").strip()
+
         address = city = state = zip_code = home_phone = ""
+
+        # Pattern A: common "..., City, ST, ZIP (###) ###-####" or "..., City, ST, ZIP ##########"
         madd = re.search(
-            r"^(.+?),\s*([A-Za-z .]+),\s*([A-Z]{2}),\s*(\d{5}).*?(\(\d{3}\)\s*\d{3}-\d{4})",
+            r"^(.+?),\s*([A-Za-z .]+),\s*([A-Z]{2}),\s*(\d{5})(?:-\d{4})?\s+(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\d{10})\b",
             chunk,
             flags=re.MULTILINE,
         )
@@ -312,7 +327,20 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
             city = madd.group(2).strip()
             state = madd.group(3).strip()
             zip_code = madd.group(4).strip()
-            home_phone = madd.group(5).strip()
+            home_phone = _fmt_phone(madd.group(5).strip())
+        else:
+            # Pattern B: "Previous address ... Previous Phone #" line (your Westchester sample uses this)
+            madd2 = re.search(
+                r"Previous address.*?\n(.+?),\s*([A-Za-z .]+),\s*([A-Z]{2}),\s*(\d{5})(?:-\d{4})?\s+(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\d{10})\b",
+                chunk,
+                flags=re.MULTILINE | re.DOTALL,
+            )
+            if madd2:
+                address = madd2.group(1).strip()
+                city = madd2.group(2).strip()
+                state = madd2.group(3).strip()
+                zip_code = madd2.group(4).strip()
+                home_phone = _fmt_phone(madd2.group(5).strip())
 
         primary_ins = primary_number = ""
         mins = re.search(
@@ -354,8 +382,6 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
             reason = mdiag.group(1).strip()
 
         facility_code = ""
-        if resident_num and re.match(r"^[A-Za-z]{2}", resident_num):
-            facility_code = resident_num[:2].upper()
 
         patient_key = "|".join([
             facility_name.upper(),
@@ -562,6 +588,14 @@ def split_document_into_sections(source_text: str, heading_map_override: Optiona
 
 
 
+def extract_facility_code_from_filename(filename: str) -> str:
+    """
+    Extracts facility code from filename.
+    Example: 'CLIFTON.Clifton Rehab.pcc.pdf' -> 'CLIFTON'
+    """
+    if not filename:
+        return ""
+    return filename.split(".", 1)[0].strip().upper()
 
 # ============================
 # SNF Secure Link + PIN helpers
@@ -3360,8 +3394,14 @@ async def admin_census_upload(
 
             parsed = parse_pcc_admission_records_from_pdf_bytes(pdf_bytes)
 
+            # Facility name: UI override > PDF content
             fac_name = (facility_name or "").strip() or (parsed[0]["facility_name"] if parsed else "")
-            fac_code = (facility_code or "").strip() or (parsed[0]["Facility_Code"] if parsed else "")
+
+            # Facility code: UI override > filename (AUTHORITATIVE)
+            fac_code = (facility_code or "").strip()
+            if not fac_code:
+                fac_code = extract_facility_code_from_filename(f.filename)
+
             report_dt = parsed[0].get("report_dt") if parsed else ""
 
             cur.execute(
