@@ -3416,7 +3416,7 @@ async def admin_census_upload(
             fac_code = (facility_code or "").strip()
             if not fac_code:
                 fac_code = extract_facility_code_from_filename(f.filename)
-            )
+
             run_id = cur.lastrowid
 
             for row in parsed:
