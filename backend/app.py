@@ -750,30 +750,19 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
 
     after = chunk[m_hdr.end():]
 
-    # Label line can be either:
-    #   "Resident Name ... Resident #"
-    # or
-    #   "Patient Name ... Patient #"
-    m_labels = re.search(
-        r"^\s*(Resident|Patient) Name.*(Resident|Patient)\s*#\s*$",
-        after,
-        flags=re.MULTILINE | re.IGNORECASE,
-    )
+    # Labels vary a LOT by facility:
+    # - single line: "Resident Name ... Resident #"
+    # - wrapped: "Resident Name ... Orig.Adm.Date" then next line "Resident #"
+    # - sometimes "Patient" instead of "Resident"
+    #
+    # So we anchor on the FIRST occurrence of "Resident #" / "Patient #" anywhere after the header,
+    # and start parsing values immediately after that marker.
+    m_hash = re.search(r"(Resident|Patient)\s*#", after, flags=re.IGNORECASE)
+    if not m_hash:
+        warnings.append("missing_resident_information_labels")
+        return ("", "", "", "", warnings, confidence)
 
-    # Arcadia/Ventura-style: labels are stacked on separate lines, so fall back to the "Resident #" line
-    if m_labels:
-        tail = after[m_labels.end():]
-    else:
-        m_resnum_line = re.search(
-            r"^\s*(Resident|Patient)\s*#\s*$",
-            after,
-            flags=re.MULTILINE | re.IGNORECASE,
-        )
-        if not m_resnum_line:
-            warnings.append("missing_resident_information_labels")
-            return ("", "", "", "", warnings, confidence)
-        tail = after[m_resnum_line.end():]
-        warnings.append("resident_labels_multiline_fallback_used")
+    tail = after[m_hash.end():]
 
     cand_lines = [l.strip() for l in tail.splitlines() if l.strip()]
 
@@ -846,28 +835,26 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
 
 
     # Resident/Patient name (PAD-style)
-    # - Last name: everything before comma, handle suffix Jr/Sr/II/III like PAD
-    # - First name: first word after comma (prevents "W Wing" etc. from leaking in)
+    # IMPORTANT: Arcadia has multi-word last names like "DAMIAN VARGAS, NESTOR"
+    # so we must NOT collapse last name to only the final token.
     resident_name = ""
 
-    # Get last part before comma
+    # Everything before comma = last name (possibly multi-word)
     m_last = re.search(r"^[^,]+", resident_line)
     last_raw = (m_last.group(0) if m_last else "").strip()
 
-    # PAD-style suffix handling (Jr/Sr/II/III)
-    last_tokens = [t for t in re.split(r"\s+", last_raw) if t]
+    # Remove trailing suffix token if present (keep the full last name otherwise)
     suffixes = {"Jr", "Sr", "II", "III"}
-    last_pick = ""
-    if last_tokens:
-        if last_tokens[-1] in suffixes and len(last_tokens) >= 2:
-            last_pick = last_tokens[-2]
-        else:
-            last_pick = last_tokens[-1]
+    last_tokens = [t for t in re.split(r"\s+", last_raw) if t]
+    if last_tokens and last_tokens[-1] in suffixes:
+        last_tokens = last_tokens[:-1]
+    last_keep = " ".join(last_tokens).strip()
 
-    # Clean last name similarly (letters, apostrophe, hyphen)
-    last_clean = re.sub(r"[^A-Za-z'\-]+", "", last_pick)
+    # Clean last name but KEEP spaces/apostrophes/hyphens
+    last_clean = re.sub(r"[^A-Za-z'\- ]+", "", last_keep).strip()
+    last_clean = re.sub(r"\s{2,}", " ", last_clean)
 
-    # First name: FIRST token after comma (PAD: (?<=,\s*)\w+)
+    # First name: FIRST token after comma
     m_first = re.search(r"(?<=,\s*)\w+", resident_line)
     first_clean = (m_first.group(0) if m_first else "").strip()
 
@@ -1048,29 +1035,37 @@ def _extract_pcc_address_phone(chunk: str) -> tuple[str, str, str, str, str, lis
 
 def _extract_pcc_birthdate(chunk: str) -> str:
     """
-    PAD-style DOB extraction that works for both layouts:
-    - "Sex Birthdate Age ..." on one line
-    - "Sex" on one line and "Birthdate" on the next (Arcadia/Ventura-style)
+    PAD-style DOB extraction that works across PCC layouts.
+
+    Reliable pattern in BOTH Arcadia + Seabranch:
+      - Header line contains "Sex Birthdate"
+      - Next line begins with M/F and then the DOB (MM/DD/YYYY)
+        e.g. "M 03/12/1945 80 ..."
     """
     date_any = re.compile(r"\b(0?[1-9]|1[0-2])/(0?[1-9]|[12][0-9]|3[01])/(19|20)\d{2}\b")
 
-    # 1) Preferred: find "Birthdate" label, then take first date after it (works when columns are stacked)
+    # 1) Best: find "Sex Birthdate" header, then grab DOB from the next M/F row
+    m_hdr = re.search(r"^\s*Sex\s+Birthdate\b.*$", chunk, flags=re.IGNORECASE | re.MULTILINE)
+    if m_hdr:
+        after = chunk[m_hdr.end(): m_hdr.end() + 500]
+        m_row = re.search(r"^[MF]\s+(?P<dob>\d{1,2}/\d{1,2}/\d{4})\b", after, flags=re.MULTILINE)
+        if m_row:
+            return (m_row.group("dob") or "").strip()
+
+        # If the row is wrapped oddly, still allow first date after header
+        m_any = date_any.search(after)
+        if m_any:
+            return m_any.group(0).strip()
+
+    # 2) Next-best: a standalone "Birthdate" label (stacked columns)
     m_birth = re.search(r"^\s*Birthdate\s*$", chunk, flags=re.IGNORECASE | re.MULTILINE)
     if m_birth:
-        after = chunk[m_birth.end(): m_birth.end() + 250]  # small window is enough
+        after = chunk[m_birth.end(): m_birth.end() + 500]
         m = date_any.search(after)
         if m:
             return m.group(0).strip()
 
-    # 2) Alternate: "Sex Birthdate ..." on one line (take first date shortly after that label)
-    m_sex_birth = re.search(r"Sex\s+Birthdate", chunk, flags=re.IGNORECASE)
-    if m_sex_birth:
-        after = chunk[m_sex_birth.end(): m_sex_birth.end() + 250]
-        m = date_any.search(after)
-        if m:
-            return m.group(0).strip()
-
-    # 3) Fallback: lines like "M 09/09/1951 74"
+    # 3) Fallback anywhere: lines like "M 09/09/1951 74"
     m_line = re.search(r"^[MF]\s+(\d{1,2}/\d{1,2}/\d{4})\b", chunk, flags=re.MULTILINE)
     if m_line:
         return m_line.group(1).strip()
