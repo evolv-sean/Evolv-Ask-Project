@@ -867,32 +867,53 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
     else:
         warnings.append("missing_resident_name")
 
-    # Room/bed: last room-like token immediately before admission date
-    # NOTE: admission_date may be found from value_window even when resident_line doesn't contain it,
-    # so we must not rely on resident_line.split(admission_date) only.
+    # Room/bed: Ventura sometimes extracts the room AFTER the admission date
+    # (e.g. "... 12/02/2022119-A ..."), so we must not rely on "token before date".
     room_bed = ""
-    if admission_date:
+
+    # Strict PCC room patterns like "319-B", "202-A", "147-1"
+    # NOTE: no \b boundaries so it still matches if glued to digits (e.g. "...2022119-A...")
+    room_pat = re.compile(r"\d{1,4}[A-Z]?(?:-[A-Za-z0-9]{1,6})")
+
+    room_scan = resident_line or value_window or ""
+
+    # Normalize a common Ventura glue case: "Wing 1Corea" -> "Wing 1 Corea"
+    room_scan = re.sub(
+        r"((?:Wing|Unit)\s*\d)(?=[A-Za-z])",
+        r"\1 ",
+        room_scan,
+        flags=re.IGNORECASE,
+    )
+
+    matches = list(room_pat.finditer(room_scan))
+    if matches:
+        # Prefer first room token AFTER "Wing/Unit <n>" if possible
+        m_unit = re.search(r"(?:Wing|Unit)\s*\d", room_scan, flags=re.IGNORECASE)
+        if m_unit:
+            after_unit = [m for m in matches if m.start() > m_unit.end()]
+            room_bed = (after_unit[0] if after_unit else matches[0]).group(0).strip()
+        else:
+            room_bed = matches[0].group(0).strip()
+
+    # Fallback: keep old behavior if we still didn't find it
+    if (not room_bed) and admission_date:
         room_source = resident_line if admission_date in resident_line else value_window
-
-        # Prefer strong PCC room patterns like "319-B", "202-A", "147-1", etc.
-        room_pat = re.compile(r"\b\d{1,4}[A-Z]?(?:-[A-Za-z0-9]{1,4})+\b")
-
         pre = room_source.split(admission_date, 1)[0]
+
         matches = list(room_pat.finditer(pre))
         if matches:
             room_bed = matches[-1].group(0).strip()
         else:
-            # Fallback: last token before the date (existing behavior)
             toks = pre.rstrip().split()
             if toks:
                 room_bed = toks[-1].strip()
                 if room_bed in {"-", "—"} and len(toks) >= 2:
                     room_bed = toks[-2].strip()
 
-        if room_bed:
-            confidence += 0.25
-        else:
-            warnings.append("missing_room_bed")
+    if room_bed:
+        confidence += 0.25
+    else:
+        warnings.append("missing_room_bed")
 
     return (resident_name, room_bed, admission_date, resident_num, warnings, min(confidence, 1.0))
 
@@ -924,12 +945,19 @@ def _extract_pcc_address_phone(chunk: str) -> tuple[str, str, str, str, str, lis
     def _collapse_ws(s: str) -> str:
         return re.sub(r"\s+", " ", (s or "")).strip()
 
+    def _strip_same_as(s: str) -> str:
+        s = _collapse_ws(s)
+        # Remove PCC marker text WITHOUT discarding the real address
+        s = re.sub(r"\bSame as Previous Address\b", " ", s, flags=re.IGNORECASE)
+        s = re.sub(r"^\s*Same as\b", " ", s, flags=re.IGNORECASE)
+        return _collapse_ws(s).strip(" ,")
+
     def _parse_addr_text(addr_text: str):
         nonlocal address, city, state, zip_code
-        addr_text = _collapse_ws(addr_text)
+        addr_text = _strip_same_as(addr_text)
 
-        # PAD behavior: if FIRST token is "Same", treat as blank
-        if re.match(r"^Same\b", addr_text, flags=re.IGNORECASE):
+        # If it was only "Same as ..." (no real address), treat as blank
+        if not addr_text:
             warnings.append("address_marked_same_as_previous")
             return
 
@@ -1002,20 +1030,30 @@ def _extract_pcc_address_phone(chunk: str) -> tuple[str, str, str, str, str, lis
             m_ph = re.search(r"(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\b\d{10}\b)", picked)
             if m_ph:
                 home_phone = _fmt_phone(m_ph.group(1))
-                left = picked[:m_ph.start()].strip(" ,")
-                right = picked[m_ph.end():].strip()
 
-                # Use Previous Address (LEFT of phone). Only fallback to RIGHT if left is empty.
-                if left:
-                    left = re.sub(r"\bSame\s+as\s+Previous\s+Address\b", " ", left, flags=re.IGNORECASE).strip()
-                    _parse_addr_text(left)
-                elif right:
-                    warnings.append("previous_address_blank_used_legal_mailing_fallback")
-                    right = re.sub(r"\bSame\s+as\s+Previous\s+Address\b", " ", right, flags=re.IGNORECASE).strip()
-                    _parse_addr_text(right)
+                left_raw = picked[:m_ph.start()].strip(" ,")
+                right_raw = picked[m_ph.end():].strip()
+
+                left = _strip_same_as(left_raw)
+                right = _strip_same_as(right_raw)
+
+                # Choose the side that actually looks like an address (prevents "Same as ..." winning)
+                chosen = ""
+                if addr_like.search(left):
+                    chosen = left
+                elif addr_like.search(right):
+                    chosen = right
+                else:
+                    chosen = left or right
+
+                if chosen:
+                    if (chosen == right) and (not left):
+                        warnings.append("previous_address_blank_used_legal_mailing_fallback")
+                    _parse_addr_text(chosen)
+
             else:
                 # Address-only line (Ventura): parse the whole thing as address
-                picked = re.sub(r"\bSame\s+as\s+Previous\s+Address\b", " ", picked, flags=re.IGNORECASE).strip()
+                picked = _strip_same_as(picked)
                 _parse_addr_text(picked)
 
 
