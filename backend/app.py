@@ -985,12 +985,18 @@ def _extract_pcc_address_phone(chunk: str) -> tuple[str, str, str, str, str, lis
 
             # Strip header labels that sometimes leak into the captured row
             picked = re.sub(
-                r"\bPrevious address\b|\bPrevious Phone\s*(?:#|No\.?)?\b|\bLegal Mailing address\b",
+                r"\bPrevious\s+address\b"
+                r"|\bPrevious\s+Phone\s*(?:#|No\.?)?\b"
+                r"|\bLegal\s+Mailing\s+address\b",
                 " ",
                 picked,
                 flags=re.IGNORECASE,
             )
             picked = _collapse_ws(picked)
+
+            # Ventura PDFs sometimes tack "Same as Previous Address" onto the same line (or split across whitespace)
+            # If it appears anywhere, drop it and anything after it.
+            picked = re.split(r"\bSame\s+as\s+Previous\s+Address\b", picked, maxsplit=1, flags=re.IGNORECASE)[0].strip()
 
             # If we have a phone, split around it. Otherwise treat as address text.
             m_ph = re.search(r"(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\b\d{10}\b)", picked)
@@ -1001,15 +1007,15 @@ def _extract_pcc_address_phone(chunk: str) -> tuple[str, str, str, str, str, lis
 
                 # Use Previous Address (LEFT of phone). Only fallback to RIGHT if left is empty.
                 if left:
-                    left = re.sub(r"\bSame as Previous Address\b", " ", left, flags=re.IGNORECASE).strip()
+                    left = re.sub(r"\bSame\s+as\s+Previous\s+Address\b", " ", left, flags=re.IGNORECASE).strip()
                     _parse_addr_text(left)
                 elif right:
                     warnings.append("previous_address_blank_used_legal_mailing_fallback")
-                    right = re.sub(r"\bSame as Previous Address\b", " ", right, flags=re.IGNORECASE).strip()
+                    right = re.sub(r"\bSame\s+as\s+Previous\s+Address\b", " ", right, flags=re.IGNORECASE).strip()
                     _parse_addr_text(right)
             else:
                 # Address-only line (Ventura): parse the whole thing as address
-                picked = re.sub(r"\bSame as Previous Address\b", " ", picked, flags=re.IGNORECASE).strip()
+                picked = re.sub(r"\bSame\s+as\s+Previous\s+Address\b", " ", picked, flags=re.IGNORECASE).strip()
                 _parse_addr_text(picked)
 
 
