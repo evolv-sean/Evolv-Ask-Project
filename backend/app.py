@@ -437,10 +437,12 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
 
 def _extract_pcc_address_phone(chunk: str) -> tuple[str, str, str, str, str, list[str]]:
     """
-    PCC PDFs are most consistent if we parse the window:
-      Legal Mailing address  ...  Sex
-    This mirrors your PAD logic and fixes “first patient missing phone/address”
-    and other inconsistencies.
+    PCC PDFs: Address is most reliably found under the "Previous address" column
+    on the row beneath:
+        "Previous address  Previous Phone #  Legal Mailing address"
+
+    We parse that row first (Previous Address + Phone),
+    then fall back to the "Legal Mailing address ... Sex" window only if needed.
 
     Returns: (address, city, state, zip_code, home_phone, warnings)
     """
@@ -460,52 +462,94 @@ def _extract_pcc_address_phone(chunk: str) -> tuple[str, str, str, str, str, lis
     def _collapse_ws(s: str) -> str:
         return re.sub(r"\s+", " ", (s or "")).strip()
 
-    # 1) Primary window: between "Legal Mailing address" and "Sex"
-    m_win = re.search(
-        r"Legal Mailing address(?P<body>.*?)(?:\n\s*Sex\b|\s+Sex\b)",
-        chunk,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    body = (m_win.group("body") if m_win else "").strip()
+    def _parse_addr_text(addr_text: str):
+        nonlocal address, city, state, zip_code
+        addr_text = _collapse_ws(addr_text)
 
-    # 2) If we didn't find the window, keep a fallback (avoid total failure)
-    if not body:
-        warnings.append("legal_mailing_window_not_found")
-        body = chunk
+        # PAD behavior: if FIRST token is "Same", treat as blank
+        if re.match(r"^Same\b", addr_text, flags=re.IGNORECASE):
+            warnings.append("address_marked_same_as_previous")
+            return
 
-    # Phone from legal mailing window
-    home_phone = _first_phone(body)
-
-    # Address text = window body without the phone number
-    body_wo_phone = re.sub(r"(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\b\d{10}\b)", " ", body)
-    addr_text = _collapse_ws(body_wo_phone)
-
-    # Handle "Same as Previous Address" / "Same ..."
-    # PAD only blanks when the FIRST word is "Same" (it does NOT blank when "Same as Previous Address"
-    # appears at the END of the address line).
-    addr_text = re.sub(r"\s*Same as Previous Address\s*$", "", addr_text, flags=re.IGNORECASE).strip()
-
-    if re.match(r"^Same\b", addr_text, flags=re.IGNORECASE):
-        warnings.append("address_marked_same_as_previous")
-        addr_text = ""
-
-    # Best-effort parse: "Street, City, ST 12345"
-    if addr_text:
         m_addr = re.search(
-            r"^(?P<street>.+?),\s*(?P<city>[A-Za-z .'\-]+),\s*(?P<state>[A-Z]{2})\s+(?P<zip>\d{5}(?:-\d{4})?)\b",
+            r"^(?P<street>.+?),\s*(?P<city>[A-Za-z .'\-]+),\s*(?P<state>[A-Z]{2})\s+(?P<zip>(?:\d{5}(?:-\d{4})?|\d{9}))\b",
             addr_text,
         )
         if m_addr:
             address = m_addr.group("street").strip()
             city = m_addr.group("city").strip()
             state = m_addr.group("state").strip()
-            zip_code = m_addr.group("zip").strip()[:5]
+
+            zip_raw = (m_addr.group("zip") or "").strip()
+            if re.fullmatch(r"\d{9}", zip_raw):
+                zip_code = f"{zip_raw[:5]}-{zip_raw[5:]}"
+            else:
+                zip_code = zip_raw
         else:
-            # Keep full text if we can’t split cleanly; better than losing it
             warnings.append("address_city_state_zip_parse_failed")
             address = addr_text
 
-    # 3) Phone fallback: parse between CONTACTS and DIAGNOSIS (PAD AltPhoneGroup)
+    # ------------------------------------------------------------
+    # 1) PRIMARY: row under "Previous address  Previous Phone #  Legal Mailing address"
+    # ------------------------------------------------------------
+    m_hdr = re.search(
+        r"^Previous address\s+Previous Phone\s*#\s+Legal Mailing address\s*$",
+        chunk,
+        flags=re.MULTILINE | re.IGNORECASE,
+    )
+    if m_hdr:
+        tail = chunk[m_hdr.end():]
+        lines = [l.strip() for l in tail.splitlines() if l.strip()]
+
+        # find the first line that contains a phone number
+        line_with_phone = ""
+        for l in lines[:10]:
+            if re.search(r"(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\b\d{10}\b)", l):
+                line_with_phone = l
+                break
+
+        if line_with_phone:
+            # split into: [previous address] [phone] [legal mailing address]
+            m_ph = re.search(r"(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\b\d{10}\b)", line_with_phone)
+            if m_ph:
+                home_phone = _fmt_phone(m_ph.group(1))
+                left = line_with_phone[:m_ph.start()].strip(" ,")
+                right = line_with_phone[m_ph.end():].strip()
+
+                # Use Previous Address (LEFT of phone). Only fallback to RIGHT if left is empty.
+                if left:
+                    _parse_addr_text(left)
+                elif right:
+                    warnings.append("previous_address_blank_used_legal_mailing_fallback")
+                    # strip trailing “Same as Previous Address” if it appears on the right side
+                    right = re.sub(r"\s*Same as Previous Address\s*$", "", right, flags=re.IGNORECASE).strip()
+                    _parse_addr_text(right)
+
+    # ------------------------------------------------------------
+    # 2) FALLBACK: your existing "Legal Mailing address ... Sex" window
+    # ------------------------------------------------------------
+    if not address:
+        m_win = re.search(
+            r"Legal Mailing address(?P<body>.*?)(?:\n\s*Sex\b|\s+Sex\b)",
+            chunk,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        body = (m_win.group("body") if m_win else "").strip()
+        if body:
+            if not home_phone:
+                home_phone = _first_phone(body)
+
+            body_wo_phone = re.sub(r"(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\b\d{10}\b)", " ", body)
+            addr_text = _collapse_ws(body_wo_phone)
+            addr_text = re.sub(r"\s*Same as Previous Address\s*$", "", addr_text, flags=re.IGNORECASE).strip()
+            if addr_text:
+                _parse_addr_text(addr_text)
+        else:
+            warnings.append("legal_mailing_window_not_found")
+
+    # ------------------------------------------------------------
+    # 3) Phone fallback: CONTACTS ... DIAGNOSIS
+    # ------------------------------------------------------------
     if not home_phone:
         m_contacts = re.search(
             r"CONTACTS(?P<cbody>.*?)(?:\n\s*DIAGNOSIS\b|\s+DIAGNOSIS\b)",
@@ -567,8 +611,8 @@ def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
         primary_ins = ""
         primary_number = ""
 
-        # PAD-style: read ONLY the "Primary Payer ..." line in the PAYER INFORMATION section
-        # and split on "#" (works for "Medicare #", "Policy #", "Group #", etc.)
+        # PAD-style: parse ONLY the "Primary Payer ..." line.
+        # This works whether the PDF uses "Medicare #", "Policy #", "Group #", etc.
         m_primary_line = re.search(
             r"^Primary Payer\s+(?P<rest>.+)$",
             chunk,
@@ -578,44 +622,44 @@ def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
         if m_primary_line:
             rest = re.sub(r"\s+", " ", (m_primary_line.group("rest") or "")).strip()
 
-            # Normalize common variants
+            # Private Pay normalization
             if re.search(r"\bPrivate\b", rest, flags=re.IGNORECASE):
                 primary_ins = "Private Pay"
                 primary_number = ""
             else:
-                # PAD logic: split on the first "#" and treat left side as payer name
-                if "#" in rest:
-                    left, right = rest.split("#", 1)
-                    left = left.strip()
-                    right = right.strip()
+                # Prefer explicit "Ins. Company <name>" if present
+                m_company = re.search(r"\bIns\.\s*Company\s+(?P<name>.+?)\s*$", rest, flags=re.IGNORECASE)
+                if m_company:
+                    primary_ins = m_company.group("name").strip()
 
-                    # PAD removes the LAST token on the left side (often "Medicare" right before "#")
-                    left_tokens = left.split()
-                    if left_tokens and left_tokens[-1].lower() in {"medicare", "medicaid", "policy", "group"}:
-                        left_tokens = left_tokens[:-1]
-                    primary_ins = " ".join(left_tokens).strip() or left
+                # Otherwise split on first "#": left side = payer name, right side begins with ID
+                if not primary_ins:
+                    if "#" in rest:
+                        left, right = rest.split("#", 1)
+                        left = left.strip()
+                        right = right.strip()
 
-                    # Number = first token on the right side (if present)
-                    primary_number = (right.split() or [""])[0].strip()
-                else:
-                    # No "#": whole rest is the payer name
-                    primary_ins = rest
-                    primary_number = ""
+                        # Remove trailing token like "Medicare"/"Medicaid"/"Policy"/"Group" right before "#"
+                        left_tokens = left.split()
+                        if left_tokens and left_tokens[-1].lower() in {"medicare", "medicaid", "policy", "group"}:
+                            left_tokens = left_tokens[:-1]
+                        primary_ins = " ".join(left_tokens).strip() or left
 
-        # Clean up weird edge cases like insurance accidentally becoming just "1"
+                        # ID number: first token after "#"
+                        primary_number = (right.split() or [""])[0].strip()
+                    else:
+                        primary_ins = rest
+                        primary_number = ""
+
+        # Fallback: separate "Policy #:" block (only for number, not payer name)
+        if not primary_number:
+            m_pol = re.search(r"^Policy\s*#:\s*\n?([A-Za-z0-9\-]+)\b", chunk, flags=re.MULTILINE)
+            if m_pol:
+                primary_number = m_pol.group(1).strip()
+
+        # Guardrail: never allow nonsense insurance like "1"
         if primary_ins.strip() in {"1", "#1"}:
             primary_ins = ""
-
-        # Fallbacks (only if payer window missing)
-        if not primary_ins:
-            m_ins1 = re.search(r"^Insurance Name\s*#1\s*\n([^\n]+)$", chunk, flags=re.MULTILINE)
-            if m_ins1:
-                primary_ins = m_ins1.group(1).strip()
-
-        if not primary_number:
-            m_pol1 = re.search(r"^Insurance Policy\s*#1\s*\n([A-Za-z0-9\-]+)$", chunk, flags=re.MULTILINE)
-            if m_pol1:
-                primary_number = m_pol1.group(1).strip()
 
         attending = ""
         matt = re.search(r"^Attending Physician\s*\n([^\n]+)$", chunk, flags=re.MULTILINE)
