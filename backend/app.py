@@ -437,7 +437,10 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
 
 def _extract_pcc_address_phone(chunk: str) -> tuple[str, str, str, str, str, list[str]]:
     """
-    Extract address + phone from the PCC 'Previous address / Legal Mailing address' section.
+    PCC PDFs are most consistent if we parse the window:
+      Legal Mailing address  ...  Sex
+    This mirrors your PAD logic and fixes “first patient missing phone/address”
+    and other inconsistencies.
 
     Returns: (address, city, state, zip_code, home_phone, warnings)
     """
@@ -450,52 +453,70 @@ def _extract_pcc_address_phone(chunk: str) -> tuple[str, str, str, str, str, lis
             return f"({s[0:3]}) {s[3:6]}-{s[6:10]}"
         return (s or "").strip()
 
-    m_hdr = re.search(
-        r"^Previous address\s+Previous Phone\s*#\s+Legal Mailing address\s*$",
+    def _first_phone(text: str) -> str:
+        m = re.search(r"(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\b\d{10}\b)", text or "")
+        return _fmt_phone(m.group(1)) if m else ""
+
+    def _collapse_ws(s: str) -> str:
+        return re.sub(r"\s+", " ", (s or "")).strip()
+
+    # 1) Primary window: between "Legal Mailing address" and "Sex"
+    m_win = re.search(
+        r"Legal Mailing address(?P<body>.*?)(?:\n\s*Sex\b|\s+Sex\b)",
         chunk,
-        flags=re.MULTILINE
+        flags=re.IGNORECASE | re.DOTALL,
     )
-    if not m_hdr:
-        warnings.append("missing_address_header")
-        return (address, city, state, zip_code, home_phone, warnings)
+    body = (m_win.group("body") if m_win else "").strip()
 
-    tail = chunk[m_hdr.end():]
-    cand_lines = [l.strip() for l in tail.splitlines() if l.strip()]
-    line = cand_lines[0] if cand_lines else ""
-    if not line:
-        warnings.append("missing_address_line")
-        return (address, city, state, zip_code, home_phone, warnings)
+    # 2) If we didn't find the window, keep a fallback (avoid total failure)
+    if not body:
+        warnings.append("legal_mailing_window_not_found")
+        body = chunk
 
-    m = re.search(
-        r"^(?P<addr>.+?),\s*(?P<city>[A-Za-z .'\-]+),\s*(?P<state>[A-Z]{2}),\s*(?P<zip>\d{5})(?:-\d{4})?\s+(?P<phone>(?:\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4})|\d{10})\b",
-        line,
-    )
-    if m:
-        address = m.group("addr").strip()
-        city = m.group("city").strip()
-        state = m.group("state").strip()
-        zip_code = m.group("zip").strip()
-        home_phone = _fmt_phone(m.group("phone").strip())
-        return (address, city, state, zip_code, home_phone, warnings)
+    # Phone from legal mailing window
+    home_phone = _first_phone(body)
 
-    # Fallback: search a few lines
-    for l in cand_lines[:5]:
-        m2 = re.search(
-            r"^(?P<addr>.+?),\s*(?P<city>[A-Za-z .'\-]+),\s*(?P<state>[A-Z]{2}),\s*(?P<zip>\d{5})(?:-\d{4})?\b",
-            l,
+    # Address text = window body without the phone number
+    body_wo_phone = re.sub(r"(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\b\d{10}\b)", " ", body)
+    addr_text = _collapse_ws(body_wo_phone)
+
+    # Handle "Same as Previous Address" / "Same ..."
+    if re.search(r"\bSame\b", addr_text, flags=re.IGNORECASE):
+        warnings.append("address_marked_same_as_previous")
+        addr_text = ""
+
+    # Best-effort parse: "Street, City, ST 12345"
+    if addr_text:
+        m_addr = re.search(
+            r"^(?P<street>.+?),\s*(?P<city>[A-Za-z .'\-]+),\s*(?P<state>[A-Z]{2})\s+(?P<zip>\d{5}(?:-\d{4})?)\b",
+            addr_text,
         )
-        if m2:
-            address = m2.group("addr").strip()
-            city = m2.group("city").strip()
-            state = m2.group("state").strip()
-            zip_code = m2.group("zip").strip()
-            mp = re.search(r"(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\b\d{10}\b)", l)
-            if mp:
-                home_phone = _fmt_phone(mp.group(1))
-            warnings.append("address_fallback_used")
-            return (address, city, state, zip_code, home_phone, warnings)
+        if m_addr:
+            address = m_addr.group("street").strip()
+            city = m_addr.group("city").strip()
+            state = m_addr.group("state").strip()
+            zip_code = m_addr.group("zip").strip()[:5]
+        else:
+            # Keep full text if we can’t split cleanly; better than losing it
+            warnings.append("address_city_state_zip_parse_failed")
+            address = addr_text
 
-    warnings.append("address_parse_failed")
+    # 3) Phone fallback: parse between CONTACTS and DIAGNOSIS (PAD AltPhoneGroup)
+    if not home_phone:
+        m_contacts = re.search(
+            r"CONTACTS(?P<cbody>.*?)(?:\n\s*DIAGNOSIS\b|\s+DIAGNOSIS\b)",
+            chunk,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if m_contacts:
+            alt_phone = _first_phone(m_contacts.group("cbody"))
+            if alt_phone:
+                home_phone = alt_phone
+                warnings.append("phone_fallback_from_contacts_used")
+
+    if not home_phone:
+        warnings.append("phone_parse_failed")
+
     return (address, city, state, zip_code, home_phone, warnings)
 
 
@@ -542,34 +563,42 @@ def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
         primary_ins = ""
         primary_number = ""
 
-        m_ins1 = re.search(r"^Insurance Name\s*#1\s*\n([^\n]+)$", chunk, flags=re.MULTILINE)
-        if m_ins1:
-            primary_ins = m_ins1.group(1).strip()
+        # PAD-style: take payer text after "Primary Payer" and before "Policy #"
+        m_payer = re.search(
+            r"Primary Payer(?P<body>.*?)(?:Policy\s*#|Policy\s*#\:)",
+            chunk,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if m_payer:
+            payer_text = re.sub(r"\s+", " ", (m_payer.group("body") or "")).strip()
+            payer_text = payer_text.strip(":-").strip()
+            # sometimes the payer block includes extra headings; clip if needed
+            payer_text = re.split(r"\bOTHER INFORMATION\b", payer_text, flags=re.IGNORECASE)[0].strip()
+
+            if re.search(r"\bPrivate\b", payer_text, flags=re.IGNORECASE):
+                primary_ins = "Private Pay"
+            else:
+                primary_ins = payer_text
+
+        # Policy number: best-effort after "Policy #"
+        m_pol = re.search(
+            r"(?:Policy\s*#|Policy\s*#\:)\s*(?P<pol>[A-Za-z0-9\-]+)",
+            chunk,
+            flags=re.IGNORECASE,
+        )
+        if m_pol:
+            primary_number = m_pol.group("pol").strip()
+
+        # Fallbacks (only if payer window missing)
+        if not primary_ins:
+            m_ins1 = re.search(r"^Insurance Name\s*#1\s*\n([^\n]+)$", chunk, flags=re.MULTILINE)
+            if m_ins1:
+                primary_ins = m_ins1.group(1).strip()
+
+        if not primary_number:
             m_pol1 = re.search(r"^Insurance Policy\s*#1\s*\n([A-Za-z0-9\-]+)$", chunk, flags=re.MULTILINE)
             if m_pol1:
                 primary_number = m_pol1.group(1).strip()
-
-        if not primary_ins:
-            m_pay = re.search(
-                r"^Primary Payer\s+(.+?)\s+(?:Medicare|Medicaid|Mngd|Managed|Insurance|HMO|PPO)\b",
-                chunk,
-                flags=re.MULTILINE,
-            )
-            if m_pay:
-                primary_ins = m_pay.group(1).strip()
-
-            m_id = re.search(r"\b(Medicare|Medicaid)\s*#\s*([A-Za-z0-9]+)\b", chunk)
-            if m_id:
-                primary_number = m_id.group(2).strip()
-            else:
-                m_pol = re.search(r"^Policy\s*#:\s*\n?([A-Za-z0-9\-]+)\b", chunk, flags=re.MULTILINE)
-                if m_pol:
-                    primary_number = m_pol.group(1).strip()
-
-        if not primary_ins:
-            m_ins = re.search(r"^Insurance Name:\s*\n([^\n]+)$", chunk, flags=re.MULTILINE)
-            if m_ins:
-                primary_ins = m_ins.group(1).strip()
 
         attending = ""
         matt = re.search(r"^Attending Physician\s*\n([^\n]+)$", chunk, flags=re.MULTILINE)
@@ -582,9 +611,30 @@ def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
             primary_care = mpcp.group(1).strip()
 
         reason = ""
-        mdiag = re.search(r"^Diagnosis\s*\n([^\n]+)$", chunk, flags=re.MULTILINE)
-        if mdiag:
-            reason = mdiag.group(1).strip()
+
+        # PAD-style: DIAGNOSIS INFORMATION handling
+        if re.search(r"DIAGNOSIS INFORMATION\s*\(No Data Found\)", chunk, flags=re.IGNORECASE):
+            reason = "na"
+        else:
+            # Most reliable anchor in these PDFs (per your PAD flow)
+            m_diag = re.search(
+                r"Scale Rank Classification\s*\n(?P<line>.+)",
+                chunk,
+                flags=re.IGNORECASE,
+            )
+            if m_diag:
+                line = (m_diag.group("line") or "").strip()
+                # remove leading date if present (PAD removes MM/DD/YYYY)
+                line = re.sub(r"^\d{2}/\d{2}/\d{4}\s*", "", line).strip()
+                # if the heading leaks in, crop after it
+                line = re.sub(r"^DIAGNOSIS INFORMATION\s*", "", line, flags=re.IGNORECASE).strip()
+                reason = line
+
+        # final fallback: old "Diagnosis" label
+        if not reason:
+            mdiag = re.search(r"^Diagnosis\s*\n([^\n]+)$", chunk, flags=re.MULTILINE)
+            if mdiag:
+                reason = mdiag.group(1).strip()
 
         facility_code = ""
 
