@@ -11,4 +11,4 @@ python-multipart
 reportlab
 weasyprint
 pdfplumber
-
+pdftotext
