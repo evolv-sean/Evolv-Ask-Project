@@ -481,7 +481,11 @@ def _extract_pcc_address_phone(chunk: str) -> tuple[str, str, str, str, str, lis
     addr_text = _collapse_ws(body_wo_phone)
 
     # Handle "Same as Previous Address" / "Same ..."
-    if re.search(r"\bSame\b", addr_text, flags=re.IGNORECASE):
+    # PAD only blanks when the FIRST word is "Same" (it does NOT blank when "Same as Previous Address"
+    # appears at the END of the address line).
+    addr_text = re.sub(r"\s*Same as Previous Address\s*$", "", addr_text, flags=re.IGNORECASE).strip()
+
+    if re.match(r"^Same\b", addr_text, flags=re.IGNORECASE):
         warnings.append("address_marked_same_as_previous")
         addr_text = ""
 
@@ -563,31 +567,44 @@ def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
         primary_ins = ""
         primary_number = ""
 
-        # PAD-style: take payer text after "Primary Payer" and before "Policy #"
-        m_payer = re.search(
-            r"Primary Payer(?P<body>.*?)(?:Policy\s*#|Policy\s*#\:)",
+        # PAD-style: read ONLY the "Primary Payer ..." line in the PAYER INFORMATION section
+        # and split on "#" (works for "Medicare #", "Policy #", "Group #", etc.)
+        m_primary_line = re.search(
+            r"^Primary Payer\s+(?P<rest>.+)$",
             chunk,
-            flags=re.IGNORECASE | re.DOTALL,
+            flags=re.IGNORECASE | re.MULTILINE,
         )
-        if m_payer:
-            payer_text = re.sub(r"\s+", " ", (m_payer.group("body") or "")).strip()
-            payer_text = payer_text.strip(":-").strip()
-            # sometimes the payer block includes extra headings; clip if needed
-            payer_text = re.split(r"\bOTHER INFORMATION\b", payer_text, flags=re.IGNORECASE)[0].strip()
 
-            if re.search(r"\bPrivate\b", payer_text, flags=re.IGNORECASE):
+        if m_primary_line:
+            rest = re.sub(r"\s+", " ", (m_primary_line.group("rest") or "")).strip()
+
+            # Normalize common variants
+            if re.search(r"\bPrivate\b", rest, flags=re.IGNORECASE):
                 primary_ins = "Private Pay"
+                primary_number = ""
             else:
-                primary_ins = payer_text
+                # PAD logic: split on the first "#" and treat left side as payer name
+                if "#" in rest:
+                    left, right = rest.split("#", 1)
+                    left = left.strip()
+                    right = right.strip()
 
-        # Policy number: best-effort after "Policy #"
-        m_pol = re.search(
-            r"(?:Policy\s*#|Policy\s*#\:)\s*(?P<pol>[A-Za-z0-9\-]+)",
-            chunk,
-            flags=re.IGNORECASE,
-        )
-        if m_pol:
-            primary_number = m_pol.group("pol").strip()
+                    # PAD removes the LAST token on the left side (often "Medicare" right before "#")
+                    left_tokens = left.split()
+                    if left_tokens and left_tokens[-1].lower() in {"medicare", "medicaid", "policy", "group"}:
+                        left_tokens = left_tokens[:-1]
+                    primary_ins = " ".join(left_tokens).strip() or left
+
+                    # Number = first token on the right side (if present)
+                    primary_number = (right.split() or [""])[0].strip()
+                else:
+                    # No "#": whole rest is the payer name
+                    primary_ins = rest
+                    primary_number = ""
+
+        # Clean up weird edge cases like insurance accidentally becoming just "1"
+        if primary_ins.strip() in {"1", "#1"}:
+            primary_ins = ""
 
         # Fallbacks (only if payer window missing)
         if not primary_ins:
