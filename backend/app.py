@@ -3733,24 +3733,17 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
 
                 parsed = parse_pcc_admission_records_from_pdf_path(p)
 
-                try:
-                    # existing code continues here (fac_name/fac_code/run insert/patient loop)
-                    pass
-                finally:
-                    # help Python release memory sooner on Render
-                    try:
-                        del parsed
-                    except Exception:
-                        pass
-                    gc.collect()
-
                 # Facility name: filename (AUTHORITATIVE) > UI override > PDF content
                 fac_name = extract_facility_name_from_filename(filename)
                 if not fac_name:
                     fac_name = facility_name_override or (parsed[0]["facility_name"] if parsed else "")
 
                 # Facility code: UI override > filename (AUTHORITATIVE) > PDF content
-                fac_code = facility_code_override or extract_facility_code_from_filename(filename) or (parsed[0].get("facility_code") if parsed else "")
+                fac_code = (
+                    facility_code_override
+                    or extract_facility_code_from_filename(filename)
+                    or (parsed[0].get("facility_code") if parsed else "")
+                )
 
                 report_dt = (parsed[0].get("report_dt") if parsed else None)
 
@@ -3833,6 +3826,13 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                     """,
                     (job_id, filename, "Inserted", run_id, rows_inserted),
                 )
+
+                # ✅ NOW it is safe to release memory
+                try:
+                    del parsed
+                except Exception:
+                    pass
+                gc.collect()
 
                 processed += 1
                 _job_set(conn, job_id, "running", processed=processed, message=f"Processed: {filename}")
