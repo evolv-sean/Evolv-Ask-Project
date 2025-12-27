@@ -351,16 +351,19 @@
       </div>
     </div> <!-- closes .modal -->
   </div> <!-- closes #uploadOverlay -->
-  <!-- ✅ Sensys Census modal -->
-  <div class="overlay" id="sensysOverlay" style="display:none">
-    <div class="modal" style="max-width:900px;">
-      <div class="modal-head">
+  <!-- ✅ Sensys Census modal (matches Evolv modal template) -->
+  <div class="modal-overlay" id="sensysOverlay" role="dialog" aria-modal="true" aria-labelledby="sensysTitle">
+    <div class="modal" style="width:min(900px, 100%);">
+      <div class="modal-bar">
         <div>
-          <div class="modal-title">Sensys Census</div>
-          <div class="modal-sub">Upload a Sensys CSV and compare to the latest census run for the selected facility.</div>
+          <div id="sensysTitle">Sensys Census</div>
+          <div style="font-size:12px;font-weight:800;opacity:.92;margin-top:2px;">
+            Upload a Sensys CSV and compare to the latest census runs across ALL facilities.
+          </div>
         </div>
-        <button class="iconbtn" id="btnSensysClose" aria-label="Close" type="button">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+
+        <button class="icon-btn" id="btnSensysClose" title="Close" aria-label="Close" type="button">
+          <svg viewBox="0 0 24 24">
             <path d="M6 6l12 12"></path>
             <path d="M18 6l-12 12"></path>
           </svg>
@@ -369,24 +372,40 @@
 
       <div class="modal-body">
         <div class="help" style="margin-bottom:10px;">
-          Uses the facility you selected on the page. Matching is done by normalized First/Last + DOB.
+          System-wide check. Matching is done by normalized First/Last + DOB across the latest run for every facility.
         </div>
 
-        <div id="sensysDropzone" class="dropzone" style="margin-top:8px;">
-          <div style="font-weight:700;">Drag & drop a CSV here</div>
-          <div class="help" style="margin-top:6px;">Or browse to pick a file.</div>
+        <!-- Dropzone (inline styling so we don't depend on missing .dropzone CSS) -->
+        <div id="sensysDropzone" style="
+          border:1px dashed rgba(13,59,102,.22);
+          border-radius:16px;
+          padding:14px;
+          background: rgba(13,59,102,.03);
+          font-weight:900;
+          color: var(--navy);
+          text-align:center;
+          min-height:160px;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          flex-direction:column;
+        ">
+          Drag & drop a CSV here<br/>
+          <span style="font-weight:800;color:var(--muted);font-size:12px;">or use Browse</span>
+
           <div style="margin-top:10px;">
             <button class="btn" id="btnSensysBrowse" type="button">Browse</button>
             <input id="sensysFile" type="file" accept=".csv,text/csv" style="display:none" />
           </div>
+
           <div class="help" id="sensysFileName" style="margin-top:10px;">No file selected.</div>
         </div>
 
-        <div style="margin-top:12px;">
-          <div class="help" id="sensysStatusText" style="min-height:18px;"></div>
-          <div style="height:10px;background:#edf2f7;border-radius:999px;overflow:hidden;">
-            <div id="sensysBar" style="height:10px;width:0%;background:#2d6cdf;"></div>
-          </div>
+        <div class="divider"></div>
+
+        <div class="hint" id="sensysStatusText"></div>
+        <div style="height:10px;border-radius:999px;border:1px solid rgba(13,59,102,.14);overflow:hidden;background:#fff;">
+          <div id="sensysBar" style="height:100%;width:0%;background: var(--mint);"></div>
         </div>
 
         <!-- Results -->
@@ -416,13 +435,14 @@
           </div>
         </div>
 
-        <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;flex-wrap:wrap;margin-top:14px;">
-          <button class="btn" id="btnSensysCancel" type="button">Cancel</button>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="btnSensysCancel" type="button">Cancel</button>
           <button class="btn btn-primary" id="btnSensysProcess" type="button">Process CSV</button>
         </div>
       </div>
     </div>
   </div>
+
   <!-- ✅ Success toast (shows patient upload count) -->
   <div class="toast" id="uploadToast" role="status" aria-live="polite">
     <div class="toast-top">
@@ -987,6 +1007,14 @@
     if(ov) ov.style.display = "none";
   }
 
+  // ESC closes Sensys too (matches Settings behavior)
+  document.addEventListener("keydown", (e) => {
+    if(e.key === "Escape"){
+      const ov = document.getElementById("sensysOverlay");
+      if(ov && ov.style.display === "flex") closeSensys();
+    }
+  });
+
   function setSensysProgress(text, pct){
     const t = document.getElementById("sensysStatusText");
     const bar = document.getElementById("sensysBar");
@@ -1077,23 +1105,16 @@
 
     if(btnProcess){
       btnProcess.addEventListener("click", async () => {
-        const facilitySel = document.getElementById("facility");
-        const facility = facilitySel ? (facilitySel.value || "").trim() : "";
-        if(!facility){
-          alert("Select a facility first.");
-          return;
-        }
         if(!selectedSensysFile){
           alert("Select a CSV file first.");
           return;
         }
 
-        setLoading(true, "Processing Sensys CSV…", "Comparing to latest census run");
+        setLoading(true, "Processing Sensys CSV…", "Comparing to latest census runs across all facilities");
         setSensysProgress("Uploading…", 10);
 
         try{
           const fd = new FormData();
-          fd.append("facility_name", facility);
           fd.append("file", selectedSensysFile);
 
           const res = await adminFetch("/admin/census/sensys/process", { method:"POST", body: fd });
