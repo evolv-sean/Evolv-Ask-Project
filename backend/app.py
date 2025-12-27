@@ -15,6 +15,7 @@ import uuid
 import logging
 import tempfile
 import time
+import tracemalloc
 import gc
 import asyncio
 import shutil
@@ -191,9 +192,63 @@ CENSUS_HTML = FRONTEND_DIR / "Census.html"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("evolv")
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("evolv")
+
+PERF_LOG_ENABLED = (os.getenv("PERF_LOG", "0") == "1")
+
+def _rss_mb() -> float | None:
+    """
+    Returns current process RSS (resident memory) in MB.
+    Linux/Render-friendly. If unavailable, returns None.
+    """
+    try:
+        with open("/proc/self/statm", "r") as f:
+            parts = f.read().strip().split()
+        # statm: size resident shared text lib data dt
+        resident_pages = int(parts[1])
+        page_size = os.sysconf("SC_PAGE_SIZE")  # bytes
+        return (resident_pages * page_size) / (1024 * 1024)
+    except Exception:
+        return None
+
+def _perf_log(job_id: str, filename: str, step: str, t0: float | None = None) -> float:
+    """
+    Logs timing + memory snapshots. Returns current perf_counter timestamp.
+    Set env PERF_LOG=1 to enable.
+    """
+    now = time.perf_counter()
+    if not PERF_LOG_ENABLED:
+        return now
+
+    dt_s = (now - t0) if t0 is not None else None
+    rss = _rss_mb()
+
+    if tracemalloc.is_tracing():
+        cur_b, peak_b = tracemalloc.get_traced_memory()
+        cur_mb = cur_b / (1024 * 1024)
+        peak_mb = peak_b / (1024 * 1024)
+    else:
+        cur_mb = None
+        peak_mb = None
+
+    logger.info(
+        "PERF job_id=%s file=%s step=%s dt=%.3fs rss=%sMB tracemalloc_cur=%sMB tracemalloc_peak=%sMB",
+        job_id,
+        filename,
+        step,
+        dt_s if dt_s is not None else -1.0,
+        f"{rss:.1f}" if rss is not None else "na",
+        f"{cur_mb:.1f}" if cur_mb is not None else "na",
+        f"{peak_mb:.1f}" if peak_mb is not None else "na",
+    )
+    return now
+
+
 CENSUS_UPLOAD_TMP = Path(
     os.getenv("CENSUS_UPLOAD_TMP", os.path.join(tempfile.gettempdir(), "evolv_census_uploads"))
 )
+
 CENSUS_UPLOAD_TMP.mkdir(parents=True, exist_ok=True)
 
 
@@ -4186,16 +4241,27 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
         _job_set(conn, job_id, "running", processed=0, message="Starting…")
         conn.commit()
 
+        # Enable tracemalloc only when PERF_LOG=1 (keeps overhead off by default)
+        if PERF_LOG_ENABLED and not tracemalloc.is_tracing():
+            tracemalloc.start(25)
+
         for p in file_paths:
             filename = Path(p).name
             try:
+                _perf_log(job_id, filename, "start_file")
+
+                t0 = time.perf_counter()
                 sha = sha256_file(p)
+                _perf_log(job_id, filename, "sha256_file", t0)
 
                 # skip if already uploaded
+                t0 = time.perf_counter()
                 exists = cur.execute(
                     "SELECT id FROM census_runs WHERE source_sha256=? LIMIT 1",
                     (sha,),
                 ).fetchone()
+                _perf_log(job_id, filename, "duplicate_check", t0)
+
                 if exists:
                     cur.execute(
                         """
@@ -4209,10 +4275,15 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                     conn.commit()
                     continue
 
+
+                t0 = time.perf_counter()
                 parsed_iter = iter_pcc_admission_records_from_pdf_path(p)
+                _perf_log(job_id, filename, "created_parsed_iter", t0)
 
                 # Peek first row only (do NOT load whole PDF into memory)
+                t0 = time.perf_counter()
                 first_row = next(parsed_iter, None)
+                _perf_log(job_id, filename, "parsed_first_row", t0)
 
                 # Facility name: filename (AUTHORITATIVE) > UI override > PDF content
                 fac_name = extract_facility_name_from_filename(filename)
@@ -4304,11 +4375,22 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                     rows_inserted += 1
 
                 # Insert first row, then stream the rest (NO giant list in memory)
+                rows_seen = 0
                 if first_row:
                     _insert_one(first_row)
+                    rows_seen = 1
+
+                t0_loop = time.perf_counter()
 
                 for row in parsed_iter:
                     _insert_one(row)
+                    rows_seen += 1
+
+                    # Log every 200 rows to see whether parsing or inserts are ballooning RSS/CPU
+                    if PERF_LOG_ENABLED and (rows_seen % 200 == 0):
+                        _perf_log(job_id, filename, f"inserted_{rows_seen}", t0_loop)
+                        t0_loop = time.perf_counter()
+
 
 
                 cur.execute(
