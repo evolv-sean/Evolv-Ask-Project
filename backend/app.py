@@ -348,47 +348,187 @@ def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
 
     return parse_pcc_admission_records_from_pdf_text(text)
 
-
 # ✅ Shared parser core after text extraction (used by BOTH path + bytes)
+def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str], float]:
+    """
+    Extract resident info from the PCC 'ADMISSION RECORD' chunk using the
+    RESIDENT INFORMATION section (label-driven, tolerant of wrapped/unit lines).
+
+    Returns: (resident_name, room_bed, admission_date, resident_num, warnings, confidence)
+    """
+    warnings: list[str] = []
+    confidence = 0.0
+
+    # Locate the RESIDENT INFORMATION header row
+    m_hdr = re.search(r"^RESIDENT INFORMATION\s*$", chunk, flags=re.MULTILINE)
+    if not m_hdr:
+        warnings.append("missing_resident_information_header")
+        return ("", "", "", "", warnings, confidence)
+
+    after = chunk[m_hdr.end():]
+
+    # Label line typically contains "Resident Name" and "Resident #"
+    m_labels = re.search(r"^Resident Name.*Resident\s*#\s*$", after, flags=re.MULTILINE)
+    if not m_labels:
+        warnings.append("missing_resident_information_labels")
+        return ("", "", "", "", warnings, confidence)
+
+    tail = after[m_labels.end():]
+    cand_lines = [l.strip() for l in tail.splitlines() if l.strip()]
+
+    # Candidate resident line should have a comma in name and at least one date
+    resident_line = ""
+    for l in cand_lines[:10]:
+        if "," in l and re.search(r"\d{2}/\d{2}/\d{4}", l):
+            resident_line = l
+            break
+
+    # Fallback: any "Last, First" line after labels
+    if not resident_line:
+        m_name = re.search(r"^([A-Za-z'\-\. ]+,\s*[A-Za-z'\-\. ]+).*$", tail, flags=re.MULTILINE)
+        if m_name:
+            resident_line = m_name.group(0).strip()
+            warnings.append("resident_line_fallback_used")
+
+    if not resident_line:
+        warnings.append("resident_line_not_found")
+        return ("", "", "", "", warnings, confidence)
+
+    # Resident #
+    m_resno = re.search(r"(\d{6,})\s*$", resident_line)
+    resident_num = m_resno.group(1).strip() if m_resno else ""
+    if resident_num:
+        confidence += 0.25
+    else:
+        warnings.append("missing_resident_number")
+
+    # Admission date: first mm/dd/yyyy
+    m_adm = re.search(r"(\d{2}/\d{2}/\d{4})", resident_line)
+    admission_date = m_adm.group(1).strip() if m_adm else ""
+    if admission_date:
+        confidence += 0.25
+    else:
+        warnings.append("missing_admission_date")
+
+    # Resident name
+    m_name = re.search(r"^([A-Za-z'\-\. ]+,\s*[A-Za-z'\-\. ]+)", resident_line)
+    resident_name = m_name.group(1).strip() if m_name else ""
+    if resident_name:
+        confidence += 0.25
+    else:
+        warnings.append("missing_resident_name")
+
+    # Room/bed: token immediately before admission date
+    room_bed = ""
+    if admission_date:
+        pre = resident_line.split(admission_date, 1)[0].rstrip()
+        toks = pre.split()
+        if toks:
+            room_bed = toks[-1].strip()
+            if room_bed in {"-", "—"} and len(toks) >= 2:
+                room_bed = toks[-2].strip()
+        if room_bed:
+            confidence += 0.25
+        else:
+            warnings.append("missing_room_bed")
+
+    return (resident_name, room_bed, admission_date, resident_num, warnings, min(confidence, 1.0))
+
+
+def _extract_pcc_address_phone(chunk: str) -> tuple[str, str, str, str, str, list[str]]:
+    """
+    Extract address + phone from the PCC 'Previous address / Legal Mailing address' section.
+
+    Returns: (address, city, state, zip_code, home_phone, warnings)
+    """
+    warnings: list[str] = []
+    address = city = state = zip_code = home_phone = ""
+
+    def _fmt_phone(s: str) -> str:
+        s = re.sub(r"\D+", "", (s or ""))
+        if len(s) == 10:
+            return f"({s[0:3]}) {s[3:6]}-{s[6:10]}"
+        return (s or "").strip()
+
+    m_hdr = re.search(
+        r"^Previous address\s+Previous Phone\s*#\s+Legal Mailing address\s*$",
+        chunk,
+        flags=re.MULTILINE
+    )
+    if not m_hdr:
+        warnings.append("missing_address_header")
+        return (address, city, state, zip_code, home_phone, warnings)
+
+    tail = chunk[m_hdr.end():]
+    cand_lines = [l.strip() for l in tail.splitlines() if l.strip()]
+    line = cand_lines[0] if cand_lines else ""
+    if not line:
+        warnings.append("missing_address_line")
+        return (address, city, state, zip_code, home_phone, warnings)
+
+    m = re.search(
+        r"^(?P<addr>.+?),\s*(?P<city>[A-Za-z .'\-]+),\s*(?P<state>[A-Z]{2}),\s*(?P<zip>\d{5})(?:-\d{4})?\s+(?P<phone>(?:\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4})|\d{10})\b",
+        line,
+    )
+    if m:
+        address = m.group("addr").strip()
+        city = m.group("city").strip()
+        state = m.group("state").strip()
+        zip_code = m.group("zip").strip()
+        home_phone = _fmt_phone(m.group("phone").strip())
+        return (address, city, state, zip_code, home_phone, warnings)
+
+    # Fallback: search a few lines
+    for l in cand_lines[:5]:
+        m2 = re.search(
+            r"^(?P<addr>.+?),\s*(?P<city>[A-Za-z .'\-]+),\s*(?P<state>[A-Z]{2}),\s*(?P<zip>\d{5})(?:-\d{4})?\b",
+            l,
+        )
+        if m2:
+            address = m2.group("addr").strip()
+            city = m2.group("city").strip()
+            state = m2.group("state").strip()
+            zip_code = m2.group("zip").strip()
+            mp = re.search(r"(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\b\d{10}\b)", l)
+            if mp:
+                home_phone = _fmt_phone(mp.group(1))
+            warnings.append("address_fallback_used")
+            return (address, city, state, zip_code, home_phone, warnings)
+
+    warnings.append("address_parse_failed")
+    return (address, city, state, zip_code, home_phone, warnings)
+
+
 def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
     out: list[dict] = []
 
-    # If there's no selectable text, this is very likely a scanned/image PDF
     if not (text or "").strip():
         raise ScannedPdfError("Scanned/image PDF detected (no extractable text)")
 
     chunks = [c.strip() for c in text.split("ADMISSION RECORD") if c.strip()]
     for chunk in chunks:
         lines = [l.strip() for l in chunk.splitlines() if l.strip()]
+
         facility_name = lines[0] if lines else ""
 
         report_dt = ""
-        for l in lines[:12]:
-            if re.search(r"\bET\b", l) and re.search(r"\b\d{4}\b", l):
+        for l in lines[:15]:
+            if (" ET" in f" {l} ") and re.search(r"\b\d{4}\b", l):
                 report_dt = l
                 break
 
-        # Resident info row (name + room + admit + resident #)
-        m = re.search(
-            # allow periods in names (e.g., "Myra E.")
-            r"^([A-Za-z'\-\. ]+,\s*[A-Za-z'\-\. ]+)\s+.*?\s+([A-Za-z0-9\-]+)\s+(\d{2}/\d{2}/\d{4}).*?\s+([A-Za-z0-9]+)\s*$",
-            chunk,
-            flags=re.MULTILINE,
-        )
-        resident_name = m.group(1).strip() if m else ""
-        room_number = m.group(2).strip() if m else ""
-        admission_date = m.group(3).strip() if m else ""
-        resident_num = m.group(4).strip() if m else ""
+        resident_name, room_number, admission_date, resident_num, res_warnings, res_conf = _extract_pcc_resident_info(chunk)
 
-        # Fallback: sometimes the note row format shifts — grab the first "Last, First" we see after "Resident Name"
+        # Extra fallback: any "Last, First" anywhere
         if not resident_name:
             m2 = re.search(
-                r"Resident Name.*?\n([A-Za-z'\-\. ]+,\s*[A-Za-z'\-\. ]+)",
+                r"\b([A-Za-z'\-\. ]+,\s*[A-Za-z'\-\. ]+)\b",
                 chunk,
-                flags=re.MULTILINE | re.DOTALL
+                flags=re.MULTILINE,
             )
             if m2:
                 resident_name = m2.group(1).strip()
+                res_warnings.append("resident_name_global_fallback_used")
 
         first_name, last_name = _split_name(resident_name)
 
@@ -397,65 +537,27 @@ def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
         if mdob:
             dob = mdob.group(1).strip()
 
-        def _fmt_phone(s: str) -> str:
-            s = re.sub(r"\D+", "", (s or ""))
-            if len(s) == 10:
-                return f"({s[0:3]}) {s[3:6]}-{s[6:10]}"
-            return (s or "").strip()
+        address, city, state, zip_code, home_phone, addr_warnings = _extract_pcc_address_phone(chunk)
 
-        # Address + phone
-        address = city = state = zip_code = home_phone = ""
+        primary_ins = ""
+        primary_number = ""
 
-        # Pattern A: "Legal Mailing address" row has full address + phone
-        madd = re.search(
-            r"Legal Mailing address\s*\n(.+?),\s*([A-Za-z .]+),\s*([A-Z]{2}),\s*(\d{5})(?:-\d{4})?\s+(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\d{10})\b",
-            chunk,
-            flags=re.MULTILINE | re.DOTALL,
-        )
-        if madd:
-            address = madd.group(1).strip()
-            city = madd.group(2).strip()
-            state = madd.group(3).strip()
-            zip_code = madd.group(4).strip()
-            home_phone = _fmt_phone(madd.group(5).strip())
-        else:
-            # Pattern B: "Previous address ... Previous Phone #" line
-            madd2 = re.search(
-                r"Previous address.*?\n(.+?),\s*([A-Za-z .]+),\s*([A-Z]{2}),\s*(\d{5})(?:-\d{4})?\s+(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\d{10})\b",
-                chunk,
-                flags=re.MULTILINE | re.DOTALL,
-            )
-            if madd2:
-                address = madd2.group(1).strip()
-                city = madd2.group(2).strip()
-                state = madd2.group(3).strip()
-                zip_code = madd2.group(4).strip()
-                home_phone = _fmt_phone(madd2.group(5).strip())
-
-        # Insurance (Primary) extraction
-        primary_ins = primary_number = ""
-
-        # Pattern 1: "Insurance Name #1" then value on next line
         m_ins1 = re.search(r"^Insurance Name\s*#1\s*\n([^\n]+)$", chunk, flags=re.MULTILINE)
         if m_ins1:
             primary_ins = m_ins1.group(1).strip()
-
-            # Try to capture the matching Policy #1 if present nearby
             m_pol1 = re.search(r"^Insurance Policy\s*#1\s*\n([A-Za-z0-9\-]+)$", chunk, flags=re.MULTILINE)
             if m_pol1:
                 primary_number = m_pol1.group(1).strip()
 
-        # Pattern 2: If not found, use PAYER INFORMATION "Primary Payer ..." line
         if not primary_ins:
             m_pay = re.search(
                 r"^Primary Payer\s+(.+?)\s+(?:Medicare|Medicaid|Mngd|Managed|Insurance|HMO|PPO)\b",
                 chunk,
-                flags=re.MULTILINE
+                flags=re.MULTILINE,
             )
             if m_pay:
                 primary_ins = m_pay.group(1).strip()
 
-            # Grab an ID if present
             m_id = re.search(r"\b(Medicare|Medicaid)\s*#\s*([A-Za-z0-9]+)\b", chunk)
             if m_id:
                 primary_number = m_id.group(2).strip()
@@ -464,31 +566,23 @@ def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
                 if m_pol:
                     primary_number = m_pol.group(1).strip()
 
-        # Pattern 3: Fallback — "Insurance Name:" label, value on next line
         if not primary_ins:
-            m_ins_label = re.search(r"^Insurance Name:\s*\n([^\n]+)$", chunk, flags=re.MULTILINE)
-            if m_ins_label:
-                val = m_ins_label.group(1).strip()
-                if val and not val.lower().startswith("insurance policy"):
-                    primary_ins = val
+            m_ins = re.search(r"^Insurance Name:\s*\n([^\n]+)$", chunk, flags=re.MULTILINE)
+            if m_ins:
+                primary_ins = m_ins.group(1).strip()
+
+        attending = ""
+        matt = re.search(r"^Attending Physician\s*\n([^\n]+)$", chunk, flags=re.MULTILINE)
+        if matt:
+            attending = matt.group(1).strip()
 
         primary_care = ""
-        mpcp = re.search(
-            r"Primary Physician.*?\n.*?\n([A-Za-z'\- ]+,\s*[A-Za-z'\- ]+)",
-            chunk,
-            flags=re.MULTILINE | re.DOTALL,
-        )
+        mpcp = re.search(r"^Primary Care Physician\s*\n([^\n]+)$", chunk, flags=re.MULTILINE)
         if mpcp:
             primary_care = mpcp.group(1).strip()
 
-        attending = primary_care
-
         reason = ""
-        mdiag = re.search(
-            r"^[A-Z0-9]\S*\s+([A-Z0-9 \(\)\,\.\-\/]+)\s+\d{2}/\d{2}/\d{4}\s+Diagnosis",
-            chunk,
-            flags=re.MULTILINE,
-        )
+        mdiag = re.search(r"^Diagnosis\s*\n([^\n]+)$", chunk, flags=re.MULTILINE)
         if mdiag:
             reason = mdiag.group(1).strip()
 
@@ -501,6 +595,8 @@ def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
             first_name.upper(),
             dob
         ])
+
+        parse_warnings = list(dict.fromkeys((res_warnings or []) + (addr_warnings or [])))
 
         out.append({
             "facility_name": facility_name,
@@ -527,10 +623,13 @@ def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
             "Attending Physician": attending,
 
             "_patient_key": patient_key,
+            "_parse_confidence": res_conf,
+            "_parse_warnings": parse_warnings,
             "_raw": chunk[:8000],
         })
-        
+
     return out
+
 
 
 def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
