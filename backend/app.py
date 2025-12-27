@@ -855,8 +855,9 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
     last_clean = re.sub(r"\s{2,}", " ", last_clean)
 
     # First name: FIRST token after comma
-    m_first = re.search(r"(?<=,\s*)\w+", resident_line)
-    first_clean = (m_first.group(0) if m_first else "").strip()
+    # NOTE: avoid variable-width lookbehind (Python re disallows it)
+    m_first = re.search(r",\s*(?P<first>[A-Za-z'\-]+)", resident_line)
+    first_clean = (m_first.group("first") if m_first else "").strip()
 
     if last_clean and first_clean:
         resident_name = f"{last_clean}, {first_clean}"
