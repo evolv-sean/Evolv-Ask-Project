@@ -613,8 +613,9 @@ def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
 
         # PAD-style: parse ONLY the "Primary Payer ..." line.
         # This works whether the PDF uses "Medicare #", "Policy #", "Group #", etc.
+        # NOTE: some PDFs have no space (e.g. "Primary PayerPrivate Pay"), so allow \s*
         m_primary_line = re.search(
-            r"^Primary Payer\s+(?P<rest>.+)$",
+            r"^Primary Payer\s*(?P<rest>.+)$",
             chunk,
             flags=re.IGNORECASE | re.MULTILINE,
         )
@@ -622,34 +623,38 @@ def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
         if m_primary_line:
             rest = re.sub(r"\s+", " ", (m_primary_line.group("rest") or "")).strip()
 
-            # Private Pay normalization
-            if re.search(r"\bPrivate\b", rest, flags=re.IGNORECASE):
+            # If "Insurance Name" is blank, the extracted rest is sometimes just the label "Insurance"
+            if re.fullmatch(r"insurance(\s+name)?\:?", rest, flags=re.IGNORECASE):
+                rest = ""
+
+            # Private Pay normalization (PAD behavior)
+            if re.search(r"\bprivate\s*pay\b", rest, flags=re.IGNORECASE):
                 primary_ins = "Private Pay"
                 primary_number = ""
             else:
-                # Prefer explicit "Ins. Company <name>" if present
-                m_company = re.search(r"\bIns\.\s*Company\s+(?P<name>.+?)\s*$", rest, flags=re.IGNORECASE)
-                if m_company:
-                    primary_ins = m_company.group("name").strip()
-
                 # Otherwise split on first "#": left side = payer name, right side begins with ID
-                if not primary_ins:
-                    if "#" in rest:
-                        left, right = rest.split("#", 1)
-                        left = left.strip()
-                        right = right.strip()
+                if "#" in rest:
+                    left, right = rest.split("#", 1)
+                    left = left.strip()
+                    right = right.strip()
 
-                        # Remove trailing token like "Medicare"/"Medicaid"/"Policy"/"Group" right before "#"
-                        left_tokens = left.split()
-                        if left_tokens and left_tokens[-1].lower() in {"medicare", "medicaid", "policy", "group"}:
-                            left_tokens = left_tokens[:-1]
-                        primary_ins = " ".join(left_tokens).strip() or left
+                    # Remove trailing token like "Medicare"/"Medicaid"/"Policy"/"Group" right before "#"
+                    left_tokens = left.split()
+                    if left_tokens and left_tokens[-1].lower() in {"medicare", "medicaid", "policy", "group"}:
+                        left_tokens = left_tokens[:-1]
+                    primary_ins = " ".join(left_tokens).strip() or left
 
-                        # ID number: first token after "#"
-                        primary_number = (right.split() or [""])[0].strip()
-                    else:
-                        primary_ins = rest
-                        primary_number = ""
+                    # ID number: first token after "#"
+                    primary_number = (right.split() or [""])[0].strip()
+                else:
+                    primary_ins = rest
+                    primary_number = ""
+
+        # Extra guardrails: never allow placeholder junk like "Insurance" or just digits
+        if re.fullmatch(r"insurance(\s+name)?\:?", (primary_ins or "").strip(), flags=re.IGNORECASE):
+            primary_ins = ""
+        if re.fullmatch(r"\d+", re.sub(r"\D+", "", (primary_ins or "").strip())):
+            primary_ins = ""
 
         # Fallback: separate "Policy #:" block (only for number, not payer name)
         if not primary_number:
