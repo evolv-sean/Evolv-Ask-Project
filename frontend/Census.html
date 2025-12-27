@@ -765,7 +765,7 @@
           let finalStatus = null;
 
           while(true){
-            const stRes = await adminFetch(`/admin/census/upload-status?job_id=${encodeURIComponent(jobId)}`);
+            const stRes = await adminFetch(`/admin/census/upload-status?job_id=${encodeURIComponent(jobId)}&lite=1`);
             const st = await readJsonStrict(stRes, "Upload status");
             finalStatus = st;
 
@@ -779,9 +779,14 @@
             if(job.status === "done"){
               setUploadProgress("Complete.", 100);
 
+              // ✅ fetch full status ONCE (includes files[]) for the toast + counts
+              const fullRes = await adminFetch(`/admin/census/upload-status?job_id=${encodeURIComponent(jobId)}`);
+              const full = await readJsonStrict(fullRes, "Upload status");
+              finalStatus = full;
+
               // ✅ compute patient upload totals from per-file rows_inserted
               try{
-                const files = (st && st.files) ? st.files : [];
+                const files = (full && full.files) ? full.files : [];
                 const okFiles = files.filter(f => f.status === "ok").length;
                 const skippedFiles = files.filter(f => f.status === "skipped").length;
                 const errorFiles = files.filter(f => f.status === "error").length;
@@ -807,9 +812,7 @@
                 // ignore toast failures
               }
 
-              // ✅ allow user to actually see completion
               await new Promise(r => setTimeout(r, 1200));
-
               break;
             }
 
