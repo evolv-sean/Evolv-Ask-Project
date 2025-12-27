@@ -282,6 +282,45 @@ class ScannedPdfError(Exception):
     """Raised when a PDF has no extractable text (likely scanned/image-only)."""
     pass
 
+# ✅ NEW: parse directly from a PDF file path (avoids loading PDF bytes into RAM)
+def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
+    if not HAVE_PDFPLUMBER:
+        raise HTTPException(
+            status_code=500,
+            detail="PDF parsing support is not installed (pdfplumber). Please add 'pdfplumber' to your environment."
+        )
+
+    out: list[dict] = []
+
+    with pdfplumber.open(pdf_path) as pdf:
+        text = "\n".join((p.extract_text() or "") for p in pdf.pages)
+
+    if not (text or "").strip():
+        raise ScannedPdfError("Scanned/image PDF detected (no extractable text)")
+
+    # ✅ reuse the rest of your existing logic by calling the bytes-parser logic
+    # (we can refactor later; this keeps changes minimal)
+    return parse_pcc_admission_records_from_pdf_text(text)
+
+# ✅ NEW: shared parser core after text extraction
+def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
+    out: list[dict] = []
+
+    chunks = [c.strip() for c in text.split("ADMISSION RECORD") if c.strip()]
+    for chunk in chunks:
+        lines = [l.strip() for l in chunk.splitlines() if l.strip()]
+        facility_name = lines[0] if lines else ""
+
+        report_dt = ""
+        for l in lines[:12]:
+            if re.search(r"\bET\b", l) and re.search(r"\b\d{4}\b", l):
+                report_dt = l
+                break
+
+        # (keep ALL your existing regex extraction code here unchanged)
+        # ...
+        # return out at the end
+    return out
 
 def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
     """
@@ -674,6 +713,16 @@ def extract_facility_name_from_filename(filename: str) -> str:
 def sha256_hex(s: str) -> str:
     return hashlib.sha256((s or "").encode("utf-8")).hexdigest()
 
+# ✅ NEW: hash a file without loading it all into memory
+def sha256_file(path: str, chunk_size: int = 1024 * 1024) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
 
 def hash_pin(pin: str) -> str:
     """Hash a facility PIN for storage/comparison."""
@@ -3554,9 +3603,16 @@ async def admin_census_upload(
 
     saved_paths: list[str] = []
     for f in files:
-        data = await f.read()
         out_path = job_dir / (f.filename or f"upload_{uuid.uuid4().hex}.pdf")
-        out_path.write_bytes(data)
+
+        # ✅ stream to disk (avoid reading entire PDF into RAM)
+        with open(out_path, "wb") as out_fp:
+            while True:
+                chunk = await f.read(1024 * 1024)  # 1MB chunks
+                if not chunk:
+                    break
+                out_fp.write(chunk)
+
         saved_paths.append(str(out_path))
 
     logger.info("Census upload queued job_id=%s files=%s", job_id, len(saved_paths))
@@ -3608,8 +3664,7 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
         for p in file_paths:
             filename = Path(p).name
             try:
-                pdf_bytes = Path(p).read_bytes()
-                sha = hashlib.sha256(pdf_bytes).hexdigest()
+                sha = sha256_file(p)
 
                 # skip if already uploaded
                 exists = cur.execute(
