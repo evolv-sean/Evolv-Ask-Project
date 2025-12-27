@@ -486,12 +486,13 @@ def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
             with subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.PIPE,   # we WILL read it
                 text=True,
                 errors="replace",
-                bufsize=1,   # line-buffered
+                bufsize=1,   # line-buffered stdout
             ) as proc:
                 assert proc.stdout is not None
+                assert proc.stderr is not None
 
                 for line in proc.stdout:
                     if line.strip():
@@ -516,8 +517,11 @@ def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
                         _flush_parts_into_carry()
                         _parse_completed_chunks_from_carry()
 
-                # ensure process is done
-                proc.wait(timeout=30)
+                # Read stderr and verify the command succeeded (prevents silent failures / hangs)
+                stderr_text = proc.stderr.read()
+                rc = proc.wait(timeout=30)
+                if rc != 0:
+                    raise RuntimeError(f"pdftotext failed (rc={rc}): {stderr_text[-2000:]}")
 
             _flush_parts_into_carry()
 
