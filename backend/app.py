@@ -752,8 +752,15 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
 
     after = chunk[m_hdr.end():]
 
-    # Label line typically contains "Resident Name" and "Resident #"
-    m_labels = re.search(r"^Resident Name.*Resident\s*#\s*$", after, flags=re.MULTILINE)
+    # Label line can be either:
+    #   "Resident Name ... Resident #"
+    # or
+    #   "Patient Name ... Patient #"
+    m_labels = re.search(
+        r"^(Resident|Patient) Name.*(Resident|Patient)\s*#\s*$",
+        after,
+        flags=re.MULTILINE | re.IGNORECASE,
+    )
     if not m_labels:
         warnings.append("missing_resident_information_labels")
         return ("", "", "", "", warnings, confidence)
@@ -779,9 +786,16 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
         warnings.append("resident_line_not_found")
         return ("", "", "", "", warnings, confidence)
 
-    # Resident #
-    m_resno = re.search(r"(\d{6,})\s*$", resident_line)
-    resident_num = m_resno.group(1).strip() if m_resno else ""
+    # Resident / Patient # (can be numeric like "9080" OR alphanumeric like "AS201641")
+    resident_num = ""
+    last_tok = (resident_line.split() or [""])[-1].strip()
+
+    # Guard: avoid accidentally treating a date as the ID
+    if last_tok and not re.fullmatch(r"\d{2}/\d{2}/\d{4}", last_tok):
+        # Common PCC IDs are 4+ chars/digits
+        if re.fullmatch(r"[A-Za-z0-9]{4,}", last_tok):
+            resident_num = last_tok
+
     if resident_num:
         confidence += 0.25
     else:
@@ -857,7 +871,7 @@ def _extract_pcc_address_phone(chunk: str) -> tuple[str, str, str, str, str, lis
             return
 
         m_addr = re.search(
-            r"^(?P<street>.+?),\s*(?P<city>[A-Za-z .'\-]+),\s*(?P<state>[A-Z]{2})\s+(?P<zip>(?:\d{5}(?:-\d{4})?|\d{9}))\b",
+            r"^(?P<street>.+?),\s*(?P<city>[A-Za-z .'\-]+),\s*(?P<state>[A-Z]{2})\s*,?\s*(?P<zip>(?:\d{5}(?:-\d{4})?|\d{9}))\b",
             addr_text,
         )
         if m_addr:
@@ -987,9 +1001,22 @@ def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
         first_name, last_name = _split_name(resident_name)
 
         dob = ""
-        mdob = re.search(r"^[MF]\s+(\d{2}/\d{2}/\d{4})\s+\d+\b", chunk, flags=re.MULTILINE)
-        if mdob:
-            dob = mdob.group(1).strip()
+
+        # PAD-style DOB parse:
+        # 1) find text after "Sex Birthdate"
+        # 2) grab the first MM/DD/YYYY anywhere after it
+        m_sex_bd = re.search(r"Sex\s+Birthdate(?P<rest>.*)$", chunk, flags=re.IGNORECASE | re.DOTALL)
+        if m_sex_bd:
+            rest = m_sex_bd.group("rest") or ""
+            mdob = re.search(r"\b(0[1-9]|1[0-2])/(0[1-9]|[12][0-9]|3[01])/(19|20)\d{2}\b", rest)
+            if mdob:
+                dob = mdob.group(0).strip()
+
+        # Fallback to old behavior if needed
+        if not dob:
+            mdob2 = re.search(r"^[MF]\s+(\d{2}/\d{2}/\d{4})\b", chunk, flags=re.MULTILINE)
+            if mdob2:
+                dob = mdob2.group(1).strip()
 
         address, city, state, zip_code, home_phone, addr_warnings = _extract_pcc_address_phone(chunk)
 
