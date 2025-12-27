@@ -294,17 +294,6 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
             detail="PDF parsing support is not installed (pdfplumber). Please add 'pdfplumber' to your environment."
         )
 
-def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
-    """
-    Parses PCC-style 'ADMISSION RECORD' PDFs like your samples.
-    Returns rows already mapped to your Sensys CSV columns.
-    """
-    if not HAVE_PDFPLUMBER:
-        raise HTTPException(
-            status_code=500,
-            detail="PDF parsing support is not installed (pdfplumber). Please add 'pdfplumber' to your environment."
-        )
-
     out: list[dict] = []
 
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
@@ -1071,31 +1060,31 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_census_patients_key ON census_run_patients (facility_name, patient_key)")
 
     # ✅ Ensure new columns exist on older census_run_patients tables (safe no-op if already exists)
-        for stmt in [
-            "ALTER TABLE census_run_patients ADD COLUMN first_name TEXT",
-            "ALTER TABLE census_run_patients ADD COLUMN last_name TEXT",
-            "ALTER TABLE census_run_patients ADD COLUMN dob TEXT",
-            "ALTER TABLE census_run_patients ADD COLUMN home_phone TEXT",
-            "ALTER TABLE census_run_patients ADD COLUMN address TEXT",
-            "ALTER TABLE census_run_patients ADD COLUMN city TEXT",
-            "ALTER TABLE census_run_patients ADD COLUMN state TEXT",
-            "ALTER TABLE census_run_patients ADD COLUMN zip TEXT",
-            "ALTER TABLE census_run_patients ADD COLUMN primary_ins TEXT",
-            "ALTER TABLE census_run_patients ADD COLUMN primary_number TEXT",
-            "ALTER TABLE census_run_patients ADD COLUMN primary_care_phys TEXT",
-            "ALTER TABLE census_run_patients ADD COLUMN attending_phys TEXT",
-            "ALTER TABLE census_run_patients ADD COLUMN admission_date TEXT",
-            "ALTER TABLE census_run_patients ADD COLUMN discharge_date TEXT",
-            "ALTER TABLE census_run_patients ADD COLUMN room_number TEXT",
-            "ALTER TABLE census_run_patients ADD COLUMN reason_admission TEXT",
-            "ALTER TABLE census_run_patients ADD COLUMN tag TEXT",
-            "ALTER TABLE census_run_patients ADD COLUMN raw_text TEXT",
-            "ALTER TABLE census_run_patients ADD COLUMN created_at TEXT",
-        ]:
-            try:
-                cur.execute(stmt)
-            except sqlite3.Error:
-                pass
+    for stmt in [
+        "ALTER TABLE census_run_patients ADD COLUMN first_name TEXT",
+        "ALTER TABLE census_run_patients ADD COLUMN last_name TEXT",
+        "ALTER TABLE census_run_patients ADD COLUMN dob TEXT",
+        "ALTER TABLE census_run_patients ADD COLUMN home_phone TEXT",
+        "ALTER TABLE census_run_patients ADD COLUMN address TEXT",
+        "ALTER TABLE census_run_patients ADD COLUMN city TEXT",
+        "ALTER TABLE census_run_patients ADD COLUMN state TEXT",
+        "ALTER TABLE census_run_patients ADD COLUMN zip TEXT",
+        "ALTER TABLE census_run_patients ADD COLUMN primary_ins TEXT",
+        "ALTER TABLE census_run_patients ADD COLUMN primary_number TEXT",
+        "ALTER TABLE census_run_patients ADD COLUMN primary_care_phys TEXT",
+        "ALTER TABLE census_run_patients ADD COLUMN attending_phys TEXT",
+        "ALTER TABLE census_run_patients ADD COLUMN admission_date TEXT",
+        "ALTER TABLE census_run_patients ADD COLUMN discharge_date TEXT",
+        "ALTER TABLE census_run_patients ADD COLUMN room_number TEXT",
+        "ALTER TABLE census_run_patients ADD COLUMN reason_admission TEXT",
+        "ALTER TABLE census_run_patients ADD COLUMN tag TEXT",
+        "ALTER TABLE census_run_patients ADD COLUMN raw_text TEXT",
+        "ALTER TABLE census_run_patients ADD COLUMN created_at TEXT",
+    ]:
+        try:
+            cur.execute(stmt)
+        except sqlite3.Error:
+            pass
 
         # ✅ Also ensure newer columns exist on older census_runs tables (optional but recommended)
         for stmt in [
