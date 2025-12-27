@@ -173,6 +173,78 @@
     }
     .btn-ghost{background:transparent}
     .help{margin-top:6px;font-size:12px;color:var(--muted);font-weight:800}
+    
+        .help{margin-top:6px;font-size:12px;color:var(--muted);font-weight:800}
+
+    /* ✅ Success toast (Upload complete) — matches Evolv palette */
+    .toast{
+      position:fixed;
+      right:16px;
+      bottom:16px;
+      width:min(420px, calc(100vw - 32px));
+      background:#fff;
+      border:1px solid rgba(13,59,102,.14);
+      border-radius:18px;
+      box-shadow: var(--shadow);
+      padding:12px 12px;
+      z-index:11000;
+      display:none;
+      transform: translateY(8px);
+      opacity:0;
+      transition: opacity .18s ease, transform .18s ease;
+    }
+    .toast.show{
+      display:block;
+      opacity:1;
+      transform: translateY(0);
+    }
+    .toast-top{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .toast-title{
+      font-weight:900;
+      color: var(--navy);
+      font-size:13px;
+      letter-spacing:.2px;
+    }
+    .toast-sub{
+      margin-top:3px;
+      font-size:12px;
+      color: var(--muted);
+      font-weight:800;
+      line-height:1.35;
+    }
+    .toast-badge{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(168,230,207,.95);
+      background: rgba(168,230,207,.18);
+      color: var(--navy);
+      font-weight:900;
+      font-size:12px;
+      white-space:nowrap;
+      box-shadow: 0 10px 18px rgba(168,230,207,.18);
+    }
+    .toast-dot{
+      width:8px;height:8px;border-radius:999px;background: rgba(77,168,218,.9);
+    }
+    .toast-close{
+      border:1px solid rgba(13,59,102,.18);
+      background:#fff;
+      border-radius:12px;
+      width:38px;height:34px;
+      cursor:pointer;
+    }
+    .toast-close:hover{
+      border-color: rgba(168,230,207,.9);
+      box-shadow: 0 0 0 4px rgba(168,230,207,.25);
+    }
   </style>
 </head>
 <body>
@@ -271,10 +343,27 @@
           <div id="uploadBar" style="height:100%;width:0%;background: var(--mint);"></div>
         </div>
       </div>
+    </div> <!-- closes .modal -->
+  </div> <!-- closes #uploadOverlay -->
+  <!-- ✅ Success toast (shows patient upload count) -->
+  <div class="toast" id="uploadToast" role="status" aria-live="polite">
+    <div class="toast-top">
+      <div style="min-width:0">
+        <div class="toast-title" id="uploadToastTitle">Upload complete</div>
+        <div class="toast-sub" id="uploadToastSub">0 patients uploaded</div>
+      </div>
 
-      <div class="modal-actions">
-        <button class="btn btn-ghost" id="btnUploadCancel" type="button">Cancel</button>
-        <button class="btn btn-primary" id="btnUploadProcess" type="button">Process Upload</button>
+      <div style="display:flex;gap:10px;align-items:center;flex:0 0 auto;">
+        <div class="toast-badge" id="uploadToastBadge">
+          <span class="toast-dot"></span>
+          <span id="uploadToastBadgeText">Done</span>
+        </div>
+        <button class="toast-close" id="uploadToastClose" aria-label="Close">
+          <svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:var(--navy);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round">
+            <path d="M6 6l12 12"></path>
+            <path d="M18 6l-12 12"></path>
+          </svg>
+        </button>
       </div>
     </div>
   </div>
@@ -372,6 +461,28 @@
       "x-admin-token": token
     });
     return fetch(url, Object.assign({}, opts || {}, { headers }));
+  }
+
+  // ✅ Always give a readable error if the server returns non-JSON (HTML/proxy/etc)
+  async function readJsonStrict(res, label){
+    const ct = String(res.headers.get("content-type") || "").toLowerCase();
+
+    // If server didn't return JSON, show a snippet of what it DID return
+    if(!ct.includes("application/json")){
+      const text = await res.text().catch(() => "");
+      const snippet = (text || "").slice(0, 300).replace(/\s+/g, " ").trim();
+      throw new Error(`${label} returned non-JSON (${res.status}). ${snippet || "(empty body)"}`);
+    }
+
+    const data = await res.json();
+
+    // If HTTP status is not ok, surface the JSON detail/message
+    if(!res.ok){
+      const msg = (data && (data.detail || data.message)) ? (data.detail || data.message) : "";
+      throw new Error(`${label} failed (${res.status}). ${msg}`);
+    }
+
+    return data;
   }
 
   function initTokenUI(){
@@ -649,7 +760,7 @@
 
           while(true){
             const stRes = await adminFetch(`/admin/census/upload-status?job_id=${encodeURIComponent(jobId)}`);
-            const st = await stRes.json();
+            const st = await readJsonStrict(stRes, "Upload status");
             finalStatus = st;
 
             const job = st.job || {};
@@ -662,11 +773,40 @@
             if(job.status === "done"){
               setUploadProgress("Complete.", 100);
 
+              // ✅ compute patient upload totals from per-file rows_inserted
+              try{
+                const files = (st && st.files) ? st.files : [];
+                const okFiles = files.filter(f => f.status === "ok").length;
+                const skippedFiles = files.filter(f => f.status === "skipped").length;
+                const errorFiles = files.filter(f => f.status === "error").length;
+
+                const patientsUploaded = files.reduce((sum, f) => {
+                  return sum + Number(f.rows_inserted || 0);
+                }, 0);
+
+                const parts = [
+                  `${patientsUploaded} patient(s) uploaded`,
+                  okFiles ? `${okFiles} file(s) processed` : null,
+                  skippedFiles ? `${skippedFiles} skipped` : null,
+                  errorFiles ? `${errorFiles} error` : null
+                ].filter(Boolean).join(" • ");
+
+                showUploadToast({
+                  title: "Upload complete",
+                  sub: parts,
+                  badgeText: `${patientsUploaded}`,
+                  autoHideMs: 7000
+                });
+              }catch(e){
+                // ignore toast failures
+              }
+
               // ✅ allow user to actually see completion
               await new Promise(r => setTimeout(r, 1200));
 
               break;
             }
+
             if(job.status === "error"){
               alert(`Upload job error: ${job.message || "Unknown error"}`);
               break;
@@ -716,6 +856,37 @@
       "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
     }[m]));
   }
+
+  // ✅ Toast helpers
+  let toastTimer = null;
+
+  function showUploadToast({ title, sub, badgeText, autoHideMs }){
+    const toast = document.getElementById("uploadToast");
+    const t = document.getElementById("uploadToastTitle");
+    const s = document.getElementById("uploadToastSub");
+    const b = document.getElementById("uploadToastBadgeText");
+
+    if(t) t.textContent = title || "Upload complete";
+    if(s) s.textContent = sub || "";
+    if(b) b.textContent = badgeText || "Done";
+
+    if(!toast) return;
+
+    toast.classList.add("show");
+
+    if(toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      toast.classList.remove("show");
+    }, Number(autoHideMs || 6000));
+  }
+
+  function initToastUI(){
+    const btn = document.getElementById("uploadToastClose");
+    const toast = document.getElementById("uploadToast");
+    if(btn && toast){
+      btn.addEventListener("click", () => toast.classList.remove("show"));
+    }
+  }
   
 document.addEventListener("DOMContentLoaded", () => {
   // Settings modal (Admin token)
@@ -723,6 +894,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Upload PDFs modal (drag/drop + browse + process)
   initUploadModal();
+
+  // ✅ Toast UI
+  initToastUI();
 
   // Populate facility dropdown on first load
   refreshFacilityDropdown();
