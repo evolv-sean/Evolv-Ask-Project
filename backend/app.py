@@ -1979,6 +1979,25 @@ def init_db():
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_rows_job ON sensys_census_job_rows(job_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_rows_kind ON sensys_census_job_rows(job_id, kind)")
+    # ✅ Expand sensys_census_job_rows to support full Missing Admissions exports (safe no-op if already exists)
+    for stmt in [
+        "ALTER TABLE sensys_census_job_rows ADD COLUMN home_phone TEXT",
+        "ALTER TABLE sensys_census_job_rows ADD COLUMN address TEXT",
+        "ALTER TABLE sensys_census_job_rows ADD COLUMN city TEXT",
+        "ALTER TABLE sensys_census_job_rows ADD COLUMN state TEXT",
+        "ALTER TABLE sensys_census_job_rows ADD COLUMN zip TEXT",
+        "ALTER TABLE sensys_census_job_rows ADD COLUMN primary_ins TEXT",
+        "ALTER TABLE sensys_census_job_rows ADD COLUMN primary_number TEXT",
+        "ALTER TABLE sensys_census_job_rows ADD COLUMN primary_care_phys TEXT",
+        "ALTER TABLE sensys_census_job_rows ADD COLUMN tag TEXT",
+        "ALTER TABLE sensys_census_job_rows ADD COLUMN facility_code TEXT",
+        "ALTER TABLE sensys_census_job_rows ADD COLUMN reason_admission TEXT",
+        "ALTER TABLE sensys_census_job_rows ADD COLUMN attending_phys TEXT",
+    ]:
+        try:
+            cur.execute(stmt)
+        except sqlite3.Error:
+            pass
 
     # ✅ Ensure new columns exist on older census_run_patients tables (safe no-op if already exists)
     for stmt in [
@@ -4978,13 +4997,10 @@ def _sensys_name_similarity(a: str, b: str) -> float:
 
 @app.post("/admin/census/sensys/process")
 async def admin_census_sensys_process(
-    facility_name: str = Form(...),
     file: UploadFile = File(...),
     admin=Depends(require_admin),
 ):
-    fac = (facility_name or "").strip()
-    if not fac:
-        raise HTTPException(status_code=400, detail="facility_name is required")
+    fac = "SYSTEM"
     if not file or not (file.filename or "").lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="CSV file is required")
 
@@ -5033,32 +5049,39 @@ async def admin_census_sensys_process(
             }
         )
 
-    # load latest census run for this facility (same idea as /admin/census/view)【turn3file0†app.py†L10-L33】
+    # load latest census run PER facility, then union patients across all those runs
     conn = get_db()
     cur = conn.cursor()
     try:
-        run = cur.execute(
+        latest_runs = cur.execute(
             """
-            SELECT id
+            SELECT facility_name, MAX(id) AS id
             FROM census_runs
-            WHERE facility_name = ?
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (fac,),
-        ).fetchone()
-
-        if not run:
-            raise HTTPException(status_code=404, detail=f"No census run found for facility: {fac}")
-
-        latest_id = run["id"]
-        census = cur.execute(
+            GROUP BY facility_name
             """
-            SELECT first_name, last_name, dob, admission_date, discharge_date, room_number, home_phone
-            FROM census_run_patients
-            WHERE run_id = ?
+        ).fetchall()
+
+        if not latest_runs:
+            raise HTTPException(status_code=404, detail="No census runs found")
+
+        run_ids = [r["id"] for r in latest_runs if r["id"] is not None]
+        if not run_ids:
+            raise HTTPException(status_code=404, detail="No latest run ids found")
+
+        placeholders = ",".join(["?"] * len(run_ids))
+
+        census = cur.execute(
+            f"""
+            SELECT
+              p.first_name, p.last_name, p.dob, p.home_phone, p.address, p.city, p.state, p.zip,
+              p.primary_ins, p.primary_number, p.primary_care_phys, p.tag,
+              r.facility_code,
+              p.admission_date, p.discharge_date, p.room_number, p.reason_admission, p.attending_phys
+            FROM census_run_patients p
+            JOIN census_runs r ON r.id = p.run_id
+            WHERE p.run_id IN ({placeholders})
             """,
-            (latest_id,),
+            tuple(run_ids),
         ).fetchall()
 
         census_rows = []
@@ -5066,14 +5089,29 @@ async def admin_census_sensys_process(
             fn = (r["first_name"] or "").strip()
             ln = (r["last_name"] or "").strip()
             dob = _sensys_parse_date(r["dob"] or "")
+
             census_rows.append(
                 {
                     "first_name": fn,
                     "last_name": ln,
                     "dob": dob,
+                    "home_phone": (r["home_phone"] or "").strip(),
+                    "address": (r["address"] or "").strip(),
+                    "city": (r["city"] or "").strip(),
+                    "state": (r["state"] or "").strip(),
+                    "zip": (r["zip"] or "").strip(),
+                    "primary_ins": (r["primary_ins"] or "").strip(),
+                    "primary_number": (r["primary_number"] or "").strip(),
+                    "primary_care_phys": (r["primary_care_phys"] or "").strip(),
+                    "tag": (r["tag"] or "").strip(),
+                    "facility_code": (r["facility_code"] or "").strip(),
                     "admission_date": (r["admission_date"] or "").strip(),
                     "discharge_date": (r["discharge_date"] or "").strip(),
                     "room_number": (r["room_number"] or "").strip(),
+                    "reason_admission": (r["reason_admission"] or "").strip(),
+                    "attending_phys": (r["attending_phys"] or "").strip(),
+
+                    # keep these for matching + duplicates logic
                     "primary_phone": (r["home_phone"] or "").strip(),
                     "key": _sensys_key(fn, ln, dob),
                 }
@@ -5145,20 +5183,41 @@ async def admin_census_sensys_process(
             cur.execute(
                 """
                 INSERT INTO sensys_census_job_rows
-                (job_id, kind, first_name, last_name, dob, admission_date, discharge_date, room_number, primary_phone, note)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (
+                  job_id, kind,
+                  first_name, last_name, dob,
+                  admission_date, discharge_date, room_number, primary_phone, note,
+
+                  home_phone, address, city, state, zip,
+                  primary_ins, primary_number, primary_care_phys, tag, facility_code,
+                  reason_admission, attending_phys
+                )
+                VALUES
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    job_id,
-                    kind,
-                    rr.get("first_name", ""),
-                    rr.get("last_name", ""),
-                    rr.get("dob", ""),
-                    rr.get("admission_date", ""),
-                    rr.get("discharge_date", ""),
-                    rr.get("room_number", ""),
-                    rr.get("primary_phone", ""),
-                    note or rr.get("note", "") or "",
+                    job_id, kind,
+                    rr.get("first_name",""),
+                    rr.get("last_name",""),
+                    rr.get("dob",""),
+                    rr.get("admission_date",""),
+                    rr.get("discharge_date",""),
+                    rr.get("room_number",""),
+                    rr.get("primary_phone",""),
+                    note or rr.get("note","") or "",
+
+                    rr.get("home_phone",""),
+                    rr.get("address",""),
+                    rr.get("city",""),
+                    rr.get("state",""),
+                    rr.get("zip",""),
+                    rr.get("primary_ins",""),
+                    rr.get("primary_number",""),
+                    rr.get("primary_care_phys",""),
+                    rr.get("tag",""),
+                    rr.get("facility_code",""),
+                    rr.get("reason_admission",""),
+                    rr.get("attending_phys",""),
                 ),
             )
 
@@ -5203,6 +5262,62 @@ def admin_census_sensys_export_csv(
         if not job:
             raise HTTPException(status_code=404, detail="job not found")
 
+        if k == "missing_admissions":
+            rows = cur.execute(
+                """
+                SELECT
+                  first_name, last_name, dob,
+                  home_phone, address, city, state, zip,
+                  primary_ins, primary_number, primary_care_phys, tag, facility_code,
+                  admission_date, discharge_date, room_number, reason_admission, attending_phys,
+                  note
+                FROM sensys_census_job_rows
+                WHERE job_id=? AND kind=?
+                ORDER BY facility_code ASC, last_name ASC, first_name ASC, dob ASC
+                """,
+                (job_id, k),
+            ).fetchall()
+
+            headers = [
+                "First Name","Last Name","DOB","Home Phone","Address","City","State","Zip",
+                "Primary Ins","Primary Number","Primary Care Physician","Tag","Facility_Code",
+                "Admission Date","Discharge Date","Room Number","Reason for admission","Attending Physician"
+            ]
+
+            buf = io.StringIO()
+            w = csv.DictWriter(buf, fieldnames=headers)
+            w.writeheader()
+
+            for r in rows:
+                rr = dict(r)
+                w.writerow({
+                    "First Name": rr.get("first_name",""),
+                    "Last Name": rr.get("last_name",""),
+                    "DOB": rr.get("dob",""),
+                    "Home Phone": rr.get("home_phone",""),
+                    "Address": rr.get("address",""),
+                    "City": rr.get("city",""),
+                    "State": rr.get("state",""),
+                    "Zip": rr.get("zip",""),
+                    "Primary Ins": rr.get("primary_ins",""),
+                    "Primary Number": rr.get("primary_number",""),
+                    "Primary Care Physician": rr.get("primary_care_phys",""),
+                    "Tag": rr.get("tag",""),
+                    "Facility_Code": rr.get("facility_code",""),
+                    "Admission Date": rr.get("admission_date",""),
+                    "Discharge Date": rr.get("discharge_date",""),
+                    "Room Number": rr.get("room_number",""),
+                    "Reason for admission": rr.get("reason_admission",""),
+                    "Attending Physician": rr.get("attending_phys",""),
+                })
+
+            return Response(
+                content=buf.getvalue().encode("utf-8"),
+                media_type="text/csv",
+                headers={"Content-Disposition": f'attachment; filename="sensys_{k}_{job_id}.csv"'},
+            )
+
+        # default (missing_discharges / duplicates)
         rows = cur.execute(
             """
             SELECT first_name, last_name, dob, admission_date, discharge_date, room_number, primary_phone, note
@@ -5218,20 +5333,19 @@ def admin_census_sensys_export_csv(
         buf = io.StringIO()
         w = csv.DictWriter(buf, fieldnames=headers)
         w.writeheader()
+
         for r in rows:
             rr = dict(r)
-            w.writerow(
-                {
-                    "First Name": rr.get("first_name",""),
-                    "Last Name": rr.get("last_name",""),
-                    "DOB": rr.get("dob",""),
-                    "Admission Date": rr.get("admission_date",""),
-                    "Discharge Date": rr.get("discharge_date",""),
-                    "Room Number": rr.get("room_number",""),
-                    "Primary Phone": rr.get("primary_phone",""),
-                    "Note": rr.get("note",""),
-                }
-            )
+            w.writerow({
+                "First Name": rr.get("first_name",""),
+                "Last Name": rr.get("last_name",""),
+                "DOB": rr.get("dob",""),
+                "Admission Date": rr.get("admission_date",""),
+                "Discharge Date": rr.get("discharge_date",""),
+                "Room Number": rr.get("room_number",""),
+                "Primary Phone": rr.get("primary_phone",""),
+                "Note": rr.get("note",""),
+            })
 
         return Response(
             content=buf.getvalue().encode("utf-8"),
