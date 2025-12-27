@@ -332,10 +332,55 @@ def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
 
     out: list[dict] = []
 
-    # Instead of building one giant buf/text, we keep a rolling buffer and
-    # only parse completed "ADMISSION RECORD" chunks as we encounter them.
+    # We avoid `carry += ...` (which causes repeated large string reallocations).
+    # Instead, we collect small pieces and only join when needed.
     carry = ""
+    carry_parts: list[str] = []
+    carry_parts_chars = 0
+
     saw_delim = False
+
+    def _flush_parts_into_carry() -> None:
+        nonlocal carry, carry_parts, carry_parts_chars
+        if carry_parts:
+            carry = carry + "".join(carry_parts)
+            carry_parts = []
+            carry_parts_chars = 0
+
+    def _parse_completed_chunks_from_carry() -> None:
+        """
+        Consumes complete DELIM-delimited chunks from `carry` into `out`,
+        leaving only the trailing partial chunk in `carry`.
+        """
+        nonlocal carry, saw_delim, out
+
+        # Ensure we start at the first delimiter (drop any preamble/noise before it)
+        first = carry.find(DELIM)
+        if first == -1:
+            return
+
+        saw_delim = True
+        if first > 0:
+            carry = carry[first:]
+
+        # Now `carry` begins with DELIM (or at least the first delimiter exists).
+        while True:
+            # Find the NEXT delimiter after the first one
+            next_pos = carry.find(DELIM, len(DELIM))
+            if next_pos == -1:
+                break
+
+            # Text between delimiters is a complete chunk
+            chunk_body = carry[len(DELIM):next_pos]
+            if chunk_body.strip():
+                out.extend(parse_pcc_admission_records_from_pdf_text(f"{DELIM}\n{chunk_body}"))
+
+            # Move forward to the next delimiter (keep it for subsequent parsing)
+            carry = carry[next_pos:]
+
+        # Safety: keep carry from growing unbounded if delimiter is rare / layout is weird
+        if len(carry) > 1_500_000:
+            carry = carry[-1_500_000:]
 
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
@@ -350,44 +395,39 @@ def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
                     "Re-export as text PDF or split into smaller files."
                 )
 
-            # Append into rolling buffer
-            carry += page_text + "\n"
+            # Accumulate per-page text without repeatedly reallocating a giant string
+            carry_parts.append(page_text)
+            carry_parts.append("\n")
+            carry_parts_chars += len(page_text) + 1
 
-            # If we have at least one delimiter, we can parse all completed chunks.
-            if DELIM in carry:
-                saw_delim = True
-                parts = carry.split(DELIM)
+            # Only flush/join when:
+            # 1) this page likely introduced the delimiter, OR
+            # 2) we have buffered a lot without flushing (prevents unbounded list growth)
+            if (DELIM in page_text) or (carry_parts_chars >= 512_000):  # ~0.5MB buffered
+                _flush_parts_into_carry()
+                _parse_completed_chunks_from_carry()
 
-                # parts[0] is whatever comes before the first delimiter (preamble/noise)
-                # parts[1:-1] are complete chunks (each ended because another delimiter appeared)
-                complete_chunks = parts[1:-1]
-
-                # parts[-1] is the current in-progress chunk (may span pages)
-                carry = parts[-1]
-
-                for chunk in complete_chunks:
-                    # Re-add delimiter so the existing text parser works unchanged
-                    out.extend(parse_pcc_admission_records_from_pdf_text(f"{DELIM}\n{chunk}"))
-
-                # Optional: keep carry from growing unbounded if delimiter is rare / layout is weird
-                # (This is a safety net; typical PCC PDFs will keep carry small.)
-                if len(carry) > 1_500_000:
-                    carry = carry[-1_500_000:]
+    # Flush anything left
+    _flush_parts_into_carry()
 
     # Handle scanned/image-only PDFs
     if not saw_any_text:
         raise ScannedPdfError("Scanned/image PDF detected (no extractable text)")
 
-    # If we never saw the delimiter, fall back to the original behavior (but without StringIO)
+    # If we never saw the delimiter, fall back to original behavior (but without building a huge buf)
     if not saw_delim:
         text = carry
         if not text.strip():
             raise ScannedPdfError("Scanned/image PDF detected (no extractable text)")
         return parse_pcc_admission_records_from_pdf_text(text)
 
+    # Parse any remaining completed chunks (in case delimiter appeared late)
+    _parse_completed_chunks_from_carry()
+
     # Parse the final trailing chunk (after the last delimiter)
+    # At this point `carry` typically begins with DELIM.
     if carry.strip():
-        out.extend(parse_pcc_admission_records_from_pdf_text(f"{DELIM}\n{carry}"))
+        out.extend(parse_pcc_admission_records_from_pdf_text(carry))
 
     return out
 
