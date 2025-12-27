@@ -349,41 +349,9 @@ def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
     return parse_pcc_admission_records_from_pdf_text(text)
 
 
-# ✅ NEW: shared parser core after text extraction
+# ✅ Shared parser core after text extraction (used by BOTH path + bytes)
 def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
     out: list[dict] = []
-
-    chunks = [c.strip() for c in text.split("ADMISSION RECORD") if c.strip()]
-    for chunk in chunks:
-        lines = [l.strip() for l in chunk.splitlines() if l.strip()]
-        facility_name = lines[0] if lines else ""
-
-        report_dt = ""
-        for l in lines[:12]:
-            if re.search(r"\bET\b", l) and re.search(r"\b\d{4}\b", l):
-                report_dt = l
-                break
-
-        # (keep ALL your existing regex extraction code here unchanged)
-        # ...
-        # return out at the end
-    return out
-
-def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
-    """
-    Parses PCC-style 'ADMISSION RECORD' PDFs like your samples.
-    Returns rows already mapped to your Sensys CSV columns.
-    """
-    if not HAVE_PDFPLUMBER:
-        raise HTTPException(
-            status_code=500,
-            detail="PDF parsing support is not installed (pdfplumber). Please add 'pdfplumber' to your environment."
-        )
-
-    out: list[dict] = []
-
-    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        text = "\n".join((p.extract_text() or "") for p in pdf.pages)
 
     # If there's no selectable text, this is very likely a scanned/image PDF
     if not (text or "").strip():
@@ -412,9 +380,13 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
         admission_date = m.group(3).strip() if m else ""
         resident_num = m.group(4).strip() if m else ""
 
-        # Fallback: sometimes the row format shifts — grab the first "Last, First" we see after "Resident Name"
+        # Fallback: sometimes the note row format shifts — grab the first "Last, First" we see after "Resident Name"
         if not resident_name:
-            m2 = re.search(r"Resident Name.*?\n([A-Za-z'\-\. ]+,\s*[A-Za-z'\-\. ]+)", chunk, flags=re.MULTILINE | re.DOTALL)
+            m2 = re.search(
+                r"Resident Name.*?\n([A-Za-z'\-\. ]+,\s*[A-Za-z'\-\. ]+)",
+                chunk,
+                flags=re.MULTILINE | re.DOTALL
+            )
             if m2:
                 resident_name = m2.group(1).strip()
 
@@ -431,13 +403,14 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
                 return f"({s[0:3]}) {s[3:6]}-{s[6:10]}"
             return (s or "").strip()
 
+        # Address + phone
         address = city = state = zip_code = home_phone = ""
 
-        # Pattern A: common "..., City, ST, ZIP (###) ###-####" or "..., City, ST, ZIP ##########"
+        # Pattern A: "Legal Mailing address" row has full address + phone
         madd = re.search(
-            r"^(.+?),\s*([A-Za-z .]+),\s*([A-Z]{2}),\s*(\d{5})(?:-\d{4})?\s+(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\d{10})\b",
+            r"Legal Mailing address\s*\n(.+?),\s*([A-Za-z .]+),\s*([A-Z]{2}),\s*(\d{5})(?:-\d{4})?\s+(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\d{10})\b",
             chunk,
-            flags=re.MULTILINE,
+            flags=re.MULTILINE | re.DOTALL,
         )
         if madd:
             address = madd.group(1).strip()
@@ -446,7 +419,7 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
             zip_code = madd.group(4).strip()
             home_phone = _fmt_phone(madd.group(5).strip())
         else:
-            # Pattern B: "Previous address ... Previous Phone #" line (your Westchester sample uses this)
+            # Pattern B: "Previous address ... Previous Phone #" line
             madd2 = re.search(
                 r"Previous address.*?\n(.+?),\s*([A-Za-z .]+),\s*([A-Z]{2}),\s*(\d{5})(?:-\d{4})?\s+(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\d{10})\b",
                 chunk,
@@ -459,16 +432,10 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
                 zip_code = madd2.group(4).strip()
                 home_phone = _fmt_phone(madd2.group(5).strip())
 
-        # -----------------------------
         # Insurance (Primary) extraction
-        # PCC PDFs vary a lot:
-        # - Some show "Insurance Name #1" / "#2"
-        # - Some only show PAYER INFORMATION rows like "Primary Payer Medicare A ..."
-        # - Some show "Insurance Name:" label but no value next to it
-        # -----------------------------
         primary_ins = primary_number = ""
 
-        # Pattern 1: "Insurance Name #1" then value on next line (Luxe Jupiter format)
+        # Pattern 1: "Insurance Name #1" then value on next line
         m_ins1 = re.search(r"^Insurance Name\s*#1\s*\n([^\n]+)$", chunk, flags=re.MULTILINE)
         if m_ins1:
             primary_ins = m_ins1.group(1).strip()
@@ -480,13 +447,15 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
 
         # Pattern 2: If not found, use PAYER INFORMATION "Primary Payer ..." line
         if not primary_ins:
-            m_pay = re.search(r"^Primary Payer\s+(.+?)\s+(?:Medicare|Medicaid|Mngd|Managed|Insurance|HMO|PPO)\b",
-                              chunk, flags=re.MULTILINE)
+            m_pay = re.search(
+                r"^Primary Payer\s+(.+?)\s+(?:Medicare|Medicaid|Mngd|Managed|Insurance|HMO|PPO)\b",
+                chunk,
+                flags=re.MULTILINE
+            )
             if m_pay:
-                # Example: "Medicare A" or "MCD Simply FL" often appears right after "Primary Payer"
                 primary_ins = m_pay.group(1).strip()
 
-            # Grab an ID if present (Medicare # / Medicaid # / Policy #)
+            # Grab an ID if present
             m_id = re.search(r"\b(Medicare|Medicaid)\s*#\s*([A-Za-z0-9]+)\b", chunk)
             if m_id:
                 primary_number = m_id.group(2).strip()
@@ -495,12 +464,11 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
                 if m_pol:
                     primary_number = m_pol.group(1).strip()
 
-        # Pattern 3: Fallback — sometimes there is "Insurance Name:" with a value on the next line
+        # Pattern 3: Fallback — "Insurance Name:" label, value on next line
         if not primary_ins:
             m_ins_label = re.search(r"^Insurance Name:\s*\n([^\n]+)$", chunk, flags=re.MULTILINE)
             if m_ins_label:
                 val = m_ins_label.group(1).strip()
-                # Guard against cases where the "value" line is just another header
                 if val and not val.lower().startswith("insurance policy"):
                     primary_ins = val
 
@@ -549,20 +517,30 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
             "Zip": zip_code,
             "Primary Ins": primary_ins,
             "Primary Number": primary_number,
-            "Primary Care Physician": primary_care,
-            "Tag": "",
-            "Facility_Code": facility_code,
-            "Admission Date": admission_date,
-            "Discharge Date": "",
-            "Room Number": room_number,
-            "Reason for admission": reason,
-            "Attending Physician": attending,
 
-            "_patient_key": patient_key,
-            "_raw": chunk[:8000],
-        })
 
-    return out
+def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
+    """
+    Parses PCC-style 'ADMISSION RECORD' PDFs like your samples.
+    Returns rows already mapped to your Sensys CSV columns.
+    """
+    if not HAVE_PDFPLUMBER:
+        raise HTTPException(
+            status_code=500,
+            detail="PDF parsing support is not installed (pdfplumber). Please add 'pdfplumber' to your environment."
+        )
+
+    out: list[dict] = []
+
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        text = "\n".join((p.extract_text() or "") for p in pdf.pages)
+
+    # If there's no selectable text, this is very likely a scanned/image PDF
+    if not (text or "").strip():
+        raise ScannedPdfError("Scanned/image PDF detected (no extractable text)")
+
+    # Reuse shared core
+    return parse_pcc_admission_records_from_pdf_text(text)
 
 
 # ---------------------------------------------------------------------------
