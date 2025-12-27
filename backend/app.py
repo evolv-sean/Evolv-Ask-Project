@@ -735,17 +735,15 @@ def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
 
 # ✅ Shared parser core after text extraction (used by BOTH path + bytes)
 def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str], float]:
-    """
-    Extract resident info from the PCC 'ADMISSION RECORD' chunk using the
-    RESIDENT INFORMATION section (label-driven, tolerant of wrapped/unit lines).
-
-    Returns: (resident_name, room_bed, admission_date, resident_num, warnings, confidence)
-    """
     warnings: list[str] = []
     confidence = 0.0
 
-    # Locate the RESIDENT INFORMATION header row
-    m_hdr = re.search(r"^RESIDENT INFORMATION\s*$", chunk, flags=re.MULTILINE)
+    # Locate the RESIDENT/PATIENT INFORMATION header row (allow indentation + case)
+    m_hdr = re.search(
+        r"^\s*(RESIDENT|PATIENT) INFORMATION\s*$",
+        chunk,
+        flags=re.MULTILINE | re.IGNORECASE,
+    )
     if not m_hdr:
         warnings.append("missing_resident_information_header")
         return ("", "", "", "", warnings, confidence)
@@ -757,7 +755,7 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
     # or
     #   "Patient Name ... Patient #"
     m_labels = re.search(
-        r"^(Resident|Patient) Name.*(Resident|Patient)\s*#\s*$",
+        r"^\s*(Resident|Patient) Name.*(Resident|Patient)\s*#\s*$",
         after,
         flags=re.MULTILINE | re.IGNORECASE,
     )
@@ -801,17 +799,59 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
     else:
         warnings.append("missing_resident_number")
 
-    # Admission date: first mm/dd/yyyy
-    m_adm = re.search(r"(\d{2}/\d{2}/\d{4})", resident_line)
-    admission_date = m_adm.group(1).strip() if m_adm else ""
+    # Admission date (PAD-style):
+    # Look in the Resident/Patient Info value block immediately after the labels line.
+    # PAD does: split after "Resident #"/"Patient #", then takes FIRST MM/DD/YYYY found.
+    admission_date = ""
+    date_pat = r"\b(0[1-9]|1[0-2])/(0[1-9]|[12][0-9]|3[01])/(19|20)\d{2}\b"
+
+    # Build a small "value window" from the lines right after the labels.
+    # This catches PDFs where the name and dates are on separate lines (like ASPIRE).
+    value_window = "\n".join(cand_lines[:30]) if cand_lines else ""
+
+    m_adm = re.search(date_pat, value_window)
+    if m_adm:
+        admission_date = m_adm.group(0).strip()
+    else:
+        # Fallback to old behavior if needed (some PDFs keep everything on one line)
+        m_adm2 = re.search(date_pat, resident_line)
+        admission_date = m_adm2.group(0).strip() if m_adm2 else ""
+
     if admission_date:
         confidence += 0.25
     else:
         warnings.append("missing_admission_date")
 
-    # Resident name
-    m_name = re.search(r"^([A-Za-z'\-\. ]+,\s*[A-Za-z'\-\. ]+)", resident_line)
-    resident_name = m_name.group(1).strip() if m_name else ""
+
+    # Resident/Patient name (PAD-style)
+    # - Last name: everything before comma, handle suffix Jr/Sr/II/III like PAD
+    # - First name: first word after comma (prevents "W Wing" etc. from leaking in)
+    resident_name = ""
+
+    # Get last part before comma
+    m_last = re.search(r"^[^,]+", resident_line)
+    last_raw = (m_last.group(0) if m_last else "").strip()
+
+    # PAD-style suffix handling (Jr/Sr/II/III)
+    last_tokens = [t for t in re.split(r"\s+", last_raw) if t]
+    suffixes = {"Jr", "Sr", "II", "III"}
+    last_pick = ""
+    if last_tokens:
+        if last_tokens[-1] in suffixes and len(last_tokens) >= 2:
+            last_pick = last_tokens[-2]
+        else:
+            last_pick = last_tokens[-1]
+
+    # Clean last name similarly (letters, apostrophe, hyphen)
+    last_clean = re.sub(r"[^A-Za-z'\-]+", "", last_pick)
+
+    # First name: FIRST token after comma (PAD: (?<=,\s*)\w+)
+    m_first = re.search(r"(?<=,\s*)\w+", resident_line)
+    first_clean = (m_first.group(0) if m_first else "").strip()
+
+    if last_clean and first_clean:
+        resident_name = f"{last_clean}, {first_clean}"
+
     if resident_name:
         confidence += 0.25
     else:
@@ -900,29 +940,46 @@ def _extract_pcc_address_phone(chunk: str) -> tuple[str, str, str, str, str, lis
         tail = chunk[m_hdr.end():]
         lines = [l.strip() for l in tail.splitlines() if l.strip()]
 
-        # find the first line that contains a phone number
+        # Prefer a line with a phone (if present), otherwise accept an address-only line.
         line_with_phone = ""
+        line_with_address_only = ""
+
+        # A "real address" heuristic: has ", <City>, <ST> <ZIP>"
+        addr_like = re.compile(r",\s*[A-Za-z .'\-]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?\b")
+
         for l in lines[:10]:
             if re.search(r"(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\b\d{10}\b)", l):
                 line_with_phone = l
                 break
+            if (not line_with_address_only) and addr_like.search(l):
+                line_with_address_only = l
 
-        if line_with_phone:
-            # split into: [previous address] [phone] [legal mailing address]
-            m_ph = re.search(r"(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\b\d{10}\b)", line_with_phone)
+        picked = line_with_phone or line_with_address_only
+
+        if picked:
+            # Strip emails (Sinai sometimes merges these into the row)
+            picked = re.sub(r"\b[\w\.-]+@[\w\.-]+\.\w+\b", " ", picked)
+
+            # If we have a phone, split around it. Otherwise treat as address text.
+            m_ph = re.search(r"(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\b\d{10}\b)", picked)
             if m_ph:
                 home_phone = _fmt_phone(m_ph.group(1))
-                left = line_with_phone[:m_ph.start()].strip(" ,")
-                right = line_with_phone[m_ph.end():].strip()
+                left = picked[:m_ph.start()].strip(" ,")
+                right = picked[m_ph.end():].strip()
 
                 # Use Previous Address (LEFT of phone). Only fallback to RIGHT if left is empty.
                 if left:
+                    left = re.sub(r"\bSame as Previous Address\b", " ", left, flags=re.IGNORECASE).strip()
                     _parse_addr_text(left)
                 elif right:
                     warnings.append("previous_address_blank_used_legal_mailing_fallback")
-                    # strip trailing “Same as Previous Address” if it appears on the right side
-                    right = re.sub(r"\s*Same as Previous Address\s*$", "", right, flags=re.IGNORECASE).strip()
+                    right = re.sub(r"\bSame as Previous Address\b", " ", right, flags=re.IGNORECASE).strip()
                     _parse_addr_text(right)
+            else:
+                # Address-only line (Ventura): parse the whole thing as address
+                picked = re.sub(r"\bSame as Previous Address\b", " ", picked, flags=re.IGNORECASE).strip()
+                _parse_addr_text(picked)
+
 
     # ------------------------------------------------------------
     # 2) FALLBACK: your existing "Legal Mailing address ... Sex" window
@@ -1002,15 +1059,17 @@ def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
 
         dob = ""
 
-        # PAD-style DOB parse:
-        # 1) find text after "Sex Birthdate"
-        # 2) grab the first MM/DD/YYYY anywhere after it
-        m_sex_bd = re.search(r"Sex\s+Birthdate(?P<rest>.*)$", chunk, flags=re.IGNORECASE | re.DOTALL)
-        if m_sex_bd:
-            rest = m_sex_bd.group("rest") or ""
-            mdob = re.search(r"\b(0[1-9]|1[0-2])/(0[1-9]|[12][0-9]|3[01])/(19|20)\d{2}\b", rest)
-            if mdob:
-                dob = mdob.group(0).strip()
+        # PAD-style DOB: look after "Sex Birthdate" and take the first mm/dd/yyyy found
+        m_dob_window = re.search(
+            r"Sex\s+Birthdate(?P<body>.*?)(?:\n|\r)",
+            chunk,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        dob_body = (m_dob_window.group("body") if m_dob_window else chunk)
+
+        mdob = re.search(r"\b(0[1-9]|1[0-2])/(0[1-9]|[12][0-9]|3[01])/(19|20)\d{2}\b", dob_body)
+        if mdob:
+            dob = mdob.group(0).strip()
 
         # Fallback to old behavior if needed
         if not dob:
