@@ -28,6 +28,15 @@ except Exception:
     pdfplumber = None
     HAVE_PDFPLUMBER = False
 
+# ✅ Prefer PyMuPDF (fitz) when available: faster + usually lower RAM than pdfplumber
+try:
+    import fitz  # PyMuPDF
+    HAVE_PYMUPDF = True
+except Exception:
+    fitz = None
+    HAVE_PYMUPDF = False
+
+
 from fastapi import UploadFile, File, Form
 from email.message import EmailMessage
 from pathlib import Path
@@ -371,17 +380,16 @@ class PdfTooLargeError(Exception):
     """Raised when extracted PDF text is too large (prevents OOM)."""
     pass
 
-def iter_pcc_admission_records_from_pdf_path(pdf_path: str):
+def iter_pcc_admission_records_from_pdf_path(pdf_path: str, job_id: str | None = None, filename: str | None = None):
     """
-    Streaming version of PCC parser: yields rows as soon as chunks are ready,
-    instead of building one giant list.
-    """
-    if not HAVE_PDFPLUMBER:
-        raise HTTPException(
-            status_code=500,
-            detail="PDF parsing support is not installed (pdfplumber). Please add 'pdfplumber' to your environment."
-        )
+    Streaming version of PCC parser:
+      - extracts text page-by-page
+      - buffers only enough text to complete an "ADMISSION RECORD" chunk
+      - yields rows as soon as chunks are ready (no giant list)
 
+    If job_id/filename are provided, we emit page-level PERF logs so you can see
+    exactly which page causes CPU/RAM spikes.
+    """
     MAX_TEXT_CHARS = 8_000_000
     DELIM = "ADMISSION RECORD"
 
@@ -392,6 +400,10 @@ def iter_pcc_admission_records_from_pdf_path(pdf_path: str):
     carry_parts: list[str] = []
     carry_parts_chars = 0
     saw_delim = False
+
+    def _perf(step: str, t0: float | None = None):
+        if PERF_LOG_ENABLED and job_id and filename:
+            _perf_log(job_id, filename, step, t0)
 
     def _flush_parts_into_carry() -> None:
         nonlocal carry, carry_parts, carry_parts_chars
@@ -427,29 +439,96 @@ def iter_pcc_admission_records_from_pdf_path(pdf_path: str):
 
             carry = carry[next_pos:]
 
+        # keep carry bounded to avoid pathological memory growth
         if len(carry) > 1_500_000:
             carry = carry[-1_500_000:]
 
-    with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            page_text = (page.extract_text() or "")
-            if page_text.strip():
-                saw_any_text = True
+    # -----------------------
+    # 1) Prefer PyMuPDF (fitz)
+    # -----------------------
+    if HAVE_PYMUPDF:
+        t0_open = time.perf_counter()
+        doc = fitz.open(pdf_path)
+        _perf("pymupdf_open", t0_open)
 
-            total_chars += len(page_text) + 1
-            if total_chars > MAX_TEXT_CHARS:
-                raise PdfTooLargeError(
-                    f"PDF too large after text extraction (>{MAX_TEXT_CHARS:,} chars). "
-                    "Re-export as text PDF or split into smaller files."
-                )
+        try:
+            for i in range(doc.page_count):
+                t0_page = time.perf_counter()
+                page = doc.load_page(i)
+                page_text = page.get_text("text") or ""
+                # explicitly drop page refs ASAP
+                del page
 
-            carry_parts.append(page_text)
-            carry_parts.append("\n")
-            carry_parts_chars += len(page_text) + 1
+                _perf(f"pymupdf_page_{i+1}_extract", t0_page)
 
-            if (DELIM in page_text) or (carry_parts_chars >= 512_000):
-                _flush_parts_into_carry()
-                yield from _yield_completed_chunks_from_carry()
+                if page_text.strip():
+                    saw_any_text = True
+
+                total_chars += len(page_text) + 1
+                if total_chars > MAX_TEXT_CHARS:
+                    raise PdfTooLargeError(
+                        f"PDF too large after text extraction (>{MAX_TEXT_CHARS:,} chars). "
+                        "Re-export as text PDF or split into smaller files."
+                    )
+
+                carry_parts.append(page_text)
+                carry_parts.append("\n")
+                carry_parts_chars += len(page_text) + 1
+
+                # flush when delimiter appears OR buffer grows
+                if (DELIM in page_text) or (carry_parts_chars >= 512_000):
+                    t0_flush = time.perf_counter()
+                    _flush_parts_into_carry()
+                    _perf("flush_to_carry", t0_flush)
+
+                    t0_parse = time.perf_counter()
+                    yield from _yield_completed_chunks_from_carry()
+                    _perf("yield_completed_chunks", t0_parse)
+
+        finally:
+            try:
+                doc.close()
+            except Exception:
+                pass
+
+    # -----------------------
+    # 2) Fallback: pdfplumber
+    # -----------------------
+    else:
+        if not HAVE_PDFPLUMBER:
+            raise HTTPException(
+                status_code=500,
+                detail="PDF parsing support is not installed (pdfplumber). Please add 'pdfplumber' to your environment."
+            )
+
+        with pdfplumber.open(pdf_path) as pdf:
+            for idx, page in enumerate(pdf.pages, start=1):
+                t0_page = time.perf_counter()
+                page_text = (page.extract_text() or "")
+                _perf(f"pdfplumber_page_{idx}_extract", t0_page)
+
+                if page_text.strip():
+                    saw_any_text = True
+
+                total_chars += len(page_text) + 1
+                if total_chars > MAX_TEXT_CHARS:
+                    raise PdfTooLargeError(
+                        f"PDF too large after text extraction (>{MAX_TEXT_CHARS:,} chars). "
+                        "Re-export as text PDF or split into smaller files."
+                    )
+
+                carry_parts.append(page_text)
+                carry_parts.append("\n")
+                carry_parts_chars += len(page_text) + 1
+
+                if (DELIM in page_text) or (carry_parts_chars >= 512_000):
+                    t0_flush = time.perf_counter()
+                    _flush_parts_into_carry()
+                    _perf("flush_to_carry", t0_flush)
+
+                    t0_parse = time.perf_counter()
+                    yield from _yield_completed_chunks_from_carry()
+                    _perf("yield_completed_chunks", t0_parse)
 
     _flush_parts_into_carry()
 
@@ -469,6 +548,7 @@ def iter_pcc_admission_records_from_pdf_path(pdf_path: str):
     if carry.strip():
         for rec in parse_pcc_admission_records_from_pdf_text(carry):
             yield rec
+
 
 
 def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
@@ -4277,7 +4357,11 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
 
 
                 t0 = time.perf_counter()
-                parsed_iter = iter_pcc_admission_records_from_pdf_path(p)
+                parsed_iter = iter_pcc_admission_records_from_pdf_path(
+                    p,
+                    job_id=job_id,
+                    filename=filename,
+                )
                 _perf_log(job_id, filename, "created_parsed_iter", t0)
 
                 # Peek first row only (do NOT load whole PDF into memory)
