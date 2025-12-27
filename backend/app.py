@@ -867,15 +867,28 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
     else:
         warnings.append("missing_resident_name")
 
-    # Room/bed: token immediately before admission date
+    # Room/bed: last room-like token immediately before admission date
+    # NOTE: admission_date may be found from value_window even when resident_line doesn't contain it,
+    # so we must not rely on resident_line.split(admission_date) only.
     room_bed = ""
     if admission_date:
-        pre = resident_line.split(admission_date, 1)[0].rstrip()
-        toks = pre.split()
-        if toks:
-            room_bed = toks[-1].strip()
-            if room_bed in {"-", "—"} and len(toks) >= 2:
-                room_bed = toks[-2].strip()
+        room_source = resident_line if admission_date in resident_line else value_window
+
+        # Prefer strong PCC room patterns like "319-B", "202-A", "147-1", etc.
+        room_pat = re.compile(r"\b\d{1,4}[A-Z]?(?:-[A-Za-z0-9]{1,4})+\b")
+
+        pre = room_source.split(admission_date, 1)[0]
+        matches = list(room_pat.finditer(pre))
+        if matches:
+            room_bed = matches[-1].group(0).strip()
+        else:
+            # Fallback: last token before the date (existing behavior)
+            toks = pre.rstrip().split()
+            if toks:
+                room_bed = toks[-1].strip()
+                if room_bed in {"-", "—"} and len(toks) >= 2:
+                    room_bed = toks[-2].strip()
+
         if room_bed:
             confidence += 0.25
         else:
@@ -942,7 +955,7 @@ def _extract_pcc_address_phone(chunk: str) -> tuple[str, str, str, str, str, lis
     # 1) PRIMARY: row under "Previous address  Previous Phone #  Legal Mailing address"
     # ------------------------------------------------------------
     m_hdr = re.search(
-        r"^Previous address\s+Previous Phone\s*#\s+Legal Mailing address\s*$",
+        r"^Previous address\s+Previous Phone\s*(?:#|No\.?)?\s+Legal Mailing address\s*$",
         chunk,
         flags=re.MULTILINE | re.IGNORECASE,
     )
@@ -969,6 +982,15 @@ def _extract_pcc_address_phone(chunk: str) -> tuple[str, str, str, str, str, lis
         if picked:
             # Strip emails (Sinai sometimes merges these into the row)
             picked = re.sub(r"\b[\w\.-]+@[\w\.-]+\.\w+\b", " ", picked)
+
+            # Strip header labels that sometimes leak into the captured row
+            picked = re.sub(
+                r"\bPrevious address\b|\bPrevious Phone\s*(?:#|No\.?)?\b|\bLegal Mailing address\b",
+                " ",
+                picked,
+                flags=re.IGNORECASE,
+            )
+            picked = _collapse_ws(picked)
 
             # If we have a phone, split around it. Otherwise treat as address text.
             m_ph = re.search(r"(\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}|\b\d{10}\b)", picked)
@@ -1002,6 +1024,15 @@ def _extract_pcc_address_phone(chunk: str) -> tuple[str, str, str, str, str, lis
         )
         body = (m_win.group("body") if m_win else "").strip()
         if body:
+            # Strip header labels that sometimes leak into this window
+            body = re.sub(
+                r"\bPrevious address\b|\bPrevious Phone\s*(?:#|No\.?)?\b|\bLegal Mailing address\b",
+                " ",
+                body,
+                flags=re.IGNORECASE,
+            )
+            body = _collapse_ws(body)
+
             if not home_phone:
                 home_phone = _first_phone(body)
 
