@@ -759,11 +759,22 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
         after,
         flags=re.MULTILINE | re.IGNORECASE,
     )
-    if not m_labels:
-        warnings.append("missing_resident_information_labels")
-        return ("", "", "", "", warnings, confidence)
 
-    tail = after[m_labels.end():]
+    # Arcadia/Ventura-style: labels are stacked on separate lines, so fall back to the "Resident #" line
+    if m_labels:
+        tail = after[m_labels.end():]
+    else:
+        m_resnum_line = re.search(
+            r"^\s*(Resident|Patient)\s*#\s*$",
+            after,
+            flags=re.MULTILINE | re.IGNORECASE,
+        )
+        if not m_resnum_line:
+            warnings.append("missing_resident_information_labels")
+            return ("", "", "", "", warnings, confidence)
+        tail = after[m_resnum_line.end():]
+        warnings.append("resident_labels_multiline_fallback_used")
+
     cand_lines = [l.strip() for l in tail.splitlines() if l.strip()]
 
     # Candidate resident line should have a comma in name and at least one date
@@ -773,12 +784,23 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
             resident_line = l
             break
 
-    # Fallback: any "Last, First" line after labels
+    # Arcadia-style: name/date/room/# may be split across multiple lines — compact the first few lines into one
     if not resident_line:
-        m_name = re.search(r"^([A-Za-z'\-\. ]+,\s*[A-Za-z'\-\. ]+).*$", tail, flags=re.MULTILINE)
+        compact = " ".join(cand_lines[:15])
+        if "," in compact and re.search(r"\d{2}/\d{2}/\d{4}", compact):
+            resident_line = compact.strip()
+            warnings.append("resident_line_compacted_from_multiline")
+
+    # Fallback: any "Last, First" line after labels (but avoid matching City, ST like "Arcadia, CA")
+    if not resident_line:
+        m_name = re.search(r"([A-Za-z'\-\. ]+,\s*[A-Za-z'\-\. ]+)", tail, flags=re.MULTILINE)
         if m_name:
-            resident_line = m_name.group(0).strip()
-            warnings.append("resident_line_fallback_used")
+            candidate = m_name.group(1).strip()
+            # If the part after comma is just a 2-letter state, it's not a person name
+            post = candidate.split(",", 1)[-1].strip().split()[0] if "," in candidate else ""
+            if not re.fullmatch(r"[A-Z]{2}", post):
+                resident_line = candidate
+                warnings.append("resident_line_fallback_used")
 
     if not resident_line:
         warnings.append("resident_line_not_found")
@@ -1024,6 +1046,38 @@ def _extract_pcc_address_phone(chunk: str) -> tuple[str, str, str, str, str, lis
     return (address, city, state, zip_code, home_phone, warnings)
 
 
+def _extract_pcc_birthdate(chunk: str) -> str:
+    """
+    PAD-style DOB extraction that works for both layouts:
+    - "Sex Birthdate Age ..." on one line
+    - "Sex" on one line and "Birthdate" on the next (Arcadia/Ventura-style)
+    """
+    date_any = re.compile(r"\b(0?[1-9]|1[0-2])/(0?[1-9]|[12][0-9]|3[01])/(19|20)\d{2}\b")
+
+    # 1) Preferred: find "Birthdate" label, then take first date after it (works when columns are stacked)
+    m_birth = re.search(r"^\s*Birthdate\s*$", chunk, flags=re.IGNORECASE | re.MULTILINE)
+    if m_birth:
+        after = chunk[m_birth.end(): m_birth.end() + 250]  # small window is enough
+        m = date_any.search(after)
+        if m:
+            return m.group(0).strip()
+
+    # 2) Alternate: "Sex Birthdate ..." on one line (take first date shortly after that label)
+    m_sex_birth = re.search(r"Sex\s+Birthdate", chunk, flags=re.IGNORECASE)
+    if m_sex_birth:
+        after = chunk[m_sex_birth.end(): m_sex_birth.end() + 250]
+        m = date_any.search(after)
+        if m:
+            return m.group(0).strip()
+
+    # 3) Fallback: lines like "M 09/09/1951 74"
+    m_line = re.search(r"^[MF]\s+(\d{1,2}/\d{1,2}/\d{4})\b", chunk, flags=re.MULTILINE)
+    if m_line:
+        return m_line.group(1).strip()
+
+    return ""
+
+
 def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
     out: list[dict] = []
 
@@ -1057,25 +1111,7 @@ def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
 
         first_name, last_name = _split_name(resident_name)
 
-        dob = ""
-
-        # PAD-style DOB: look after "Sex Birthdate" and take the first mm/dd/yyyy found
-        m_dob_window = re.search(
-            r"Sex\s+Birthdate(?P<body>.*?)(?:\n|\r)",
-            chunk,
-            flags=re.IGNORECASE | re.DOTALL,
-        )
-        dob_body = (m_dob_window.group("body") if m_dob_window else chunk)
-
-        mdob = re.search(r"\b(0[1-9]|1[0-2])/(0[1-9]|[12][0-9]|3[01])/(19|20)\d{2}\b", dob_body)
-        if mdob:
-            dob = mdob.group(0).strip()
-
-        # Fallback to old behavior if needed
-        if not dob:
-            mdob2 = re.search(r"^[MF]\s+(\d{2}/\d{2}/\d{4})\b", chunk, flags=re.MULTILINE)
-            if mdob2:
-                dob = mdob2.group(1).strip()
+        dob = _extract_pcc_birthdate(chunk)
 
         address, city, state, zip_code, home_phone, addr_warnings = _extract_pcc_address_phone(chunk)
 
