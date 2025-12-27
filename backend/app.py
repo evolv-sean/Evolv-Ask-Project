@@ -17,6 +17,8 @@ import tempfile
 import time
 import gc
 import asyncio
+import shutil
+import subprocess
 
 try:
     import pdfplumber
@@ -314,30 +316,26 @@ class PdfTooLargeError(Exception):
     """Raised when extracted PDF text is too large (prevents OOM)."""
     pass
 
-
-def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
+def iter_pcc_admission_records_from_pdf_path(pdf_path: str):
+    """
+    Streaming version of PCC parser: yields rows as soon as chunks are ready,
+    instead of building one giant list.
+    """
     if not HAVE_PDFPLUMBER:
         raise HTTPException(
             status_code=500,
             detail="PDF parsing support is not installed (pdfplumber). Please add 'pdfplumber' to your environment."
         )
 
-    # Safety cap to prevent Render OOM (tune as needed)
-    MAX_TEXT_CHARS = 8_000_000  # ~8MB of text
-
+    MAX_TEXT_CHARS = 8_000_000
     DELIM = "ADMISSION RECORD"
 
     saw_any_text = False
     total_chars = 0
 
-    out: list[dict] = []
-
-    # We avoid `carry += ...` (which causes repeated large string reallocations).
-    # Instead, we collect small pieces and only join when needed.
     carry = ""
     carry_parts: list[str] = []
     carry_parts_chars = 0
-
     saw_delim = False
 
     def _flush_parts_into_carry() -> None:
@@ -347,14 +345,13 @@ def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
             carry_parts = []
             carry_parts_chars = 0
 
-    def _parse_completed_chunks_from_carry() -> None:
+    def _yield_completed_chunks_from_carry():
         """
-        Consumes complete DELIM-delimited chunks from `carry` into `out`,
-        leaving only the trailing partial chunk in `carry`.
+        Yields parsed rows for completed DELIM-delimited chunks from `carry`,
+        leaving only trailing partial chunk in `carry`.
         """
-        nonlocal carry, saw_delim, out
+        nonlocal carry, saw_delim
 
-        # Ensure we start at the first delimiter (drop any preamble/noise before it)
         first = carry.find(DELIM)
         if first == -1:
             return
@@ -363,22 +360,18 @@ def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
         if first > 0:
             carry = carry[first:]
 
-        # Now `carry` begins with DELIM (or at least the first delimiter exists).
         while True:
-            # Find the NEXT delimiter after the first one
             next_pos = carry.find(DELIM, len(DELIM))
             if next_pos == -1:
                 break
 
-            # Text between delimiters is a complete chunk
             chunk_body = carry[len(DELIM):next_pos]
             if chunk_body.strip():
-                out.extend(parse_pcc_admission_records_from_pdf_text(f"{DELIM}\n{chunk_body}"))
+                for rec in parse_pcc_admission_records_from_pdf_text(f"{DELIM}\n{chunk_body}"):
+                    yield rec
 
-            # Move forward to the next delimiter (keep it for subsequent parsing)
             carry = carry[next_pos:]
 
-        # Safety: keep carry from growing unbounded if delimiter is rare / layout is weird
         if len(carry) > 1_500_000:
             carry = carry[-1_500_000:]
 
@@ -395,37 +388,206 @@ def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
                     "Re-export as text PDF or split into smaller files."
                 )
 
-            # Accumulate per-page text without repeatedly reallocating a giant string
             carry_parts.append(page_text)
             carry_parts.append("\n")
             carry_parts_chars += len(page_text) + 1
 
-            # Only flush/join when:
-            # 1) this page likely introduced the delimiter, OR
-            # 2) we have buffered a lot without flushing (prevents unbounded list growth)
-            if (DELIM in page_text) or (carry_parts_chars >= 512_000):  # ~0.5MB buffered
+            if (DELIM in page_text) or (carry_parts_chars >= 512_000):
                 _flush_parts_into_carry()
-                _parse_completed_chunks_from_carry()
+                yield from _yield_completed_chunks_from_carry()
 
-    # Flush anything left
     _flush_parts_into_carry()
 
-    # Handle scanned/image-only PDFs
     if not saw_any_text:
         raise ScannedPdfError("Scanned/image PDF detected (no extractable text)")
 
-    # If we never saw the delimiter, fall back to original behavior (but without building a huge buf)
+    if not saw_delim:
+        text = carry
+        if not text.strip():
+            raise ScannedPdfError("Scanned/image PDF detected (no extractable text)")
+        for rec in parse_pcc_admission_records_from_pdf_text(text):
+            yield rec
+        return
+
+    yield from _yield_completed_chunks_from_carry()
+
+    if carry.strip():
+        for rec in parse_pcc_admission_records_from_pdf_text(carry):
+            yield rec
+
+
+def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
+    """
+    FAST PATH:
+      - Prefer `pdftotext` (poppler) streamed extraction: much lower RAM and usually far less CPU than pdfplumber.
+      - Fallback to existing pdfplumber logic if pdftotext is not available.
+    """
+    # Safety cap to prevent Render OOM (tune as needed)
+    MAX_TEXT_CHARS = 8_000_000  # ~8MB of text
+    DELIM = "ADMISSION RECORD"
+
+    saw_any_text = False
+    total_chars = 0
+    out: list[dict] = []
+
+    # We avoid repeated giant string reallocations.
+    carry = ""
+    carry_parts: list[str] = []
+    carry_parts_chars = 0
+    saw_delim = False
+
+    def _flush_parts_into_carry() -> None:
+        nonlocal carry, carry_parts, carry_parts_chars
+        if carry_parts:
+            carry = carry + "".join(carry_parts)
+            carry_parts = []
+            carry_parts_chars = 0
+
+    def _parse_completed_chunks_from_carry() -> None:
+        """
+        Consumes complete DELIM-delimited chunks from `carry` into `out`,
+        leaving only the trailing partial chunk in `carry`.
+        """
+        nonlocal carry, saw_delim, out
+
+        first = carry.find(DELIM)
+        if first == -1:
+            return
+
+        saw_delim = True
+        if first > 0:
+            carry = carry[first:]
+
+        while True:
+            next_pos = carry.find(DELIM, len(DELIM))
+            if next_pos == -1:
+                break
+
+            chunk_body = carry[len(DELIM):next_pos]
+            if chunk_body.strip():
+                out.extend(parse_pcc_admission_records_from_pdf_text(f"{DELIM}\n{chunk_body}"))
+
+            carry = carry[next_pos:]
+
+        # keep carry bounded
+        if len(carry) > 1_500_000:
+            carry = carry[-1_500_000:]
+
+    # -----------------------
+    # 1) FAST PATH: pdftotext
+    # -----------------------
+    pdftotext_bin = shutil.which("pdftotext")
+    if pdftotext_bin:
+        # -layout preserves column alignment better for these PCC reports
+        # "-" outputs text to stdout so we can stream it without storing a giant blob
+        cmd = [pdftotext_bin, "-layout", pdf_path, "-"]
+
+        try:
+            with subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                errors="replace",
+                bufsize=1,   # line-buffered
+            ) as proc:
+                assert proc.stdout is not None
+
+                for line in proc.stdout:
+                    if line.strip():
+                        saw_any_text = True
+
+                    total_chars += len(line)
+                    if total_chars > MAX_TEXT_CHARS:
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass
+                        raise PdfTooLargeError(
+                            f"PDF too large after text extraction (>{MAX_TEXT_CHARS:,} chars). "
+                            "Re-export as text PDF or split into smaller files."
+                        )
+
+                    carry_parts.append(line)
+                    carry_parts_chars += len(line)
+
+                    # flush when delimiter appears OR buffer grows
+                    if (DELIM in line) or (carry_parts_chars >= 512_000):
+                        _flush_parts_into_carry()
+                        _parse_completed_chunks_from_carry()
+
+                # ensure process is done
+                proc.wait(timeout=30)
+
+            _flush_parts_into_carry()
+
+            if not saw_any_text:
+                raise ScannedPdfError("Scanned/image PDF detected (no extractable text)")
+
+            if not saw_delim:
+                text = carry
+                if not text.strip():
+                    raise ScannedPdfError("Scanned/image PDF detected (no extractable text)")
+                return parse_pcc_admission_records_from_pdf_text(text)
+
+            _parse_completed_chunks_from_carry()
+
+            if carry.strip():
+                out.extend(parse_pcc_admission_records_from_pdf_text(carry))
+
+            return out
+
+        except PdfTooLargeError:
+            raise
+        except ScannedPdfError:
+            raise
+        except Exception:
+            # fall through to pdfplumber fallback if pdftotext errors for any reason
+            pass
+
+    # -----------------------
+    # 2) FALLBACK: pdfplumber
+    # -----------------------
+    if not HAVE_PDFPLUMBER:
+        raise HTTPException(
+            status_code=500,
+            detail="PDF parsing support is not installed (pdfplumber). Please add 'pdfplumber' to your environment."
+        )
+
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            page_text = (page.extract_text() or "")
+            if page_text.strip():
+                saw_any_text = True
+
+            total_chars += len(page_text) + 1
+            if total_chars > MAX_TEXT_CHARS:
+                raise PdfTooLargeError(
+                    f"PDF too large after text extraction (>{MAX_TEXT_CHARS:,} chars). "
+                    "Re-export as text PDF or split into smaller files."
+                )
+
+            carry_parts.append(page_text)
+            carry_parts.append("\n")
+            carry_parts_chars += len(page_text) + 1
+
+            if (DELIM in page_text) or (carry_parts_chars >= 512_000):
+                _flush_parts_into_carry()
+                _parse_completed_chunks_from_carry()
+
+    _flush_parts_into_carry()
+
+    if not saw_any_text:
+        raise ScannedPdfError("Scanned/image PDF detected (no extractable text)")
+
     if not saw_delim:
         text = carry
         if not text.strip():
             raise ScannedPdfError("Scanned/image PDF detected (no extractable text)")
         return parse_pcc_admission_records_from_pdf_text(text)
 
-    # Parse any remaining completed chunks (in case delimiter appeared late)
     _parse_completed_chunks_from_carry()
 
-    # Parse the final trailing chunk (after the last delimiter)
-    # At this point `carry` typically begins with DELIM.
     if carry.strip():
         out.extend(parse_pcc_admission_records_from_pdf_text(carry))
 
@@ -4043,26 +4205,31 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                     conn.commit()
                     continue
 
-                parsed = parse_pcc_admission_records_from_pdf_path(p)
+                parsed_iter = iter_pcc_admission_records_from_pdf_path(p)
+
+                # Peek first row only (do NOT load whole PDF into memory)
+                first_row = next(parsed_iter, None)
 
                 # Facility name: filename (AUTHORITATIVE) > UI override > PDF content
                 fac_name = extract_facility_name_from_filename(filename)
                 if not fac_name:
-                    fac_name = facility_name_override or (parsed[0]["facility_name"] if parsed else "")
+                    fac_name = facility_name_override or ((first_row or {}).get("facility_name") or "")
 
                 # Facility code: UI override > filename (AUTHORITATIVE) > PDF content
                 fac_code = (
                     facility_code_override
                     or extract_facility_code_from_filename(filename)
-                    or (parsed[0].get("facility_code") if parsed else "")
+                    or ((first_row or {}).get("facility_code") or "")
                 )
 
-                report_dt = (parsed[0].get("report_dt") if parsed else None)
+                report_dt = ((first_row or {}).get("report_dt") if first_row else None)
 
-                # INSERT the run
                 cur.execute(
                     """
-                    INSERT INTO census_runs (facility_name, facility_code, report_dt, source_filename, source_sha256)
+                    INSERT INTO census_runs (
+                        facility_name, facility_code, report_dt,
+                        source_filename, source_sha256
+                    )
                     VALUES (?, ?, ?, ?, ?)
                     """,
                     (fac_name, fac_code, report_dt, filename, sha),
@@ -4071,10 +4238,11 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
 
                 rows_inserted = 0
 
-                for row in parsed:
+                def _insert_one(row: dict):
+                    nonlocal rows_inserted
+
                     patient_key = (row.get("_patient_key") or "").strip()
                     if not patient_key:
-                        # fallback key if parser didn't generate one
                         patient_key = "|".join([
                             (fac_name or "").upper(),
                             (row.get("Last Name") or "").upper(),
@@ -4131,6 +4299,14 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                     )
                     rows_inserted += 1
 
+                # Insert first row, then stream the rest (NO giant list in memory)
+                if first_row:
+                    _insert_one(first_row)
+
+                for row in parsed_iter:
+                    _insert_one(row)
+
+
                 cur.execute(
                     """
                     INSERT INTO census_upload_job_files (job_id, filename, status, detail, run_id, rows_inserted)
@@ -4138,12 +4314,7 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                     """,
                     (job_id, filename, "Inserted", run_id, rows_inserted),
                 )
-
-                # ✅ NOW it is safe to release memory
-                try:
-                    del parsed
-                except Exception:
-                    pass
+                # ✅ Release cyclic refs (safe)
                 gc.collect()
 
                 processed += 1
