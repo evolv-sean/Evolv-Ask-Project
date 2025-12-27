@@ -3684,7 +3684,7 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                     conn.commit()
                     continue
 
-                parsed = parse_pcc_admission_records_from_pdf_bytes(pdf_bytes)
+                parsed = parse_pcc_admission_records_from_pdf_path(p)
 
                 # Facility name: filename (AUTHORITATIVE) > UI override > PDF content
                 fac_name = extract_facility_name_from_filename(filename)
