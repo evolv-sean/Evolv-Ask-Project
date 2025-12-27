@@ -14,6 +14,7 @@ import csv
 import uuid
 import logging
 import tempfile
+import time
 
 try:
     import pdfplumber
@@ -249,6 +250,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    ms = int((time.time() - start) * 1000)
+
+    ct = response.headers.get("content-type", "")
+    cl = response.headers.get("content-length", "")
+
+    # NOTE: This only logs requests that actually reach your FastAPI app.
+    logger.info(
+        "[APP] %s %s status=%s ms=%s ct=%s cl=%s",
+        request.method,
+        request.url.path,
+        response.status_code,
+        ms,
+        ct,
+        cl,
+    )
+    return response
 
 from fastapi.responses import JSONResponse
 
@@ -3805,16 +3827,38 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                 processed += 1
                 _job_set(conn, job_id, "running", processed=processed, message=f"Error: {filename}")
                 conn.commit()
+            finally:
+                # ✅ ALWAYS delete the temp file for this specific 'p'
+                try:
+                    Path(p).unlink(missing_ok=True)
+                except Exception:
+                    logger.exception("Failed deleting tmp census PDF path=%s", p)
 
         _job_set(conn, job_id, "done", processed=processed, message="Complete")
         conn.commit()
+        # ✅ cleanup the per-job tmp directory if it's empty
+        try:
+            job_dir = CENSUS_UPLOAD_TMP / job_id
+            if job_dir.exists():
+                # remove any leftover files just in case
+                for child in job_dir.glob("*"):
+                    try:
+                        child.unlink(missing_ok=True)
+                    except Exception:
+                        logger.exception("Failed deleting leftover tmp file=%s", str(child))
+                job_dir.rmdir()
+        except Exception:
+            logger.exception("Failed deleting tmp census job dir job_id=%s", job_id)
 
     except Exception as e:
         logger.exception("Census job failed job_id=%s", job_id)
         _job_set(conn, job_id, "error", processed=processed, message=str(e))
         conn.commit()
     finally:
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 @app.get("/admin/census/upload-status")
