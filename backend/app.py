@@ -529,6 +529,8 @@ def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
             "_patient_key": patient_key,
             "_raw": chunk[:8000],
         })
+        
+    return out
 
 
 def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
