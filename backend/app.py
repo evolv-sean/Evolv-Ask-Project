@@ -250,6 +250,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.responses import JSONResponse
+
+# ✅ Force JSON for unexpected server errors (prevents frontend JSON.parse crashes)
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled error path=%s", request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"ok": False, "detail": "Internal Server Error"},
+    )
+
 
 def _safe(s: str) -> str:
     return (s or "").strip()
@@ -1058,6 +1069,45 @@ def init_db():
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_census_patients_run ON census_run_patients (run_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_census_patients_key ON census_run_patients (facility_name, patient_key)")
+
+    # ✅ Ensure new columns exist on older census_run_patients tables (safe no-op if already exists)
+        for stmt in [
+            "ALTER TABLE census_run_patients ADD COLUMN first_name TEXT",
+            "ALTER TABLE census_run_patients ADD COLUMN last_name TEXT",
+            "ALTER TABLE census_run_patients ADD COLUMN dob TEXT",
+            "ALTER TABLE census_run_patients ADD COLUMN home_phone TEXT",
+            "ALTER TABLE census_run_patients ADD COLUMN address TEXT",
+            "ALTER TABLE census_run_patients ADD COLUMN city TEXT",
+            "ALTER TABLE census_run_patients ADD COLUMN state TEXT",
+            "ALTER TABLE census_run_patients ADD COLUMN zip TEXT",
+            "ALTER TABLE census_run_patients ADD COLUMN primary_ins TEXT",
+            "ALTER TABLE census_run_patients ADD COLUMN primary_number TEXT",
+            "ALTER TABLE census_run_patients ADD COLUMN primary_care_phys TEXT",
+            "ALTER TABLE census_run_patients ADD COLUMN attending_phys TEXT",
+            "ALTER TABLE census_run_patients ADD COLUMN admission_date TEXT",
+            "ALTER TABLE census_run_patients ADD COLUMN discharge_date TEXT",
+            "ALTER TABLE census_run_patients ADD COLUMN room_number TEXT",
+            "ALTER TABLE census_run_patients ADD COLUMN reason_admission TEXT",
+            "ALTER TABLE census_run_patients ADD COLUMN tag TEXT",
+            "ALTER TABLE census_run_patients ADD COLUMN raw_text TEXT",
+            "ALTER TABLE census_run_patients ADD COLUMN created_at TEXT",
+        ]:
+            try:
+                cur.execute(stmt)
+            except sqlite3.Error:
+                pass
+
+        # ✅ Also ensure newer columns exist on older census_runs tables (optional but recommended)
+        for stmt in [
+            "ALTER TABLE census_runs ADD COLUMN facility_code TEXT",
+            "ALTER TABLE census_runs ADD COLUMN report_dt TEXT",
+            "ALTER TABLE census_runs ADD COLUMN source_filename TEXT",
+            "ALTER TABLE census_runs ADD COLUMN source_sha256 TEXT",
+        ]:
+            try:
+                cur.execute(stmt)
+            except sqlite3.Error:
+                pass
 
     # ----------------------------
     # Census upload jobs (Option A)
@@ -3698,20 +3748,6 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                 processed += 1
                 _job_set(conn, job_id, "running", processed=processed, message=f"Skipped scanned PDF: {filename}")
                 conn.commit()
-
-            except Exception as e:
-                logger.exception("Census job file failed job_id=%s file=%s", job_id, filename)
-                cur.execute(
-                    """
-                    INSERT INTO census_upload_job_files (job_id, filename, status, detail, run_id, rows_inserted)
-                    VALUES (?, ?, 'error', ?, NULL, 0)
-                    """,
-                    (job_id, filename, str(e)),
-                )
-                processed += 1
-                _job_set(conn, job_id, "running", processed=processed, message=f"Error: {filename}")
-                conn.commit()
-
 
             except Exception as e:
                 logger.exception("Census job file failed job_id=%s file=%s", job_id, filename)
