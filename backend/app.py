@@ -5,6 +5,7 @@ import datetime as dt
 import json
 import re
 import threading
+from difflib import SequenceMatcher
 import smtplib
 import ssl
 import secrets
@@ -947,9 +948,16 @@ def _extract_pcc_address_phone(chunk: str) -> tuple[str, str, str, str, str, lis
 
     def _strip_same_as(s: str) -> str:
         s = _collapse_ws(s)
-        # Remove PCC marker text WITHOUT discarding the real address
+
+        # Remove common PCC "marker" prefixes that sometimes get glued into the address
+        # Examples: "# Same as 8069 KEY WEST LANE..." or "# United States ..."
+        s = re.sub(r"#\s*United\s+States\b", " ", s, flags=re.IGNORECASE)
+        s = re.sub(r"#\s*Same\s+as\b", " ", s, flags=re.IGNORECASE)
+
+        # Existing Ventura/PCC marker cleanup
         s = re.sub(r"\bSame as Previous Address\b", " ", s, flags=re.IGNORECASE)
         s = re.sub(r"^\s*Same as\b", " ", s, flags=re.IGNORECASE)
+
         return _collapse_ws(s).strip(" ,")
 
     def _parse_addr_text(addr_text: str):
@@ -1937,6 +1945,40 @@ def init_db():
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_census_patients_run ON census_run_patients (run_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_census_patients_key ON census_run_patients (facility_name, patient_key)")
+    
+    # ----------------------------
+    # Sensys Census (CSV compare)
+    # ----------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_census_jobs (
+            job_id        TEXT PRIMARY KEY,
+            facility_name TEXT NOT NULL,
+            created_at    TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_census_job_rows (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id         TEXT NOT NULL,
+            kind           TEXT NOT NULL, -- missing_admissions | missing_discharges | duplicates
+            first_name     TEXT,
+            last_name      TEXT,
+            dob            TEXT,
+            admission_date TEXT,
+            discharge_date TEXT,
+            room_number    TEXT,
+            primary_phone  TEXT,
+            note           TEXT,
+            created_at     TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY(job_id) REFERENCES sensys_census_jobs(job_id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_rows_job ON sensys_census_job_rows(job_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_rows_kind ON sensys_census_job_rows(job_id, kind)")
 
     # ✅ Ensure new columns exist on older census_run_patients tables (safe no-op if already exists)
     for stmt in [
@@ -4899,6 +4941,305 @@ def admin_census_export_csv(
         headers={"Content-Disposition": f'attachment; filename="census_{facility_name}_{view}.csv"'},
     )
 
+def _sensys_norm(s: str) -> str:
+    s = (s or "").strip().upper()
+    s = re.sub(r"[^A-Z0-9]+", " ", s).strip()
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+def _sensys_parse_date(val: str) -> str:
+    """
+    Sensys sample shows: 3/17/1935 0:00, 9/21/2023 0:00, etc.
+    Return ISO date (YYYY-MM-DD) or "".
+    """
+    v = (val or "").strip()
+    if not v:
+        return ""
+    # tolerate extra time portion
+    v = v.replace(" 0:00", "").strip()
+    for fmt in ("%m/%d/%Y", "%m/%d/%y"):
+        try:
+            d = dt.datetime.strptime(v, fmt).date()
+            return d.isoformat()
+        except Exception:
+            pass
+    return ""
+
+def _sensys_key(first_name: str, last_name: str, dob_iso: str) -> str:
+    return f"{_sensys_norm(last_name)}|{_sensys_norm(first_name)}|{dob_iso or ''}".strip("|")
+
+def _sensys_name_similarity(a: str, b: str) -> float:
+    aa = _sensys_norm(a)
+    bb = _sensys_norm(b)
+    if not aa or not bb:
+        return 0.0
+    return SequenceMatcher(None, aa, bb).ratio()
+
+
+@app.post("/admin/census/sensys/process")
+async def admin_census_sensys_process(
+    facility_name: str = Form(...),
+    file: UploadFile = File(...),
+    admin=Depends(require_admin),
+):
+    fac = (facility_name or "").strip()
+    if not fac:
+        raise HTTPException(status_code=400, detail="facility_name is required")
+    if not file or not (file.filename or "").lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="CSV file is required")
+
+    raw = await file.read()
+    try:
+        await file.close()
+    except Exception:
+        pass
+
+    # parse CSV
+    try:
+        text = raw.decode("utf-8-sig", errors="replace")
+    except Exception:
+        text = raw.decode("latin-1", errors="replace")
+
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise HTTPException(status_code=400, detail="CSV missing headers")
+
+    # Expecting columns like your sample:
+    # First Name, Last Name, Date of Birth, Admission Date, Discharge Date, Room Number, Primary Phone
+    sensys_rows = []
+    for r in reader:
+        fn = (r.get("First Name") or r.get("First") or "").strip()
+        ln = (r.get("Last Name") or r.get("Last") or "").strip()
+        dob = _sensys_parse_date(r.get("Date of Birth") or r.get("DOB") or "")
+        ad = _sensys_parse_date(r.get("Admission Date") or "")
+        dd = _sensys_parse_date(r.get("Discharge Date") or "")
+        room = (r.get("Room Number") or r.get("Room") or "").strip()
+        phone = (r.get("Primary Phone") or r.get("Phone") or "").strip()
+
+        if not (fn or ln or dob):
+            continue
+
+        sensys_rows.append(
+            {
+                "first_name": fn,
+                "last_name": ln,
+                "dob": dob,
+                "admission_date": ad,
+                "discharge_date": dd,
+                "room_number": room,
+                "primary_phone": phone,
+                "key": _sensys_key(fn, ln, dob),
+                "full_name": f"{fn} {ln}".strip(),
+            }
+        )
+
+    # load latest census run for this facility (same idea as /admin/census/view)【turn3file0†app.py†L10-L33】
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        run = cur.execute(
+            """
+            SELECT id
+            FROM census_runs
+            WHERE facility_name = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (fac,),
+        ).fetchone()
+
+        if not run:
+            raise HTTPException(status_code=404, detail=f"No census run found for facility: {fac}")
+
+        latest_id = run["id"]
+        census = cur.execute(
+            """
+            SELECT first_name, last_name, dob, admission_date, discharge_date, room_number, home_phone
+            FROM census_run_patients
+            WHERE run_id = ?
+            """,
+            (latest_id,),
+        ).fetchall()
+
+        census_rows = []
+        for r in census:
+            fn = (r["first_name"] or "").strip()
+            ln = (r["last_name"] or "").strip()
+            dob = _sensys_parse_date(r["dob"] or "")
+            census_rows.append(
+                {
+                    "first_name": fn,
+                    "last_name": ln,
+                    "dob": dob,
+                    "admission_date": (r["admission_date"] or "").strip(),
+                    "discharge_date": (r["discharge_date"] or "").strip(),
+                    "room_number": (r["room_number"] or "").strip(),
+                    "primary_phone": (r["home_phone"] or "").strip(),
+                    "key": _sensys_key(fn, ln, dob),
+                }
+            )
+
+        census_keys = {r["key"] for r in census_rows if r["key"]}
+        sensys_keys = {r["key"] for r in sensys_rows if r["key"]}
+
+        # 1) Missing Admissions: in latest census_run_patients but not in Sensys CSV
+        missing_admissions = [r for r in census_rows if r["key"] and r["key"] not in sensys_keys]
+
+        # 2) Missing Discharges: in Sensys CSV but not in latest census_run_patients
+        missing_discharges = [r for r in sensys_rows if r["key"] and r["key"] not in census_keys]
+
+        # 3) Duplicates on Sensys:
+        #    - exact duplicates: same key appears > 1
+        #    - possible duplicates: same DOB, similar name (SequenceMatcher), same facility (modal is per-fac)
+        by_key = {}
+        for r in sensys_rows:
+            k = r["key"]
+            if not k:
+                continue
+            by_key.setdefault(k, []).append(r)
+
+        dup_rows = []
+        for k, group in by_key.items():
+            if len(group) > 1:
+                for g in group:
+                    dup_rows.append({**g, "note": "Exact duplicate (same First/Last/DOB)"})
+
+        # possible duplicates (DOB match, similar names)
+        by_dob = {}
+        for r in sensys_rows:
+            if r["dob"]:
+                by_dob.setdefault(r["dob"], []).append(r)
+
+        # avoid re-adding rows already in exact dup set
+        exact_dup_keys = {r["key"] for r in dup_rows if r.get("key")}
+        seen_possible = set()
+
+        for dob, group in by_dob.items():
+            if len(group) < 2:
+                continue
+            # compare pairs
+            for i in range(len(group)):
+                for j in range(i + 1, len(group)):
+                    a = group[i]
+                    b = group[j]
+                    if not a["full_name"] or not b["full_name"]:
+                        continue
+                    sim = _sensys_name_similarity(a["full_name"], b["full_name"])
+                    if sim >= 0.85:
+                        # mark both as possible dup (unless exact dup already)
+                        if a["key"] not in exact_dup_keys and a["key"] not in seen_possible:
+                            dup_rows.append({**a, "note": f"Possible duplicate (DOB match; similar name {sim:.2f})"})
+                            seen_possible.add(a["key"])
+                        if b["key"] not in exact_dup_keys and b["key"] not in seen_possible:
+                            dup_rows.append({**b, "note": f"Possible duplicate (DOB match; similar name {sim:.2f})"})
+                            seen_possible.add(b["key"])
+
+        # Persist job + rows for export
+        job_id = uuid.uuid4().hex
+        cur.execute(
+            "INSERT INTO sensys_census_jobs (job_id, facility_name) VALUES (?, ?)",
+            (job_id, fac),
+        )
+
+        def _ins(kind: str, rr: dict, note: str = ""):
+            cur.execute(
+                """
+                INSERT INTO sensys_census_job_rows
+                (job_id, kind, first_name, last_name, dob, admission_date, discharge_date, room_number, primary_phone, note)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    job_id,
+                    kind,
+                    rr.get("first_name", ""),
+                    rr.get("last_name", ""),
+                    rr.get("dob", ""),
+                    rr.get("admission_date", ""),
+                    rr.get("discharge_date", ""),
+                    rr.get("room_number", ""),
+                    rr.get("primary_phone", ""),
+                    note or rr.get("note", "") or "",
+                ),
+            )
+
+        for r in missing_admissions:
+            _ins("missing_admissions", r, "Present in latest census run, missing from Sensys CSV")
+
+        for r in missing_discharges:
+            _ins("missing_discharges", r, "Present in Sensys CSV, missing from latest census run")
+
+        for r in dup_rows:
+            _ins("duplicates", r, r.get("note", ""))
+
+        conn.commit()
+
+        return {
+            "ok": True,
+            "job_id": job_id,
+            "facility_name": fac,
+            "latest_run_id": latest_id,
+            "missing_admissions_count": len(missing_admissions),
+            "missing_discharges_count": len(missing_discharges),
+            "duplicates_count": len(dup_rows),
+        }
+    finally:
+        conn.close()
+
+
+@app.get("/admin/census/sensys/export.csv")
+def admin_census_sensys_export_csv(
+    job_id: str,
+    kind: str = "missing_admissions",  # missing_admissions | missing_discharges | duplicates
+    admin=Depends(require_admin),
+):
+    k = (kind or "").strip()
+    if k not in ("missing_admissions", "missing_discharges", "duplicates"):
+        raise HTTPException(status_code=400, detail="kind must be missing_admissions|missing_discharges|duplicates")
+
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        job = cur.execute("SELECT job_id, facility_name, created_at FROM sensys_census_jobs WHERE job_id=?", (job_id,)).fetchone()
+        if not job:
+            raise HTTPException(status_code=404, detail="job not found")
+
+        rows = cur.execute(
+            """
+            SELECT first_name, last_name, dob, admission_date, discharge_date, room_number, primary_phone, note
+            FROM sensys_census_job_rows
+            WHERE job_id=? AND kind=?
+            ORDER BY last_name ASC, first_name ASC, dob ASC
+            """,
+            (job_id, k),
+        ).fetchall()
+
+        headers = ["First Name","Last Name","DOB","Admission Date","Discharge Date","Room Number","Primary Phone","Note"]
+
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=headers)
+        w.writeheader()
+        for r in rows:
+            rr = dict(r)
+            w.writerow(
+                {
+                    "First Name": rr.get("first_name",""),
+                    "Last Name": rr.get("last_name",""),
+                    "DOB": rr.get("dob",""),
+                    "Admission Date": rr.get("admission_date",""),
+                    "Discharge Date": rr.get("discharge_date",""),
+                    "Room Number": rr.get("room_number",""),
+                    "Primary Phone": rr.get("primary_phone",""),
+                    "Note": rr.get("note",""),
+                }
+            )
+
+        return Response(
+            content=buf.getvalue().encode("utf-8"),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="sensys_{k}_{job_id}.csv"'},
+        )
+    finally:
+        conn.close()
 
 # ---------------------------------------------------------------------------
 # Embeddings & ranking
