@@ -517,6 +517,18 @@ def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
             "Zip": zip_code,
             "Primary Ins": primary_ins,
             "Primary Number": primary_number,
+            "Primary Care Physician": primary_care,
+            "Tag": "",
+            "Facility_Code": facility_code,
+            "Admission Date": admission_date,
+            "Discharge Date": "",
+            "Room Number": room_number,
+            "Reason for admission": reason,
+            "Attending Physician": attending,
+
+            "_patient_key": patient_key,
+            "_raw": chunk[:8000],
+        })
 
 
 def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
@@ -529,8 +541,6 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
             status_code=500,
             detail="PDF parsing support is not installed (pdfplumber). Please add 'pdfplumber' to your environment."
         )
-
-    out: list[dict] = []
 
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         text = "\n".join((p.extract_text() or "") for p in pdf.pages)
