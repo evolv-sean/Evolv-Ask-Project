@@ -15,6 +15,7 @@ import uuid
 import logging
 import tempfile
 import time
+import gc
 
 try:
     import pdfplumber
@@ -305,6 +306,11 @@ class ScannedPdfError(Exception):
     pass
 
 # ✅ NEW: parse directly from a PDF file path (avoids loading PDF bytes into RAM)
+class PdfTooLargeError(Exception):
+    """Raised when extracted PDF text is too large (prevents OOM)."""
+    pass
+
+
 def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
     if not HAVE_PDFPLUMBER:
         raise HTTPException(
@@ -312,17 +318,36 @@ def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
             detail="PDF parsing support is not installed (pdfplumber). Please add 'pdfplumber' to your environment."
         )
 
-    out: list[dict] = []
+    # Safety cap to prevent Render OOM (tune as needed)
+    MAX_TEXT_CHARS = 8_000_000  # ~8MB of text
+
+    saw_any_text = False
+    total_chars = 0
+    buf = io.StringIO()
 
     with pdfplumber.open(pdf_path) as pdf:
-        text = "\n".join((p.extract_text() or "") for p in pdf.pages)
+        for page in pdf.pages:
+            page_text = (page.extract_text() or "")
+            if page_text.strip():
+                saw_any_text = True
 
-    if not (text or "").strip():
+            total_chars += len(page_text) + 1
+            if total_chars > MAX_TEXT_CHARS:
+                raise PdfTooLargeError(
+                    f"PDF too large after text extraction (>{MAX_TEXT_CHARS:,} chars). "
+                    "Re-export as text PDF or split into smaller files."
+                )
+
+            buf.write(page_text)
+            buf.write("\n")
+
+    text = buf.getvalue()
+
+    if not saw_any_text or not text.strip():
         raise ScannedPdfError("Scanned/image PDF detected (no extractable text)")
 
-    # ✅ reuse the rest of your existing logic by calling the bytes-parser logic
-    # (we can refactor later; this keeps changes minimal)
     return parse_pcc_admission_records_from_pdf_text(text)
+
 
 # ✅ NEW: shared parser core after text extraction
 def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
@@ -3707,6 +3732,17 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                     continue
 
                 parsed = parse_pcc_admission_records_from_pdf_path(p)
+
+                try:
+                    # existing code continues here (fac_name/fac_code/run insert/patient loop)
+                    pass
+                finally:
+                    # help Python release memory sooner on Render
+                    try:
+                        del parsed
+                    except Exception:
+                        pass
+                    gc.collect()
 
                 # Facility name: filename (AUTHORITATIVE) > UI override > PDF content
                 fac_name = extract_facility_name_from_filename(filename)
