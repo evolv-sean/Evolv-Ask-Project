@@ -16,6 +16,7 @@ import logging
 import tempfile
 import time
 import gc
+import asyncio
 
 try:
     import pdfplumber
@@ -258,10 +259,13 @@ async def log_requests(request: Request, call_next):
     response = await call_next(request)
     ms = int((time.time() - start) * 1000)
 
+    # ✅ reduce log spam: do not log the high-frequency polling endpoint
+    if request.url.path == "/admin/census/upload-status":
+        return response
+
     ct = response.headers.get("content-type", "")
     cl = response.headers.get("content-length", "")
 
-    # NOTE: This only logs requests that actually reach your FastAPI app.
     logger.info(
         "[APP] %s %s status=%s ms=%s ct=%s cl=%s",
         request.method,
@@ -321,9 +325,17 @@ def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
     # Safety cap to prevent Render OOM (tune as needed)
     MAX_TEXT_CHARS = 8_000_000  # ~8MB of text
 
+    DELIM = "ADMISSION RECORD"
+
     saw_any_text = False
     total_chars = 0
-    buf = io.StringIO()
+
+    out: list[dict] = []
+
+    # Instead of building one giant buf/text, we keep a rolling buffer and
+    # only parse completed "ADMISSION RECORD" chunks as we encounter them.
+    carry = ""
+    saw_delim = False
 
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
@@ -338,15 +350,47 @@ def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
                     "Re-export as text PDF or split into smaller files."
                 )
 
-            buf.write(page_text)
-            buf.write("\n")
+            # Append into rolling buffer
+            carry += page_text + "\n"
 
-    text = buf.getvalue()
+            # If we have at least one delimiter, we can parse all completed chunks.
+            if DELIM in carry:
+                saw_delim = True
+                parts = carry.split(DELIM)
 
-    if not saw_any_text or not text.strip():
+                # parts[0] is whatever comes before the first delimiter (preamble/noise)
+                # parts[1:-1] are complete chunks (each ended because another delimiter appeared)
+                complete_chunks = parts[1:-1]
+
+                # parts[-1] is the current in-progress chunk (may span pages)
+                carry = parts[-1]
+
+                for chunk in complete_chunks:
+                    # Re-add delimiter so the existing text parser works unchanged
+                    out.extend(parse_pcc_admission_records_from_pdf_text(f"{DELIM}\n{chunk}"))
+
+                # Optional: keep carry from growing unbounded if delimiter is rare / layout is weird
+                # (This is a safety net; typical PCC PDFs will keep carry small.)
+                if len(carry) > 1_500_000:
+                    carry = carry[-1_500_000:]
+
+    # Handle scanned/image-only PDFs
+    if not saw_any_text:
         raise ScannedPdfError("Scanned/image PDF detected (no extractable text)")
 
-    return parse_pcc_admission_records_from_pdf_text(text)
+    # If we never saw the delimiter, fall back to the original behavior (but without StringIO)
+    if not saw_delim:
+        text = carry
+        if not text.strip():
+            raise ScannedPdfError("Scanned/image PDF detected (no extractable text)")
+        return parse_pcc_admission_records_from_pdf_text(text)
+
+    # Parse the final trailing chunk (after the last delimiter)
+    if carry.strip():
+        out.extend(parse_pcc_admission_records_from_pdf_text(f"{DELIM}\n{carry}"))
+
+    return out
+
 
 # ✅ Shared parser core after text extraction (used by BOTH path + bytes)
 def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str], float]:
@@ -3858,12 +3902,35 @@ async def admin_census_upload(
         out_path = job_dir / (f.filename or f"upload_{uuid.uuid4().hex}.pdf")
 
         # ✅ stream to disk (avoid reading entire PDF into RAM)
+        # Add a hard cap + yield occasionally so large PDFs don't monopolize CPU
+        MAX_UPLOAD_BYTES = 75 * 1024 * 1024   # 75MB cap (tune if needed)
+        CHUNK_SIZE = 256 * 1024               # 256KB chunks
+
+        total = 0
         with open(out_path, "wb") as out_fp:
             while True:
-                chunk = await f.read(1024 * 1024)  # 1MB chunks
+                chunk = await f.read(CHUNK_SIZE)
                 if not chunk:
                     break
+
+                total += len(chunk)
+                if total > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"PDF too large ({total:,} bytes). Please split/re-export the report."
+                    )
+
                 out_fp.write(chunk)
+
+                # yield to event loop occasionally (keeps server responsive)
+                if total % (4 * 1024 * 1024) < CHUNK_SIZE:
+                    await asyncio.sleep(0)
+
+        # ✅ make sure the temp upload file handle is released ASAP
+        try:
+            await f.close()
+        except Exception:
+            pass
 
         saved_paths.append(str(out_path))
 
@@ -4103,7 +4170,7 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
 
 
 @app.get("/admin/census/upload-status")
-def admin_census_upload_status(job_id: str, admin=Depends(require_admin)):
+def admin_census_upload_status(job_id: str, lite: int = 0, admin=Depends(require_admin)):
     conn = get_db()
     cur = conn.cursor()
     try:
@@ -4113,6 +4180,10 @@ def admin_census_upload_status(job_id: str, admin=Depends(require_admin)):
         ).fetchone()
         if not job:
             raise HTTPException(status_code=404, detail="job not found")
+
+        # ✅ during polling, skip the per-file rows to reduce DB + JSON churn
+        if int(lite or 0) == 1:
+            return {"ok": True, "job": dict(job), "files": []}
 
         files = cur.execute(
             """
