@@ -1156,8 +1156,10 @@
     }
   }
 
-  // call it once
-  initSensysModal();
+  // call it once (after DOM is ready)
+  document.addEventListener("DOMContentLoaded", () => {
+    initSensysModal();
+  });
 
 
   function escapeHtml(str){
