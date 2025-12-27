@@ -515,7 +515,7 @@ def parse_pcc_admission_records_from_pdf_text(text: str) -> list[dict]:
             "City": city,
             "State": state,
             "Zip": zip_code,
-            "Primary Ins": primary_ins,
+            "Primary Insurance": primary_ins,
             "Primary Number": primary_number,
             "Primary Care Physician": primary_care,
             "Tag": "",
