@@ -5068,6 +5068,10 @@ async def admin_census_sensys_process(
         if not run_ids:
             raise HTTPException(status_code=404, detail="No latest run ids found")
 
+        # ✅ define a "latest" id for the response payload (prevents NameError)
+        # Since this endpoint unions the latest run for *each* facility, we use the newest run id overall.
+        latest_id = max(run_ids)
+
         placeholders = ",".join(["?"] * len(run_ids))
 
         census = cur.execute(
