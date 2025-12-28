@@ -566,6 +566,33 @@
       color: #A8E6CF;
     }
 
+    :root{
+      --mint-accent: #A8E6CF;
+      --danger-muted: #C76B6B;
+    }
+    .fac-subrow{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      font-size:10.5px;
+      color:#6b7280;
+      margin-top:2px;
+      line-height:1.15;
+    }
+    .assign-dot{
+      width:8px;
+      height:8px;
+      border-radius:999px;
+      display:inline-block;
+      box-shadow: 0 0 0 3px rgba(168,230,207,0.18);
+      flex: 0 0 auto;
+    }
+    .assign-dot.mint-accent{ background: var(--mint-accent); }
+    .assign-dot.neg-accent{
+      background: var(--danger-muted);
+      box-shadow: 0 0 0 3px rgba(199,107,107,0.18);
+    }
+
     /* NEW: subtle list icon */
     .notif-dot {
       display: inline-flex;
@@ -1498,19 +1525,16 @@
               </div>
             </div>
             
-            <div style="margin-top:10px;">
-              <label for="filter-email-at">Emailed on</label>
-              <input id="filter-email-at" type="date" />
+            <div class="grid2" style="margin-top:10px;">
+              <div>
+                <label for="filter-email-at">Emailed on</label>
+                <input id="filter-email-at" type="date" />
+              </div>
+              <div>
+                <label for="filter-email-days">Emailed On Days Ahead</label>
+                <input id="filter-email-days" type="number" min="0" max="30" value="0" />
+              </div>
             </div>
-
-            <div style="margin-top:10px;">
-              <label for="filter-notified">Notified</label>
-              <select id="filter-notified">
-                <option value="">All</option>
-                <option value="1">Notified only</option>
-              </select>
-            </div>
-          </div>
 
           <div class="modal-foot" style="justify-content:center;">
             <button class="btn-lite" onclick="closeFiltersModal()">Cancel</button>
@@ -3443,7 +3467,9 @@
       if (days) params.set("days_ahead", days);
       
       const emailAt = document.getElementById("filter-email-at")?.value || "";
+      const emailDays = document.getElementById("filter-email-days")?.value || "0";
       if (emailAt) params.set("email_at", emailAt);
+      if (emailAt && emailDays) params.set("email_days_ahead", emailDays);
       
       const notified = document.getElementById("filter-notified").value;
       if (notified) params.set("notified_only", notified);
@@ -3516,6 +3542,17 @@
     function getSortFacilityLabel(r) {
       const label = (getDisplayFacilityLabel(r) || "").trim();
       return label.replace(/\s*\*$/, "").trim();
+    }
+
+    function getAssignmentDotHtml(r) {
+      const c = (r && r.assignment_confirmation ? String(r.assignment_confirmation) : "Unknown").trim();
+      if (c === "Assigned") {
+        return `<span class="assign-dot mint-accent" title="Physician Assigned" aria-label="Physician Assigned"></span>`;
+      }
+      if (c === "Assigned Out") {
+        return `<span class="assign-dot neg-accent" title="Assigned Out" aria-label="Assigned Out"></span>`;
+      }
+      return "";
     }
 
     function renderTable(rows) {
@@ -3596,8 +3633,9 @@
 
             ${
               (getFacilityAiPhone(r) || "").trim()
-                ? `<div style="font-size:10.5px; color:#6b7280; margin-top:2px; line-height:1.15;">
-                     ${escapeHtml(getFacilityAiPhone(r))}
+                ? `<div class="fac-subrow">
+                     <span>${escapeHtml(getFacilityAiPhone(r))}</span>
+                     ${getAssignmentDotHtml(r)}
                    </div>`
                 : ""
             }
@@ -3799,11 +3837,18 @@
 
         document.getElementById("note-header-summary").textContent = `Editing SNF record ID ${adm.id}`;
         
-        /* NEW: sync bell state with the selected admission */
         const btn = document.getElementById("notif-btn");
         if (btn) {
           if (adm.notified_by_hospital) btn.classList.add("on");
           else btn.classList.remove("on");
+        }
+
+        /* NEW: sync physician assignment icon state with the selected admission */
+        const pbtn = document.getElementById("phys-assign-btn");
+        if (pbtn) {
+          const conf = (adm.assignment_confirmation || "Unknown").toString().trim();
+          if (conf && conf !== "Unknown") pbtn.classList.add("on");
+          else pbtn.classList.remove("on");
         }
         document.getElementById("note-message").textContent = "";
       } catch (err) {
