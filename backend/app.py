@@ -4888,7 +4888,27 @@ def admin_census_view(
         ).fetchall()
 
         if view == "full" or not prev_id:
-            return {"ok": True, "rows": [dict(r) for r in latest_rows], "meta": {"latest_run_id": latest_id, "prev_run_id": prev_id}}
+            out = [dict(r) for r in latest_rows]
+
+            # If we have a previous run, mark which rows are "new admissions" (latest - previous)
+            if prev_id:
+                prev_keys = {r["patient_key"] for r in cur.execute(
+                    "SELECT patient_key FROM census_run_patients WHERE run_id = ?",
+                    (prev_id,),
+                ).fetchall()}
+
+                for r in out:
+                    r["is_new"] = (r.get("patient_key") not in prev_keys)
+            else:
+                # No previous run to compare to, so we can't compute "new"
+                for r in out:
+                    r["is_new"] = False
+
+            return {
+                "ok": True,
+                "rows": out,
+                "meta": {"latest_run_id": latest_id, "prev_run_id": prev_id},
+            }
 
         prev_keys = {r["patient_key"] for r in cur.execute(
             "SELECT patient_key FROM census_run_patients WHERE run_id = ?",
