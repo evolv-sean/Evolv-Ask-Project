@@ -687,13 +687,12 @@
   function renderList(){
     const el = document.getElementById("list");
     el.innerHTML = "";
+
     if(filteredRows.length === 0){
       el.innerHTML = `<div class="item"><div class="title">No rows</div><div class="sub">Upload PDFs, then Load.</div></div>`;
       return;
     }
-      el.innerHTML = `<div class="item"><div class="title">No rows</div><div class="sub">Upload PDFs, then Load.</div></div>`;
-      return;
-    }
+
     filteredRows.forEach((r, idx) => {
       const name = `${r.last_name||""}, ${r.first_name||""}`.replace(/^,\s*/,"").trim() || "(No name)";
       const sub = [
@@ -716,6 +715,7 @@
       el.innerHTML = `<div class="hint">Select a patient to review details.</div>`;
       return;
     }
+
     const r = filteredRows[selectedIndex];
 
     el.innerHTML = `
@@ -749,6 +749,13 @@
         <div>Reason</div><div>${escapeHtml(r.reason_admission||"")}</div>
       </div>
     `;
+
+    // wire export icon AFTER the HTML is injected
+    const btn = document.getElementById("btnExportOne");
+    if(btn){
+      btn.onclick = () => exportSinglePatientCsv(r);
+    }
+  }
 
   async function exportAllNewAdmissionsCsv(){
     const res = await adminFetch(`/admin/census/export_all_new_admissions.csv`, { method: "GET" });
