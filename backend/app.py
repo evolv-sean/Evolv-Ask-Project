@@ -301,9 +301,9 @@ PUBLIC_APP_BASE_URL = (os.getenv("PUBLIC_APP_BASE_URL") or "").strip().rstrip("/
 
 # How long (in hours) a secure SNF link should remain valid (set in Render as SNF_LINK_TTL_HOURS)
 try:
-    SNF_LINK_TTL_HOURS = int(os.getenv("SNF_LINK_TTL_HOURS", "24"))
+    SNF_LINK_TTL_HOURS = int(os.getenv("SNF_LINK_TTL_HOURS", "48"))
 except Exception:
-    SNF_LINK_TTL_HOURS = 24
+    SNF_LINK_TTL_HOURS = 48
 
 
 
@@ -1593,7 +1593,7 @@ def get_public_base_url(request: Request) -> str:
 def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
     """HTML email body for the secure expiring link (matches snf_secure_link_email_preview.html)."""
     safe_url = html.escape(secure_url or "")
-    ttl_hours = int(ttl_hours or 24)
+    ttl_hours = int(ttl_hours or 48)
 
     return f"""<!doctype html>
 <html lang="en">
@@ -9337,6 +9337,7 @@ async def admin_snf_list(
     days_ahead: int = Query(0, ge=0, le=30),
     notified_only: int = Query(0),
     email_at: Optional[str] = Query(None),  # YYYY-MM-DD; filters by DATE(s.emailed_at)
+    email_days_ahead: int = Query(0, ge=0, le=30),
 ):
     """
     List SNF admissions for the SNF Admissions page.
@@ -9368,12 +9369,19 @@ async def admin_snf_list(
             where.append("COALESCE(s.notified_by_hospital, 0) = 1")
             
         # NEW: Email-at date filter (matches the day, regardless of time)
+        # If email_days_ahead > 0, treat email_at as the start of a window [email_at, email_at + email_days_ahead]
         email_at_s = (email_at or "").strip()
         if email_at_s:
             if not re.match(r"^\d{4}-\d{2}-\d{2}$", email_at_s):
                 raise HTTPException(status_code=400, detail="email_at must be YYYY-MM-DD")
-            where.append("s.emailed_at IS NOT NULL AND date(s.emailed_at) = ?")
-            params.append(email_at_s)
+
+            d = int(email_days_ahead or 0)
+            if d > 0:
+                where.append("s.emailed_at IS NOT NULL AND date(s.emailed_at) >= ? AND date(s.emailed_at) <= date(?, ? || ' days')")
+                params.extend([email_at_s, email_at_s, d])
+            else:
+                where.append("s.emailed_at IS NOT NULL AND date(s.emailed_at) = ?")
+                params.append(email_at_s)
 
         # Date filter: use last_seen_active_date so the list shows "active admissions"
         # - If days_ahead = 0: show only that exact date
@@ -9801,23 +9809,6 @@ async def admin_snf_update(
 
     review_comments = (payload.get("review_comments") or "").strip()
     reviewer = (payload.get("reviewed_by") or "admin").strip()
-    notified_by_hospital = 1 if payload.get("notified_by_hospital") else 0
-    notified_by = (payload.get("notified_by") or "").strip()
-    notification_dt = (payload.get("notification_dt") or "").strip()
-    hospital_reported_facility = (payload.get("hospital_reported_facility") or "").strip()
-    notification_details = (payload.get("notification_details") or "").strip()
-
-    # SNF Physician Assignment (NEW)
-    assignment_confirmation = (payload.get("assignment_confirmation") or "Unknown").strip() or "Unknown"
-    if assignment_confirmation not in ("Unknown", "Assigned", "Assigned Out"):
-        raise HTTPException(status_code=400, detail="Invalid assignment_confirmation")
-
-    billing_confirmed = 1 if payload.get("billing_confirmed") else 0
-    confirmation_call_dt = (payload.get("confirmation_call_dt") or "").strip()
-    snf_staff_name = (payload.get("snf_staff_name") or "").strip()
-    physician_assigned = (payload.get("physician_assigned") or "").strip()
-    assignment_notes = (payload.get("assignment_notes") or "").strip()
-
 
     # New: disposition + manual facility free text
     raw_disp = (payload.get("disposition") or "").strip()
@@ -9849,6 +9840,75 @@ async def admin_snf_update(
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="SNF admission not found")
+        # IMPORTANT: prevent unintended resets.
+        # Only overwrite these fields if they were included in the payload.
+        # Otherwise keep what is already in the database row.
+
+        # --- Notification fields ---
+        if "notified_by_hospital" in payload:
+            notified_by_hospital = 1 if payload.get("notified_by_hospital") else 0
+        else:
+            try:
+                notified_by_hospital = int(row["notified_by_hospital"] or 0)
+            except Exception:
+                notified_by_hospital = 0
+
+        if "notified_by" in payload:
+            notified_by = (payload.get("notified_by") or "").strip()
+        else:
+            notified_by = (row["notified_by"] or "").strip()
+
+        if "notification_dt" in payload:
+            notification_dt = (payload.get("notification_dt") or "").strip()
+        else:
+            notification_dt = (row["notification_dt"] or "").strip()
+
+        if "hospital_reported_facility" in payload:
+            hospital_reported_facility = (payload.get("hospital_reported_facility") or "").strip()
+        else:
+            hospital_reported_facility = (row["hospital_reported_facility"] or "").strip()
+
+        if "notification_details" in payload:
+            notification_details = (payload.get("notification_details") or "").strip()
+        else:
+            notification_details = (row["notification_details"] or "").strip()
+
+        # --- SNF Physician Assignment fields ---
+        if "assignment_confirmation" in payload:
+            assignment_confirmation = (payload.get("assignment_confirmation") or "Unknown").strip() or "Unknown"
+        else:
+            assignment_confirmation = (row["assignment_confirmation"] or "Unknown").strip() or "Unknown"
+
+        if assignment_confirmation not in ("Unknown", "Assigned", "Assigned Out"):
+            assignment_confirmation = "Unknown"
+
+        if "billing_confirmed" in payload:
+            billing_confirmed = 1 if payload.get("billing_confirmed") else 0
+        else:
+            try:
+                billing_confirmed = int(row["billing_confirmed"] or 0)
+            except Exception:
+                billing_confirmed = 0
+
+        if "confirmation_call_dt" in payload:
+            confirmation_call_dt = (payload.get("confirmation_call_dt") or "").strip()
+        else:
+            confirmation_call_dt = (row["confirmation_call_dt"] or "").strip()
+
+        if "snf_staff_name" in payload:
+            snf_staff_name = (payload.get("snf_staff_name") or "").strip()
+        else:
+            snf_staff_name = (row["snf_staff_name"] or "").strip()
+
+        if "physician_assigned" in payload:
+            physician_assigned = (payload.get("physician_assigned") or "").strip()
+        else:
+            physician_assigned = (row["physician_assigned"] or "").strip()
+
+        if "assignment_notes" in payload:
+            assignment_notes = (payload.get("assignment_notes") or "").strip()
+        else:
+            assignment_notes = (row["assignment_notes"] or "").strip()
 
         existing_final_facility_id = row["final_snf_facility_id"]
         existing_final_name_display = row["final_snf_name_display"]
@@ -11110,7 +11170,7 @@ async def snf_secure_link_get(token: str, request: Request):
       <div class="mintbar" aria-hidden="true"></div>
       <div class="content">
         <h1>{fac_name}</h1>
-        <p>Enter your facility password / PIN to view the secure list. This link expires in 24hrs.</p>
+        <p>Enter your facility password / PIN to view the secure list. This link expires in 48hrs.</p>
         <form method="post">
           <label for="pin">Facility PIN</label>
           <input id="pin" name="pin" type="password" autocomplete="one-time-code" required />
@@ -11935,7 +11995,7 @@ async def snf_secure_token_page(token: str):
     <div class="top">Secure patient referral list</div>
     <div class="content">
       <p style="margin:0 0 12px 0;color:#374151;font-size:14px;line-height:1.5;">
-        Enter your facility PIN to view the secure PDF. This link expires in 24hrs.
+        Enter your facility PIN to view the secure PDF. This link expires in 48hrs.
       </p>
       <form method="POST" action="/snf/secure/{token}">
         <label>Facility PIN</label>
