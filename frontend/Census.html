@@ -8,6 +8,7 @@
     :root{
       --navy:#0D3B66;
       --mint:#A8E6CF;
+      --mint-2: rgba(168,230,207,.35); /* matches Hospital_Discharge */
       --bg:#F5F7FA;
       --text:#111827;
       --muted:#6b7280;
@@ -15,6 +16,17 @@
       --card:#ffffff;
       --shadow:0 10px 28px rgba(0,0,0,.08);
     }
+
+    /* Matches the mint ring circle used on Hospital_Discharge */
+    .mint-accent{
+      width:10px;
+      height:10px;
+      border-radius:999px;
+      background:var(--mint);
+      box-shadow:0 0 0 4px var(--mint-2);
+      display:inline-block;
+    }
+    
     *{box-sizing:border-box}
     body{margin:0;background:var(--bg);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:var(--text)}
     .topbar{
@@ -714,35 +726,9 @@
           <div
             title="New admission"
             aria-label="New admission"
-            style="
-              flex:0 0 auto;
-              width:22px;
-              height:22px;
-              border-radius:999px;
-              display:flex;
-              align-items:center;
-              justify-content:center;
-              background: rgba(168,230,207,.35);
-              box-shadow:
-                0 0 0 3px rgba(168,230,207,.45),
-                0 6px 14px rgba(168,230,207,.25);
-            "
+            style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;padding-right:2px;"
           >
-            <svg
-              viewBox="0 0 24 24"
-              width="14"
-              height="14"
-              style="
-                display:block;
-                stroke:#0D3B66;
-                fill:none;
-                stroke-width:1.8;
-              "
-            >
-              <path d="M12 6v12"></path>
-              <path d="M6 12h12"></path>
-              <circle cx="12" cy="12" r="9"></circle>
-            </svg>
+            <span class="mint-accent"></span>
           </div>
         ` : ``}
       </div>
