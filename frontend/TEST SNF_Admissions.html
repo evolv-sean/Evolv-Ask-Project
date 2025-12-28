@@ -1530,10 +1530,19 @@
                 <label for="filter-email-at">Emailed on</label>
                 <input id="filter-email-at" type="date" />
               </div>
+
               <div>
                 <label for="filter-email-days">Emailed On Days Ahead</label>
                 <input id="filter-email-days" type="number" min="0" max="30" value="0" />
               </div>
+            </div>
+
+            <div style="margin-top:10px;">
+              <label for="filter-notified">Notified</label>
+              <select id="filter-notified">
+                <option value="">All</option>
+                <option value="1">Notified only</option>
+              </select>
             </div>
 
           <div class="modal-foot" style="justify-content:center;">
@@ -3471,7 +3480,7 @@
       if (emailAt) params.set("email_at", emailAt);
       if (emailAt && emailDays) params.set("email_days_ahead", emailDays);
       
-      const notified = document.getElementById("filter-notified").value;
+      const notified = document.getElementById("filter-notified")?.value || "";
       if (notified) params.set("notified_only", notified);
 
       document.getElementById("list-message").textContent = "Loading...";
