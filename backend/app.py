@@ -4912,6 +4912,104 @@ def admin_census_view(
     finally:
         conn.close()
 
+@app.get("/admin/census/export_all_new_admissions.csv")
+def admin_census_export_all_new_admissions_csv(admin=Depends(require_admin)):
+    """
+    Export NEW admissions across ALL facilities into a single CSV file.
+    Uses each facility's latest 2 runs to compute "new" (latest - previous).
+    """
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        facilities = cur.execute(
+            """
+            SELECT DISTINCT facility_name
+            FROM census_runs
+            WHERE facility_name IS NOT NULL AND TRIM(facility_name) != ''
+            ORDER BY facility_name ASC
+            """
+        ).fetchall()
+
+        headers = [
+            "First Name","Last Name","DOB","Home Phone","Address","City","State","Zip",
+            "Primary Ins","Primary Number","Primary Care Physician","Tag","Facility_Code",
+            "Admission Date","Discharge Date","Room Number","Reason for admission","Attending Physician"
+        ]
+
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=headers)
+        w.writeheader()
+
+        # loop facilities and append "new" rows per facility
+        for fr in facilities:
+            facility_name = fr["facility_name"]
+
+            runs = cur.execute(
+                """
+                SELECT id
+                FROM census_runs
+                WHERE facility_name = ?
+                ORDER BY id DESC
+                LIMIT 2
+                """,
+                (facility_name,),
+            ).fetchall()
+
+            if not runs:
+                continue
+
+            latest_id = runs[0]["id"]
+            prev_id = runs[1]["id"] if len(runs) > 1 else None
+
+            latest_rows = cur.execute(
+                "SELECT * FROM census_run_patients WHERE run_id = ?",
+                (latest_id,),
+            ).fetchall()
+
+            if not prev_id:
+                new_rows = [dict(r) for r in latest_rows]
+            else:
+                prev_keys = {
+                    r["patient_key"]
+                    for r in cur.execute(
+                        "SELECT patient_key FROM census_run_patients WHERE run_id = ?",
+                        (prev_id,),
+                    ).fetchall()
+                }
+                new_rows = [dict(r) for r in latest_rows if r["patient_key"] not in prev_keys]
+
+            for r in new_rows:
+                w.writerow({
+                    "First Name": r.get("first_name",""),
+                    "Last Name": r.get("last_name",""),
+                    "DOB": r.get("dob",""),
+                    "Home Phone": r.get("home_phone",""),
+                    "Address": r.get("address",""),
+                    "City": r.get("city",""),
+                    "State": r.get("state",""),
+                    "Zip": r.get("zip",""),
+                    "Primary Ins": r.get("primary_ins",""),
+                    "Primary Number": r.get("primary_number",""),
+                    "Primary Care Physician": r.get("primary_care_phys",""),
+                    "Tag": r.get("tag",""),
+                    "Facility_Code": r.get("facility_code",""),
+                    "Admission Date": r.get("admission_date",""),
+                    "Discharge Date": r.get("discharge_date",""),
+                    "Room Number": r.get("room_number",""),
+                    "Reason for admission": r.get("reason_admission",""),
+                    "Attending Physician": r.get("attending_phys",""),
+                })
+
+        filename = f"census_all_facilities_new_admissions_{dt.date.today().isoformat()}.csv"
+        return Response(
+            content=buf.getvalue().encode("utf-8"),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
+        )
+
+    finally:
+        conn.close()
+
 
 @app.get("/admin/census/export.csv")
 def admin_census_export_csv(
