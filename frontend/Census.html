@@ -470,21 +470,30 @@
     <div class="card">
       <div class="hdr">
         <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
-        <div>
-          <label>Facility</label><br/>
-          <select id="facility" class="ipt">
-            <option value="">Select facility…</option>
-          </select>
-        </div>
-
-          <div class="pillrow" style="margin-bottom:2px">
-            <button class="pill" id="vFull" aria-pressed="true">Full Census</button>
-            <button class="pill" id="vNew" aria-pressed="false">New Admissions</button>
-            <button class="pill" id="vDis" aria-pressed="false">Discharges</button>
+          <div>
+            <label>Facility</label><br/>
+            <select id="facility" class="ipt">
+              <option value="">Select facility…</option>
+            </select>
           </div>
 
-          <button class="btn" id="btnLoad">Load</button>
-          <button class="btn btn-primary" id="btnExport">Export CSV</button>
+          <div>
+            <label>Patient</label><br/>
+            <input id="patientSearch" class="ipt" placeholder="Search patient…" />
+          </div>
+
+          <!-- Icon Load (circle arrow) -->
+          <button class="icon-btn" id="btnLoad" type="button" title="Load" aria-label="Load">
+            <svg viewBox="0 0 24 24">
+              <path d="M21 12a9 9 0 1 1-3-6.7"></path>
+              <path d="M21 3v7h-7"></path>
+            </svg>
+          </button>
+
+          <!-- New: All facilities New Admissions export -->
+          <button class="btn btn-primary" id="btnExportAllNewAdmissions" type="button">
+            Export ALL New Admissions (CSV)
+          </button>
         </div>
 
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
@@ -503,9 +512,13 @@
   </div>
 
 <script>
-  let currentView = "full";
+  // ✅ We are now always showing New Admissions on this page
+  const currentView = "new";
+
   let rows = [];
+  let filteredRows = [];
   let selectedIndex = -1;
+  let patientSearchTerm = "";
 
   function setLoading(isLoading, text, sub){
     const ov = document.getElementById("loadingOverlay");
@@ -519,11 +532,11 @@
 
     // Disable key buttons while loading (prevents double submits)
     const btnLoad = document.getElementById("btnLoad");
-    const btnExport = document.getElementById("btnExport");
+    const btnExportAll = document.getElementById("btnExportAllNewAdmissions");
     const uploadOpenBtn = document.getElementById("btnOpenUpload");
 
     if(btnLoad) btnLoad.disabled = isLoading;
-    if(btnExport) btnExport.disabled = isLoading;
+    if(btnExportAll) btnExportAll.disabled = isLoading;
     if(uploadOpenBtn) uploadOpenBtn.disabled = isLoading;
   }
 
@@ -617,13 +630,6 @@
     });
   }
 
-  function setView(v){
-    currentView = v;
-    document.getElementById("vFull").setAttribute("aria-pressed", v==="full");
-    document.getElementById("vNew").setAttribute("aria-pressed", v==="new");
-    document.getElementById("vDis").setAttribute("aria-pressed", v==="discharged");
-  }
-
   async function refreshFacilityDropdown(keepValue){
     const sel = document.getElementById("facility");
     if(!sel) return;
@@ -647,22 +653,48 @@
     const facility = (document.getElementById("facility").value || "").trim();
     if(!facility){ alert("Select a facility."); return; }
 
-    const res = await adminFetch(`/admin/census/view?facility_name=${encodeURIComponent(facility)}&view=${encodeURIComponent(currentView)}`);
+    const res = await adminFetch(`/admin/census/view?facility_name=${encodeURIComponent(facility)}&view=new`);
     const data = await res.json();
+
     rows = (data.rows || []);
     selectedIndex = -1;
+
+    // apply search after every load
+    applyPatientSearch();
     renderList();
     renderDetail();
+  }
+
+  function applyPatientSearch(){
+    const q = (patientSearchTerm || "").trim().toLowerCase();
+    if(!q){
+      filteredRows = rows.slice();
+      return;
+    }
+
+    filteredRows = rows.filter(r => {
+      const first = String(r.first_name || "").toLowerCase();
+      const last  = String(r.last_name || "").toLowerCase();
+      const full1 = `${first} ${last}`.trim();
+      const full2 = `${last} ${first}`.trim();
+      return first.includes(q) || last.includes(q) || full1.includes(q) || full2.includes(q);
+    });
+
+    // reset selection if current selection disappears
+    selectedIndex = -1;
   }
 
   function renderList(){
     const el = document.getElementById("list");
     el.innerHTML = "";
-    if(rows.length === 0){
+    if(filteredRows.length === 0){
       el.innerHTML = `<div class="item"><div class="title">No rows</div><div class="sub">Upload PDFs, then Load.</div></div>`;
       return;
     }
-    rows.forEach((r, idx) => {
+      el.innerHTML = `<div class="item"><div class="title">No rows</div><div class="sub">Upload PDFs, then Load.</div></div>`;
+      return;
+    }
+    filteredRows.forEach((r, idx) => {
       const name = `${r.last_name||""}, ${r.first_name||""}`.replace(/^,\s*/,"").trim() || "(No name)";
       const sub = [
         r.room_number ? `Room ${r.room_number}` : "",
@@ -680,14 +712,29 @@
 
   function renderDetail(){
     const el = document.getElementById("detail");
-    if(selectedIndex < 0 || !rows[selectedIndex]){
+    if(selectedIndex < 0 || !filteredRows[selectedIndex]){
       el.innerHTML = `<div class="hint">Select a patient to review details.</div>`;
       return;
     }
-    const r = rows[selectedIndex];
+    const r = filteredRows[selectedIndex];
+
     el.innerHTML = `
-      <div class="title" style="font-size:18px">${escapeHtml((r.first_name||"") + " " + (r.last_name||""))}</div>
-      <div class="sub">${escapeHtml(r.facility_name||"")}</div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+        <div>
+          <div class="title" style="font-size:18px">${escapeHtml((r.first_name||"") + " " + (r.last_name||""))}</div>
+          <div class="sub">${escapeHtml(r.facility_name||"")}</div>
+        </div>
+
+        <!-- Export single patient (top-right icon) -->
+        <button class="icon-btn" id="btnExportOne" type="button" title="Export patient CSV" aria-label="Export patient CSV">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 3v10"></path>
+            <path d="M8 9l4 4 4-4"></path>
+            <path d="M4 17v3h16v-3"></path>
+          </svg>
+        </button>
+      </div>
+
       <div class="divider"></div>
       <div class="kv">
         <div>DOB</div><div>${escapeHtml(r.dob||"")}</div>
@@ -702,14 +749,9 @@
         <div>Reason</div><div>${escapeHtml(r.reason_admission||"")}</div>
       </div>
     `;
-  }
 
-  async function exportCsv(){
-    const facility = document.getElementById("facility").value.trim();
-    if(!facility){ alert("Enter a facility name."); return; }
-
-    const url = `/admin/census/export.csv?facility_name=${encodeURIComponent(facility)}&view=${encodeURIComponent(currentView)}`;
-    const res = await adminFetch(url, { method: "GET" });
+  async function exportAllNewAdmissionsCsv(){
+    const res = await adminFetch(`/admin/census/export_all_new_admissions.csv`, { method: "GET" });
 
     if(!res.ok){
       const txt = await res.text().catch(()=> "");
@@ -720,19 +762,81 @@
     const blob = await res.blob();
     const a = document.createElement("a");
     const objUrl = URL.createObjectURL(blob);
+
     a.href = objUrl;
-    a.download = `census_${facility.replace(/\s+/g,"_")}_${currentView}.csv`;
+    a.download = `census_all_facilities_new_admissions.csv`;
+
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(objUrl);
   }
 
-  document.getElementById("vFull").onclick = () => { setView("full"); load(); };
-  document.getElementById("vNew").onclick  = () => { setView("new"); load(); };
-  document.getElementById("vDis").onclick  = () => { setView("discharged"); load(); };
+  function exportSinglePatientCsv(r){
+    const headers = [
+      "First Name","Last Name","DOB","Home Phone","Address","City","State","Zip",
+      "Primary Ins","Primary Number","Primary Care Physician","Tag","Facility_Code",
+      "Admission Date","Discharge Date","Room Number","Reason for admission","Attending Physician"
+    ];
+
+    const row = {
+      "First Name": r?.first_name || "",
+      "Last Name": r?.last_name || "",
+      "DOB": r?.dob || "",
+      "Home Phone": r?.home_phone || "",
+      "Address": r?.address || "",
+      "City": r?.city || "",
+      "State": r?.state || "",
+      "Zip": r?.zip || "",
+      "Primary Ins": r?.primary_ins || "",
+      "Primary Number": r?.primary_number || "",
+      "Primary Care Physician": r?.primary_care_phys || "",
+      "Tag": r?.tag || "",
+      "Facility_Code": r?.facility_code || "",
+      "Admission Date": r?.admission_date || "",
+      "Discharge Date": r?.discharge_date || "",
+      "Room Number": r?.room_number || "",
+      "Reason for admission": r?.reason_admission || "",
+      "Attending Physician": r?.attending_phys || ""
+    };
+
+    // build CSV safely (quote fields)
+    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const csv = [
+      headers.join(","),
+      headers.map(h => esc(row[h])).join(",")
+    ].join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    const objUrl = URL.createObjectURL(blob);
+
+    const fname = `${(r?.last_name || "patient")}_${(r?.first_name || "")}`.replace(/\s+/g,"_").replace(/_+$/,"");
+    a.href = objUrl;
+    a.download = `census_patient_${fname || "patient"}.csv`;
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objUrl);
+  }
+
+  // patient search
+  const ps = document.getElementById("patientSearch");
+  if(ps){
+    ps.addEventListener("input", () => {
+      patientSearchTerm = ps.value || "";
+      applyPatientSearch();
+      renderList();
+      renderDetail();
+    });
+  }
+
+  // icon load
   document.getElementById("btnLoad").onclick = load;
-  document.getElementById("btnExport").onclick = () => exportCsv();
+
+  // export all facilities new admissions
+  document.getElementById("btnExportAllNewAdmissions").onclick = exportAllNewAdmissionsCsv;
 
   let selectedUploadFiles = [];
 
