@@ -2040,24 +2040,36 @@
     // ===============================
     function openNotifModal() {
       const m = document.getElementById("notif-modal");
-      if (m) m.classList.add("open");
+      if (!m) return;
 
-      // load current selected admission fields into modal
+      // FORCE show modal even if CSS is not applying
+      m.classList.add("open");
+      m.style.display = "flex";
+
+      // load current selected admission fields into modal (if a row is selected)
       const adm = admissions.find(x => x.id === selectedId);
       if (!adm) return;
 
-      document.getElementById("nm-checked").checked = !!adm.notified_by_hospital;
-      document.getElementById("nm-by").value = adm.notified_by || "";
-      document.getElementById("nm-dt").value = adm.notification_dt || "";
-      document.getElementById("nm-fac").value = adm.hospital_reported_facility || "";
-      document.getElementById("nm-details").value = adm.notification_details || "";
+      const elChecked = document.getElementById("nm-checked");
+      const elBy      = document.getElementById("nm-by");
+      const elDt      = document.getElementById("nm-dt");
+      const elFac     = document.getElementById("nm-fac");
+      const elDetails = document.getElementById("nm-details");
 
-      onNotifCheckedChanged();
+      if (elChecked) elChecked.checked = !!adm.notified_by_hospital;
+      if (elBy)      elBy.value = adm.notified_by || "";
+      if (elDt)      elDt.value = adm.notification_dt || "";
+      if (elFac)     elFac.value = adm.hospital_reported_facility || "";
+      if (elDetails) elDetails.value = adm.notification_details || "";
+
+      if (typeof onNotifCheckedChanged === "function") onNotifCheckedChanged();
     }
 
     function closeNotifModal() {
       const m = document.getElementById("notif-modal");
-      if (m) m.classList.remove("open");
+      if (!m) return;
+      m.classList.remove("open");
+      m.style.display = "none";
     }
 
     function toggleNmChecked() {
@@ -2190,24 +2202,37 @@
     // ===============================
     function openPhysAssignModal() {
       const m = document.getElementById("phys-assign-modal");
-      if (m) m.classList.add("open");
+      if (!m) return;
+
+      // FORCE show modal even if CSS is not applying
+      m.classList.add("open");
+      m.style.display = "flex";
 
       const adm = admissions.find(x => x.id === selectedId);
       if (!adm) return;
 
-      document.getElementById("pa-confirmation").value = adm.assignment_confirmation || "Unknown";
-      document.getElementById("pa-billing-confirmed").checked = !!adm.billing_confirmed;
-      document.getElementById("pa-call-dt").value = adm.confirmation_call_dt || "";
-      document.getElementById("pa-staff").value = adm.snf_staff_name || "";
-      document.getElementById("pa-physician").value = adm.physician_assigned || "";
-      document.getElementById("pa-notes").value = adm.assignment_notes || "";
+      const elConf  = document.getElementById("pa-confirmation");
+      const elBill  = document.getElementById("pa-billing-confirmed");
+      const elCall  = document.getElementById("pa-call-dt");
+      const elStaff = document.getElementById("pa-staff");
+      const elPhys  = document.getElementById("pa-physician");
+      const elNotes = document.getElementById("pa-notes");
 
-      onPhysAssignChanged();
+      if (elConf)  elConf.value = adm.assignment_confirmation || "Unknown";
+      if (elBill)  elBill.checked = !!adm.billing_confirmed;
+      if (elCall)  elCall.value = adm.confirmation_call_dt || "";
+      if (elStaff) elStaff.value = adm.snf_staff_name || "";
+      if (elPhys)  elPhys.value = adm.physician_assigned || "";
+      if (elNotes) elNotes.value = adm.assignment_notes || "";
+
+      if (typeof onPhysAssignChanged === "function") onPhysAssignChanged();
     }
 
     function closePhysAssignModal() {
       const m = document.getElementById("phys-assign-modal");
-      if (m) m.classList.remove("open");
+      if (!m) return;
+      m.classList.remove("open");
+      m.style.display = "none";
     }
 
     function togglePaBilling() {
