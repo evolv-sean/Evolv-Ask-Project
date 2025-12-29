@@ -192,6 +192,23 @@ def normalize_date_to_iso(value: Any) -> Optional[str]:
     # If it’s some other format we don’t recognize, don’t destroy it
     return s
 
+def log_pad_request_debug(request: Request, raw_text: str, payload: dict):
+    """
+    Debug helper to see exactly what PAD sent.
+    Logs are intentionally short and safe for Render.
+    """
+    headers = dict(request.headers)
+
+    print("====== PAD DEBUG START ======")
+    print("Path:", request.url.path)
+    print("Content-Type:", headers.get("content-type"))
+    print("Content-Length:", headers.get("content-length"))
+    print("Raw body (first 500 chars):")
+    print(raw_text[:500])
+    print("Parsed payload:", payload)
+    print("====== PAD DEBUG END ======")
+
+
 # ---------------------------------------------------------------------------
 # DB PATH – wired for Render, but still overrideable via DB_PATH
 # ---------------------------------------------------------------------------
@@ -7323,7 +7340,11 @@ async def pad_flow_log_start(request: Request):
     Returns run_id which PAD should store and send on stop/error.
     """
     require_pad_api_key(request)
+    raw_bytes = await request.body()
+    raw_text = raw_bytes.decode("utf-8", errors="ignore").strip()
     payload = await _pad_read_json_body(request)
+    log_pad_request_debug(request, raw_text, payload)
+
 
     flow_name = str(payload.get("flow_name") or "").strip()
     flow_key = str(payload.get("flow_key") or "").strip() or None
@@ -7442,13 +7463,19 @@ async def pad_flow_log_stop(request: Request):
 
 @app.post("/api/pad/flow-log/error")
 async def pad_flow_log_error(request: Request):
-    """
-    PAD calls this on error.
-    Expects run_id from /start.
-    """
     require_pad_api_key(request)
+
+    # --- RAW BODY READ (for logging) ---
+    raw_bytes = await request.body()
+    raw_text = raw_bytes.decode("utf-8", errors="ignore").strip()
+
+    # --- PARSE USING PAD-SAFE PARSER ---
     payload = await _pad_read_json_body(request)
 
+    # --- DEBUG LOG (Render will show this) ---
+    log_pad_request_debug(request, raw_text, payload)
+
+    # --- NORMAL VALIDATION ---
     run_id = str(payload.get("run_id") or "").strip()
     if not run_id:
         raise HTTPException(status_code=400, detail="run_id is required")
