@@ -1391,6 +1391,29 @@ def compute_note_hash(patient_mrn: str, note_datetime: str, note_text: str) -> s
     base = f"{(patient_mrn or '').strip()}|{(note_datetime or '').strip()}|{_normalize_note_text_for_hash(note_text)}"
     return hashlib.md5(base.encode("utf-8")).hexdigest()
 
+def _normalize_doc_text_for_hash(s: str) -> str:
+    # collapse whitespace so trivial formatting changes don't create new hashes
+    return " ".join((s or "").strip().split())
+
+def compute_hospital_document_hash(
+    hospital_name: str,
+    document_type: str,
+    visit_id: Optional[str],
+    document_datetime: Optional[str],
+    source_text: str,
+) -> str:
+    """
+    Stable hash for hospital_documents to skip re-ingesting the exact same document.
+    """
+    base = (
+        f"{(hospital_name or '').strip()}|"
+        f"{(document_type or '').strip()}|"
+        f"{(visit_id or '').strip()}|"
+        f"{(document_datetime or '').strip()}|"
+        f"{_normalize_doc_text_for_hash(source_text)}"
+    )
+    return hashlib.md5(base.encode('utf-8')).hexdigest()
+
 def load_extraction_profile(conn: sqlite3.Connection, hospital_name: str, document_type: str) -> Optional[Dict[str, str]]:
     """
     Returns a dict like:
@@ -2226,6 +2249,8 @@ def init_db():
 
             source_text        TEXT NOT NULL,
             source_system      TEXT DEFAULT 'EMR',
+            
+            document_hash      TEXT,
 
             created_at         TEXT DEFAULT (datetime('now'))
         )
@@ -2255,6 +2280,11 @@ def init_db():
 
     try:
         cur.execute("ALTER TABLE hospital_documents ADD COLUMN insurance TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE hospital_documents ADD COLUMN document_hash TEXT")
     except sqlite3.Error:
         pass
 
@@ -2295,6 +2325,10 @@ def init_db():
     
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_hosp_docs_mrn ON hospital_documents (patient_mrn)"
+    )
+    
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_hosp_docs_hash ON hospital_documents (document_hash)"
     )
 
     cur.execute(
@@ -3325,6 +3359,21 @@ async def pad_hospital_documents_bulk(request: Request):
 
             cur = conn.cursor()
 
+            # Dedup (hash + skip)
+            doc_hash = compute_hospital_document_hash(
+                hospital_name=doc_payload["hospital_name"],
+                document_type=doc_payload["document_type"],
+                visit_id=doc_payload["visit_id"],
+                document_datetime=doc_payload["document_datetime"],
+                source_text=doc_payload["source_text"],
+            )
+
+            cur.execute("SELECT id FROM hospital_documents WHERE document_hash = ? LIMIT 1", (doc_hash,))
+            existing = cur.fetchone()
+            if existing:
+                # Skip this row; continue to next
+                continue
+
             cur.execute(
                 """
                 INSERT INTO hospital_documents (
@@ -3332,9 +3381,10 @@ async def pad_hospital_documents_bulk(request: Request):
                     patient_mrn, patient_name, dob, visit_id,
                     admit_date, dc_date,
                     attending, pcp, insurance,
-                    source_text, source_system
+                    source_text, source_system,
+                    document_hash
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     doc_payload["hospital_name"],
@@ -3348,9 +3398,10 @@ async def pad_hospital_documents_bulk(request: Request):
                     doc_payload["dc_date"],
                     doc_payload["attending"],
                     doc_payload["pcp"],
-                    doc_payload["insurance"],    
+                    doc_payload["insurance"],
                     doc_payload["source_text"],
                     doc_payload["source_system"],
+                    doc_hash,
                 ),
             )
             document_id = cur.lastrowid
@@ -3548,8 +3599,23 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
 
         cur = conn.cursor()
 
+        # 1) Dedup (hash + skip) like cm_notes_raw.note_hash
+        doc_hash = compute_hospital_document_hash(
+            hospital_name=hospital_name,
+            document_type=document_type,
+            visit_id=visit_id,
+            document_datetime=document_datetime,
+            source_text=source_text,
+        )
 
-        # 1) Insert the document row
+        cur.execute("SELECT id FROM hospital_documents WHERE document_hash = ? LIMIT 1", (doc_hash,))
+        existing = cur.fetchone()
+        if existing:
+            # Duplicate document already ingested — skip everything downstream
+            existing_id = existing["id"] if isinstance(existing, sqlite3.Row) else existing[0]
+            return {"ok": True, "skipped": True, "message": "Duplicate document (same hash) already exists.", "document_id": existing_id}
+
+        # 2) Insert the document row
         cur.execute(
             """
             INSERT INTO hospital_documents (
@@ -3557,9 +3623,10 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
                 patient_mrn, patient_name, dob, visit_id,
                 admit_date, dc_date,
                 attending, pcp, insurance,
-                source_text, source_system
+                source_text, source_system,
+                document_hash
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 hospital_name,
@@ -3576,10 +3643,12 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
                 insurance,
                 source_text,
                 source_system,
+                doc_hash,
             ),
         )
 
         document_id = cur.lastrowid
+
         
         # ✅ NEW: upsert the discharge "hub" row by visit_id (if provided)
         if visit_id:
