@@ -1717,10 +1717,10 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
       <div class="topbar" aria-hidden="true"></div>
 
       <div class="content">
-        <h1>Accountable Care Hospitalist Group (ACHG) Notification</h1>
+        <h1>First Docs Notification</h1>
         <p>
           Our Hospitalists at HCA Florida JFK Hospital have identified upcoming patients expected to discharge to your facility.
-          Please use the View List button below to download today's list (Facility PIN required).
+          Please use the View List button below to download today's list (Facility PIN required), and assign the referral(s) to the correct First Docs provider.
         </p>
 
         <div class="callout">
@@ -3228,7 +3228,7 @@ async def pad_hospital_documents_bulk(request: Request):
 
     Accepts:
       1) Raw array: [ { hospital_name, document_type, source_text, ... }, ... ]
-      2) PAD DataTable wrapper: { "DataTable": [ {...}, ... ] }
+      2) PAD DataTable2 wrapper: { "DataTable2": [ {...}, ... ] }
     """
     require_pad_api_key(request)
 
@@ -3262,8 +3262,8 @@ async def pad_hospital_documents_bulk(request: Request):
 
     # Accept multiple wrapper keys from PAD
     if isinstance(payload, dict):
-        if "DataTable" in payload:
-            docs = payload.get("DataTable") or []
+        if "DataTable2" in payload:
+            docs = payload.get("DataTable2") or []
         elif "discharge_visits" in payload:
             docs = payload.get("discharge_visits") or []
         else:
@@ -3274,7 +3274,7 @@ async def pad_hospital_documents_bulk(request: Request):
     if not isinstance(docs, list) or not docs:
         raise HTTPException(
             status_code=400,
-            detail="Request body must be a non-empty JSON array or an object with a non-empty 'DataTable' array",
+            detail="Request body must be a non-empty JSON array or an object with a non-empty 'DataTable2' array",
         )
 
     conn = get_db()
@@ -10682,7 +10682,7 @@ def build_snf_pdf_html(
     if safe_attending:
         provider_callout = f"""
       <div class="provider-callout">
-        <span class="provider-label">The patients below should be assigned to the following ACHG provider:</span>
+        <span class="provider-label">The patients below should be assigned to the following First Docs provider:</span>
         <strong class="provider-name">{safe_attending}</strong>
       </div>
     """
@@ -11020,7 +11020,7 @@ def build_snf_pdf_html(
       <header class="report-header">
         <div class="header-main">
           <div class="report-kicker">Upcoming SNF Admissions</div>
-          <div class="report-title">Accountable Care Hospitalist Group</div>
+          <div class="report-title">First Docs</div>
           <div class="facility-line">
             Receiving Facility:
             <span class="facility-chip">
@@ -11166,7 +11166,7 @@ async def snf_secure_link_get(token: str, request: Request):
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="topbar">ACHG • Secure List</div>
+      <div class="topbar">First Docs • Secure List</div>
       <div class="mintbar" aria-hidden="true"></div>
       <div class="content">
         <h1>{fac_name}</h1>
@@ -11453,7 +11453,7 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="topbar">ACHG • Secure List</div>
+      <div class="topbar">First Docs • Secure List</div>
       <div class="mintbar" aria-hidden="true"></div>
       <div class="content">
         <h1>{fac_name}</h1>
