@@ -1361,8 +1361,19 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    # timeout=30 makes sqlite wait (up to 30s) if the DB is temporarily locked
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
+
+    # Pragmas to reduce lock errors under bursty write traffic (PAD per-admission calls)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+        conn.execute("PRAGMA busy_timeout=10000;")  # 10s additional wait on locks
+    except Exception:
+        # Don't crash app if pragma fails for some reason
+        pass
+
     return conn
 
 
@@ -3281,13 +3292,44 @@ async def pad_cm_notes_bulk(
             )
 
             inserted += 1
+            
+            conn.commit()
 
-        conn.commit()
+
+        # Finalize run log USING THE SAME CONNECTION (avoids extra lock contention)
+        try:
+            cur.execute(
+                """
+                UPDATE pad_api_runs
+                SET inserted = ?, skipped = ?, error_count = ?, status = ?, message = ?
+                WHERE id = ?
+                """,
+                (inserted, skipped, len(errors), "ok", "completed", run_log_id),
+            )
+            conn.commit()
+        except Exception as e:
+            print("[pad_cm_notes_bulk] failed to update pad_api_runs:", e)
+
+    except Exception as e:
+        # Mark run as error (best-effort)
+        try:
+            cur.execute(
+                """
+                UPDATE pad_api_runs
+                SET inserted = ?, skipped = ?, error_count = ?, status = ?, message = ?
+                WHERE id = ?
+                """,
+                (inserted, skipped, len(errors) + 1, "error", f"failed: {type(e).__name__}", run_log_id),
+            )
+            conn.commit()
+        except Exception as e2:
+            print("[pad_cm_notes_bulk] failed to mark run as error:", e2)
+        raise
+
     finally:
         conn.close()
 
-    # Kick off SNF extraction in the background so that the SNF Admissions
-    # page is populated without requiring a manual 'run extraction' click.
+    # Kick off SNF extraction in the background (unchanged)
     try:
         threading.Thread(
             target=snf_run_extraction,
@@ -3296,22 +3338,6 @@ async def pad_cm_notes_bulk(
         ).start()
     except Exception as e:
         print("[pad_cm_notes_bulk] failed to trigger SNF extraction:", e)
-
-    # Finalize run log
-    try:
-        cur2 = get_db().cursor()
-        cur2.execute(
-            """
-            UPDATE pad_api_runs
-            SET inserted = ?, skipped = ?, error_count = ?, status = ?, message = ?
-            WHERE id = ?
-            """,
-            (inserted, skipped, len(errors), "ok", "completed", run_log_id),
-        )
-        cur2.connection.commit()
-        cur2.connection.close()
-    except Exception as e:
-        print("[pad_cm_notes_bulk] failed to update pad_api_runs:", e)
 
     return {
         "ok": True,
@@ -3620,7 +3646,10 @@ async def pad_hospital_documents_bulk(request: Request):
 
             inserted += 1
 
-        conn.commit()
+            # ✅ Commit per document so we don't hold the write lock for the entire batch
+            conn.commit()
+
+        # (no final conn.commit() here anymore)
     finally:
         conn.close()
 
