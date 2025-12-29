@@ -1785,8 +1785,6 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
 
 
 
-
-
 def next_qa_id(conn: sqlite3.Connection) -> str:
     """
     Generate a new QA id like Q0001, Q0002...
@@ -1917,7 +1915,83 @@ def init_db():
         """
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_pad_api_runs_received ON pad_api_runs (received_at DESC)")
-    
+
+    # PAD Flow run log (one row per PAD flow execution)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pad_flow_runs (
+            run_id            TEXT PRIMARY KEY,   -- UUID (links all events for this run)
+            flow_name         TEXT NOT NULL,      -- friendly name e.g. "SNF OCR CM Notes"
+            flow_key          TEXT,               -- stable key you choose e.g. "snf_cm_notes_ocr"
+            flow_version      TEXT,               -- optional: version/build
+            environment       TEXT,               -- optional: prod/dev, etc.
+
+            machine_name      TEXT,               -- optional: PAD machine
+            os_user           TEXT,               -- optional: windows user
+            triggered_by      TEXT,               -- optional: scheduler/manual/etc.
+
+            started_at        TEXT NOT NULL,      -- UTC datetime string
+            ended_at          TEXT,               -- UTC datetime string
+            status            TEXT NOT NULL DEFAULT 'running',  -- running | ok | error
+            duration_ms       INTEGER,            -- computed on stop/error
+
+            start_payload_json TEXT,              -- raw JSON string (optional)
+            stop_payload_json  TEXT,              -- raw JSON string (optional)
+
+            error_message     TEXT,
+            error_details_json TEXT,
+
+            created_at        TEXT DEFAULT (datetime('now')),
+            updated_at        TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_pad_flow_runs_flow ON pad_flow_runs (flow_key, started_at DESC)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_pad_flow_runs_started ON pad_flow_runs (started_at DESC)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_pad_flow_runs_status ON pad_flow_runs (status)")
+
+    # PAD Flow events (multiple rows per run_id: start/stop/error + optional steps)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pad_flow_events (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id          TEXT NOT NULL,        -- FK to pad_flow_runs.run_id
+            event_type      TEXT NOT NULL,        -- start | stop | error | info | step
+            event_ts        TEXT NOT NULL,        -- UTC datetime string
+
+            step_name       TEXT,                -- optional: "Extract PDF", "Upload", etc.
+            message         TEXT,                -- short message
+            details_json    TEXT,                -- JSON string (anything extra)
+
+            created_at      TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY(run_id) REFERENCES pad_flow_runs(run_id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_pad_flow_events_run ON pad_flow_events (run_id, event_ts)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_pad_flow_events_type ON pad_flow_events (event_type, event_ts)")
+
+    # Auto-update updated_at for older DBs (safe no-op if already exists)
+    for stmt in [
+        "ALTER TABLE pad_flow_runs ADD COLUMN flow_key TEXT",
+        "ALTER TABLE pad_flow_runs ADD COLUMN flow_version TEXT",
+        "ALTER TABLE pad_flow_runs ADD COLUMN environment TEXT",
+        "ALTER TABLE pad_flow_runs ADD COLUMN machine_name TEXT",
+        "ALTER TABLE pad_flow_runs ADD COLUMN os_user TEXT",
+        "ALTER TABLE pad_flow_runs ADD COLUMN triggered_by TEXT",
+        "ALTER TABLE pad_flow_runs ADD COLUMN ended_at TEXT",
+        "ALTER TABLE pad_flow_runs ADD COLUMN duration_ms INTEGER",
+        "ALTER TABLE pad_flow_runs ADD COLUMN start_payload_json TEXT",
+        "ALTER TABLE pad_flow_runs ADD COLUMN stop_payload_json TEXT",
+        "ALTER TABLE pad_flow_runs ADD COLUMN error_message TEXT",
+        "ALTER TABLE pad_flow_runs ADD COLUMN error_details_json TEXT",
+        "ALTER TABLE pad_flow_runs ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))",
+    ]:
+        try:
+            cur.execute(stmt)
+        except sqlite3.Error:
+            pass
+
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS census_runs (
@@ -7169,18 +7243,227 @@ async def ulog_quality_public(
         conn.close()
 
 
-def require_pad_api_key(request: Request):
+async def _pad_read_json_body(request: Request) -> dict:
     """
-    Optional guard for PAD → API calls.
-    If PAD_API_KEY is set in env, require header X-PAD-API-Key to match.
-    If PAD_API_KEY is not set, this is a no-op.
+    Robust JSON reader for PAD.
+    - Accepts a normal JSON object
+    - If PAD sends extra junk, tries to parse the first {...} block
     """
-    api_key = os.getenv("PAD_API_KEY")
-    if not api_key:
-        return  # no key configured; allow all
-    header = request.headers.get("x-pad-api-key") or ""
-    if header.strip() != api_key.strip():
-        raise HTTPException(status_code=401, detail="invalid PAD api key")
+    raw_bytes = await request.body()
+    raw_text = raw_bytes.decode("utf-8", errors="ignore").strip()
+    if not raw_text:
+        return {}
+
+    try:
+        payload = json.loads(raw_text)
+        return payload if isinstance(payload, dict) else {"value": payload}
+    except json.JSONDecodeError:
+        start = raw_text.find("{")
+        end = raw_text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return {}
+        try:
+            payload = json.loads(raw_text[start : end + 1])
+            return payload if isinstance(payload, dict) else {"value": payload}
+        except json.JSONDecodeError:
+            return {}
+
+
+def _utc_now_text() -> str:
+    return dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+
+@app.post("/api/pad/flow-log/start")
+async def pad_flow_log_start(request: Request):
+    """
+    PAD calls this at flow start.
+    Returns run_id which PAD should store and send on stop/error.
+    """
+    require_pad_api_key(request)
+    payload = await _pad_read_json_body(request)
+
+    flow_name = str(payload.get("flow_name") or "").strip()
+    flow_key = str(payload.get("flow_key") or "").strip() or None
+
+    if not flow_name:
+        raise HTTPException(status_code=400, detail="flow_name is required")
+
+    run_id = str(payload.get("run_id") or "").strip() or uuid.uuid4().hex
+
+    # optional metadata
+    flow_version = str(payload.get("flow_version") or "").strip() or None
+    environment = str(payload.get("environment") or "").strip() or None
+    machine_name = str(payload.get("machine_name") or "").strip() or None
+    os_user = str(payload.get("os_user") or "").strip() or None
+    triggered_by = str(payload.get("triggered_by") or "").strip() or None
+
+    started_at = _utc_now_text()
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Insert run (idempotent: if PAD retries with same run_id, don't crash)
+        cur.execute(
+            """
+            INSERT INTO pad_flow_runs (
+                run_id, flow_name, flow_key, flow_version, environment,
+                machine_name, os_user, triggered_by,
+                started_at, status, start_payload_json, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, datetime('now'))
+            ON CONFLICT(run_id) DO UPDATE SET
+                flow_name = excluded.flow_name,
+                flow_key = excluded.flow_key,
+                flow_version = excluded.flow_version,
+                environment = excluded.environment,
+                machine_name = excluded.machine_name,
+                os_user = excluded.os_user,
+                triggered_by = excluded.triggered_by,
+                updated_at = datetime('now')
+            """,
+            (
+                run_id, flow_name, flow_key, flow_version, environment,
+                machine_name, os_user, triggered_by,
+                started_at, json.dumps(payload),
+            ),
+        )
+
+        # Start event
+        cur.execute(
+            """
+            INSERT INTO pad_flow_events (run_id, event_type, event_ts, message, details_json)
+            VALUES (?, 'start', ?, ?, ?)
+            """,
+            (run_id, started_at, "flow started", json.dumps(payload)),
+        )
+
+        conn.commit()
+        return {"ok": True, "run_id": run_id, "started_at": started_at}
+    finally:
+        conn.close()
+
+
+@app.post("/api/pad/flow-log/stop")
+async def pad_flow_log_stop(request: Request):
+    """
+    PAD calls this at flow completion.
+    Expects run_id from /start.
+    """
+    require_pad_api_key(request)
+    payload = await _pad_read_json_body(request)
+
+    run_id = str(payload.get("run_id") or "").strip()
+    if not run_id:
+        raise HTTPException(status_code=400, detail="run_id is required")
+
+    ended_at = _utc_now_text()
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Update run to ok (compute duration_ms if started_at exists)
+        cur.execute(
+            """
+            UPDATE pad_flow_runs
+            SET
+                ended_at = ?,
+                status = 'ok',
+                stop_payload_json = ?,
+                duration_ms = CASE
+                    WHEN started_at IS NOT NULL AND started_at <> ''
+                    THEN CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER)
+                    ELSE duration_ms
+                END,
+                updated_at = datetime('now')
+            WHERE run_id = ?
+            """,
+            (ended_at, json.dumps(payload), ended_at, run_id),
+        )
+
+        # Stop event
+        cur.execute(
+            """
+            INSERT INTO pad_flow_events (run_id, event_type, event_ts, message, details_json)
+            VALUES (?, 'stop', ?, ?, ?)
+            """,
+            (run_id, ended_at, "flow stopped", json.dumps(payload)),
+        )
+
+        conn.commit()
+        return {"ok": True, "run_id": run_id, "ended_at": ended_at}
+    finally:
+        conn.close()
+
+
+@app.post("/api/pad/flow-log/error")
+async def pad_flow_log_error(request: Request):
+    """
+    PAD calls this on error.
+    Expects run_id from /start.
+    """
+    require_pad_api_key(request)
+    payload = await _pad_read_json_body(request)
+
+    run_id = str(payload.get("run_id") or "").strip()
+    if not run_id:
+        raise HTTPException(status_code=400, detail="run_id is required")
+
+    error_message = str(payload.get("error_message") or "").strip() or "PAD flow error"
+    error_details = payload.get("error_details")  # can be string or object
+    step_name = str(payload.get("step_name") or "").strip() or None
+
+    ended_at = _utc_now_text()
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            UPDATE pad_flow_runs
+            SET
+                ended_at = COALESCE(ended_at, ?),
+                status = 'error',
+                error_message = ?,
+                error_details_json = ?,
+                duration_ms = CASE
+                    WHEN started_at IS NOT NULL AND started_at <> ''
+                    THEN CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER)
+                    ELSE duration_ms
+                END,
+                updated_at = datetime('now')
+            WHERE run_id = ?
+            """,
+            (
+                ended_at,
+                error_message,
+                json.dumps(error_details) if error_details is not None else None,
+                ended_at,
+                run_id,
+            ),
+        )
+
+        cur.execute(
+            """
+            INSERT INTO pad_flow_events (run_id, event_type, event_ts, step_name, message, details_json)
+            VALUES (?, 'error', ?, ?, ?, ?)
+            """,
+            (
+                run_id,
+                ended_at,
+                step_name,
+                error_message,
+                json.dumps(payload),
+            ),
+        )
+
+        conn.commit()
+        return {"ok": True, "run_id": run_id, "ended_at": ended_at, "error_message": error_message}
+    finally:
+        conn.close()
+
 
 
 def _is_snf_disposition(dispo: str) -> bool:
