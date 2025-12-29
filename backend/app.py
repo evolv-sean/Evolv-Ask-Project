@@ -87,6 +87,20 @@ def require_admin(request: Request):
         raise HTTPException(status_code=403, detail="invalid admin token")
 
 
+def require_pad_api_key(request: Request):
+    """
+    Simple header-based PAD guard via PAD_API_KEY env var.
+    - If PAD_API_KEY is not set, PAD endpoints are left open (same pattern as require_admin).
+    - PAD should send header: x-pad-api-key: <PAD_API_KEY>
+    """
+    token = os.getenv("PAD_API_KEY")
+    if not token:
+        return
+    header = request.headers.get("x-pad-api-key") or ""
+    if header.strip() != token.strip():
+        raise HTTPException(status_code=403, detail="invalid PAD api key")
+
+
 # ============================
 # Email helper utilities
 # ============================
