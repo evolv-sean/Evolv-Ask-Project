@@ -880,17 +880,41 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
 
     cand_lines = [l.strip() for l in tail.splitlines() if l.strip()]
 
-    # Candidate resident line should have a comma in name and at least one date
+    # Real date pattern (MM/DD/YYYY) used throughout this function
+    date_pat = r"\b(0[1-9]|1[0-2])/(0[1-9]|[12][0-9]|3[01])/(19|20)\d{2}\b"
+
+    # ✅ NEW: Arcadia split-text fix:
+    # If the table row is split across lines (e.g. "Cart 4" on its own line),
+    # the resident name is consistently the non-empty line immediately ABOVE the first real date.
     resident_line = ""
-    for l in cand_lines[:10]:
-        if "," in l and re.search(r"\d{2}/\d{2}/\d{4}", l):
-            resident_line = l
+    first_date_idx = -1
+    for i, l in enumerate(cand_lines[:40]):
+        if re.search(date_pat, l):
+            first_date_idx = i
             break
 
-    # Arcadia-style: name/date/room/# may be split across multiple lines — compact the first few lines into one
+    if first_date_idx > 0:
+        name_line = cand_lines[first_date_idx - 1].strip()
+        date_line = cand_lines[first_date_idx].strip()
+
+        # Require a comma to confirm it's a "LAST, FIRST" name line
+        if "," in name_line:
+            # Build a synthetic resident_line so the rest of the parser can keep working
+            resident_line = f"{name_line} {date_line}"
+            warnings.append("resident_name_from_line_above_first_date")
+
+    # Existing behavior (covers PDFs where the whole row stays on one line)
+    if not resident_line:
+        for l in cand_lines[:10]:
+            if "," in l and re.search(date_pat, l):
+                resident_line = l
+                break
+
+    # Keep your compacting fallback, but only if it looks like a real one-line record
+    # (this is what was accidentally pulling in "Cart ..." into the last name sometimes)
     if not resident_line:
         compact = " ".join(cand_lines[:15])
-        if "," in compact and re.search(r"\d{2}/\d{2}/\d{4}", compact):
+        if "," in compact and re.search(date_pat, compact):
             resident_line = compact.strip()
             warnings.append("resident_line_compacted_from_multiline")
 
@@ -899,7 +923,6 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
         m_name = re.search(r"([A-Za-z'\-\. ]+,\s*[A-Za-z'\-\. ]+)", tail, flags=re.MULTILINE)
         if m_name:
             candidate = m_name.group(1).strip()
-            # If the part after comma is just a 2-letter state, it's not a person name
             post = candidate.split(",", 1)[-1].strip().split()[0] if "," in candidate else ""
             if not re.fullmatch(r"[A-Z]{2}", post):
                 resident_line = candidate
@@ -918,6 +941,27 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
         # Common PCC IDs are 4+ chars/digits
         if re.fullmatch(r"[A-Za-z0-9]{4,}", last_tok):
             resident_num = last_tok
+
+    # ✅ NEW: Arcadia split-text fallback
+    # When text extraction splits columns into separate lines, the resident # can appear later.
+    if not resident_num and cand_lines:
+        for l in cand_lines[:60]:
+            # Skip obvious unit lines like "Cart 4"
+            if re.fullmatch(r"Cart\s*\d+\b", l, flags=re.IGNORECASE):
+                continue
+
+            # Look for a standalone 4+ alnum token on a line
+            toks = re.findall(r"\b[A-Za-z0-9]{4,}\b", l)
+            for t in toks:
+                # Avoid capturing pure dates like 12252025 in weird cases (rare, but safe)
+                if re.fullmatch(r"\d{8}", t):
+                    continue
+                resident_num = t
+                break
+
+            if resident_num:
+                warnings.append("resident_number_scanned_from_lines")
+                break
 
     if resident_num:
         confidence += 0.25
