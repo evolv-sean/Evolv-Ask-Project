@@ -82,12 +82,31 @@
     .sub{font-size:12px;color:var(--muted);margin-top:3px}
     .detail{
       padding:14px 16px;
-      overflow-y:hidden;   /* ✅ right side does NOT scroll */
+      overflow-y:auto;     /* ✅ right side scrolls (page stays fixed) */
+      overscroll-behavior: contain;
     }
     .kv{display:grid;grid-template-columns:180px 1fr;gap:8px 12px;font-size:13px}
     .kv div:nth-child(odd){color:var(--muted);font-weight:900}
     .divider{height:1px;background:#eef2f7;margin:12px 0}
     .hint{font-size:12px;color:var(--muted)}
+
+    .rawbox{
+      margin-top:12px;
+      padding:12px;
+      border:1px solid #eef2f7;
+      border-radius:14px;
+      background:#f8fafc;
+      font-size:12px;
+      line-height:1.35;
+      white-space:pre-wrap;
+      word-break:break-word;
+    }
+    .rawlabel{
+      margin-top:12px;
+      font-size:12px;
+      color:var(--muted);
+      font-weight:900;
+    }
 
     /* ✅ Loading overlay */
     .loading-overlay{
@@ -777,6 +796,9 @@
         <div>Attending</div><div>${escapeHtml(r.attending_phys||"")}</div>
         <div>Reason</div><div>${escapeHtml(r.reason_admission||"")}</div>
       </div>
+
+      <div class="rawlabel">Raw Text</div>
+      <div class="rawbox">${escapeHtml(r.raw_text || "")}</div>
     `;
 
     // wire export icon AFTER the HTML is injected
