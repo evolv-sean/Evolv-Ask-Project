@@ -394,14 +394,96 @@ def _split_name(full: str) -> tuple[str, str]:
     full = _safe(full)
     if not full:
         return ("", "")
+
+    # Drop common noise like preferred names in parentheses: "SMITH, JOHN (JACK)"
+    full = re.sub(r"\([^)]*\)", " ", full)
+
+    # ✅ Remove "Name Alert" noise that sometimes leaks into names
+    full = re.sub(r"\bNAME\s+ALERT\b", " ", full, flags=re.IGNORECASE)
+
+    full = re.sub(r"\s+", " ", full).strip()
+
+    # Helper: keep unicode letters + space + apostrophe + hyphen
+    def _clean_name(s: str) -> str:
+        s = _safe(s)
+        out = []
+        for ch in s:
+            if ch.isalpha() or ch in {" ", "-", "'"}:
+                out.append(ch)
+        s2 = "".join(out)
+        s2 = re.sub(r"\s{2,}", " ", s2).strip(" ,")
+        return s2
+
+    def _is_middle_initial(tok: str) -> bool:
+        tok = _safe(tok).strip()
+        return bool(re.fullmatch(r"[A-Za-z]\.?", tok))
+
+    suffixes = {"JR", "SR", "II", "III", "IV", "V"}
+
+    # Case 1: "LAST NAME, FIRST M"  (also handles "LAST M, FIRST" where M should move to first name)
     if "," in full:
-        last, rest = [x.strip() for x in full.split(",", 1)]
-        first = rest.split(" ")[0].strip() if rest else ""
+        last_raw, rest = [x.strip() for x in full.split(",", 1)]
+
+        # Remove trailing suffix from the last name side if present
+        last_tokens = [t for t in re.split(r"\s+", last_raw) if t]
+
+        mi_from_last = ""
+        # ✅ If last side ends with a middle initial, move it to the first name side
+        if len(last_tokens) >= 2 and _is_middle_initial(last_tokens[-1]):
+            mi_from_last = last_tokens[-1].strip(".")
+            last_tokens = last_tokens[:-1]
+
+        if last_tokens and last_tokens[-1].upper().strip(".") in suffixes:
+            last_tokens = last_tokens[:-1]
+
+        last = _clean_name(" ".join(last_tokens))
+
+        rest_parts = [p for p in rest.split() if p]
+        if not rest_parts:
+            return ("", last)
+
+        first_parts = [rest_parts[0]]
+
+        # If rest already has middle initial (e.g. "JOHN C"), keep it
+        if len(rest_parts) >= 2 and _is_middle_initial(rest_parts[1]):
+            first_parts.append(rest_parts[1].strip("."))
+
+        # If we extracted a middle initial from the last side, append it after first name
+        if mi_from_last and (mi_from_last not in [p.strip(".") for p in first_parts]):
+            first_parts.append(mi_from_last)
+
+        first = _clean_name(" ".join(first_parts))
         return (first, last)
-    parts = full.split()
+
+    # Case 2: no comma — assume "First ... Last", but preserve particles like "de la", "van", "st"
+    parts = [p for p in full.split() if p]
     if len(parts) == 1:
-        return ("", parts[0])
-    return (parts[0], parts[-1])
+        return ("", _clean_name(parts[0]))
+
+    particles = {
+        "DE", "DEL", "DELA", "DA", "DI", "DOS", "DAS",
+        "VAN", "VON", "LA", "LE", "DU", "ST", "ST."
+    }
+
+    # ✅ If second token is a middle initial, keep it with the first name (e.g., "JOHN C SMITH")
+    first_end = 1
+    first_parts = [parts[0]]
+    if len(parts) >= 3 and _is_middle_initial(parts[1]):
+        first_parts.append(parts[1].strip("."))
+        first_end = 2
+
+    first = _clean_name(" ".join(first_parts))
+
+    # Build last name from the end, pulling in preceding particle tokens
+    last_parts = [parts[-1]]
+    i = len(parts) - 2
+    while i >= first_end and parts[i].upper() in particles:
+        last_parts.insert(0, parts[i])
+        i -= 1
+
+    last = _clean_name(" ".join(last_parts))
+    return (first, last)
+
 
 class ScannedPdfError(Exception):
     """Raised when a PDF has no extractable text (likely scanned/image-only)."""
@@ -875,6 +957,18 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
     m_last = re.search(r"^[^,]+", resident_line)
     last_raw = (m_last.group(0) if m_last else "").strip()
 
+    # ✅ Strip leading location prefixes that sometimes leak into the "last name" area
+    # Examples: "Unit 2 SMITH" -> "SMITH", "Wing 1 DAMIAN VARGAS" -> "DAMIAN VARGAS"
+    last_raw = re.sub(r"^(?:Wing|Unit)\s*\d+\s+", "", last_raw, flags=re.IGNORECASE)
+
+    # ✅ Also strip leading room tokens if they appear before the name
+    # Example: "319-B SMITH" -> "SMITH"
+    last_raw = re.sub(r"^\d{1,4}[A-Z]?(?:-[A-Za-z0-9]{1,6})\s+", "", last_raw, flags=re.IGNORECASE)
+
+    # Remove trailing suffix token if present (keep the full last name otherwise)
+    suffixes = {"Jr", "Sr", "II", "III"}
+    last_tokens = [t for t in re.split(r"\s+", last_raw) if t]
+
     # Remove trailing suffix token if present (keep the full last name otherwise)
     suffixes = {"Jr", "Sr", "II", "III"}
     last_tokens = [t for t in re.split(r"\s+", last_raw) if t]
@@ -882,14 +976,22 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
         last_tokens = last_tokens[:-1]
     last_keep = " ".join(last_tokens).strip()
 
-    # Clean last name but KEEP spaces/apostrophes/hyphens
-    last_clean = re.sub(r"[^A-Za-z'\- ]+", "", last_keep).strip()
-    last_clean = re.sub(r"\s{2,}", " ", last_clean)
+    # Clean last name but KEEP unicode letters + spaces/apostrophes/hyphens
+    def _clean_name(s: str) -> str:
+        s = (s or "").strip()
+        out = []
+        for ch in s:
+            if ch.isalpha() or ch in {" ", "-", "'"}:
+                out.append(ch)
+        s2 = "".join(out)
+        s2 = re.sub(r"\s{2,}", " ", s2).strip(" ,")
+        return s2
 
-    # First name: FIRST token after comma
-    # NOTE: avoid variable-width lookbehind (Python re disallows it)
-    m_first = re.search(r",\s*(?P<first>[A-Za-z'\-]+)", resident_line)
-    first_clean = (m_first.group("first") if m_first else "").strip()
+    last_clean = _clean_name(last_keep)
+
+    # First name: FIRST token after comma (unicode-safe, stops at whitespace)
+    m_first = re.search(r",\s*(?P<first>[^\W\d_][^\s,]*)", resident_line)
+    first_clean = _clean_name(m_first.group("first")) if m_first else ""
 
     if last_clean and first_clean:
         resident_name = f"{last_clean}, {first_clean}"
@@ -7308,26 +7410,57 @@ async def _pad_read_json_body(request: Request) -> dict:
     Robust JSON reader for PAD.
     - Accepts a normal JSON object
     - If PAD sends extra junk, tries to parse the first {...} block
+    - If PAD sends invalid JSON (common when error_message has literal newlines),
+      falls back to regex extraction for the key fields.
     """
     raw_bytes = await request.body()
     raw_text = raw_bytes.decode("utf-8", errors="ignore").strip()
     if not raw_text:
         return {}
 
+    # 1) Try parsing as JSON
     try:
         payload = json.loads(raw_text)
         return payload if isinstance(payload, dict) else {"value": payload}
-    except json.JSONDecodeError:
-        start = raw_text.find("{")
-        end = raw_text.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            return {}
+    except json.JSONDecodeError as e:
+        print("[PAD JSON PARSE FAIL] primary json.loads:", e)
+
+    # 2) Try extracting the first {...} block and parsing that
+    start = raw_text.find("{")
+    end = raw_text.rfind("}")
+    if start != -1 and end != -1 and end > start:
         try:
             payload = json.loads(raw_text[start : end + 1])
             return payload if isinstance(payload, dict) else {"value": payload}
-        except json.JSONDecodeError:
-            return {}
+        except json.JSONDecodeError as e:
+            print("[PAD JSON PARSE FAIL] extracted {...} json.loads:", e)
 
+    # 3) LAST RESORT: regex extract key fields from invalid JSON
+    # This specifically handles PAD error_message values that contain literal newlines.
+    out: dict = {}
+
+    m = re.search(r'"run_id"\s*:\s*"([^"]+)"', raw_text, flags=re.DOTALL)
+    if m:
+        out["run_id"] = m.group(1).strip()
+
+    m = re.search(r'"flow_name"\s*:\s*"([^"]+)"', raw_text, flags=re.DOTALL)
+    if m:
+        out["flow_name"] = m.group(1).strip()
+
+    m = re.search(r'"flow_key"\s*:\s*"([^"]+)"', raw_text, flags=re.DOTALL)
+    if m:
+        out["flow_key"] = m.group(1).strip()
+
+    # error_message can span multiple lines; capture until the next key
+    m = re.search(
+        r'"error_message"\s*:\s*"(.+?)"\s*,\s*\n?\s*"run_id"\s*:',
+        raw_text,
+        flags=re.DOTALL,
+    )
+    if m:
+        out["error_message"] = m.group(1).strip()
+
+    return out
 
 def _utc_now_text() -> str:
     return dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
