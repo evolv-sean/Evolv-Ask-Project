@@ -4993,27 +4993,31 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                 sha = sha256_file(p)
                 _perf_log(job_id, filename, "sha256_file", t0)
 
-                # skip if already uploaded
-                t0 = time.perf_counter()
-                exists = cur.execute(
-                    "SELECT id FROM census_runs WHERE source_sha256=? LIMIT 1",
-                    (sha,),
-                ).fetchone()
-                _perf_log(job_id, filename, "duplicate_check", t0)
+                # NOTE: Duplicate-PDF skipping is currently DISABLED.
+                # (We used to skip if the same PDF was already uploaded by comparing SHA256
+                # against census_runs.source_sha256. Keeping the code here commented-out
+                # in case we want it again later.)
 
-                if exists:
-                    cur.execute(
-                        """
-                        INSERT INTO census_upload_job_files (job_id, filename, status, detail, run_id, rows_inserted)
-                        VALUES (?, ?, 'skipped', ?, NULL, 0)
-                        """,
-                        (job_id, filename, "Duplicate file (same SHA256)"),
-                    )
-                    processed += 1
-                    _job_set(conn, job_id, "running", processed=processed, message=f"Skipped duplicate: {filename}")
-                    conn.commit()
-                    continue
-
+                # # skip if already uploaded
+                # t0 = time.perf_counter()
+                # exists = cur.execute(
+                #     "SELECT id FROM census_runs WHERE source_sha256=? LIMIT 1",
+                #     (sha,),
+                # ).fetchone()
+                # _perf_log(job_id, filename, "duplicate_check", t0)
+                #
+                # if exists:
+                #     cur.execute(
+                #         """
+                #         INSERT INTO census_upload_job_files (job_id, filename, status, detail, run_id, rows_inserted)
+                #         VALUES (?, ?, 'skipped', ?, NULL, 0)
+                #         """,
+                #         (job_id, filename, "Duplicate file (same SHA256)"),
+                #     )
+                #     processed += 1
+                #     _job_set(conn, job_id, "running", processed=processed, message=f"Skipped duplicate: {filename}")
+                #     conn.commit()
+                #     continue
 
                 t0 = time.perf_counter()
                 parsed_iter = iter_pcc_admission_records_from_pdf_path(
