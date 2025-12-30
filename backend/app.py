@@ -12125,6 +12125,12 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
     if not HAVE_WEASYPRINT:
         raise HTTPException(status_code=500, detail="PDF support is not installed (weasyprint).")
 
+    # ADD: same secure headers used by GET/HEAD so crawlers don't index/cache
+    secure_headers = {
+        "X-Robots-Tag": "noindex, nofollow, noarchive",
+        "Cache-Control": "no-store",
+    }
+
     token_hash = sha256_hex(token)
     conn = get_db()
     try:
@@ -12140,12 +12146,22 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
             (token_hash,),
         )
         link = cur.fetchone()
+
+        # CHANGE: return an HTML page (not JSON) + secure headers
         if not link:
-            raise HTTPException(status_code=404, detail="Invalid link")
+            return HTMLResponse(
+                "<h2>Link expired</h2><p>This secure link is invalid or has expired.</p>",
+                status_code=410,
+                headers=secure_headers,
+            )
 
         exp = _parse_utc_iso(link["expires_at"])
         if not exp or exp <= dt.datetime.utcnow():
-            raise HTTPException(status_code=410, detail="Link expired")
+            return HTMLResponse(
+                "<h2>Link expired</h2><p>This secure link has expired.</p>",
+                status_code=410,
+                headers=secure_headers,
+            )
 
         snf_facility_id = int(link["snf_facility_id"] or 0)
 
@@ -12155,12 +12171,17 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
             (snf_facility_id,),
         )
         fac = cur.fetchone()
+
+        # CHANGE: return an HTML page + secure headers (instead of JSON)
         if not fac:
-            raise HTTPException(status_code=404, detail="Facility not found")
+            return HTMLResponse(
+                "<h2>Not found</h2><p>Facility not found for this link.</p>",
+                status_code=404,
+                headers=secure_headers,
+            )
 
         fac_name = fac["facility_name"] or "SNF facility"
 
-        # Render the PIN form page (same page, with optional error message)
         def _render_form(error_msg: str = "") -> str:
             err_html = f'<div class="err">{error_msg}</div>' if error_msg else ""
             return f"""<!doctype html>
@@ -12213,25 +12234,27 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
 </body>
 </html>"""
 
-        # Normalize PIN (prevents FastAPI from returning raw 422 JSON)
+        # Normalize PIN
         pin = (pin or "").strip()
         if not pin:
-            return HTMLResponse(_render_form("Please enter your Facility PIN."), status_code=401)
+            return HTMLResponse(
+                _render_form("Please enter your Facility PIN."),
+                status_code=401,
+                headers=secure_headers,
+            )
 
-        # Accept Facility PIN OR Universal PIN OR SNF_DEFAULT_PIN
         facility_hash = (fac["pin_hash"] or "").strip()
-        universal_hash = get_snf_universal_pin_hash(cur)  # stored in ai_settings
+        universal_hash = get_snf_universal_pin_hash(cur)
         default_hash = hash_pin(SNF_DEFAULT_PIN) if SNF_DEFAULT_PIN else ""
 
         candidate_hashes = [h for h in (facility_hash, universal_hash, default_hash) if h]
-
         if not candidate_hashes:
             return HTMLResponse(
                 _render_form("No facility PIN is configured. Please contact Evolv."),
-                status_code=500
+                status_code=500,
+                headers=secure_headers,
             )
 
-        # NEW: determine WHICH PIN matched (so we can log pin_type)
         pin_type = None
         if facility_hash and verify_pin(pin, facility_hash):
             pin_type = "facility"
@@ -12241,7 +12264,11 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
             pin_type = "default"
 
         if not pin_type:
-            return HTMLResponse(_render_form("Incorrect PIN. Please try again."), status_code=401)
+            return HTMLResponse(
+                _render_form("Incorrect PIN. Please try again."),
+                status_code=401,
+                headers=secure_headers,
+            )
 
         # NEW: write an access log row (timestamp + pin type + IP/UA)
         ip = (request.client.host if request.client else None)
