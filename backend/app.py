@@ -1514,6 +1514,44 @@ def now_iso() -> str:
     return dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
 
+def _is_locked_error(e: Exception) -> bool:
+    return isinstance(e, sqlite3.OperationalError) and "database is locked" in str(e).lower()
+
+
+def execute_with_retry(
+    cur: sqlite3.Cursor,
+    sql: str,
+    params: tuple = (),
+    *,
+    retries: int = 8,
+    base_sleep_s: float = 0.08,
+):
+    """
+    Retries on 'database is locked' with exponential backoff.
+    Use for writes (INSERT/UPDATE/DELETE) and important reads in a write path.
+    """
+    for attempt in range(retries):
+        try:
+            return cur.execute(sql, params)
+        except Exception as e:
+            if _is_locked_error(e) and attempt < retries - 1:
+                time.sleep(base_sleep_s * (2 ** attempt))
+                continue
+            raise
+
+
+def commit_with_retry(conn: sqlite3.Connection, *, retries: int = 8, base_sleep_s: float = 0.08):
+    for attempt in range(retries):
+        try:
+            conn.commit()
+            return
+        except Exception as e:
+            if _is_locked_error(e) and attempt < retries - 1:
+                time.sleep(base_sleep_s * (2 ** attempt))
+                continue
+            raise
+
+
 def _normalize_note_text_for_hash(text: str) -> str:
     """
     Lightly normalize note text so small OCR whitespace differences
@@ -3320,6 +3358,7 @@ async def pad_cm_notes_bulk(
     inserted = 0
     skipped = 0
     errors: List[Dict[str, Any]] = []
+    touched_visit_ids: set[str] = set()
 
     try:
         for idx, row in enumerate(notes):
@@ -3425,8 +3464,11 @@ async def pad_cm_notes_bulk(
             )
 
             inserted += 1
-            
+
             conn.commit()
+
+            if visit_id:
+                touched_visit_ids.add(str(visit_id))
 
 
         # Finalize run log USING THE SAME CONNECTION (avoids extra lock contention)
@@ -3462,15 +3504,27 @@ async def pad_cm_notes_bulk(
     finally:
         conn.close()
 
-    # Kick off SNF extraction in the background (unchanged)
+    # Kick off SNF recompute ONLY for the visit_ids we just received.
+    # This still uses ALL historical notes for that visit_id (snf_recompute_for_admission queries cm_notes_raw by visit_id).
     try:
-        threading.Thread(
-            target=snf_run_extraction,
-            kwargs={"days_back": 3},
-            daemon=True,
-        ).start()
+        visit_ids_to_process = sorted(touched_visit_ids)
+
+        def _process_visits(v_ids: list[str]):
+            for vid in v_ids:
+                try:
+                    snf_recompute_for_admission(visit_id=vid)
+                except Exception as e:
+                    print(f"[pad_cm_notes_bulk] snf_recompute_for_admission failed visit_id={vid}:", e)
+
+        if visit_ids_to_process:
+            threading.Thread(
+                target=_process_visits,
+                args=(visit_ids_to_process,),
+                daemon=True,
+            ).start()
+
     except Exception as e:
-        print("[pad_cm_notes_bulk] failed to trigger SNF extraction:", e)
+        print("[pad_cm_notes_bulk] failed to trigger SNF recompute:", e)
 
     return {
         "ok": True,
@@ -3601,13 +3655,14 @@ async def pad_hospital_documents_bulk(request: Request):
                 source_text=doc_payload["source_text"],
             )
 
-            cur.execute("SELECT id FROM hospital_documents WHERE document_hash = ? LIMIT 1", (doc_hash,))
+            execute_with_retry(cur, "SELECT id FROM hospital_documents WHERE document_hash = ? LIMIT 1", (doc_hash,))
             existing = cur.fetchone()
             if existing:
                 # Skip this row; continue to next
                 continue
 
-            cur.execute(
+            execute_with_retry(
+                cur,
                 """
                 INSERT INTO hospital_documents (
                     hospital_name, document_type, document_datetime,
@@ -3761,7 +3816,8 @@ async def pad_hospital_documents_bulk(request: Request):
 
             # Store sections
             for i, s in enumerate(sections, start=1):
-                cur.execute(
+                execute_with_retry(
+                    cur,
                     """
                     INSERT INTO hospital_document_sections (
                         document_id, section_key, section_title, section_order, section_text
@@ -3780,7 +3836,7 @@ async def pad_hospital_documents_bulk(request: Request):
             inserted += 1
 
             # ✅ Commit per document so we don't hold the write lock for the entire batch
-            conn.commit()
+            commit_with_retry(conn)
 
         # (no final conn.commit() here anymore)
     finally:
