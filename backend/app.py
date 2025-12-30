@@ -7724,6 +7724,55 @@ async def pad_flow_log_error(request: Request):
         conn.close()
 
 
+# ✅ NEW: PAD can ask what the last run was for a given flow_key (for resume logic)
+@app.get("/api/pad/flow-log/last")
+async def pad_flow_log_last(
+    request: Request,
+    flow_key: str = Query(..., description="PAD flow_key used in /api/pad/flow-log/start"),
+):
+    require_pad_api_key(request)
+
+    fk = str(flow_key or "").strip()
+    if not fk:
+        raise HTTPException(status_code=400, detail="flow_key is required")
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+                run_id, flow_name, flow_key,
+                status, error_message,
+                started_at, ended_at, duration_ms
+            FROM pad_flow_runs
+            WHERE flow_key = ?
+            ORDER BY started_at DESC
+            LIMIT 1
+            """,
+            (fk,),
+        )
+        row = cur.fetchone()
+
+        if not row:
+            return {"ok": True, "found": False, "flow_key": fk}
+
+        last_run = {
+            "run_id": row["run_id"],
+            "flow_name": row["flow_name"],
+            "flow_key": row["flow_key"],
+            "status": row["status"],
+            "error_message": row["error_message"] or "",
+            "started_at": row["started_at"] or "",
+            "ended_at": row["ended_at"] or "",
+            "duration_ms": row["duration_ms"],
+        }
+
+        return {"ok": True, "found": True, "flow_key": fk, "last_run": last_run}
+    finally:
+        conn.close()
+
+
 
 def _is_snf_disposition(dispo: str) -> bool:
     """
