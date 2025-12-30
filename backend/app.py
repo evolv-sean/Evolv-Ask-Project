@@ -11457,7 +11457,6 @@ def build_snf_pdf_html(
     }}
 
     .report-shell {{
-      min-height: 100vh;
       padding: 8px;
       display: flex;
       justify-content: center;
@@ -11469,7 +11468,6 @@ def build_snf_pdf_html(
       max-width: 100%;
       background: #ffffff;
       border-radius: 20px;
-      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
       padding: 28px 32px 18px;
       display: flex;
       flex-direction: column;
@@ -11811,6 +11809,13 @@ def _parse_utc_iso(s: str) -> Optional[dt.datetime]:
     except Exception:
         return None
 
+@app.head("/snf/secure/{token}")
+async def snf_secure_link_head(token: str, request: Request):
+    """
+    Email clients/security scanners often send HEAD requests to links.
+    Return a fast 200 so they don't log 405s.
+    """
+    return Response(status_code=200, headers={"Content-Type": "text/html; charset=utf-8"})
 
 @app.get("/snf/secure/{token}", response_class=HTMLResponse)
 async def snf_secure_link_get(token: str, request: Request):
