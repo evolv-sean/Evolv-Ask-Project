@@ -354,6 +354,16 @@ app.add_middleware(
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start = time.time()
+
+    ua = (request.headers.get("user-agent") or "").lower()
+    path = request.url.path
+
+    # Fast deny for common crawlers on sensitive/heavy pages
+    if path.startswith("/snf/secure/") and any(b in ua for b in [
+        "oai-searchbot", "googlebot", "bingbot", "duckduckbot", "baiduspider", "yandex", "crawler", "spider"
+    ]):
+        return Response(status_code=404)
+
     response = await call_next(request)
     ms = int((time.time() - start) * 1000)
 
@@ -11815,11 +11825,22 @@ async def snf_secure_link_head(token: str, request: Request):
     Email clients/security scanners often send HEAD requests to links.
     Return a fast 200 so they don't log 405s.
     """
-    return Response(status_code=200, headers={"Content-Type": "text/html; charset=utf-8"})
+    return Response(
+        status_code=200,
+        headers={
+            "Content-Type": "text/html; charset=utf-8",
+            "X-Robots-Tag": "noindex, nofollow, noarchive",
+            "Cache-Control": "no-store",
+        },
+    )
 
 @app.get("/snf/secure/{token}", response_class=HTMLResponse)
 async def snf_secure_link_get(token: str, request: Request):
     """Shows a simple PIN entry page."""
+    secure_headers = {
+        "X-Robots-Tag": "noindex, nofollow, noarchive",
+        "Cache-Control": "no-store",
+    }
     token_hash = sha256_hex(token)
     conn = get_db()
     try:
@@ -11836,11 +11857,19 @@ async def snf_secure_link_get(token: str, request: Request):
         )
         row = cur.fetchone()
         if not row:
-            return HTMLResponse("<h2>Link not found</h2><p>This secure link is invalid.</p>", status_code=404)
+            return HTMLResponse(
+                "<h2>Link expired</h2><p>This secure link has expired.</p>",
+                status_code=410,
+                headers=secure_headers,
+            )
 
         exp = _parse_utc_iso(row["expires_at"])
         if not exp or exp <= dt.datetime.utcnow():
-            return HTMLResponse("<h2>Link expired</h2><p>This secure link has expired.</p>", status_code=410)
+            return HTMLResponse(
+                "<h2>Link expired</h2><p>This secure link has expired.</p>",
+                status_code=410,
+                headers=secure_headers,
+            )
 
         # light facility name for the page header
         cur.execute("SELECT facility_name FROM snf_admission_facilities WHERE id = ?", (row["snf_facility_id"],))
@@ -12610,6 +12639,22 @@ def read_html(path: Path) -> str:
         return f"<html><body><h1>Error loading {path.name}</h1><pre>{e}</pre></body></html>"
 
 
+from fastapi.responses import PlainTextResponse
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_txt():
+    # Tell compliant crawlers to not index anything.
+    # Cache so bots don't keep re-requesting it.
+    return PlainTextResponse(
+        "User-agent: *\nDisallow: /\n",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    # Stop noisy 404s; return empty 204 quickly
+    return Response(status_code=204)
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
     # Default Ask page
@@ -12656,6 +12701,23 @@ async def facility_ui():
 async def health():
     return {"ok": True, "db_path": DB_PATH}
 
+from fastapi.responses import PlainTextResponse
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+async def robots_txt():
+    # Tell crawlers not to index anything
+    return PlainTextResponse(
+        "User-agent: *\nDisallow: /\n",
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "X-Robots-Tag": "noindex, nofollow, noarchive",
+        },
+    )
+
+@app.get("/favicon.ico")
+async def favicon():
+    # Return 204 so browsers/bots stop retrying a missing favicon
+    return Response(status_code=204, headers={"Cache-Control": "public, max-age=86400"})
 
 @app.get("/admin/download-db")
 async def download_db(token: str):
@@ -12682,47 +12744,6 @@ async def download_db(token: str):
 
 from fastapi.responses import HTMLResponse, Response
 
-@app.get("/snf/secure/{token}", response_class=HTMLResponse)
-async def snf_secure_token_page(token: str):
-    # Simple PIN entry page (no PHI displayed here)
-    return f"""
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Secure SNF List</title>
-  <style>
-    body{{font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:#f3f4f6;margin:0;padding:28px;}}
-    .card{{max-width:520px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 10px 28px rgba(0,0,0,.08);overflow:hidden;}}
-    .top{{background:#0b2ea5;color:#fff;padding:16px 18px;font-weight:700;}}
-    .content{{padding:18px;}}
-    label{{display:block;font-size:13px;color:#374151;margin-bottom:6px;}}
-    input{{width:100%;padding:12px 12px;border-radius:10px;border:1px solid #d1d5db;font-size:14px;}}
-    button{{margin-top:12px;background:#0b2ea5;color:#fff;border:0;border-radius:10px;padding:12px 14px;font-weight:700;width:100%;font-size:14px;cursor:pointer;}}
-    .fine{{margin-top:12px;color:#6b7280;font-size:12px;line-height:1.4;}}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="top">Secure patient referral list</div>
-    <div class="content">
-      <p style="margin:0 0 12px 0;color:#374151;font-size:14px;line-height:1.5;">
-        Enter your facility PIN to view the secure PDF. This link expires in 48hrs.
-      </p>
-      <form method="POST" action="/snf/secure/{token}">
-        <label>Facility PIN</label>
-        <input type="password" name="pin" autocomplete="current-password" required />
-        <button type="submit">View PDF</button>
-      </form>
-      <div class="fine">
-        If you received this email by mistake, you can ignore it. Do not forward outside your organization.
-      </div>
-    </div>
-  </div>
-</body>
-</html>
-"""
 
 # ---------------------------------------------------------------------------
 # Entrypoint for Render
