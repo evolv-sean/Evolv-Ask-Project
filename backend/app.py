@@ -10781,7 +10781,7 @@ async def admin_snf_update(
         else:
             assignment_confirmation = (row["assignment_confirmation"] or "Unknown").strip() or "Unknown"
 
-        if assignment_confirmation not in ("Unknown", "Assigned", "Assigned Out"):
+        if assignment_confirmation not in ("Unknown", "Assigned", "Assigned Out", "Assigned Out (LTC)"):
             assignment_confirmation = "Unknown"
 
         if "billing_confirmed" in payload:
@@ -11375,7 +11375,7 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
         # -----------------------------
         # Assignment confirmation distribution
         # -----------------------------
-        assign_counts = {"Assigned": 0, "Assigned Out": 0, "Unknown": 0}
+        assign_counts = {"Assigned": 0, "Assigned Out": 0, "Assigned Out (LTC)": 0, "Unknown": 0}
         for r in snf_rows:
             v = (r["assignment_confirmation"] or "Unknown").strip()
             if v not in assign_counts:
