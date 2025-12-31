@@ -1619,36 +1619,34 @@ def _normalize_note_text_for_hash(text: str) -> str:
     return t.strip()
 
 
-def compute_note_hash(patient_mrn: str, note_datetime: str, note_text: str) -> str:
+def compute_note_hash(visit_id: str, note_datetime: str, note_text: str) -> str:
     """
-    Compute a stable hash for a CM note using MRN, datetime, and normalized text.
+    Compute a stable hash for a CM note using visit_id, datetime, and normalized text.
     Used to dedupe repeated OCR of the same note.
     """
-    base = f"{(patient_mrn or '').strip()}|{(note_datetime or '').strip()}|{_normalize_note_text_for_hash(note_text)}"
+    base = f"{(visit_id or '').strip()}|{(note_datetime or '').strip()}|{_normalize_note_text_for_hash(note_text)}"
     return hashlib.md5(base.encode("utf-8")).hexdigest()
+
 
 def _normalize_doc_text_for_hash(s: str) -> str:
     # collapse whitespace so trivial formatting changes don't create new hashes
     return " ".join((s or "").strip().split())
 
 def compute_hospital_document_hash(
-    hospital_name: str,
-    document_type: str,
     visit_id: Optional[str],
     document_datetime: Optional[str],
     source_text: str,
 ) -> str:
     """
     Stable hash for hospital_documents to skip re-ingesting the exact same document.
+    Uses visit_id + document_datetime + normalized source_text.
     """
     base = (
-        f"{(hospital_name or '').strip()}|"
-        f"{(document_type or '').strip()}|"
         f"{(visit_id or '').strip()}|"
         f"{(document_datetime or '').strip()}|"
         f"{_normalize_doc_text_for_hash(source_text)}"
     )
-    return hashlib.md5(base.encode('utf-8')).hexdigest()
+    return hashlib.md5(base.encode("utf-8")).hexdigest()
 
 def load_extraction_profile(conn: sqlite3.Connection, hospital_name: str, document_type: str) -> Optional[Dict[str, str]]:
     """
@@ -3464,17 +3462,17 @@ async def pad_cm_notes_bulk(
                     (visit_id,),
                 )
 
-            if not patient_mrn or not note_datetime or not note_text:
+            if not visit_id or not note_datetime or not note_text:
                 skipped += 1
                 errors.append(
                     {
                         "index": idx,
-                        "error": "patient_mrn, note_datetime, and note_text are required",
+                        "error": "visit_id, note_datetime, and note_text are required",
                     }
                 )
                 continue
 
-            note_hash = compute_note_hash(patient_mrn, note_datetime, note_text)
+            note_hash = compute_note_hash(visit_id, note_datetime, note_text)
 
             # Skip if we've already seen this hash
             cur.execute(
@@ -3717,8 +3715,6 @@ async def pad_hospital_documents_bulk(request: Request):
 
             # Dedup (hash + skip)
             doc_hash = compute_hospital_document_hash(
-                hospital_name=doc_payload["hospital_name"],
-                document_type=doc_payload["document_type"],
                 visit_id=doc_payload["visit_id"],
                 document_datetime=doc_payload["document_datetime"],
                 source_text=doc_payload["source_text"],
@@ -8662,7 +8658,7 @@ def admin_manual_add_cm_note(payload: ManualCmNoteIn, admin=Depends(require_admi
             )
 
         # Normalize (match PAD behavior)
-        note_hash = compute_note_hash(patient_mrn, note_datetime, note_text)
+        note_hash = compute_note_hash(visit_id, note_datetime, note_text)
 
         # Skip if already exists
         cur.execute("SELECT 1 FROM cm_notes_raw WHERE note_hash = ?", (note_hash,))
