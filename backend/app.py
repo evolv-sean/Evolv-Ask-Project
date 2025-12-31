@@ -8002,10 +8002,8 @@ async def pad_recent_ingested(
             SELECT
                 id,
                 visit_id,
-                patient_mrn,
+                note_type,
                 note_datetime,
-                note_hash,
-                created_at
             FROM cm_notes_raw
             WHERE created_at >= datetime('now', ?)
             ORDER BY created_at DESC
@@ -8020,11 +8018,8 @@ async def pad_recent_ingested(
             SELECT
                 id,
                 visit_id,
-                hospital_name,
                 document_type,
                 document_datetime,
-                document_hash,
-                created_at
             FROM hospital_documents
             WHERE created_at >= datetime('now', ?)
             ORDER BY created_at DESC
