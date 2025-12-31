@@ -2243,6 +2243,21 @@ def init_db():
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_census_runs_fac_dt ON census_runs (facility_name, created_at DESC)")
 
+    # ------------------------------------------------------------
+    # PAD Flow Email Notification Recipients (admin-managed)
+    # ------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pad_flow_email_recipients (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            email      TEXT NOT NULL UNIQUE,
+            active     INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_pad_flow_email_recipients_active ON pad_flow_email_recipients (active)")
+
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS census_run_patients (
@@ -7725,7 +7740,18 @@ async def pad_flow_log_start(request: Request):
         )
 
         conn.commit()
+
+        # 🔔 NEW: Email notification (never breaks the endpoint)
+        try:
+            cur.execute("SELECT * FROM pad_flow_runs WHERE run_id = ?", (run_id,))
+            rr = cur.fetchone()
+            if rr:
+                _send_pad_flow_notification_email("start", rr, payload)
+        except Exception as e:
+            print("[pad-flow-email] start notify failed (ignored):", repr(e))
+
         return {"ok": True, "run_id": run_id, "started_at": started_at}
+
     finally:
         conn.close()
 
@@ -7778,7 +7804,18 @@ async def pad_flow_log_stop(request: Request):
         )
 
         conn.commit()
+
+        # 🔔 NEW: Email notification (never breaks the endpoint)
+        try:
+            cur.execute("SELECT * FROM pad_flow_runs WHERE run_id = ?", (run_id,))
+            rr = cur.fetchone()
+            if rr:
+                _send_pad_flow_notification_email("stop", rr, payload)
+        except Exception as e:
+            print("[pad-flow-email] stop notify failed (ignored):", repr(e))
+
         return {"ok": True, "run_id": run_id, "ended_at": ended_at}
+
     finally:
         conn.close()
 
@@ -7852,7 +7889,18 @@ async def pad_flow_log_error(request: Request):
         )
 
         conn.commit()
+
+        # 🔔 NEW: Email notification (never breaks the endpoint)
+        try:
+            cur.execute("SELECT * FROM pad_flow_runs WHERE run_id = ?", (run_id,))
+            rr = cur.fetchone()
+            if rr:
+                _send_pad_flow_notification_email("error", rr, payload)
+        except Exception as e:
+            print("[pad-flow-email] error notify failed (ignored):", repr(e))
+
         return {"ok": True, "run_id": run_id, "ended_at": ended_at, "error_message": error_message}
+
     finally:
         conn.close()
 
@@ -8949,6 +8997,67 @@ def snf_recompute_for_admission(visit_id: str = "", patient_mrn: str = "") -> Di
         conn.commit()
         return {"ok": True, "message": "Recomputed: SNF candidate updated."}
 
+    finally:
+        conn.close()
+
+@app.get("/admin/pad/flow-email/recipients")
+async def admin_pad_flow_email_recipients_get(request: Request):
+    require_admin(request)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, email, active, created_at
+            FROM pad_flow_email_recipients
+            ORDER BY email
+            """
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+        return {"ok": True, "recipients": rows}
+    finally:
+        conn.close()
+
+
+@app.post("/admin/pad/flow-email/recipients/set")
+async def admin_pad_flow_email_recipients_set(request: Request, payload: Dict[str, Any] = Body(...)):
+    require_admin(request)
+
+    emails_in = payload.get("emails") or []
+    if not isinstance(emails_in, list):
+        raise HTTPException(status_code=400, detail="emails must be a list")
+
+    # normalize + dedupe
+    cleaned = []
+    seen = set()
+    for e in emails_in:
+        e2 = (str(e or "").strip()).lower()
+        if not e2:
+            continue
+        if e2 in seen:
+            continue
+        seen.add(e2)
+        cleaned.append(e2)
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # simplest model: replace active list (keep historical rows, mark inactive)
+        cur.execute("UPDATE pad_flow_email_recipients SET active = 0")
+
+        for e in cleaned:
+            cur.execute(
+                """
+                INSERT INTO pad_flow_email_recipients (email, active)
+                VALUES (?, 1)
+                ON CONFLICT(email) DO UPDATE SET active=1
+                """,
+                (e,),
+            )
+
+        conn.commit()
+        return {"ok": True, "count": len(cleaned)}
     finally:
         conn.close()
 
@@ -12609,6 +12718,99 @@ async def admin_snf_email_pdf(
             raise HTTPException(status_code=500, detail=f"Failed to send email: {e}")
     finally:
         conn.close()
+
+def _send_pad_flow_notification_email(event_type: str, run_row: sqlite3.Row, event_payload: dict) -> None:
+    """
+    Fire-and-forget: send an email to the configured PAD flow notification recipients.
+    Will NEVER raise (so PAD endpoints never break due to SMTP).
+    """
+    try:
+        if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD):
+            print("[pad-flow-email] SMTP not configured; skipping send.")
+            return
+
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT email
+                FROM pad_flow_email_recipients
+                WHERE active = 1
+                ORDER BY email
+                """
+            )
+            emails = [((r["email"] or "").strip()) for r in cur.fetchall()]
+        finally:
+            conn.close()
+
+        emails = [e for e in emails if e]
+        if not emails:
+            print("[pad-flow-email] No active recipients configured; skipping send.")
+            return
+
+        flow_name = (run_row["flow_name"] or "").strip()
+        flow_key  = (run_row["flow_key"] or "").strip()
+        env       = (run_row["environment"] or "").strip()
+        machine   = (run_row["machine_name"] or "").strip()
+        os_user   = (run_row["os_user"] or "").strip()
+        trig_by   = (run_row["triggered_by"] or "").strip()
+        started   = (run_row["started_at"] or "").strip()
+        ended     = (run_row["ended_at"] or "").strip()
+        status    = (run_row["status"] or "").strip()
+
+        # extra info for error payloads
+        err_msg   = (event_payload.get("error_message") or (run_row["error_message"] or "")).strip()
+        step_name = (event_payload.get("step_name") or "").strip()
+
+        # subject
+        nice_event = {"start": "START", "stop": "STOP", "error": "ERROR"}.get(event_type, event_type.upper())
+        subject = f"[PAD] {nice_event}: {flow_name or '(unnamed flow)'}" + (f" ({flow_key})" if flow_key else "")
+
+        lines = []
+        lines.append(f"Event: {event_type}")
+        lines.append(f"Flow: {flow_name or ''}".rstrip())
+        if flow_key: lines.append(f"Flow Key: {flow_key}")
+        if env: lines.append(f"Environment: {env}")
+        if machine: lines.append(f"Machine: {machine}")
+        if os_user: lines.append(f"OS User: {os_user}")
+        if trig_by: lines.append(f"Triggered By: {trig_by}")
+        lines.append(f"Run ID: {run_row['run_id']}")
+        if started: lines.append(f"Started: {started} UTC")
+        if ended: lines.append(f"Ended: {ended} UTC")
+        if status: lines.append(f"Status: {status}")
+
+        if event_type == "error":
+            if step_name: lines.append(f"Step: {step_name}")
+            if err_msg: lines.append(f"Error: {err_msg}")
+
+        # include a short payload snippet (safe)
+        try:
+            payload_txt = json.dumps(event_payload, indent=2)[:4000]
+        except Exception:
+            payload_txt = str(event_payload)[:4000]
+        lines.append("")
+        lines.append("Payload (truncated):")
+        lines.append(payload_txt)
+
+        body = "\n".join(lines)
+
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
+        msg["To"] = ", ".join(emails)
+        msg.set_content(body)
+
+        context = ssl.create_default_context()
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls(context=context)
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(msg)
+
+        print(f"[pad-flow-email] Sent {event_type} notification to {len(emails)} recipient(s).")
+
+    except Exception as e:
+        print("[pad-flow-email] Failed (ignored):", repr(e))
 
 
 def send_intake_email(facility_id: str, payload: dict) -> None:
