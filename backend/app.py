@@ -3788,6 +3788,10 @@ async def pad_hospital_documents_bulk(request: Request):
                 new_dispo = (dispo.get("disposition") if dispo else None)
                 new_agency = (dispo.get("dc_agency") if dispo else None)
 
+                FACILITY_BASED = {"SNF", "IRF", "Rehab", "LTACH", "Hospice"}
+                if new_dispo in FACILITY_BASED:
+                    new_agency = map_dc_agency_using_snf_admission_facilities(conn, new_agency, doc_payload["source_text"])
+
                 # Determine this document's effective timestamp:
                 # 1) document_datetime (from PAD) if present
                 # 2) else fallback to hospital_documents.created_at
@@ -4026,6 +4030,11 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
             dispo = analyze_discharge_disposition_with_llm(source_text)
             new_dispo = (dispo.get("disposition") if dispo else None)
             new_agency = (dispo.get("dc_agency") if dispo else None)
+
+            # If this looks like a facility-based discharge, map to canonical SNF facility name using aliases
+            FACILITY_BASED = {"SNF", "IRF", "Rehab", "LTACH", "Hospice"}
+            if new_dispo in FACILITY_BASED:
+                new_agency = map_dc_agency_using_snf_admission_facilities(conn, new_agency, source_text)
 
             # Determine this document's effective timestamp:
             # 1) document_datetime (from payload) if present
@@ -7162,7 +7171,12 @@ def analyze_discharge_disposition_with_llm(source_text: str) -> Optional[Dict[st
     # 1) Cheap heuristic shortcut
     heuristic = _heuristic_disposition_from_text(source_text)
     if heuristic:
-        return {"disposition": heuristic, "confidence": 0.85, "evidence": "heuristic"}
+        return {
+            "disposition": heuristic,
+            "dc_agency": None,
+            "confidence": 0.85,
+            "evidence": "heuristic",
+        }
 
     # 2) LLM pass (trim to reduce token cost)
     text = source_text.strip()
@@ -7267,10 +7281,71 @@ def analyze_discharge_disposition_with_llm(source_text: str) -> Optional[Dict[st
     if disp not in allowed:
         disp = "Unknown"
 
-    return {"disposition": disp, "confidence": conf, "evidence": evidence}
+    dc_agency = data.get("dc_agency")
+    if dc_agency is not None:
+        dc_agency = str(dc_agency).strip() or None
 
+    return {
+        "disposition": disp,
+        "dc_agency": dc_agency,
+        "confidence": conf,
+        "evidence": evidence,
+    }
 
+def map_dc_agency_using_snf_admission_facilities(
+    conn: sqlite3.Connection,
+    candidate: Optional[str],
+    source_text: Optional[str],
+) -> Optional[str]:
+    """
+    Try to map an extracted dc_agency (or raw text) to a canonical facility_name
+    using snf_admission_facilities.facility_name + snf_admission_facilities.aliases.
+    Returns the canonical facility_name if matched; otherwise returns the original candidate (or None).
+    """
+    hay = f"{candidate or ''}\n{source_text or ''}".strip()
+    if not hay:
+        return None
 
+    hay_norm = _normalize_for_facility_match(hay)
+
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT facility_name, aliases
+        FROM snf_admission_facilities
+        WHERE facility_name IS NOT NULL AND TRIM(facility_name) <> ''
+        """
+    )
+    rows = cur.fetchall() or []
+
+    for r in rows:
+        try:
+            facility_name = r["facility_name"]
+            aliases = r["aliases"]
+        except Exception:
+            facility_name = r[0]
+            aliases = r[1] if len(r) > 1 else None
+
+        terms = []
+        if facility_name:
+            terms.append(str(facility_name))
+
+        if aliases:
+            # split aliases by common separators
+            raw_aliases = re.split(r"[,\n;|]+", str(aliases))
+            for a in raw_aliases:
+                a = a.strip()
+                if a:
+                    terms.append(a)
+
+        for term in terms:
+            term_norm = _normalize_for_facility_match(term)
+            if term_norm and term_norm in hay_norm:
+                return str(facility_name).strip()
+
+    # no match: keep what we got (or None)
+    candidate_clean = (candidate or "").strip()
+    return candidate_clean or None
 
 # ---------------------------------------------------------------------------
 # Question → Answer pipeline
