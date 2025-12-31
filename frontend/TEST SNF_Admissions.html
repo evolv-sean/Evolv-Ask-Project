@@ -1192,8 +1192,9 @@
     </section>
       <!-- Settings modal (styled like Facility modal) -->
       <div id="settings-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
-        <div class="modal-card">
+        <div class="modal-card" style="max-height: calc(100vh - 120px); display:flex; flex-direction:column;">
           <div class="modal-head">
+
             <div>
               <div id="settings-modal-title" class="modal-title">Settings</div>
               <div class="modal-sub">Admin token, universal PIN, and keyword highlighting.</div>
@@ -1201,7 +1202,7 @@
             <button class="modal-x" onclick="closeSettingsModal()" aria-label="Close">✕</button>
           </div>
 
-          <div class="modal-body">
+          <div class="modal-body" style="flex:1; overflow:auto;">
             <!-- Admin token -->
             <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa;">
               <div style="font-weight:800; color:#111827; margin-bottom:8px;">Admin token</div>
@@ -1209,6 +1210,24 @@
                 <input id="admin-token-input" type="password" placeholder="Paste ADMIN_TOKEN" style="width:320px;" />
                 <button class="small" onclick="saveAdminToken()">Save</button>
                 <span id="token-status" class="message"></span>
+              </div>
+            </div>
+
+            <!-- PAD Flow email notifications -->
+            <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa; margin-top:12px;">
+              <div style="font-weight:800; color:#111827; margin-bottom:6px;">PAD flow email notifications</div>
+              <div style="font-size:12px; color:#6b7280; margin-bottom:10px;">
+                Recipients get an email on PAD flow <strong>start</strong>, <strong>stop</strong>, and <strong>error</strong>.
+              </div>
+
+              <label for="pad-email-recipients" style="margin-top:0;">Recipients (comma or new-line separated)</label>
+              <textarea id="pad-email-recipients" rows="3" placeholder="ops@…&#10;you@…"
+                        style="resize:vertical;"></textarea>
+
+              <div class="flex-row" style="margin-top:10px;">
+                <button class="btn-primary btn-small" onclick="savePadEmailRecipients()">Save recipients</button>
+                <button class="btn-lite btn-small" onclick="loadPadEmailRecipients()">Refresh</button>
+                <span id="pad-email-status" class="message"></span>
               </div>
             </div>
 
@@ -1772,6 +1791,75 @@
       // (modalStatus is your small “Saved.” message area; we won’t overwrite it here)
     }
 
+    async function loadPadEmailRecipients() {
+      const status = document.getElementById("pad-email-status");
+      if (status) status.textContent = "Loading…";
+
+      const token = getAdminToken();
+      if (!token) {
+        if (status) status.textContent = "Paste ADMIN_TOKEN in Settings first.";
+        return;
+      }
+
+      try {
+        const resp = await fetch("/admin/pad/flow-email/recipients", {
+          headers: { "X-Admin-Token": token }
+        });
+
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data?.detail || ("HTTP " + resp.status));
+
+        const emails = (data.recipients || [])
+          .filter(r => r.active)
+          .map(r => (r.email || "").trim())
+          .filter(Boolean);
+
+        const ta = document.getElementById("pad-email-recipients");
+        if (ta) ta.value = emails.join("\n");
+
+        if (status) status.textContent = `Loaded ${emails.length} recipient(s).`;
+        setTimeout(() => { if (status) status.textContent = ""; }, 2000);
+      } catch (e) {
+        if (status) status.textContent = "Load failed: " + (e?.message || e);
+      }
+    }
+
+    async function savePadEmailRecipients() {
+      const status = document.getElementById("pad-email-status");
+      if (status) status.textContent = "Saving…";
+
+      const token = getAdminToken();
+      if (!token) {
+        if (status) status.textContent = "Paste ADMIN_TOKEN in Settings first.";
+        return;
+      }
+
+      const raw = (document.getElementById("pad-email-recipients")?.value || "").trim();
+      const emails = raw
+        .split(/[\n,]+/g)
+        .map(s => s.trim().toLowerCase())
+        .filter(Boolean);
+
+      try {
+        const resp = await fetch("/admin/pad/flow-email/recipients/set", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Token": token
+          },
+          body: JSON.stringify({ emails })
+        });
+
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data?.detail || ("HTTP " + resp.status));
+
+        if (status) status.textContent = `Saved ${data.count ?? emails.length} recipient(s).`;
+        setTimeout(() => { if (status) status.textContent = ""; }, 2000);
+      } catch (e) {
+        if (status) status.textContent = "Save failed: " + (e?.message || e);
+      }
+    }
+
     async function loadLastProcessedStatus() {
       const token = getAdminToken();
 
@@ -1852,6 +1940,7 @@
 
       updateAdminTokenStatus();
       loadLastProcessedStatus();
+      loadPadEmailRecipients();
 
       // load keywords into textarea whenever opened
       loadKeywords();
