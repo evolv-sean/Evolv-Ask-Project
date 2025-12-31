@@ -1643,6 +1643,7 @@
               <option value="Unknown">Unknown</option>
               <option value="Assigned">Assigned</option>
               <option value="Assigned Out">Assigned Out</option>
+              <option value="Assigned Out (LTC)">Assigned Out (LTC)</option>
             </select>
           </div>
 
@@ -3144,7 +3145,11 @@
 
       const aPct = (m.assignment_pct || {});
       const assignedPct = aPct["Assigned"] != null ? aPct["Assigned"] : 0;
-      const assignedOutPct = aPct["Assigned Out"] != null ? aPct["Assigned Out"] : 0;
+
+      const assignedOutBase = (aPct["Assigned Out"] != null ? aPct["Assigned Out"] : 0);
+      const assignedOutLtc  = (aPct["Assigned Out (LTC)"] != null ? aPct["Assigned Out (LTC)"] : 0);
+      const assignedOutPct  = assignedOutBase + assignedOutLtc;
+
       const unknownPct = aPct["Unknown"] != null ? aPct["Unknown"] : 0;
 
       const dcFrom = escapeHtml((data.filters && data.filters.dc_from) || "");
@@ -3658,8 +3663,9 @@
       if (c === "Assigned") {
         return `<span class="assign-dot mint-accent" title="Physician Assigned" aria-label="Physician Assigned"></span>`;
       }
-      if (c === "Assigned Out") {
-        return `<span class="assign-dot neg-accent" title="Assigned Out" aria-label="Assigned Out"></span>`;
+      if (c === "Assigned Out" || c === "Assigned Out (LTC)") {
+        const label = (c === "Assigned Out (LTC)") ? "Assigned Out (LTC)" : "Assigned Out";
+        return `<span class="assign-dot neg-accent" title="${label}" aria-label="${label}"></span>`;
       }
       return "";
     }
@@ -3935,6 +3941,9 @@
         document.getElementById("edit-disposition").value = adm.disposition || "";
         document.getElementById("edit-date").value = adm.final_expected_transfer_date || (adm.ai_expected_transfer_date || "");
         document.getElementById("edit-comments").value = adm.review_comments || "";
+
+        const aiRaw = (adm.ai_snf_name_raw || "").trim();
+        const aiMatchesSystem = !!resolveAiToSystemFacility(aiRaw);
 
         // Decide which facility label to use to preselect the dropdown
         const facilityLabel =
