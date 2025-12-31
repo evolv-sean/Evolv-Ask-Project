@@ -7977,6 +7977,71 @@ def _facility_display(final_display: str, effective_name: str, ai_raw: str) -> s
         return ar
     return "(Unknown)"
 
+@app.get("/api/pad/recent-ingested")
+async def pad_recent_ingested(
+    request: Request,
+    days: int = Query(10, ge=1, le=60, description="How many days back to return (default 10)"),
+):
+    """
+    PAD helper endpoint:
+    Returns BOTH cm_notes_raw + hospital_documents created within the last N days,
+    so PAD only needs one GET to compare and decide whether to skip pulling.
+    """
+    require_pad_api_key(request)
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # SQLite datetime('now') is UTC in your DB usage patterns
+        since_expr = f"-{int(days)} days"
+
+        # Notes (recent)
+        cur.execute(
+            """
+            SELECT
+                id,
+                visit_id,
+                patient_mrn,
+                note_datetime,
+                note_hash,
+                created_at
+            FROM cm_notes_raw
+            WHERE created_at >= datetime('now', ?)
+            ORDER BY created_at DESC
+            """,
+            (since_expr,),
+        )
+        notes = [dict(r) for r in cur.fetchall()]
+
+        # Documents (recent)
+        cur.execute(
+            """
+            SELECT
+                id,
+                visit_id,
+                hospital_name,
+                document_type,
+                document_datetime,
+                document_hash,
+                created_at
+            FROM hospital_documents
+            WHERE created_at >= datetime('now', ?)
+            ORDER BY created_at DESC
+            """,
+            (since_expr,),
+        )
+        documents = [dict(r) for r in cur.fetchall()]
+
+        return {
+            "ok": True,
+            "days": int(days),
+            "notes": notes,
+            "documents": documents,
+        }
+    finally:
+        conn.close()
+
 
 @app.get("/admin/ulog/list")
 async def admin_ulog_list(
