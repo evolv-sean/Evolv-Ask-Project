@@ -9031,6 +9031,54 @@ def snf_recompute_for_admission(visit_id: str = "", patient_mrn: str = "") -> Di
                 """,
                 (latest_note["id"], note_datetime, snf_name_raw, ai_facility_id, expected_date, conf, visit_id_db),
             )
+
+            # If no existing row, CREATE it
+            if cur.rowcount == 0:
+                cur.execute(
+                    """
+                    INSERT INTO snf_admissions (
+                        raw_note_id,
+                        visit_id,
+                        patient_mrn,
+                        patient_name,
+                        dob,
+                        attending,
+                        admit_date,
+                        hospital_name,
+                        note_datetime,
+                        ai_is_snf_candidate,
+                        ai_snf_name_raw,
+                        ai_snf_facility_id,
+                        ai_expected_transfer_date,
+                        ai_confidence,
+                        status,
+                        last_seen_active_date,
+                        updated_at
+                    ) VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        1, ?, ?, ?, ?,
+                        'pending',
+                        date('now'),
+                        datetime('now')
+                    )
+                    """,
+                    (
+                        latest_note["id"],
+                        visit_id_db,
+                        mrn_eff,
+                        patient_name,
+                        dob,
+                        attending,
+                        admit_date,
+                        hospital_name,
+                        note_datetime,
+                        snf_name_raw,
+                        ai_facility_id,
+                        expected_date,
+                        conf,
+                    ),
+                )
+
         else:
             cur.execute(
                 """
@@ -9049,6 +9097,7 @@ def snf_recompute_for_admission(visit_id: str = "", patient_mrn: str = "") -> Di
                 """,
                 (latest_note["id"], note_datetime, snf_name_raw, ai_facility_id, expected_date, conf, mrn_eff),
             )
+
 
         conn.commit()
         return {"ok": True, "message": "Recomputed: SNF candidate updated."}
