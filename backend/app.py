@@ -2040,8 +2040,8 @@ def next_qa_id(conn: sqlite3.Connection) -> str:
 
 def normalize_sortable_dt(s: Optional[str]) -> Optional[str]:
     """
-    Convert various incoming datetime strings to a sortable ISO-ish format:
-      YYYY-MM-DDTHH:MM:SS
+    Convert various incoming datetime strings to a sortable SQLite-friendly format:
+      YYYY-MM-DD HH:MM:SS
 
     Handles:
       - ISO: 2025-12-23T12:49:00 (and ...Z)
@@ -2051,6 +2051,8 @@ def normalize_sortable_dt(s: Optional[str]) -> Optional[str]:
       - Datetime glued to text: 04/06/15 16:32Case...
 
     Returns None if empty/unparseable.
+
+    IMPORTANT: This function NEVER returns a "T" separator.
     """
     if not s:
         return None
@@ -2062,19 +2064,18 @@ def normalize_sortable_dt(s: Optional[str]) -> Optional[str]:
     # If it's already ISO-ish, normalize to first 19 chars and strip trailing Z
     if len(raw0) >= 19 and "T" in raw0:
         raw = raw0[:-1] if raw0.endswith("Z") else raw0
-        return raw[:19]
+        return raw[:19].replace("T", " ")
 
     # SQLite "YYYY-MM-DD HH:MM:SS"
     if len(raw0) >= 19 and raw0[4] == "-" and raw0[7] == "-" and raw0[10] == " ":
-        return raw0[:19].replace(" ", "T")
+        return raw0[:19]
 
     # Try to EXTRACT a datetime substring (handles "datetime glued to text")
-    # Prefer ISO-ish first, then US formats.
     iso_match = re.search(r"\b\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?\b", raw0)
     if iso_match:
-        raw = iso_match.group(0).replace(" ", "T")
+        raw = iso_match.group(0).replace("T", " ").replace("  ", " ").strip()
         # Ensure seconds
-        if len(raw) == 16:  # YYYY-MM-DDTHH:MM
+        if len(raw) == 16:  # YYYY-MM-DD HH:MM
             raw = raw + ":00"
         return raw[:19]
 
@@ -2114,7 +2115,7 @@ def normalize_sortable_dt(s: Optional[str]) -> Optional[str]:
             # If date-only, keep midnight
             if f in ("%m/%d/%y", "%m/%d/%Y", "%Y-%m-%d"):
                 d = d.replace(hour=0, minute=0, second=0)
-            return d.replace(microsecond=0).isoformat()
+            return d.replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
         except Exception:
             continue
 
@@ -2126,17 +2127,12 @@ def normalize_datetime_to_sqlite(s: Optional[str]) -> Optional[str]:
     Normalize common datetime inputs into SQLite-friendly:
       "YYYY-MM-DD HH:MM:SS"
 
-    Uses normalize_sortable_dt() (ISO-ish "YYYY-MM-DDTHH:MM:SS")
-    and converts the "T" separator to a space.
+    IMPORTANT: Never returns a "T" separator.
     """
-    iso = normalize_sortable_dt(s)
-    if not iso:
+    norm = normalize_sortable_dt(s)
+    if not norm:
         return None
-
-    if len(iso) >= 19:
-        return iso[:19].replace("T", " ")
-
-    return iso.replace("T", " ")
+    return norm[:19].replace("T", " ")
 
 
 def init_db():
@@ -2944,73 +2940,215 @@ def init_db():
         """
     )
 
+
     # -------------------------------------------------------------------
-    # Legacy datetime normalization (cm_notes_raw.note_datetime + hospital_documents.document_datetime)
-    # - Normalizes stored values into "YYYY-MM-DD HH:MM:SS"
-    # - Recomputes hashes so dedupe survives date format drift
+    # One-time normalization cleanup (NO "T" anywhere)
+    # - Normalizes stored datetime values into "YYYY-MM-DD HH:MM:SS"
+    # - Normalizes stored date values into "YYYY-MM-DD"
+    # - Recomputes hashes where needed so dedupe survives format drift
     # -------------------------------------------------------------------
     try:
-        # ---- CM NOTES ----
+        # -------------------------
+        # CM NOTES: note_datetime + hashes + dob/admit_date
+        # -------------------------
         rows = cur.execute(
             """
-            SELECT id, visit_id, note_datetime, note_text, created_at
+            SELECT id, visit_id, note_datetime, note_text, created_at, dob, admit_date
             FROM cm_notes_raw
             WHERE note_datetime IS NOT NULL
+               OR dob IS NOT NULL
+               OR admit_date IS NOT NULL
             """
         ).fetchall()
 
-        for note_id, visit_id, note_dt_raw, note_text, created_at in rows:
-            norm = normalize_datetime_to_sqlite(note_dt_raw)
+        for note_id, visit_id, note_dt_raw, note_text, created_at, dob_raw, admit_raw in rows:
+            norm_dt = normalize_datetime_to_sqlite(note_dt_raw)
 
             # If it's truly garbage (ex: "Date/Time"), fall back to created_at if available
-            if not norm:
+            if not norm_dt:
                 ca = (created_at or "").strip()
                 if len(ca) >= 19 and ca[4] == "-" and ca[7] == "-" and ca[10] == " ":
-                    norm = ca[:19]
+                    norm_dt = ca[:19]
                 else:
                     # last resort: keep original (do not destroy)
-                    norm = note_dt_raw
+                    norm_dt = note_dt_raw
 
-            if norm != note_dt_raw:
-                new_hash = compute_note_hash(str(visit_id or ""), norm, note_text or "")
+            norm_dob = normalize_date_to_iso(dob_raw)
+            norm_admit = normalize_date_to_iso(admit_raw)
+
+            changed = False
+
+            if note_dt_raw and norm_dt != note_dt_raw:
+                changed = True
+
+            if (dob_raw or "") != (norm_dob or ""):
+                changed = True
+
+            if (admit_raw or "") != (norm_admit or ""):
+                changed = True
+
+            if changed:
+                new_hash = compute_note_hash(str(visit_id or ""), norm_dt, note_text or "")
                 cur.execute(
                     """
                     UPDATE cm_notes_raw
-                    SET note_datetime = ?, note_hash = ?
+                    SET note_datetime = ?,
+                        note_hash = ?,
+                        dob = ?,
+                        admit_date = ?
                     WHERE id = ?
                     """,
-                    (norm, new_hash, note_id),
+                    (norm_dt, new_hash, norm_dob, norm_admit, note_id),
                 )
 
-        # ---- HOSPITAL DOCUMENTS ----
+        # -------------------------
+        # HOSPITAL DOCUMENTS: document_datetime + hash + dob (admit/dc handled elsewhere too)
+        # -------------------------
         rows = cur.execute(
             """
-            SELECT id, hospital_name, document_type, visit_id, document_datetime, source_text
+            SELECT id, hospital_name, document_type, visit_id, document_datetime, source_text, dob
             FROM hospital_documents
             WHERE document_datetime IS NOT NULL
+               OR dob IS NOT NULL
             """
         ).fetchall()
 
-        for doc_id, hosp_name, doc_type, visit_id, doc_dt_raw, source_text in rows:
-            norm = normalize_datetime_to_sqlite(doc_dt_raw)
-            if not norm:
-                continue  # doc datetime is optional; if unparseable, leave it
+        for doc_id, hosp_name, doc_type, visit_id, doc_dt_raw, source_text, dob_raw in rows:
+            norm_dt = normalize_datetime_to_sqlite(doc_dt_raw) if doc_dt_raw else None
+            norm_dob = normalize_date_to_iso(dob_raw)
 
-            if norm != doc_dt_raw:
-                new_hash = compute_hospital_document_hash(
-                    hospital_name=hosp_name,
-                    document_type=doc_type,
-                    visit_id=visit_id,
-                    document_datetime=norm,
-                    source_text=source_text or "",
-                )
+            changed = False
+            if doc_dt_raw and norm_dt and norm_dt != doc_dt_raw:
+                changed = True
+            if (dob_raw or "") != (norm_dob or ""):
+                changed = True
+
+            if changed:
+                # Only recompute hash if datetime changed (hash includes document_datetime)
+                if doc_dt_raw and norm_dt and norm_dt != doc_dt_raw:
+                    new_hash = compute_hospital_document_hash(
+                        hospital_name=hosp_name,
+                        document_type=doc_type,
+                        visit_id=visit_id,
+                        document_datetime=norm_dt,
+                        source_text=source_text or "",
+                    )
+                else:
+                    new_hash = None
+
+                if new_hash:
+                    cur.execute(
+                        """
+                        UPDATE hospital_documents
+                        SET document_datetime = ?, dob = ?, document_hash = ?
+                        WHERE id = ?
+                        """,
+                        (norm_dt, norm_dob, new_hash, doc_id),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        UPDATE hospital_documents
+                        SET dob = ?
+                        WHERE id = ?
+                        """,
+                        (norm_dob, doc_id),
+                    )
+
+        # -------------------------
+        # HOSPITAL DISCHARGES: dispo_source_dt (this is a common "T" leak)
+        # -------------------------
+        rows = cur.execute(
+            """
+            SELECT id, dispo_source_dt
+            FROM hospital_discharges
+            WHERE dispo_source_dt IS NOT NULL
+            """
+        ).fetchall()
+
+        for discharge_id, dispo_dt_raw in rows:
+            norm = normalize_datetime_to_sqlite(dispo_dt_raw) or (str(dispo_dt_raw).replace("T", " ")[:19] if dispo_dt_raw else None)
+            if norm and dispo_dt_raw != norm:
                 cur.execute(
                     """
-                    UPDATE hospital_documents
-                    SET document_datetime = ?, document_hash = ?
+                    UPDATE hospital_discharges
+                    SET dispo_source_dt = ?
                     WHERE id = ?
                     """,
-                    (norm, new_hash, doc_id),
+                    (norm, discharge_id),
+                )
+
+        # -------------------------
+        # SNF ADMISSIONS: all datetime-ish fields + dob/admit_date
+        # -------------------------
+        rows = cur.execute(
+            """
+            SELECT id,
+                   note_datetime, reviewed_at, emailed_at, notification_dt, confirmation_call_dt,
+                   dob, admit_date
+            FROM snf_admissions
+            WHERE note_datetime IS NOT NULL
+               OR reviewed_at IS NOT NULL
+               OR emailed_at IS NOT NULL
+               OR notification_dt IS NOT NULL
+               OR confirmation_call_dt IS NOT NULL
+               OR dob IS NOT NULL
+               OR admit_date IS NOT NULL
+            """
+        ).fetchall()
+
+        for (
+            snf_id,
+            note_dt_raw, reviewed_at_raw, emailed_at_raw, notification_dt_raw, confirmation_call_dt_raw,
+            dob_raw, admit_raw
+        ) in rows:
+
+            def _clean_dt(v):
+                if not v:
+                    return v
+                n = normalize_datetime_to_sqlite(v)
+                return n or str(v).replace("T", " ")[:19]
+
+            note_dt = _clean_dt(note_dt_raw)
+            reviewed_at = _clean_dt(reviewed_at_raw)
+            emailed_at = _clean_dt(emailed_at_raw)
+            notification_dt = _clean_dt(notification_dt_raw)
+            confirmation_call_dt = _clean_dt(confirmation_call_dt_raw)
+
+            norm_dob = normalize_date_to_iso(dob_raw)
+            norm_admit = normalize_date_to_iso(admit_raw)
+
+            if (
+                (note_dt_raw or "") != (note_dt or "")
+                or (reviewed_at_raw or "") != (reviewed_at or "")
+                or (emailed_at_raw or "") != (emailed_at or "")
+                or (notification_dt_raw or "") != (notification_dt or "")
+                or (confirmation_call_dt_raw or "") != (confirmation_call_dt or "")
+                or (dob_raw or "") != (norm_dob or "")
+                or (admit_raw or "") != (norm_admit or "")
+            ):
+                cur.execute(
+                    """
+                    UPDATE snf_admissions
+                    SET note_datetime = ?,
+                        reviewed_at = ?,
+                        emailed_at = ?,
+                        notification_dt = ?,
+                        confirmation_call_dt = ?,
+                        dob = ?,
+                        admit_date = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        note_dt,
+                        reviewed_at,
+                        emailed_at,
+                        notification_dt,
+                        confirmation_call_dt,
+                        norm_dob,
+                        norm_admit,
+                        snf_id,
+                    ),
                 )
 
     except sqlite3.Error:
@@ -3880,7 +4018,7 @@ async def pad_hospital_documents_bulk(request: Request):
                 ),
                 "patient_mrn": _to_clean_id(row.get("patient_mrn")),
                 "patient_name": (str(row.get("patient_name") or "").strip() or None),
-                "dob": (str(row.get("dob") or "").strip() or None),
+                "dob": normalize_date_to_iso(str(row.get("dob") or "").strip() or None),
                 "visit_id": _to_clean_id(row.get("visit_id")),
                 "admit_date": normalize_date_to_iso(admit_date_raw),
                 "dc_date": normalize_date_to_iso(dc_date_raw),
@@ -4120,7 +4258,8 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
 
     patient_mrn = (payload.get("patient_mrn") or "").strip() or None
     patient_name = (payload.get("patient_name") or "").strip() or None
-    dob = (payload.get("dob") or "").strip() or None
+    dob_raw = (payload.get("dob") or "").strip() or None
+    dob = normalize_date_to_iso(dob_raw)
     visit_id = (payload.get("visit_id") or "").strip() or None
     attending = (payload.get("attending") or "").strip() or None
     pcp = (payload.get("pcp") or "").strip() or None
