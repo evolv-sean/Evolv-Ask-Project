@@ -2041,6 +2041,105 @@ def next_qa_id(conn: sqlite3.Connection) -> str:
             return candidate
         i += 1
 
+def normalize_sortable_dt(s: Optional[str]) -> Optional[str]:
+    """
+    Convert various incoming datetime strings to a sortable ISO-ish format:
+      YYYY-MM-DDTHH:MM:SS
+
+    Handles:
+      - ISO: 2025-12-23T12:49:00 (and ...Z)
+      - SQLite: 2025-12-23 12:49:00
+      - US (4-digit year): 12/23/2025 2:32 PM, 12/23/2025 14:32
+      - US (2-digit year): 12/23/25 14:32
+      - Datetime glued to text: 04/06/15 16:32Case...
+
+    Returns None if empty/unparseable.
+    """
+    if not s:
+        return None
+
+    raw0 = str(s).replace("\u00A0", " ").strip()
+    if not raw0:
+        return None
+
+    # If it's already ISO-ish, normalize to first 19 chars and strip trailing Z
+    if len(raw0) >= 19 and "T" in raw0:
+        raw = raw0[:-1] if raw0.endswith("Z") else raw0
+        return raw[:19]
+
+    # SQLite "YYYY-MM-DD HH:MM:SS"
+    if len(raw0) >= 19 and raw0[4] == "-" and raw0[7] == "-" and raw0[10] == " ":
+        return raw0[:19].replace(" ", "T")
+
+    # Try to EXTRACT a datetime substring (handles "datetime glued to text")
+    # Prefer ISO-ish first, then US formats.
+    iso_match = re.search(r"\b\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?\b", raw0)
+    if iso_match:
+        raw = iso_match.group(0).replace(" ", "T")
+        # Ensure seconds
+        if len(raw) == 16:  # YYYY-MM-DDTHH:MM
+            raw = raw + ":00"
+        return raw[:19]
+
+    us_match = re.search(
+        r"\b\d{1,2}/\d{1,2}/\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM|am|pm)?",
+        raw0,
+    )
+    if us_match:
+        raw = us_match.group(0).strip()
+    else:
+        # Also allow date-only extraction
+        date_only = re.search(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", raw0)
+        raw = date_only.group(0).strip() if date_only else raw0
+
+    fmts = [
+        # 2-digit year
+        "%m/%d/%y %H:%M:%S",
+        "%m/%d/%y %H:%M",
+        "%m/%d/%y %I:%M:%S %p",
+        "%m/%d/%y %I:%M %p",
+        "%m/%d/%y",
+
+        # 4-digit year
+        "%m/%d/%Y %I:%M:%S %p",
+        "%m/%d/%Y %I:%M %p",
+        "%m/%d/%Y %H:%M:%S",
+        "%m/%d/%Y %H:%M",
+        "%m/%d/%Y",
+
+        # ISO date only
+        "%Y-%m-%d",
+    ]
+
+    for f in fmts:
+        try:
+            d = dt.datetime.strptime(raw, f)
+            # If date-only, keep midnight
+            if f in ("%m/%d/%y", "%m/%d/%Y", "%Y-%m-%d"):
+                d = d.replace(hour=0, minute=0, second=0)
+            return d.replace(microsecond=0).isoformat()
+        except Exception:
+            continue
+
+    return None
+
+
+def normalize_datetime_to_sqlite(s: Optional[str]) -> Optional[str]:
+    """
+    Normalize common datetime inputs into SQLite-friendly:
+      "YYYY-MM-DD HH:MM:SS"
+
+    Uses normalize_sortable_dt() (ISO-ish "YYYY-MM-DDTHH:MM:SS")
+    and converts the "T" separator to a space.
+    """
+    iso = normalize_sortable_dt(s)
+    if not iso:
+        return None
+
+    if len(iso) >= 19:
+        return iso[:19].replace("T", " ")
+
+    return iso.replace("T", " ")
 
 
 def init_db():
@@ -6731,25 +6830,6 @@ def normalize_sortable_dt(s: Optional[str]) -> Optional[str]:
             continue
 
     return None
-
-
-def normalize_datetime_to_sqlite(s: Optional[str]) -> Optional[str]:
-    """
-    Normalize common datetime inputs into SQLite-friendly:
-      "YYYY-MM-DD HH:MM:SS"
-
-    Uses normalize_sortable_dt() (which returns ISO-ish "YYYY-MM-DDTHH:MM:SS")
-    and converts the "T" separator to a space.
-    """
-    iso = normalize_sortable_dt(s)
-    if not iso:
-        return None
-
-    # normalize_sortable_dt typically returns "YYYY-MM-DDTHH:MM:SS"
-    if len(iso) >= 19:
-        return iso[:19].replace("T", " ")
-
-    return iso.replace("T", " ")
 
 
 def try_llm_listables_query(
