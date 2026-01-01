@@ -1680,7 +1680,9 @@ def load_extraction_profile(conn: sqlite3.Connection, hospital_name: str, docume
     if isinstance(prof, dict):
         for k, v in prof.items():
             if k and v:
-                out[str(k).strip().lower()] = str(v).strip()
+                kk = re.sub(r"\s+", " ", str(k).strip().lower())
+                out[kk] = str(v).strip()
+
     return out or None
 
 def split_document_into_sections(source_text: str, heading_map_override: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
@@ -1698,22 +1700,20 @@ def split_document_into_sections(source_text: str, heading_map_override: Optiona
     text = (source_text or "").replace("\r\n", "\n").replace("\r", "\n")
     lines = [ln.rstrip() for ln in text.split("\n")]
 
-    # Headings we see in your JFK sample (you can add more later)
-    # NOTE: Keep these as they appear in the text (case-insensitive match below)
-    default_heading_map = {
-        "hospital course": "hospital_course",
-        "assessment and plan": "assessment_plan",
-        "results": "results",
-        "procedures": "procedures",
-        "labs from last 24 hours": "labs",
-        "objective": "objective",
-        "discharge plan": "discharge_plan",
-        "discharge medications": "discharge_meds",
-        "follow up appointments": "follow_up",
-    }
+    # NOTE: Default profile removed.
+    # We only split into sections if a Hospital Extraction Profile exists for (hospital_name + document_type).
+    heading_map = heading_map_override
 
-    # Use hospital profile if provided; otherwise fall back to default
-    heading_map = heading_map_override or default_heading_map
+    # If no profile is provided, treat the entire note as full_text (no section splitting).
+    if not heading_map:
+        return [
+            {
+                "section_key": "full_text",
+                "section_title": "Full Text",
+                "section_text": (source_text or "").strip(),
+                "order": 1,
+            }
+        ]
 
     def norm(s: str) -> str:
         return re.sub(r"\s+", " ", (s or "").strip().lower())
@@ -3511,13 +3511,13 @@ async def pad_cm_notes_bulk(
                 (
                     patient_mrn,
                     row.get("patient_name"),
-                    row.get("dob"),
+                    normalize_date_to_iso(row.get("dob")),
                     visit_id or None,
                     row.get("encounter_id"),
                     row.get("hospital_name"),
                     row.get("unit_name"),
-                    row.get("admission_date"),
-                    row.get("admit_date") or row.get("admission_date"),
+                    normalize_date_to_iso(row.get("admission_date")),
+                    normalize_date_to_iso(row.get("admit_date") or row.get("admission_date")),
                     row.get("attending") or row.get("hospitalist") or row.get("note_author"),
                     note_datetime,
                     row.get("note_author"),
@@ -3699,8 +3699,8 @@ async def pad_hospital_documents_bulk(request: Request):
                 "patient_name": (str(row.get("patient_name") or "").strip() or None),
                 "dob": (str(row.get("dob") or "").strip() or None),
                 "visit_id": _to_clean_id(row.get("visit_id")),
-                "admit_date": (str(row.get("admit_date") or "").strip() or None),
-                "dc_date": (str(row.get("dc_date") or "").strip() or None),
+                "admit_date": normalize_date_to_iso(admit_date_raw),
+                "dc_date": normalize_date_to_iso(dc_date_raw),
                 "attending": (str(row.get("attending") or "").strip() or None),
                 "pcp": (str(row.get("pcp") or "").strip() or None),
                 "insurance": (str(row.get("insurance") or "").strip() or None),
