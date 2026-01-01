@@ -1274,6 +1274,10 @@
               </div>
               <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 <button class="btn btn-primary btn-small" onclick="globalRecomputeSnfAi()">Recompute SNF AI (All)</button>
+
+                <!-- NEW: Global rehash (updates all hash columns in-place) -->
+                <button class="btn btn-small" onclick="globalRehashAll()">Rehash All (Hashes)</button>
+
                 <span id="global-recompute-status" class="message"></span>
               </div>
             </div>
@@ -2107,6 +2111,61 @@
         if (statusEl) statusEl.textContent = "Recompute failed: " + e;
       }
     }
+
+    // ===============================
+    // Global rehash ALL hashes (admin)
+    // ===============================
+    async function globalRehashAll() {
+      const token = getAdminToken();
+      const statusEl = document.getElementById("global-recompute-status");
+
+      if (!token) {
+        if (statusEl) statusEl.textContent = "Paste ADMIN_TOKEN above first.";
+        return;
+      }
+
+      const ok = confirm(
+        "This will REHASH all stored hashes (cm_notes_raw.note_hash + hospital_documents.document_hash).\n" +
+        "Use this after historical normalization/data changes so dedupe matches current logic.\n\n" +
+        "Continue?"
+      );
+      if (!ok) return;
+
+      if (statusEl) statusEl.textContent = "Rehashing…";
+
+      try {
+        const resp = await fetch("/admin/rehash-all", {
+          method: "POST",
+          headers: { "X-Admin-Token": token }
+        });
+
+        let data = null;
+        try { data = await resp.json(); } catch (e) {}
+
+        if (!resp.ok) {
+          const detail = data && (data.detail || data.message);
+          throw new Error("HTTP " + resp.status + (detail ? " – " + detail : ""));
+        }
+        if (data && data.ok === false) throw new Error(data.detail || "ok=false");
+
+        const msg =
+          `Rehash done. Notes updated=${data.notes_updated}/${data.notes_total}, ` +
+          `Docs updated=${data.docs_updated}/${data.docs_total}`;
+        if (statusEl) statusEl.textContent = msg;
+
+        // Optional refresh (safe): reload list + reselect current row
+        try { await loadAdmissions(); } catch (e2) {}
+        if (selectedId != null) {
+          try { await selectRow(selectedId); } catch (e3) {}
+        }
+
+        setTimeout(() => { if (statusEl) statusEl.textContent = ""; }, 5000);
+      } catch (e) {
+        console.error("globalRehashAll error", e);
+        if (statusEl) statusEl.textContent = "Rehash failed: " + (e?.message || e);
+      }
+    }
+
 
     // ===============================
     // Filters modal (open/close/apply)
