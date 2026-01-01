@@ -9513,6 +9513,104 @@ async def admin_snf_recompute_all(request: Request):
         "failures_sample": failures[:20],
     }
 
+@app.post("/admin/rehash-all")
+async def admin_rehash_all(request: Request):
+    """
+    Admin-only: force a full rehash of all hashed entities so dedupe survives
+    any historical normalization/data changes.
+
+    Rehashes:
+      - cm_notes_raw.note_hash (compute_note_hash)
+      - hospital_documents.document_hash (compute_hospital_document_hash)
+    """
+    require_admin(request)
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # -------------------------
+        # 1) CM NOTES: recompute note_hash for ALL rows
+        # -------------------------
+        cur.execute(
+            """
+            SELECT id, visit_id, note_datetime, note_text, note_hash
+            FROM cm_notes_raw
+            """
+        )
+        rows = cur.fetchall()
+
+        notes_total = len(rows)
+        notes_updated = 0
+
+        for r in rows:
+            note_id = r["id"]
+            visit_id = str(r["visit_id"] or "")
+            note_dt = r["note_datetime"] or ""
+            note_text = r["note_text"] or ""
+            old_hash = (r["note_hash"] or "").strip()
+
+            new_hash = compute_note_hash(visit_id, note_dt, note_text)
+
+            if new_hash and new_hash != old_hash:
+                execute_with_retry(
+                    cur,
+                    "UPDATE cm_notes_raw SET note_hash = ? WHERE id = ?",
+                    (new_hash, note_id),
+                )
+                notes_updated += 1
+
+        # -------------------------
+        # 2) HOSPITAL DOCS: recompute document_hash for ALL rows
+        # -------------------------
+        cur.execute(
+            """
+            SELECT id, hospital_name, document_type, visit_id, document_datetime, source_text, document_hash
+            FROM hospital_documents
+            """
+        )
+        rows = cur.fetchall()
+
+        docs_total = len(rows)
+        docs_updated = 0
+
+        for r in rows:
+            doc_id = r["id"]
+            hosp_name = r["hospital_name"]
+            doc_type = r["document_type"]
+            visit_id = r["visit_id"]
+            doc_dt = r["document_datetime"]
+            src = r["source_text"] or ""
+            old_hash = (r["document_hash"] or "").strip()
+
+            new_hash = compute_hospital_document_hash(
+                hospital_name=hosp_name,
+                document_type=doc_type,
+                visit_id=visit_id,
+                document_datetime=doc_dt,
+                source_text=src,
+            )
+
+            if new_hash and new_hash != old_hash:
+                execute_with_retry(
+                    cur,
+                    "UPDATE hospital_documents SET document_hash = ? WHERE id = ?",
+                    (new_hash, doc_id),
+                )
+                docs_updated += 1
+
+        commit_with_retry(conn)
+
+        return {
+            "ok": True,
+            "notes_total": notes_total,
+            "notes_updated": notes_updated,
+            "docs_total": docs_total,
+            "docs_updated": docs_updated,
+        }
+    finally:
+        conn.close()
+
 
 @app.post("/admin/snf/clear")
 async def admin_snf_clear(
