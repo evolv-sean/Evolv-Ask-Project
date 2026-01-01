@@ -1624,7 +1624,8 @@ def compute_note_hash(visit_id: str, note_datetime: str, note_text: str) -> str:
     Compute a stable hash for a CM note using visit_id, datetime, and normalized text.
     Used to dedupe repeated OCR of the same note.
     """
-    base = f"{(visit_id or '').strip()}|{(note_datetime or '').strip()}|{_normalize_note_text_for_hash(note_text)}"
+    dt_norm = normalize_sortable_dt(note_datetime) or (note_datetime or "").strip()
+    base = f"{(visit_id or '').strip()}|{dt_norm}|{_normalize_note_text_for_hash(note_text)}"
     return hashlib.md5(base.encode("utf-8")).hexdigest()
 
 
@@ -1633,17 +1634,23 @@ def _normalize_doc_text_for_hash(s: str) -> str:
     return " ".join((s or "").strip().split())
 
 def compute_hospital_document_hash(
-    visit_id: Optional[str],
-    document_datetime: Optional[str],
-    source_text: str,
+    hospital_name: Optional[str] = None,
+    document_type: Optional[str] = None,
+    visit_id: Optional[str] = None,
+    document_datetime: Optional[str] = None,
+    source_text: str = "",
 ) -> str:
     """
     Stable hash for hospital_documents to skip re-ingesting the exact same document.
-    Uses visit_id + document_datetime + normalized source_text.
+    Uses hospital_name + document_type + visit_id + normalized datetime + normalized source_text.
     """
+    dt_norm = normalize_sortable_dt(document_datetime) or (document_datetime or "").strip()
+
     base = (
+        f"{(hospital_name or '').strip()}|"
+        f"{(document_type or '').strip()}|"
         f"{(visit_id or '').strip()}|"
-        f"{(document_datetime or '').strip()}|"
+        f"{dt_norm}|"
         f"{_normalize_doc_text_for_hash(source_text)}"
     )
     return hashlib.md5(base.encode("utf-8")).hexdigest()
@@ -2782,7 +2789,7 @@ def init_db():
         # Never block app startup on a migration cleanup
         pass
 
-   
+
     # SNF admissions derived from CM notes
     cur.execute(
         """
@@ -2841,6 +2848,78 @@ def init_db():
         """
     )
 
+    # -------------------------------------------------------------------
+    # Legacy datetime normalization (cm_notes_raw.note_datetime + hospital_documents.document_datetime)
+    # - Normalizes stored values into "YYYY-MM-DD HH:MM:SS"
+    # - Recomputes hashes so dedupe survives date format drift
+    # -------------------------------------------------------------------
+    try:
+        # ---- CM NOTES ----
+        rows = cur.execute(
+            """
+            SELECT id, visit_id, note_datetime, note_text, created_at
+            FROM cm_notes_raw
+            WHERE note_datetime IS NOT NULL
+            """
+        ).fetchall()
+
+        for note_id, visit_id, note_dt_raw, note_text, created_at in rows:
+            norm = normalize_datetime_to_sqlite(note_dt_raw)
+
+            # If it's truly garbage (ex: "Date/Time"), fall back to created_at if available
+            if not norm:
+                ca = (created_at or "").strip()
+                if len(ca) >= 19 and ca[4] == "-" and ca[7] == "-" and ca[10] == " ":
+                    norm = ca[:19]
+                else:
+                    # last resort: keep original (do not destroy)
+                    norm = note_dt_raw
+
+            if norm != note_dt_raw:
+                new_hash = compute_note_hash(str(visit_id or ""), norm, note_text or "")
+                cur.execute(
+                    """
+                    UPDATE cm_notes_raw
+                    SET note_datetime = ?, note_hash = ?
+                    WHERE id = ?
+                    """,
+                    (norm, new_hash, note_id),
+                )
+
+        # ---- HOSPITAL DOCUMENTS ----
+        rows = cur.execute(
+            """
+            SELECT id, hospital_name, document_type, visit_id, document_datetime, source_text
+            FROM hospital_documents
+            WHERE document_datetime IS NOT NULL
+            """
+        ).fetchall()
+
+        for doc_id, hosp_name, doc_type, visit_id, doc_dt_raw, source_text in rows:
+            norm = normalize_datetime_to_sqlite(doc_dt_raw)
+            if not norm:
+                continue  # doc datetime is optional; if unparseable, leave it
+
+            if norm != doc_dt_raw:
+                new_hash = compute_hospital_document_hash(
+                    hospital_name=hosp_name,
+                    document_type=doc_type,
+                    visit_id=visit_id,
+                    document_datetime=norm,
+                    source_text=source_text or "",
+                )
+                cur.execute(
+                    """
+                    UPDATE hospital_documents
+                    SET document_datetime = ?, document_hash = ?
+                    WHERE id = ?
+                    """,
+                    (norm, new_hash, doc_id),
+                )
+
+    except sqlite3.Error:
+        # Never block app startup on a migration cleanup
+        pass
 
     # Ensure visit_id exists on older snf_admissions tables
     try:
@@ -3442,7 +3521,10 @@ async def pad_cm_notes_bulk(
 
             # Convert MRN + datetime to strings safely
             patient_mrn = str(raw_patient_mrn or "").strip()
-            note_datetime = str(raw_note_datetime or "").strip()
+
+            note_datetime_raw = str(raw_note_datetime or "").strip()
+            note_datetime = normalize_sortable_dt(note_datetime_raw) or ""
+
             note_text = row.get("note_text") or ""
 
             # visit_id might come in as a float like 1234564.0 from PAD DataTable
@@ -3467,7 +3549,8 @@ async def pad_cm_notes_bulk(
                 errors.append(
                     {
                         "index": idx,
-                        "error": "visit_id, note_datetime, and note_text are required",
+                        "error": "visit_id, note_datetime (parseable), and note_text are required",
+                        "note_datetime_raw": note_datetime_raw,
                     }
                 )
                 continue
@@ -3694,7 +3777,11 @@ async def pad_hospital_documents_bulk(request: Request):
                 "hospital_name": hospital_name,
                 "document_type": document_type,
                 "source_text": source_text,
-                "document_datetime": (str(row.get("document_datetime") or "").strip() or None),
+                "document_datetime": (
+                    normalize_sortable_dt(str(row.get("document_datetime") or "").strip())
+                    if str(row.get("document_datetime") or "").strip()
+                    else None
+                ),
                 "patient_mrn": _to_clean_id(row.get("patient_mrn")),
                 "patient_name": (str(row.get("patient_name") or "").strip() or None),
                 "dob": (str(row.get("dob") or "").strip() or None),
@@ -3932,7 +4019,8 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
     if not source_text:
         raise HTTPException(status_code=400, detail="source_text is required")
 
-    document_datetime = (payload.get("document_datetime") or "").strip() or None
+    document_datetime_raw = (payload.get("document_datetime") or "").strip() or None
+    document_datetime = normalize_sortable_dt(document_datetime_raw) if document_datetime_raw else None
 
     patient_mrn = (payload.get("patient_mrn") or "").strip() or None
     patient_name = (payload.get("patient_name") or "").strip() or None
@@ -6566,36 +6654,78 @@ def normalize_sortable_dt(s: Optional[str]) -> Optional[str]:
     """
     Convert various incoming datetime strings to a sortable ISO-ish format:
       YYYY-MM-DDTHH:MM:SS
+
+    Handles:
+      - ISO: 2025-12-23T12:49:00 (and ...Z)
+      - SQLite: 2025-12-23 12:49:00
+      - US (4-digit year): 12/23/2025 2:32 PM, 12/23/2025 14:32
+      - US (2-digit year): 12/23/25 14:32   ✅ (common in your cm_notes_raw)
+      - Datetime glued to text: 04/06/15 16:32Case... ✅
+
     Returns None if empty/unparseable.
     """
     if not s:
         return None
-    raw = str(s).strip()
-    if not raw:
+
+    raw0 = str(s).replace("\u00A0", " ").strip()
+    if not raw0:
         return None
 
-    # Already ISO-like
-    if "T" in raw and len(raw) >= 19:
+    # If it's already ISO-ish, normalize to first 19 chars and strip trailing Z
+    if len(raw0) >= 19 and "T" in raw0:
+        raw = raw0[:-1] if raw0.endswith("Z") else raw0
         return raw[:19]
 
-    # SQLite datetime('now') format: "YYYY-MM-DD HH:MM:SS"
-    if len(raw) >= 19 and raw[4] == "-" and raw[7] == "-" and raw[10] == " ":
-        return raw[:19].replace(" ", "T")
+    # SQLite "YYYY-MM-DD HH:MM:SS"
+    if len(raw0) >= 19 and raw0[4] == "-" and raw0[7] == "-" and raw0[10] == " ":
+        return raw0[:19].replace(" ", "T")
+
+    # Try to EXTRACT a datetime substring (handles "datetime glued to text")
+    # Prefer ISO-ish first, then US formats.
+    iso_match = re.search(r"\b\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?\b", raw0)
+    if iso_match:
+        raw = iso_match.group(0).replace(" ", "T")
+        # Ensure seconds
+        if len(raw) == 16:  # YYYY-MM-DDTHH:MM
+            raw = raw + ":00"
+        return raw[:19]
+
+    us_match = re.search(
+        r"\b\d{1,2}/\d{1,2}/\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM|am|pm)?",
+        raw0,
+    )
+    if us_match:
+        raw = us_match.group(0).strip()
+    else:
+        # Also allow date-only extraction
+        date_only = re.search(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", raw0)
+        raw = date_only.group(0).strip() if date_only else raw0
 
     fmts = [
-        "%m/%d/%Y %I:%M:%S %p",   # 12/20/2025 2:32:00 PM
-        "%m/%d/%Y %I:%M %p",      # 12/20/2025 2:32 PM
-        "%m/%d/%Y %H:%M:%S",      # 12/20/2025 14:32:00
-        "%m/%d/%Y %H:%M",         # 12/20/2025 14:32
-        "%Y-%m-%d %H:%M:%S",      # 2025-12-20 14:32:00
-        "%Y-%m-%d %H:%M",         # 2025-12-20 14:32
-        "%m/%d/%Y",               # 12/20/2025
-        "%Y-%m-%d",               # 2025-12-20
+        # 2-digit year (your common cm_notes_raw format)
+        "%m/%d/%y %H:%M:%S",
+        "%m/%d/%y %H:%M",
+        "%m/%d/%y %I:%M:%S %p",
+        "%m/%d/%y %I:%M %p",
+        "%m/%d/%y",
+
+        # 4-digit year
+        "%m/%d/%Y %I:%M:%S %p",
+        "%m/%d/%Y %I:%M %p",
+        "%m/%d/%Y %H:%M:%S",
+        "%m/%d/%Y %H:%M",
+        "%m/%d/%Y",
+
+        # ISO date only
+        "%Y-%m-%d",
     ]
 
     for f in fmts:
         try:
             d = dt.datetime.strptime(raw, f)
+            # If date-only, keep midnight to keep format consistent
+            if f in ("%m/%d/%y", "%m/%d/%Y", "%Y-%m-%d"):
+                d = d.replace(hour=0, minute=0, second=0)
             return d.replace(microsecond=0).isoformat()
         except Exception:
             continue
