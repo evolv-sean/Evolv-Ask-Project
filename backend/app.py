@@ -7103,7 +7103,7 @@ def _snf_should_clear_facility_name(notes: List[sqlite3.Row], snf_name: Optional
 
 
 def analyze_patient_notes_with_llm(
-    patient_mrn: str,
+    visit_id: str,
     notes: List[sqlite3.Row],
 ) -> Optional[Dict[str, Any]]:
     """
@@ -8989,7 +8989,7 @@ def snf_recompute_for_admission(visit_id: str = "") -> Dict[str, Any]:
         latest_note = sorted(notes, key=lambda r: (r["note_datetime"] or "", r["id"]))[-1]
         visit_id_eff = (latest_note["visit_id"] or "").strip() if "visit_id" in latest_note.keys() else ""
         visit_id_db = visit_id_eff or (visit_id or None)
-        mrn_eff = (latest_note["patient_mrn"] or "").strip() or patient_mrn
+        mrn_eff = (latest_note["patient_mrn"] or "").strip()
 
         # You said you don't rely on MRN at all:
         # - keep the column populated (DB constraint) but do not use it as an identifier
@@ -9356,14 +9356,13 @@ async def admin_snf_recompute_all(request: Request):
                 failures.append(
                     {
                         "visit_id": visit_id,
-                        "patient_mrn": patient_mrn,
                         "error": (res.get("message") if isinstance(res, dict) else "ok=false"),
                     }
                 )
         except Exception as e:
             fail_count += 1
             failures.append(
-                {"visit_id": visit_id, "patient_mrn": patient_mrn, "error": str(e)}
+                {"visit_id": visit_id, "error": str(e)}
             )
 
     # Keep response small but useful
