@@ -7152,7 +7152,7 @@ def analyze_patient_notes_with_llm(
     )
 
     user_msg = (
-        f"Patient MRN: {patient_mrn}\n\n"
+        f"Visit ID: {visit_id}\n\n"
         "Here are this patient's case management / discharge planning notes in chronological order:\n\n"
         f"{notes_block}\n\n"
         "From these notes, answer the following questions:\n"
@@ -8543,7 +8543,7 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
             FROM cm_notes_raw
             WHERE created_at >= datetime('now', ?)
               AND (ignored IS NULL OR ignored = 0)
-            ORDER BY patient_mrn, note_datetime, id
+            ORDER BY visit_id, note_datetime, id
             """,
             (f"-{days_back} days",),
         )
@@ -8556,15 +8556,14 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                 "snf_candidates": 0,
             }
 
-        # Group by admission: prefer visit_id, fall back to patient_mrn
+        # Group by admission: visit_id only (do not rely on MRN)
         notes_by_admission: Dict[str, List[sqlite3.Row]] = {}
         for r in rows:
-            mrn = (r["patient_mrn"] or "").strip()
             visit_id = (r["visit_id"] or "").strip() if "visit_id" in r.keys() else ""
-            key = visit_id or mrn
-            if not key:
+            if not visit_id:
+                # If a row has no visit_id, we skip it (MRN is not used as an identifier)
                 continue
-            notes_by_admission.setdefault(key, []).append(r)
+            notes_by_admission.setdefault(visit_id, []).append(r)
 
         patients_processed = 0
         snf_candidates = 0
@@ -8574,9 +8573,8 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
             # (ignoring explicit "no longer SNF" phrases)?
             has_snf_keywords = notes_mention_possible_snf(notes)
 
-            # Derive MRN for the LLM from the first note in this admission group
-            mrn_for_llm = (notes[0]["patient_mrn"] or "").strip()
-            result = analyze_patient_notes_with_llm(mrn_for_llm, notes)
+            # Analyze this admission group using visit_id + notes
+            result = analyze_patient_notes_with_llm(adm_key, notes)
 
             # Always identify the latest note + admission identifiers up front
             latest_note = sorted(
@@ -8625,20 +8623,8 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                             (visit_id_db,),
                         )
                     else:
-                        # Fallback for legacy rows that may only have MRN
-                        cur.execute(
-                            """
-                            UPDATE snf_admissions
-                               SET ai_is_snf_candidate = 0,
-                                   status = 'removed',
-                                   review_comments = COALESCE(review_comments, '') ||
-                                       ' [auto-removed based on later CM notes: plan no longer SNF]',
-                                   last_seen_active_date = date('now')
-                             WHERE visit_id IS NULL
-                               AND patient_mrn = ?
-                            """,
-                            (patient_mrn,),
-                        )
+                        # No visit_id means we cannot safely identify the admission (MRN is not used).
+                        pass
 
                     patients_processed += 1
                     # Nothing more to do for this admission
@@ -8954,79 +8940,50 @@ async def admin_snf_run_extraction(
 
 # ===================== NEW: recompute SNF AI for one admission =====================
 
-def snf_recompute_for_admission(visit_id: str = "", patient_mrn: str = "") -> Dict[str, Any]:
+def snf_recompute_for_admission(visit_id: str = "") -> Dict[str, Any]:
     """
-    Recompute SNF AI for exactly one admission group (visit_id preferred, else patient_mrn).
+    Recompute SNF AI for exactly one admission group (visit_id required).
     Uses ONLY non-ignored notes.
     """
     visit_id = (visit_id or "").strip()
-    patient_mrn = (patient_mrn or "").strip()
-    if not visit_id and not patient_mrn:
-        return {"ok": False, "message": "visit_id or patient_mrn is required"}
+    if not visit_id:
+        return {"ok": False, "message": "visit_id is required"}
 
     conn = get_db()
     try:
         cur = conn.cursor()
 
-        # Load facility alias map (dictionary.kind='facility_alias')
         maps = load_dictionary_maps(conn)
         facility_aliases = maps["facility_aliases"]
 
-        if visit_id:
-            cur.execute(
-                """
-                SELECT *
-                FROM cm_notes_raw
-                WHERE visit_id = ?
-                  AND (ignored IS NULL OR ignored = 0)
-                ORDER BY note_datetime, id
-                """,
-                (visit_id,),
-            )
-        else:
-            cur.execute(
-                """
-                SELECT *
-                FROM cm_notes_raw
-                WHERE patient_mrn = ?
-                  AND (ignored IS NULL OR ignored = 0)
-                ORDER BY note_datetime, id
-                """,
-                (patient_mrn,),
-            )
+        cur.execute(
+            """
+            SELECT *
+            FROM cm_notes_raw
+            WHERE visit_id = ?
+              AND (ignored IS NULL OR ignored = 0)
+            ORDER BY note_datetime, id
+            """,
+            (visit_id,),
+        )
 
         notes = cur.fetchall()
         if not notes:
-            # Nothing left → mark any matching snf_admissions row removed
-            if visit_id:
-                cur.execute(
-                    """
-                    UPDATE snf_admissions
-                    SET ai_is_snf_candidate = 0,
-                        status = 'removed',
-                        updated_at = datetime('now')
-                    WHERE visit_id = ?
-                    """,
-                    (visit_id,),
-                )
-            else:
-                cur.execute(
-                    """
-                    UPDATE snf_admissions
-                    SET ai_is_snf_candidate = 0,
-                        status = 'removed',
-                        updated_at = datetime('now')
-                    WHERE visit_id IS NULL
-                      AND patient_mrn = ?
-                    """,
-                    (patient_mrn,),
-                )
+            cur.execute(
+                """
+                UPDATE snf_admissions
+                SET ai_is_snf_candidate = 0,
+                    status = 'removed',
+                    updated_at = datetime('now')
+                WHERE visit_id = ?
+                """,
+                (visit_id,),
+            )
             conn.commit()
             return {"ok": True, "message": "No notes left; SNF row marked removed."}
 
         has_snf_keywords = notes_mention_possible_snf(notes)
-        mrn_for_llm = (notes[0]["patient_mrn"] or "").strip()
-        result = analyze_patient_notes_with_llm(mrn_for_llm, notes)
+        result = analyze_patient_notes_with_llm(visit_id, notes)
 
         # Identify latest note for identifying fields + linking
         latest_note = sorted(notes, key=lambda r: (r["note_datetime"] or "", r["id"]))[-1]
