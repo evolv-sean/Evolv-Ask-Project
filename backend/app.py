@@ -6733,6 +6733,25 @@ def normalize_sortable_dt(s: Optional[str]) -> Optional[str]:
     return None
 
 
+def normalize_datetime_to_sqlite(s: Optional[str]) -> Optional[str]:
+    """
+    Normalize common datetime inputs into SQLite-friendly:
+      "YYYY-MM-DD HH:MM:SS"
+
+    Uses normalize_sortable_dt() (which returns ISO-ish "YYYY-MM-DDTHH:MM:SS")
+    and converts the "T" separator to a space.
+    """
+    iso = normalize_sortable_dt(s)
+    if not iso:
+        return None
+
+    # normalize_sortable_dt typically returns "YYYY-MM-DDTHH:MM:SS"
+    if len(iso) >= 19:
+        return iso[:19].replace("T", " ")
+
+    return iso.replace("T", " ")
+
+
 def try_llm_listables_query(
     conn: sqlite3.Connection,
     question: str,
