@@ -233,9 +233,6 @@ CENSUS_HTML = FRONTEND_DIR / "Census.html"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("evolv")
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("evolv")
-
 PERF_LOG_ENABLED = (os.getenv("PERF_LOG", "0") == "1")
 
 def _rss_mb() -> float | None:
@@ -6749,88 +6746,6 @@ def _normalize_listables_sql_case(sql: str) -> str:
 
     return sql
 
-def normalize_sortable_dt(s: Optional[str]) -> Optional[str]:
-    """
-    Convert various incoming datetime strings to a sortable ISO-ish format:
-      YYYY-MM-DDTHH:MM:SS
-
-    Handles:
-      - ISO: 2025-12-23T12:49:00 (and ...Z)
-      - SQLite: 2025-12-23 12:49:00
-      - US (4-digit year): 12/23/2025 2:32 PM, 12/23/2025 14:32
-      - US (2-digit year): 12/23/25 14:32   ✅ (common in your cm_notes_raw)
-      - Datetime glued to text: 04/06/15 16:32Case... ✅
-
-    Returns None if empty/unparseable.
-    """
-    if not s:
-        return None
-
-    raw0 = str(s).replace("\u00A0", " ").strip()
-    if not raw0:
-        return None
-
-    # If it's already ISO-ish, normalize to first 19 chars and strip trailing Z
-    if len(raw0) >= 19 and "T" in raw0:
-        raw = raw0[:-1] if raw0.endswith("Z") else raw0
-        return raw[:19]
-
-    # SQLite "YYYY-MM-DD HH:MM:SS"
-    if len(raw0) >= 19 and raw0[4] == "-" and raw0[7] == "-" and raw0[10] == " ":
-        return raw0[:19].replace(" ", "T")
-
-    # Try to EXTRACT a datetime substring (handles "datetime glued to text")
-    # Prefer ISO-ish first, then US formats.
-    iso_match = re.search(r"\b\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?\b", raw0)
-    if iso_match:
-        raw = iso_match.group(0).replace(" ", "T")
-        # Ensure seconds
-        if len(raw) == 16:  # YYYY-MM-DDTHH:MM
-            raw = raw + ":00"
-        return raw[:19]
-
-    us_match = re.search(
-        r"\b\d{1,2}/\d{1,2}/\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM|am|pm)?",
-        raw0,
-    )
-    if us_match:
-        raw = us_match.group(0).strip()
-    else:
-        # Also allow date-only extraction
-        date_only = re.search(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", raw0)
-        raw = date_only.group(0).strip() if date_only else raw0
-
-    fmts = [
-        # 2-digit year (your common cm_notes_raw format)
-        "%m/%d/%y %H:%M:%S",
-        "%m/%d/%y %H:%M",
-        "%m/%d/%y %I:%M:%S %p",
-        "%m/%d/%y %I:%M %p",
-        "%m/%d/%y",
-
-        # 4-digit year
-        "%m/%d/%Y %I:%M:%S %p",
-        "%m/%d/%Y %I:%M %p",
-        "%m/%d/%Y %H:%M:%S",
-        "%m/%d/%Y %H:%M",
-        "%m/%d/%Y",
-
-        # ISO date only
-        "%Y-%m-%d",
-    ]
-
-    for f in fmts:
-        try:
-            d = dt.datetime.strptime(raw, f)
-            # If date-only, keep midnight to keep format consistent
-            if f in ("%m/%d/%y", "%m/%d/%Y", "%Y-%m-%d"):
-                d = d.replace(hour=0, minute=0, second=0)
-            return d.replace(microsecond=0).isoformat()
-        except Exception:
-            continue
-
-    return None
-
 
 def try_llm_listables_query(
     conn: sqlite3.Connection,
@@ -9118,9 +9033,20 @@ def snf_recompute_for_admission(visit_id: str = "", patient_mrn: str = "") -> Di
         visit_id_eff = (latest_note["visit_id"] or "").strip() if "visit_id" in latest_note.keys() else ""
         visit_id_db = visit_id_eff or (visit_id or None)
         mrn_eff = (latest_note["patient_mrn"] or "").strip() or patient_mrn
+
+        # You said you don't rely on MRN at all:
+        # - keep the column populated (DB constraint) but do not use it as an identifier
+        # - if it's blank/garbage, fall back to visit_id so inserts don't fail
+        patient_mrn_safe = (mrn_eff or visit_id_db or "UNKNOWN").strip()
+
         patient_name = latest_note["patient_name"] or ""
         hospital_name = latest_note["hospital_name"] or ""
         note_datetime = latest_note["note_datetime"] or ""
+
+        # These were missing and were causing NameError during INSERT
+        dob = (latest_note["dob"] or "").strip() if "dob" in latest_note.keys() else ""
+        attending = (latest_note["attending"] or "").strip() if "attending" in latest_note.keys() else ""
+        admit_date = (latest_note["admit_date"] or "").strip() if "admit_date" in latest_note.keys() else ""
 
         # If LLM says "not SNF", treat as removal unless denial is still contested
         if result and not result.get("is_snf_candidate", False):
@@ -9294,7 +9220,7 @@ def snf_recompute_for_admission(visit_id: str = "", patient_mrn: str = "") -> Di
                     (
                         latest_note["id"],
                         visit_id_db,
-                        mrn_eff,
+                        patient_mrn_safe,
                         patient_name,
                         dob,
                         attending,
@@ -9423,33 +9349,35 @@ async def admin_snf_recompute_all(request: Request):
     try:
         cur = conn.cursor()
 
-        # Build a set of "admission groups" to recompute.
-        # Prefer visit_id when present; otherwise fall back to patient_mrn.
-        groups: set[tuple[str, str]] = set()
+        # Build a set of visit_ids to recompute (NO MRN FALLBACK)
+        groups: set[str] = set()
 
-        # 1) From SNF table (so we recompute rows that already exist)
-        cur.execute("SELECT DISTINCT COALESCE(visit_id, '') AS visit_id, COALESCE(patient_mrn, '') AS patient_mrn FROM snf_admissions")
-        for r in cur.fetchall():
-            v = (r["visit_id"] or "").strip()
-            m = (r["patient_mrn"] or "").strip()
-            if v or m:
-                groups.add((v, m))
-
-        # 2) From notes (so we also recompute any note-groups that might not yet have a row)
+        # 1) From SNF table
         cur.execute(
             """
-            SELECT DISTINCT
-                COALESCE(visit_id, '') AS visit_id,
-                COALESCE(patient_mrn, '') AS patient_mrn
-            FROM cm_notes_raw
-            WHERE (ignored IS NULL OR ignored = 0)
+            SELECT DISTINCT COALESCE(visit_id, '') AS visit_id
+            FROM snf_admissions
+            WHERE visit_id IS NOT NULL AND TRIM(visit_id) <> ''
             """
         )
         for r in cur.fetchall():
             v = (r["visit_id"] or "").strip()
-            m = (r["patient_mrn"] or "").strip()
-            if v or m:
-                groups.add((v, m))
+            if v:
+                groups.add(v)
+
+        # 2) From notes (so we also pick up visit_ids that don't yet have SNF rows)
+        cur.execute(
+            """
+            SELECT DISTINCT COALESCE(visit_id, '') AS visit_id
+            FROM cm_notes_raw
+            WHERE (ignored IS NULL OR ignored = 0)
+              AND visit_id IS NOT NULL AND TRIM(visit_id) <> ''
+            """
+        )
+        for r in cur.fetchall():
+            v = (r["visit_id"] or "").strip()
+            if v:
+                groups.add(v)
 
         total = len(groups)
         ok_count = 0
@@ -9461,9 +9389,9 @@ async def admin_snf_recompute_all(request: Request):
     finally:
         conn.close()
 
-    for (visit_id, patient_mrn) in sorted(groups):
+    for visit_id in sorted(groups):
         try:
-            res = snf_recompute_for_admission(visit_id=visit_id, patient_mrn=patient_mrn)
+            res = snf_recompute_for_admission(visit_id=visit_id)
             if res and res.get("ok"):
                 ok_count += 1
             else:
