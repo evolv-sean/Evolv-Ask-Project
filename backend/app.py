@@ -3043,7 +3043,7 @@ def init_db():
             ai_confidence               REAL,
 
             -- Human review / final decision
-            status                      TEXT DEFAULT 'pending',  -- pending/confirmed/corrected/rejected/removed
+            status                      TEXT DEFAULT 'new',  -- pending/confirmed/corrected/rejected/removed
             disposition                 TEXT,
             facility_free_text          TEXT,
             final_snf_facility_id       TEXT,
@@ -8963,7 +8963,7 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     last_seen_active_date,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', date('now'), datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', date('now'), datetime('now'))
                 ON CONFLICT(visit_id) DO UPDATE SET
                     raw_note_id               = excluded.raw_note_id,
                     patient_mrn               = excluded.patient_mrn,
@@ -8981,7 +8981,7 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     status = CASE
                                WHEN snf_admissions.status IN ('removed','confirmed','projected')
                                  THEN snf_admissions.status
-                               ELSE 'pending'
+                               ELSE 'new'
                             END,
                     last_seen_active_date     = snf_admissions.last_seen_active_date
                 ;
@@ -9415,7 +9415,7 @@ def snf_recompute_for_admission(visit_id: str = "") -> Dict[str, Any]:
                     ai_snf_facility_id = ?,
                     ai_expected_transfer_date = ?,
                     ai_confidence = ?,
-                    status = CASE WHEN status IN ('confirmed','projected') THEN status ELSE 'pending' END,
+                    status = CASE WHEN status IN ('confirmed','projected') THEN status ELSE 'new' END,
                     updated_at = datetime('now')
                 WHERE visit_id = ?
                 """,
@@ -9480,7 +9480,7 @@ def snf_recompute_for_admission(visit_id: str = "") -> Dict[str, Any]:
                     ai_snf_facility_id = ?,
                     ai_expected_transfer_date = ?,
                     ai_confidence = ?,
-                    status = CASE WHEN status IN ('confirmed','projected') THEN status ELSE 'pending' END,
+                    status = CASE WHEN status IN ('confirmed','projected') THEN status ELSE 'new' END,
                     updated_at = datetime('now')
                 WHERE visit_id IS NULL
                   AND patient_mrn = ?
@@ -11234,7 +11234,7 @@ async def admin_snf_ignore_cm_note(
                 UPDATE snf_admissions
                 SET raw_note_id = ?,
                     note_datetime = COALESCE(?, note_datetime),
-                    status = CASE WHEN status IN ('confirmed','projected') THEN status ELSE 'pending' END,
+                    status = CASE WHEN status IN ('confirmed','projected') THEN status ELSE 'new' END,
                     updated_at = datetime('now')
                 WHERE raw_note_id = ?
                 """,
@@ -11292,7 +11292,10 @@ async def admin_snf_update(
         raise HTTPException(status_code=400, detail="id is required")
 
     status = (payload.get("status") or "").strip().lower()
-    if status not in ("pending", "projected", "confirmed", "corrected", "rejected", "removed"):
+    if status not in (
+        "new", "dispo", "agency",
+        "pending", "projected", "confirmed", "corrected", "rejected", "removed"
+    ):
         raise HTTPException(status_code=400, detail="Invalid status")
 
     final_date = payload.get("final_expected_transfer_date")
