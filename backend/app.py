@@ -1539,6 +1539,18 @@ def parse_pcc_admission_records_from_pdf_bytes(pdf_bytes: bytes) -> list[dict]:
     # Reuse shared core
     return parse_pcc_admission_records_from_pdf_text(text)
 
+def render_ingest_log(event: str, **fields):
+    """
+    Prints a single-line JSON log so Render logs are easy to grep.
+    Example:
+      [INGEST] {"event":"cm_note_inserted","visit_id":"123","note_id":55,...}
+    """
+    try:
+        payload = {"event": event, **fields}
+        print("[INGEST]", json.dumps(payload, default=str))
+    except Exception:
+        # Never break ingest due to logging
+        print("[INGEST]", event, fields)
 
 # ---------------------------------------------------------------------------
 # DB helpers
@@ -3932,6 +3944,14 @@ async def pad_cm_notes_bulk(
             )
             if cur.fetchone():
                 skipped += 1
+                render_ingest_log(
+                    "cm_note_dedup_skipped",
+                    visit_id=visit_id,
+                    note_datetime=note_datetime,
+                    note_hash=(note_hash[:12] if note_hash else None),
+                    hospital_name=(row.get("hospital_name") or ""),
+                    note_type=(row.get("note_type") or "Case Management"),
+                )
                 continue
 
             cur.execute(
@@ -3981,9 +4001,19 @@ async def pad_cm_notes_bulk(
                 ),
             )
 
+            note_id = cur.lastrowid
             inserted += 1
-
             conn.commit()
+
+            render_ingest_log(
+                "cm_note_inserted",
+                note_id=note_id,
+                visit_id=visit_id,
+                note_datetime=note_datetime,
+                note_hash=(note_hash[:12] if note_hash else None),
+                hospital_name=(row.get("hospital_name") or ""),
+                note_type=(row.get("note_type") or "Case Management"),
+            )
 
             if visit_id:
                 touched_visit_ids.add(str(visit_id))
@@ -4183,7 +4213,17 @@ async def pad_hospital_documents_bulk(request: Request):
             execute_with_retry(cur, "SELECT id FROM hospital_documents WHERE document_hash = ? LIMIT 1", (doc_hash,))
             existing = cur.fetchone()
             if existing:
-                # Skip this row; continue to next
+                skipped += 1  # count dedup skips
+                existing_id = existing["id"] if isinstance(existing, sqlite3.Row) else existing[0]
+                render_ingest_log(
+                    "hospital_document_dedup_skipped",
+                    hospital_name=doc_payload["hospital_name"],
+                    document_type=doc_payload["document_type"],
+                    visit_id=doc_payload["visit_id"],
+                    document_datetime=doc_payload["document_datetime"],
+                    document_id=existing_id,
+                    doc_hash=(doc_hash[:12] if doc_hash else None),
+                )
                 continue
 
             execute_with_retry(
@@ -4218,9 +4258,24 @@ async def pad_hospital_documents_bulk(request: Request):
                 ),
             )
             document_id = cur.lastrowid
+            inserted += 1
 
-            # Upsert hub row (same behavior as your existing ingest endpoint)
+            render_ingest_log(
+                "hospital_document_inserted",
+                hospital_name=doc_payload["hospital_name"],
+                document_type=doc_payload["document_type"],
+                visit_id=doc_payload["visit_id"],
+                document_datetime=doc_payload["document_datetime"],
+                document_id=document_id,
+                doc_hash=(doc_hash[:12] if doc_hash else None),
+            )
+
+            # Upsert hub row (hospital_discharges = your “hospital discharge/admission hub” keyed by visit_id)
             if doc_payload["visit_id"]:
+                # Check if hub row already exists so we can log "created vs updated"
+                cur.execute("SELECT 1 FROM hospital_discharges WHERE visit_id = ? LIMIT 1", (doc_payload["visit_id"],))
+                hub_existed = bool(cur.fetchone())
+
                 cur.execute(
                     """
                     INSERT INTO hospital_discharges (
@@ -4253,6 +4308,16 @@ async def pad_hospital_documents_bulk(request: Request):
                         doc_payload["insurance"],
                     ),
                 )
+
+                render_ingest_log(
+                    "hospital_discharge_hub_updated" if hub_existed else "hospital_discharge_hub_created",
+                    visit_id=doc_payload["visit_id"],
+                    document_id=document_id,
+                    hospital_name=doc_payload["hospital_name"],
+                    admit_date=doc_payload["admit_date"],
+                    dc_date=doc_payload["dc_date"],
+                )
+
 
                 # ✅ UPDATED: derive disposition + dc_agency, but only let the "latest doc" win
                 dispo = analyze_discharge_disposition_with_llm(doc_payload["source_text"])
@@ -9422,6 +9487,18 @@ def snf_recompute_for_admission(visit_id: str = "") -> Dict[str, Any]:
                 (latest_note["id"], note_datetime, snf_name_raw, ai_facility_id, expected_date, conf, visit_id_db),
             )
 
+            if cur.rowcount > 0:
+                render_ingest_log(
+                    "snf_admission_updated",
+                    visit_id=visit_id_db,
+                    raw_note_id=latest_note["id"],
+                    note_datetime=note_datetime,
+                    ai_snf_name_raw=snf_name_raw,
+                    ai_snf_facility_id=ai_facility_id,
+                    ai_expected_transfer_date=expected_date,
+                    ai_confidence=conf,
+                )
+
             # If no existing row, CREATE it
             if cur.rowcount == 0:
                 cur.execute(
@@ -9467,6 +9544,16 @@ def snf_recompute_for_admission(visit_id: str = "") -> Dict[str, Any]:
                         expected_date,
                         conf,
                     ),
+                )
+
+                render_ingest_log(
+                    "snf_admission_created",
+                    visit_id=visit_id_db,
+                    raw_note_id=latest_note["id"],
+                    note_datetime=note_datetime,
+                    hospital_name=hospital_name,
+                    patient_mrn=patient_mrn_safe,
+                    patient_name=patient_name,
                 )
 
         else:
