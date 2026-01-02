@@ -2625,6 +2625,71 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_cm_notes_raw_ignored ON cm_notes_raw (ignored)"
     )
 
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cm_notes_raw_hash ON cm_notes_raw (note_hash)"
+    )
+
+    # -------------------------------------------------------------------
+    # Enforce dedupe at the DB level for cm_notes_raw.note_hash
+    # - Re-points snf_admissions.raw_note_id to the kept note id
+    # - Deletes duplicate note rows
+    # - Adds a UNIQUE partial index so duplicates cannot reappear
+    # -------------------------------------------------------------------
+    try:
+        cur.executescript(
+            """
+            -- Map duplicates to the "kept" (lowest id) note per hash
+            WITH d AS (
+              SELECT note_hash, MIN(id) AS keep_id
+              FROM cm_notes_raw
+              WHERE note_hash IS NOT NULL AND note_hash != ''
+              GROUP BY note_hash
+              HAVING COUNT(*) > 1
+            ),
+            drops AS (
+              SELECT c.id AS drop_id, d.keep_id
+              FROM cm_notes_raw c
+              JOIN d ON d.note_hash = c.note_hash
+              WHERE c.id != d.keep_id
+            )
+            -- Re-point SNF admissions that reference a duplicate note id
+            UPDATE snf_admissions
+            SET raw_note_id = (
+              SELECT keep_id FROM drops WHERE drops.drop_id = snf_admissions.raw_note_id
+            )
+            WHERE raw_note_id IN (SELECT drop_id FROM drops);
+
+            -- Delete duplicate note rows
+            WITH d AS (
+              SELECT note_hash, MIN(id) AS keep_id
+              FROM cm_notes_raw
+              WHERE note_hash IS NOT NULL AND note_hash != ''
+              GROUP BY note_hash
+              HAVING COUNT(*) > 1
+            )
+            DELETE FROM cm_notes_raw
+            WHERE id IN (
+              SELECT c.id
+              FROM cm_notes_raw c
+              JOIN d ON d.note_hash = c.note_hash
+              WHERE c.id != d.keep_id
+            );
+
+            -- Prevent future duplicates (partial unique index ignores NULL/blank)
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_cm_notes_raw_hash_unique
+            ON cm_notes_raw(note_hash)
+            WHERE note_hash IS NOT NULL AND note_hash != '';
+            """
+        )
+    except sqlite3.Error:
+        # Never block app startup on a migration cleanup
+        pass
+
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cm_notes_raw_ignored ON cm_notes_raw (ignored)"
+    )
+
+
     # -------------------------------------------------------------------
     # Hospital extraction profiles (per hospital + document type) ✅ NEW
     # -------------------------------------------------------------------
@@ -2752,6 +2817,75 @@ def init_db():
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_hosp_docs_hash ON hospital_documents (document_hash)"
     )
+
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_hosp_docs_hash ON hospital_documents (document_hash)"
+    )
+
+    # -------------------------------------------------------------------
+    # Enforce dedupe at the DB level for hospital_documents.document_hash
+    # - Re-points hospital_document_sections.document_id to kept doc id
+    # - Re-points hospital_discharges.dispo_source_doc_id to kept doc id
+    # - Deletes duplicate hospital_documents rows
+    # - Adds a UNIQUE partial index so duplicates cannot reappear
+    # -------------------------------------------------------------------
+    try:
+        cur.executescript(
+            """
+            -- Build drop->keep mapping for duplicate document hashes
+            WITH d AS (
+              SELECT document_hash, MIN(id) AS keep_id
+              FROM hospital_documents
+              WHERE document_hash IS NOT NULL AND document_hash != ''
+              GROUP BY document_hash
+              HAVING COUNT(*) > 1
+            ),
+            drops AS (
+              SELECT h.id AS drop_id, d.keep_id
+              FROM hospital_documents h
+              JOIN d ON d.document_hash = h.document_hash
+              WHERE h.id != d.keep_id
+            )
+            -- Re-point sections to kept document_id
+            UPDATE hospital_document_sections
+            SET document_id = (
+              SELECT keep_id FROM drops WHERE drops.drop_id = hospital_document_sections.document_id
+            )
+            WHERE document_id IN (SELECT drop_id FROM drops);
+
+            -- Re-point discharge hub dispo_source_doc_id to kept doc id
+            UPDATE hospital_discharges
+            SET dispo_source_doc_id = (
+              SELECT keep_id FROM drops WHERE drops.drop_id = hospital_discharges.dispo_source_doc_id
+            )
+            WHERE dispo_source_doc_id IN (SELECT drop_id FROM drops);
+
+            -- Delete duplicate hospital_documents rows
+            WITH d AS (
+              SELECT document_hash, MIN(id) AS keep_id
+              FROM hospital_documents
+              WHERE document_hash IS NOT NULL AND document_hash != ''
+              GROUP BY document_hash
+              HAVING COUNT(*) > 1
+            )
+            DELETE FROM hospital_documents
+            WHERE id IN (
+              SELECT h.id
+              FROM hospital_documents h
+              JOIN d ON d.document_hash = h.document_hash
+              WHERE h.id != d.keep_id
+            );
+
+            -- Prevent future duplicates
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_hosp_docs_hash_unique
+            ON hospital_documents(document_hash)
+            WHERE document_hash IS NOT NULL AND document_hash != '';
+            """
+        )
+    except sqlite3.Error:
+        # Never block app startup on a migration cleanup
+        pass
+
 
     cur.execute(
         """
