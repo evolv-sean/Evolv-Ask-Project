@@ -413,6 +413,21 @@
       border-color: #fed7aa;
     }
 
+    /* New = no color */
+    .status-pill.new{
+      background: transparent;
+      color:#374151;
+      border:1px solid #e5e7eb;
+    }
+
+    /* Dispo + Agency = same muted yellow as Pending */
+    .status-pill.dispo,
+    .status-pill.agency{
+      background:#fffbeb;
+      color:#92400e;
+      border:1px solid #fbbf24;
+    }
+
     .status-pill.confirmed {
       background: #ecfdf3;
       color: #166534;
@@ -959,6 +974,9 @@
     }
 
     /* Status rows: do NOT tint rows (keep zebra only) */
+    tr.new,
+    tr.dispo,
+    tr.agency,
     tr.pending,
     tr.projected,
     tr.confirmed,
@@ -1150,6 +1168,9 @@
         <div class="flex-row">
           <label for="edit-status">Status</label>
           <select id="edit-status">
+            <option value="new">New</option>
+            <option value="dispo">Dispo</option>
+            <option value="agency">Agency</option>          
             <option value="pending">Pending</option>
             <option value="projected">Projected</option>
             <option value="confirmed">Confirmed</option>
@@ -1512,6 +1533,9 @@
               <div>
                 <label for="filter-status">Status</label>
                 <select id="filter-status">
+                  <option value="new">New</option>
+                  <option value="dispo">Dispo</option>
+                  <option value="agency">Agency</option>                
                   <option value="pending">Pending</option>
                   <option value="projected">Projected</option>
                   <option value="confirmed">Confirmed</option>
@@ -2275,7 +2299,7 @@
       try {
         // IMPORTANT: the backend save endpoint is /admin/snf/update
         // and it requires status + the normal edit fields too.
-        const statusVal = (document.getElementById("edit-status")?.value || adm.status || "pending");
+        const statusVal = (document.getElementById("edit-status")?.value || adm.status || "new");
         const dispositionVal = (document.getElementById("edit-disposition")?.value || adm.disposition || "");
         const dateVal = (document.getElementById("edit-date")?.value || adm.final_expected_transfer_date || (adm.ai_expected_transfer_date || "") || "");
 
@@ -2440,7 +2464,7 @@
 
       try {
         // backend endpoint requires base fields too (same pattern as saveNotif)
-        const statusVal = (document.getElementById("edit-status")?.value || adm.status || "pending");
+        const statusVal = (document.getElementById("edit-status")?.value || adm.status || "new");
         const dispositionVal = (document.getElementById("edit-disposition")?.value || adm.disposition || "");
         const dateVal = (document.getElementById("edit-date")?.value || adm.final_expected_transfer_date || (adm.ai_expected_transfer_date || "") || "");
 
@@ -3734,7 +3758,7 @@
       tbody.innerHTML = "";
       rows.forEach(r => {
         const tr = document.createElement("tr");
-        tr.className = (r.status || "pending") + (r.id === selectedId ? " selected" : "");
+        tr.className = (r.status || "new") + (r.id === selectedId ? " selected" : "");
         tr.onclick = () => selectRow(r.id);
         // Prefer the reviewer-confirmed / manual facility name if present,
         // then fall back to the facility from the DB, then AI (mapped to system facility name if possible).
@@ -3817,7 +3841,11 @@
           <td>${formatISOToMDY(r.effective_date)}</td>
           <td>${(r.ai_confidence != null ? r.ai_confidence.toFixed(2) : "")}</td>
           <td>
-            <span class="status-pill ${r.status || "pending"}">${r.status || "pending"}</span>
+            ${(() => {
+              const st = (r.status || "new");
+              const label = st.charAt(0).toUpperCase() + st.slice(1);
+              return `<span class="status-pill ${st}">${label}</span>`;
+            })()}
           </td>
           <td>${emailed}</td>
           <td>${formatISOToMDY(r.last_seen_active_date_et || r.last_seen_active_date)}</td>
@@ -3996,7 +4024,7 @@
           noteTextEl.appendChild(wrapper);
         });
 
-        document.getElementById("edit-status").value = adm.status || "pending";
+        document.getElementById("edit-status").value = adm.status || "new";
         document.getElementById("edit-disposition").value = adm.disposition || "";
         document.getElementById("edit-date").value = adm.final_expected_transfer_date || (adm.ai_expected_transfer_date || "");
         document.getElementById("edit-comments").value = adm.review_comments || "";
