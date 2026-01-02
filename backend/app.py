@@ -3086,6 +3086,30 @@ def init_db():
         """
     )
 
+    # Cache AI summaries (run on-demand from the SNF Admissions UI)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS snf_ai_summaries (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            snf_id           INTEGER NOT NULL,
+            visit_id         TEXT,
+            created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+            model            TEXT,
+            prompt_key       TEXT,
+            prompt_value     TEXT,
+            notes_count      INTEGER DEFAULT 0,
+            summary_json     TEXT NOT NULL,
+            FOREIGN KEY(snf_id) REFERENCES snf_admissions(id)
+        )
+        """
+    )
+
+    # Helpful index (fast lookups by snf_id)
+    try:
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_snf_ai_summaries_snf_id ON snf_ai_summaries(snf_id)")
+    except sqlite3.Error:
+        pass
+
 
     # -------------------------------------------------------------------
     # One-time normalization cleanup (NO "T" anywhere)
@@ -10777,6 +10801,222 @@ async def admin_snf_highlight_keywords_set(
         cur = conn.cursor()
         set_setting(conn, cur, SNF_HIGHLIGHT_KEYWORDS_KEY, keywords)
         return {"ok": True}
+    finally:
+        conn.close()
+
+SNF_AI_SUMMARY_PROMPT_KEY = "snf_ai_summary_prompt"
+
+DEFAULT_SNF_AI_SUMMARY_PROMPT = """
+You are helping a transitional care team reviewing Case Management notes.
+
+Return ONLY valid JSON with these keys:
+- summary: string (4-8 bullets max, focused on the latest update)
+- placement_signal: one of ["SNF", "Home", "Home Health", "Hospice", "ALF/ILF", "LTACH", "IRF", "Unknown", "Mixed/Undecided"]
+- confidence: number from 0 to 1
+- reasons: array of strings (why this signal; cite phrases from notes when possible)
+- competing_plan: string (if any alternative placement is discussed; else "")
+- agency_names: array of strings (agency/company names mentioned, like "Amedisys", "Enhabit", etc.)
+- snf_facilities_mentioned: array of strings (facility names mentioned)
+- next_steps: array of strings (what CM is waiting on / barriers / pending items)
+
+Important:
+- Focus on SNF vs other placement, agency indecision, and agency names.
+- Use ONLY the provided note text. Do not invent facts.
+""".strip()
+
+
+def _load_recent_cm_notes_for_visit(cur: sqlite3.Cursor, visit_id: str, limit: int = 4) -> List[Dict[str, Any]]:
+    cur.execute(
+        """
+        SELECT id, note_datetime, note_type, note_text
+        FROM cm_notes_raw
+        WHERE visit_id = ?
+          AND (ignored IS NULL OR ignored = 0)
+        ORDER BY note_datetime DESC, id DESC
+        LIMIT ?
+        """,
+        (visit_id, limit),
+    )
+    rows = cur.fetchall() or []
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        out.append(
+            {
+                "id": r["id"],
+                "note_datetime": r["note_datetime"],
+                "note_type": r["note_type"],
+                "note_text": r["note_text"] or "",
+            }
+        )
+    return out
+
+
+def _run_snf_ai_summary(model: str, prompt: str, notes: List[Dict[str, Any]]) -> Dict[str, Any]:
+    # Build compact input: last 3-4 notes, newest first
+    notes_block_lines: List[str] = []
+    for n in notes:
+        notes_block_lines.append(
+            f"[{n.get('note_datetime')}] ({n.get('note_type')})\n{(n.get('note_text') or '').strip()}"
+        )
+    notes_block = "\n\n---\n\n".join(notes_block_lines).strip()
+
+    system_msg = "You are a careful clinical operations assistant. Return only JSON, no prose."
+    user_msg = (
+        prompt.strip()
+        + "\n\nNOTES (newest first):\n"
+        + notes_block
+        + "\n\nReturn ONLY JSON."
+    )
+
+    chat = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": user_msg},
+        ],
+    )
+
+    raw = (chat.choices[0].message.content or "").strip()
+
+    # Strip ``` fences if the model adds them
+    if raw.startswith("```"):
+        raw = raw.strip("`").strip()
+        # if it included "json" header line, drop it
+        raw_lines = [ln for ln in raw.splitlines() if ln.strip()]
+        if raw_lines and raw_lines[0].lower().startswith("json"):
+            raw = "\n".join(raw_lines[1:]).strip()
+
+    try:
+        return json.loads(raw)
+    except Exception:
+        # fallback: wrap raw into a minimal structure
+        return {
+            "summary": raw[:4000],
+            "placement_signal": "Unknown",
+            "confidence": 0.0,
+            "reasons": [],
+            "competing_plan": "",
+            "agency_names": [],
+            "snf_facilities_mentioned": [],
+            "next_steps": [],
+            "_parse_error": True,
+        }
+
+
+@app.get("/admin/snf/ai-summary/prompt/get")
+async def admin_snf_ai_summary_prompt_get(request: Request):
+    require_admin(request)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        val = get_setting(cur, SNF_AI_SUMMARY_PROMPT_KEY) or ""
+        if not val.strip():
+            val = DEFAULT_SNF_AI_SUMMARY_PROMPT
+        return {"ok": True, "prompt": val}
+    finally:
+        conn.close()
+
+
+@app.post("/admin/snf/ai-summary/prompt/set")
+async def admin_snf_ai_summary_prompt_set(request: Request, payload: Dict[str, Any] = Body(...)):
+    require_admin(request)
+    prompt = (payload.get("prompt") or "").strip()
+    if len(prompt) > 12000:
+        raise HTTPException(status_code=400, detail="prompt too long")
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        set_setting(conn, cur, SNF_AI_SUMMARY_PROMPT_KEY, prompt)
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+@app.post("/admin/snf/ai-summary/run")
+async def admin_snf_ai_summary_run(request: Request, payload: Dict[str, Any] = Body(...)):
+    require_admin(request)
+
+    snf_id = payload.get("snf_id")
+    force = bool(payload.get("force") or False)
+    notes_limit = int(payload.get("notes_limit") or 4)
+
+    if not snf_id:
+        raise HTTPException(status_code=400, detail="missing snf_id")
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Load admission (need visit_id)
+        cur.execute("SELECT id, visit_id FROM snf_admissions WHERE id = ?", (snf_id,))
+        adm = cur.fetchone()
+        if not adm:
+            raise HTTPException(status_code=404, detail="snf admission not found")
+
+        visit_id = (adm["visit_id"] or "").strip()
+        if not visit_id:
+            raise HTTPException(status_code=400, detail="this admission has no visit_id; cannot summarize notes")
+
+        # If not forcing, return latest cached
+        if not force:
+            cur.execute(
+                """
+                SELECT id, created_at, model, summary_json
+                FROM snf_ai_summaries
+                WHERE snf_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (snf_id,),
+            )
+            row = cur.fetchone()
+            if row:
+                try:
+                    return {
+                        "ok": True,
+                        "cached": True,
+                        "created_at": row["created_at"],
+                        "model": row["model"],
+                        "summary": json.loads(row["summary_json"]),
+                    }
+                except Exception:
+                    pass
+
+        # Load prompt + last N notes
+        prompt_val = get_setting(cur, SNF_AI_SUMMARY_PROMPT_KEY) or DEFAULT_SNF_AI_SUMMARY_PROMPT
+        notes = _load_recent_cm_notes_for_visit(cur, visit_id, limit=notes_limit)
+
+        if not notes:
+            return {"ok": True, "cached": False, "summary": {"summary": "No recent CM notes found.", "placement_signal": "Unknown"}}
+
+        model = "gpt-4.1-mini"
+        summary_obj = _run_snf_ai_summary(model=model, prompt=prompt_val, notes=notes)
+
+        # Store cache
+        cur.execute(
+            """
+            INSERT INTO snf_ai_summaries(snf_id, visit_id, model, prompt_key, prompt_value, notes_count, summary_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                snf_id,
+                visit_id,
+                model,
+                SNF_AI_SUMMARY_PROMPT_KEY,
+                prompt_val,
+                len(notes),
+                json.dumps(summary_obj),
+            ),
+        )
+        conn.commit()
+
+        return {
+            "ok": True,
+            "cached": False,
+            "created_at": dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            "model": model,
+            "summary": summary_obj,
+        }
     finally:
         conn.close()
 
