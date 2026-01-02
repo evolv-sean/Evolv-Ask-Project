@@ -4007,6 +4007,9 @@ async def pad_hospital_documents_bulk(request: Request):
                 continue
 
             # Optional fields supported by your existing ingest endpoint
+            admit_date_raw = (str(row.get("admit_date") or "").strip() or None)
+            dc_date_raw = (str(row.get("dc_date") or "").strip() or None)
+            
             doc_payload = {
                 "hospital_name": hospital_name,
                 "document_type": document_type,
@@ -4036,6 +4039,8 @@ async def pad_hospital_documents_bulk(request: Request):
 
             # Dedup (hash + skip)
             doc_hash = compute_hospital_document_hash(
+                hospital_name=doc_payload["hospital_name"],
+                document_type=doc_payload["document_type"],
                 visit_id=doc_payload["visit_id"],
                 document_datetime=doc_payload["document_datetime"],
                 source_text=doc_payload["source_text"],
