@@ -9272,14 +9272,20 @@ async def admin_snf_run_extraction(
 
 # ===================== NEW: recompute SNF AI for one admission =====================
 
-def snf_recompute_for_admission(visit_id: str = "") -> Dict[str, Any]:
+def snf_recompute_for_admission(visit_id: str = "", patient_mrn: str = "", return_details: bool = False) -> Dict[str, Any]:
     """
     Recompute SNF AI for exactly one admission group (visit_id required).
     Uses ONLY non-ignored notes.
+
+    If return_details=True, include the underlying LLM result dict (rationale, confidence, etc.)
+    so the AI Summary modal can display the SAME outputs that drive the SNF Admissions page.
     """
     visit_id = (visit_id or "").strip()
+    patient_mrn = (patient_mrn or "").strip()
+
     if not visit_id:
         return {"ok": False, "message": "visit_id is required"}
+
 
     conn = get_db()
     try:
@@ -9321,7 +9327,7 @@ def snf_recompute_for_admission(visit_id: str = "") -> Dict[str, Any]:
         latest_note = sorted(notes, key=lambda r: (r["note_datetime"] or "", r["id"]))[-1]
         visit_id_eff = (latest_note["visit_id"] or "").strip() if "visit_id" in latest_note.keys() else ""
         visit_id_db = visit_id_eff or (visit_id or None)
-        mrn_eff = (latest_note["patient_mrn"] or "").strip()
+        mrn_eff = ((latest_note["patient_mrn"] or "").strip()) or patient_mrn
 
         # You said you don't rely on MRN at all:
         # - keep the column populated (DB constraint) but do not use it as an identifier
@@ -9450,7 +9456,13 @@ def snf_recompute_for_admission(visit_id: str = "") -> Dict[str, Any]:
                     (latest_note["id"], note_datetime, mrn_eff),
                 )
             conn.commit()
-            return {"ok": True, "message": "Recomputed: not a SNF candidate."}
+            out = {"ok": True, "message": "Recomputed: not a SNF candidate."}
+            if return_details:
+                out["llm_result"] = result
+                out["notes_used"] = len(notes)
+                out["visit_id"] = visit_id_db or visit_id
+                out["patient_mrn"] = mrn_eff
+            return out
 
         snf_name_raw = result.get("snf_name")
         expected_date = result.get("expected_transfer_date")
@@ -9566,7 +9578,17 @@ def snf_recompute_for_admission(visit_id: str = "") -> Dict[str, Any]:
 
 
         conn.commit()
-        return {"ok": True, "message": "Recomputed: SNF candidate updated."}
+        out = {"ok": True, "message": "Recomputed: SNF candidate updated."}
+        if return_details:
+            out["llm_result"] = result
+            out["notes_used"] = len(notes)
+            out["visit_id"] = visit_id_db or visit_id
+            out["patient_mrn"] = mrn_eff
+            out["ai_snf_name_raw"] = snf_name_raw
+            out["ai_expected_transfer_date"] = expected_date
+            out["ai_confidence"] = conf
+            out["ai_snf_facility_id"] = ai_facility_id
+        return out
 
     finally:
         conn.close()
@@ -11040,17 +11062,54 @@ async def admin_snf_ai_summary_run(request: Request, payload: Dict[str, Any] = B
                 except Exception:
                     pass
 
-        # Load prompt + last N notes
-        prompt_val = get_setting(cur, SNF_AI_SUMMARY_PROMPT_KEY) or DEFAULT_SNF_AI_SUMMARY_PROMPT
+        # Load recent notes count (for UI + caching metadata)
         notes = _load_recent_cm_notes_for_visit(cur, visit_id, limit=notes_limit)
 
         if not notes:
-            return {"ok": True, "cached": False, "summary": {"summary": "No recent CM notes found.", "placement_signal": "Unknown"}}
+            summary_obj = {
+                "summary": "No recent CM notes found.",
+                "placement_signal": "Unknown",
+                "confidence": 0.0,
+                "reasons": [],
+                "competing_plan": "",
+                "agency_names": [],
+                "snf_facilities_mentioned": [],
+                "next_steps": [],
+            }
+            return {
+                "ok": True,
+                "cached": False,
+                "created_at": dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                "model": "n/a",
+                "summary": summary_obj,
+            }
+
+        # IMPORTANT: reuse the SAME recompute that drives the SNF Admissions page
+        re = snf_recompute_for_admission(visit_id=visit_id, patient_mrn=(payload.get("patient_mrn") or ""), return_details=True)
+        llm = (re or {}).get("llm_result") or {}
+
+        is_snf = bool(llm.get("is_snf_candidate", False))
+        snf_name = (llm.get("snf_name") or "").strip()
+        conf = float(llm.get("confidence") or 0.0)
+        rationale = (llm.get("rationale") or "").strip()
+
+        summary_obj = {
+            "summary": rationale or ("SNF candidate." if is_snf else "Not a SNF candidate."),
+            "placement_signal": "SNF" if is_snf else "Not SNF",
+            "confidence": conf,
+            # Reasons/Evidence comes directly from the MAIN prompt output (rationale)
+            "reasons": [rationale] if rationale else [],
+            "competing_plan": "",
+            # “Agency names” should align with the Facility(AI) logic — for SNF, show the SNF name
+            "agency_names": [snf_name] if snf_name else [],
+            "snf_facilities_mentioned": [snf_name] if snf_name else [],
+            "next_steps": [],
+        }
 
         model = "gpt-4.1-mini"
-        summary_obj = _run_snf_ai_summary(model=model, prompt=prompt_val, notes=notes)
 
-        # Store cache
+        # Store cache under the MAIN prompt key (no separate modal prompt)
+        prompt_val = get_setting(cur, SNF_MAIN_SYSTEM_PROMPT_KEY) or DEFAULT_SNF_MAIN_SYSTEM_PROMPT
         cur.execute(
             """
             INSERT INTO snf_ai_summaries(snf_id, visit_id, model, prompt_key, prompt_value, notes_count, summary_json)
@@ -11060,7 +11119,7 @@ async def admin_snf_ai_summary_run(request: Request, payload: Dict[str, Any] = B
                 snf_id,
                 visit_id,
                 model,
-                SNF_AI_SUMMARY_PROMPT_KEY,
+                SNF_MAIN_SYSTEM_PROMPT_KEY,
                 prompt_val,
                 len(notes),
                 json.dumps(summary_obj),
