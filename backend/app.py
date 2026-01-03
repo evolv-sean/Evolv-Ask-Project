@@ -7508,15 +7508,14 @@ def analyze_patient_notes_with_llm(
 
     notes_block = "\n\n".join(note_chunks)
 
-    system_msg = (
-        "You are a discharge planning assistant reading hospital case management notes.\n"
-        "Your job is to decide if the patient is being discharged or is likely to be discharged to a skilled nursing facility (SNF), "
-        "and, if so, which facility and on what date.\n"
-        "Treat terms like 'SNF', 'skilled nursing', 'skilled nursing facility', 'nursing home', 'inpatient SNF', "
-        "'inpatient nursing', or generic 'rehab' when it clearly refers to a post-acute nursing facility as SNF-level care.\n"
-        "If SNF is being actively considered, planned, or pending (choice letters, referrals, waiting on insurance), "
-        "you should still treat the patient as an SNF candidate, but you can use a lower confidence.\n"
-    )
+    # Load editable system prompt (admin can tweak via /admin/snf/prompts)
+    conn = get_db()
+    try:
+        cur2 = conn.cursor()
+        system_msg = get_setting(cur2, SNF_MAIN_SYSTEM_PROMPT_KEY) or DEFAULT_SNF_MAIN_SYSTEM_PROMPT
+    finally:
+        conn.close()
+
 
     user_msg = (
         f"Visit ID: {visit_id}\n\n"
@@ -7705,47 +7704,13 @@ def analyze_discharge_disposition_with_llm(source_text: str) -> Optional[Dict[st
     if len(text) > 12000:
         text = text[:12000]
 
-    system_msg = (
-        "You extract discharge disposition and discharge agency from messy hospital document text.\n"
-        "Return ONLY a JSON object.\n"
-        "\n"
-        "1) Disposition:\n"
-        "Pick exactly ONE disposition from this list:\n"
-        "- Home Self-care\n"
-        "- Home Health\n"
-        "- SNF\n"
-        "- IRF\n"
-        "- Rehab\n"
-        "- LTACH\n"
-        "- Hospice\n"
-        "- AMA\n"
-        "- Expired\n"
-        "- Other\n"
-        "- Unknown\n"
-        "\n"
-        "2) dc_agency:\n"
-        "- If disposition is SNF/IRF/Rehab/LTACH/Hospice, try to extract the destination facility name.\n"
-        "- If disposition is Home Health, try to extract the home health agency name.\n"
-        "- If the text contains multiple candidates, choose the one that is clearly tied to discharge planning.\n"
-        "- If no agency/facility name is clearly present, set dc_agency to null.\n"
-        "- Do NOT guess.\n"
-        "\n"
-        "Rules:\n"
-        "- Prefer explicit discharge disposition / discharge destination lines if present.\n"
-        "- If it says 'home with home health' => Home Health.\n"
-        "- 'home' or 'home/self care' with no services => Home Self-care.\n"
-        "- 'SNF', 'skilled nursing facility', 'inpatient SNF' => SNF.\n"
-        "- 'IRF', 'inpatient rehab', 'acute rehab' => IRF.\n"
-        "- If only 'rehab' with no IRF language => Rehab.\n"
-        "- If unclear, use Unknown.\n"
-        "- Include a short evidence quote (<= 140 chars) copied from the text.\n"
-        "\n"
-        "Output schema:\n"
-        "  {\"disposition\":\".\",\"dc_agency\":null,\"confidence\":0.0,\"evidence\":\".\"}\n"
-        "Notes:\n"
-        "- dc_agency must be either a string or null.\n"
-        "- confidence is 0.0-1.0.\n"
-    )
+    # Load editable system prompt (admin can tweak via /admin/snf/prompts)
+    conn = get_db()
+    try:
+        cur2 = conn.cursor()
+        system_msg = get_setting(cur2, DISPO_AGENCY_SYSTEM_PROMPT_KEY) or DEFAULT_DISPO_AGENCY_SYSTEM_PROMPT
+    finally:
+        conn.close()
 
     user_msg = f"Source text:\n{text}\n\nExtract discharge disposition and dc_agency."
 
@@ -10772,6 +10737,99 @@ def set_setting(conn: sqlite3.Connection, cur: sqlite3.Cursor, key: str, value: 
         (key, value or ""),
     )
     conn.commit()
+
+SNF_MAIN_SYSTEM_PROMPT_KEY = "snf_main_system_prompt"
+DISPO_AGENCY_SYSTEM_PROMPT_KEY = "dispo_agency_system_prompt"
+
+DEFAULT_SNF_MAIN_SYSTEM_PROMPT = (
+    "You are a discharge planning assistant reading hospital case management notes.\n"
+    "Your job is to decide if the patient is being discharged or is likely to be discharged to a skilled nursing facility (SNF), "
+    "and, if so, which facility and on what date.\n"
+    "Treat terms like 'SNF', 'skilled nursing', 'skilled nursing facility', 'nursing home', 'inpatient SNF', "
+    "'inpatient nursing', or generic 'rehab' when it clearly refers to a post-acute nursing facility as SNF-level care.\n"
+    "If SNF is being actively considered, planned, or pending (choice letters, referrals, waiting on insurance), "
+    "you should still treat the patient as an SNF candidate, but you can use a lower confidence.\n"
+).strip()
+
+DEFAULT_DISPO_AGENCY_SYSTEM_PROMPT = (
+    "You extract discharge disposition and discharge agency from messy hospital document text.\n"
+    "Return ONLY a JSON object.\n"
+    "\n"
+    "1) Disposition:\n"
+    "Pick exactly ONE disposition from this list:\n"
+    "- Home Self-care\n"
+    "- Home Health\n"
+    "- SNF\n"
+    "- IRF\n"
+    "- Rehab\n"
+    "- LTACH\n"
+    "- Hospice\n"
+    "- AMA\n"
+    "- Expired\n"
+    "- Other\n"
+    "- Unknown\n"
+    "\n"
+    "2) dc_agency:\n"
+    "- If disposition is SNF/IRF/Rehab/LTACH/Hospice, try to extract the destination facility name.\n"
+    "- If disposition is Home Health, try to extract the home health agency name.\n"
+    "- If the text contains multiple candidates, choose the one that is clearly tied to discharge planning.\n"
+    "- If no agency/facility name is clearly present, set dc_agency to null.\n"
+    "- Do NOT guess.\n"
+    "\n"
+    "Rules:\n"
+    "- Prefer explicit discharge disposition / discharge destination lines if present.\n"
+    "- If it says 'home with home health' => Home Health.\n"
+    "- 'home' or 'home/self care' with no services => Home Self-care.\n"
+    "- 'SNF', 'skilled nursing facility', 'inpatient SNF' => SNF.\n"
+    "- 'IRF', 'inpatient rehab', 'acute rehab' => IRF.\n"
+    "- If only 'rehab' with no IRF language => Rehab.\n"
+    "- If unclear, use Unknown.\n"
+    "- Include a short evidence quote (<= 140 chars) copied from the text.\n"
+    "\n"
+    "Output schema:\n"
+    "  {\"disposition\":\".\",\"dc_agency\":null,\"confidence\":0.0,\"evidence\":\".\"}\n"
+    "Notes:\n"
+    "- dc_agency must be either a string or null.\n"
+    "- confidence is 0.0-1.0.\n"
+).strip()
+
+
+@app.get("/admin/snf/prompts/get")
+async def admin_snf_prompts_get(request: Request):
+    require_admin(request)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        snf_main = get_setting(cur, SNF_MAIN_SYSTEM_PROMPT_KEY) or DEFAULT_SNF_MAIN_SYSTEM_PROMPT
+        dispo = get_setting(cur, DISPO_AGENCY_SYSTEM_PROMPT_KEY) or DEFAULT_DISPO_AGENCY_SYSTEM_PROMPT
+        return {
+            "ok": True,
+            "snf_main_system_prompt": snf_main,
+            "dispo_agency_system_prompt": dispo,
+        }
+    finally:
+        conn.close()
+
+
+@app.post("/admin/snf/prompts/set")
+async def admin_snf_prompts_set(request: Request, payload: Dict[str, Any] = Body(...)):
+    require_admin(request)
+    snf_main = (payload.get("snf_main_system_prompt") or "").strip()
+    dispo = (payload.get("dispo_agency_system_prompt") or "").strip()
+
+    if len(snf_main) > 12000 or len(dispo) > 12000:
+        raise HTTPException(status_code=400, detail="prompt too long")
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        if snf_main:
+            set_setting(conn, cur, SNF_MAIN_SYSTEM_PROMPT_KEY, snf_main)
+        if dispo:
+            set_setting(conn, cur, DISPO_AGENCY_SYSTEM_PROMPT_KEY, dispo)
+        return {"ok": True}
+    finally:
+        conn.close()
 
 @app.get("/admin/snf/highlight-keywords/get")
 async def admin_snf_highlight_keywords_get(request: Request):
