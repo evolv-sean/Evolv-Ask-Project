@@ -1142,6 +1142,20 @@
         <h2>Case Management Note</h2>
 
         <div class="note-tools">
+          <button
+            type="button"
+            class="icon-btn"
+            id="reviewed-btn"
+            title="Reviewed up to latest note"
+            onclick="markReviewedUpToLatest()">
+
+            <!-- check-circle icon -->
+            <svg class="usercheck" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
+              <path d="M8 12.5l2.5 2.5L16 9" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
           <button type="button" class="icon-btn" id="notif-btn" title="Notification details" onclick="openNotifModal()">
             <!-- bell icon (SVG) -->
             <svg class="bell" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -2004,6 +2018,20 @@
         setTimeout(() => { if (status) status.textContent = ""; }, 2000);
       } catch (e) {
         if (status) status.textContent = "Save failed: " + (e?.message || e);
+      }
+    }
+
+    async function markReviewedUpToLatest(){
+      if(!selectedSnfId) return;
+
+      const res = await fetch(`/api/snf/${selectedSnfId}/mark-reviewed`, {
+        method: "POST"
+      });
+      const data = await res.json();
+
+      if(data.ok){
+        document.getElementById("reviewed-btn").classList.add("on");
+        loadAdmissions(); // refresh row indicators
       }
     }
 
@@ -4142,7 +4170,14 @@
             })()}
           </td>
           <td>${emailed}</td>
-          <td>${formatISOToMDY(r.last_seen_active_date_et || r.last_seen_active_date)}</td>
+          <td>
+            ${
+              (r.has_new_note_since_review)
+                ? `<span class="assign-dot mint-accent" title="New note since last review"></span>`
+                : ""
+            }
+            ${formatISOToMDY(r.last_seen_active_date_et || r.last_seen_active_date)}
+          </td>
         `;
         tbody.appendChild(tr);
       });
@@ -4150,6 +4185,19 @@
 
     async function selectRow(id) {
       selectedId = id;
+      
+    // NEW: sync "Reviewed" check button state based on selected row
+      try {
+        const r = (admissions || []).find(x => String(x.id) === String(id));
+        const btn = document.getElementById("reviewed-btn");
+        if (btn && r) {
+          if (r.reviewed_up_to_latest) btn.classList.add("on");
+          else btn.classList.remove("on");
+        }
+      } catch (e) {
+        // non-fatal
+      }      
+      
       const token = getAdminToken();
       if (!token) {
         alert("Please paste your ADMIN_TOKEN first.");
