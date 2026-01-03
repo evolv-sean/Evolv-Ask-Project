@@ -1801,15 +1801,27 @@
         <div class="card" style="margin-top:12px;">
           <div class="sec-hd">
             <div>
-              <div style="font-weight:700;">Prompt instructions (stored)</div>
-              <div class="hint">You can tune what the AI focuses on (SNF vs other placement, agencies, etc.).</div>
+              <div style="font-weight:700;">SNF / Agency prompts (drives SNF Admissions decisions)</div>
+              <div class="hint">Edits here affect the main SNF candidate + disposition/agency extraction logic on this page.</div>
             </div>
           </div>
+
           <div class="body" style="padding:12px;">
-            <textarea id="ai-sum-prompt" rows="8" style="width:100%;"></textarea>
+            <div class="grid2" style="margin-top:0;">
+              <div>
+                <label>SNF Admissions Decision Prompt (system)</label>
+                <textarea id="prompt-snf-main" rows="8" style="width:100%;"></textarea>
+              </div>
+
+              <div>
+                <label>Disposition / Agency Prompt (system)</label>
+                <textarea id="prompt-dispo-agency" rows="8" style="width:100%;"></textarea>
+              </div>
+            </div>
+
             <div style="display:flex; gap:10px; margin-top:10px;">
-              <button class="btn-lite" onclick="reloadAiSummaryPrompt()">Reload</button>
-              <button class="btn-primary" onclick="saveAiSummaryPrompt()">Save prompt</button>
+              <button class="btn-lite" onclick="reloadMainPrompts()">Reload</button>
+              <button class="btn-primary" onclick="saveMainPrompts()">Save prompts</button>
             </div>
           </div>
         </div>
@@ -2096,9 +2108,7 @@
       }
 
       modal.classList.add("open");
-      reloadAiSummaryPrompt();
-
-      // Optional: auto-run immediately so it “processes at click time”
+      reloadMainPrompts();
       runAiSummary();
     }
 
@@ -2121,50 +2131,59 @@
       el.className = "modal-msg " + (type || "info");
     }
 
-    async function reloadAiSummaryPrompt() {
+    async function reloadMainPrompts() {
       const token = getAdminToken();
       if (!token) return;
 
       try {
-        const resp = await fetch("/admin/snf/ai-summary/prompt/get", {
+        const resp = await fetch("/admin/snf/prompts/get", {
           headers: { "X-Admin-Token": token }
         });
         if (!resp.ok) throw new Error("HTTP " + resp.status);
         const data = await resp.json();
         if (!data.ok) throw new Error(data.detail || "ok=false");
 
-        const ta = document.getElementById("ai-sum-prompt");
-        if (ta) ta.value = data.prompt || "";
+        const a = document.getElementById("prompt-snf-main");
+        const b = document.getElementById("prompt-dispo-agency");
+        if (a) a.value = data.snf_main_system_prompt || "";
+        if (b) b.value = data.dispo_agency_system_prompt || "";
       } catch (e) {
-        console.warn("reloadAiSummaryPrompt failed:", e);
+        console.warn("reloadMainPrompts failed:", e);
       }
     }
 
-    async function saveAiSummaryPrompt() {
+    async function saveMainPrompts() {
       const token = getAdminToken();
       if (!token) {
         showToast("Please paste your ADMIN_TOKEN first.", "error");
         return;
       }
 
-      const ta = document.getElementById("ai-sum-prompt");
-      const prompt = (ta && ta.value) ? ta.value : "";
+      const a = document.getElementById("prompt-snf-main");
+      const b = document.getElementById("prompt-dispo-agency");
+
+      const snf_main_system_prompt = (a && a.value) ? a.value : "";
+      const dispo_agency_system_prompt = (b && b.value) ? b.value : "";
 
       try {
-        const resp = await fetch("/admin/snf/ai-summary/prompt/set", {
+        const resp = await fetch("/admin/snf/prompts/set", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "X-Admin-Token": token
           },
-          body: JSON.stringify({ prompt })
+          body: JSON.stringify({
+            snf_main_system_prompt,
+            dispo_agency_system_prompt
+          })
         });
+
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok || !data.ok) throw new Error(data.detail || ("HTTP " + resp.status));
-        showToast("AI prompt saved.", "success");
+        showToast("Main prompts saved.", "success");
       } catch (e) {
-        console.error("saveAiSummaryPrompt failed:", e);
-        showToast("Error saving prompt: " + (e?.message || e), "error");
+        console.error("saveMainPrompts failed:", e);
+        showToast("Error saving prompts: " + (e?.message || e), "error");
       }
     }
 
@@ -4720,4 +4739,3 @@
   
 </body>
 </html>
-
