@@ -3508,6 +3508,9 @@ def init_db():
     # NEW: facility phone
     ensure_column(conn, "snf_admission_facilities", "facility_phone", "facility_phone TEXT")
 
+    # NEW: Medrina SNF flag (0/1)
+    ensure_column(conn, "snf_admission_facilities", "medrina_snf", "medrina_snf INTEGER DEFAULT 0")
+
 
     # Secure expiring links table (store only token HASH, never the raw token)
     cur.execute(
@@ -11337,7 +11340,7 @@ async def admin_snf_facilities_list(request: Request):
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT id, facility_name, facility_phone, attending, notes, notes2, aliases, facility_emails, pin_hash
+            SELECT id, facility_name, facility_phone, attending, medrina_snf, notes, notes2, aliases, facility_emails, pin_hash
             FROM snf_admission_facilities
             ORDER BY facility_name COLLATE NOCASE
             """
@@ -11369,6 +11372,10 @@ async def admin_snf_facilities_upsert(
     fac_id = payload.get("id")
     facility_phone = (payload.get("facility_phone") or "").strip()
     attending = (payload.get("attending") or "").strip()
+
+    # NEW: Medrina SNF flag
+    medrina_snf = 1 if bool(payload.get("medrina_snf")) else 0
+
     notes = (payload.get("notes") or "").strip()
     notes2 = (payload.get("notes2") or "").strip()
     aliases = (payload.get("aliases") or "").strip()
@@ -11402,13 +11409,14 @@ async def admin_snf_facilities_upsert(
                        SET facility_name   = ?,
                            facility_phone  = ?,
                            attending       = ?,
+                           medrina_snf     = ?,
                            notes           = ?,
                            notes2          = ?,
                            aliases         = ?,
                            facility_emails = ?
                      WHERE id = ?
                     """,
-                    (name, facility_phone, attending, notes, notes2, aliases, facility_emails, fac_id)
+                    (name, facility_phone, attending, medrina_snf, notes, notes2, aliases, facility_emails, fac_id)
                 )
             else:
                 cur.execute(
@@ -11417,6 +11425,7 @@ async def admin_snf_facilities_upsert(
                        SET facility_name   = ?,
                            facility_phone  = ?,
                            attending       = ?,
+                           medrina_snf     = ?,
                            notes           = ?,
                            notes2          = ?,
                            aliases         = ?,
@@ -11424,7 +11433,7 @@ async def admin_snf_facilities_upsert(
                            pin_hash        = ?
                      WHERE id = ?
                     """,
-                    (name, facility_phone, attending, notes, notes2, aliases, facility_emails, new_pin_hash, fac_id)
+                    (name, facility_phone, attending, medrina_snf, notes, notes2, aliases, facility_emails, new_pin_hash, fac_id)
                 )
 
             if cur.rowcount == 0:
@@ -11440,10 +11449,10 @@ async def admin_snf_facilities_upsert(
             cur.execute(
                 """
                 INSERT INTO snf_admission_facilities
-                  (facility_name, facility_phone, attending, notes, notes2, aliases, facility_emails, pin_hash)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                  (facility_name, facility_phone, attending, medrina_snf, notes, notes2, aliases, facility_emails, pin_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (name, facility_phone, attending, notes, notes2, aliases, facility_emails, new_pin_hash)
+                (name, facility_phone, attending, medrina_snf, notes, notes2, aliases, facility_emails, new_pin_hash)
             )
             new_id = cur.lastrowid
 
