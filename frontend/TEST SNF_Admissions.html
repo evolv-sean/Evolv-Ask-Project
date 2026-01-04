@@ -209,7 +209,19 @@
       margin-top:6px;
       word-break:break-word;
     }
-    
+
+    .medrina-pill{
+      display:inline-flex;
+      align-items:center;
+      padding:2px 8px;
+      border-radius:999px;
+      border:1px solid #bbf7d0;
+      background:#f0fdf4;
+      color:#166534;
+      font-weight:700;
+      line-height:1.2;
+    }
+
     .admin-link:hover{
       background:rgba(255,255,255,0.12);
       border-color:rgba(168,230,207,0.55);
@@ -2626,6 +2638,23 @@
       }
     }
 
+    function onFacilityMedrinaChanged() {
+      const cb = document.getElementById("facility-medrina");
+      const btn = document.getElementById("facility-medrina-btn");
+      if (!cb || !btn) return;
+
+      const on = !!cb.checked;
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+
+    function toggleFacilityMedrina() {
+      const cb = document.getElementById("facility-medrina");
+      if (!cb) return;
+      cb.checked = !cb.checked;
+      onFacilityMedrinaChanged();
+    }
+
     async function saveNotif() {
       const status = document.getElementById("nm-status");
       if (status) status.textContent = "Saving…";
@@ -2920,22 +2949,22 @@
         if (filterSelect) {
           filterSelect.innerHTML = '<option value="">(All facilities)</option>';
 
-          // NEW: special filter option for starred facilities
+          // NEW: special filter option for Medrina SNFs
           const starredOpt = document.createElement("option");
           starredOpt.value = "__starred__";
-          starredOpt.textContent = "(All Starred ★)";
+          starredOpt.textContent = "(All Medrina SNF ★)";
           filterSelect.appendChild(starredOpt);
 
-          const withAttending = (snfFacilities || []).filter(f => (f.attending || "").trim());
-          const withoutAttending = (snfFacilities || []).filter(f => !(f.attending || "").trim());
+          const medrina = (snfFacilities || []).filter(f => !!f.medrina_snf);
+          const nonMedrina = (snfFacilities || []).filter(f => !f.medrina_snf);
 
-          // Put “attending” facilities first + star them
-          [...withAttending, ...withoutAttending].forEach(f => {
+          // Put Medrina SNFs first + star them
+          [...medrina, ...nonMedrina].forEach(f => {
             const opt = document.createElement("option");
             opt.value = String(f.id);
 
             const name = f.facility_name || "(no name)";
-            const star = (f.attending || "").trim() ? "★ " : "";
+            const star = f.medrina_snf ? "★ " : "";
             opt.textContent = star + name;
 
             filterSelect.appendChild(opt);
@@ -2949,7 +2978,9 @@
             const opt = document.createElement("option");
             opt.value = String(f.id);
 
-            let label = f.facility_name || "(no name)";
+            const name = f.facility_name || "(no name)";
+            const star = f.medrina_snf ? "★ " : "";
+            const label = star + name;
 
             settingsSelect.appendChild(opt);
             opt.textContent = label;
@@ -2962,8 +2993,11 @@
           snfFacilities.forEach(f => {
             const opt = document.createElement("option");
             opt.value = String(f.id);
-            let label = f.facility_name || "(no name)";
-            opt.textContent = label;   // 👈 add this line
+
+            const name = f.facility_name || "(no name)";
+            const star = f.medrina_snf ? "★ " : "";
+            opt.textContent = star + name;
+
             editSelect.appendChild(opt);
           });
         }
@@ -3048,7 +3082,9 @@
       // Reset fields
       setFacilityModalValues({
         facility_name: "",
+        facility_phone: "",
         attending: "",
+        medrina_snf: 0,
         notes: "",
         notes2: "",
         aliases: "",
@@ -3106,6 +3142,11 @@
       document.getElementById("facility-name").value = f.facility_name || "";
       document.getElementById("facility-phone").value = f.facility_phone || "";
       document.getElementById("facility-attending").value = f.attending || "";
+
+      // NEW: Medrina SNF toggle
+      const medCb = document.getElementById("facility-medrina");
+      if (medCb) medCb.checked = !!(f.medrina_snf);
+      onFacilityMedrinaChanged();
       document.getElementById("facility-notes").value = f.notes || "";
       document.getElementById("facility-notes2").value = f.notes2 || "";
       document.getElementById("facility-aliases").value = f.aliases || "";
@@ -3133,6 +3174,10 @@
         facility_name: name,
         facility_phone: (document.getElementById("facility-phone").value || "").trim(),
         attending: (document.getElementById("facility-attending").value || "").trim(),
+
+        // NEW: Medrina SNF flag
+        medrina_snf: !!document.getElementById("facility-medrina")?.checked,
+
         notes: (document.getElementById("facility-notes").value || "").trim(),
         notes2: (document.getElementById("facility-notes2").value || "").trim(),
         aliases: (document.getElementById("facility-aliases").value || "").trim(),
@@ -3897,6 +3942,17 @@
       return parts.join("\n");
     }
 
+    function getFacilityIsMedrinaForRow(r) {
+      // Same “what user is seeing” candidate logic:
+      const candidate =
+        String(r.final_snf_name_display || "").trim() ||
+        String(r.effective_facility_name || "").trim() ||
+        String(r.ai_snf_name_raw || "").trim();
+
+      const match = resolveAiToSystemFacility(candidate);
+      return !!(match && match.medrina_snf);
+    }
+
     // What to display specifically in the "Facility (AI)" column
     // - If AI matches a system facility (name or alias): show system name
     // - If NO match: show raw AI text + " *" so you can spot it instantly
@@ -3906,7 +3962,7 @@
 
       if (match && match.facility_name) return match.facility_name;
 
-      if (aiRaw) return aiRaw + " *";     // 👈 AI-only marker
+      if (aiRaw) return aiRaw;           // no star marker
       return "(unknown)";
     }
 
@@ -3937,12 +3993,12 @@
           (r.ai_snf_name_raw || "")
         );
 
-        // Starred filter
+        // Medrina SNF filter (formerly "Starred")
         if (facilityId === "__starred__") {
-          const starredFacilities = (snfFacilities || []).filter(f => (f.attending || "").trim());
-          if (!starredFacilities.length) return false;
+          const medrinaFacilities = (snfFacilities || []).filter(f => !!f.medrina_snf);
+          if (!medrinaFacilities.length) return false;
 
-          for (const f of starredFacilities) {
+          for (const f of medrinaFacilities) {
             const tokens = [];
             if (f.facility_name) tokens.push(f.facility_name);
             splitAliases(f.aliases).forEach(a => tokens.push(a));
@@ -4167,9 +4223,14 @@
               (() => {
                 const att = getFacilityAttendingsForRow(r);
                 if (att) {
+                  const med = getFacilityIsMedrinaForRow(r);
+                  const facHtml = med
+                    ? `<span class="medrina-pill">${escapeHtml(facLabel)}</span>`
+                    : `${escapeHtml(facLabel)}`;
+
                   return `
                     <div class="fac-hover" style="font-weight:600; line-height:1.15;">
-                      ${escapeHtml(facLabel)}
+                      ${facHtml}
                       <div class="fac-tip" role="tooltip">
                         <div class="fac-tip-title">Attendings</div>
                         <div class="fac-tip-body">${escapeHtml(att)}</div>
@@ -4178,7 +4239,12 @@
                   `;
                 }
                 // No attendings configured → just show the label normally (no tooltip)
-                return `<div style="font-weight:600; line-height:1.15;">${escapeHtml(facLabel)}</div>`;
+                const med = getFacilityIsMedrinaForRow(r);
+                const facHtml = med
+                  ? `<span class="medrina-pill">${escapeHtml(facLabel)}</span>`
+                  : `${escapeHtml(facLabel)}`;
+
+                return `<div style="font-weight:600; line-height:1.15;">${facHtml}</div>`;
               })()
             }
 
@@ -4634,6 +4700,18 @@
             <label>Attending(s)</label>
             <input id="facility-attending" type="text" placeholder="e.g., Pandey, Ravi MD" />
           </div>
+        </div>
+
+        <!-- NEW: Medrina SNF toggle -->
+        <div class="nm-toggle-row" style="margin-top:10px;">
+          <input id="facility-medrina" type="checkbox" onchange="onFacilityMedrinaChanged()" style="display:none;" />
+          <button id="facility-medrina-btn"
+                  type="button"
+                  class="toggle-pill"
+                  aria-pressed="false"
+                  onclick="toggleFacilityMedrina()">
+            Medrina SNF
+          </button>
         </div>
 
         <label>Aliases (comma separated)</label>
