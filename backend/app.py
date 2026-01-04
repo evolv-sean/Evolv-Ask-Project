@@ -4118,27 +4118,30 @@ async def pad_cm_notes_bulk(
 @app.post("/api/snf/{snf_id}/mark-reviewed")
 def mark_snf_reviewed(snf_id: int):
     conn = get_db()
-    cur = conn.cursor()
+    try:
+        cur = conn.cursor()
 
-    # Find latest note tied to this SNF admission
-    cur.execute("""
-        SELECT MAX(c.id)
-        FROM cm_notes_raw c
-        JOIN snf_admissions s ON s.raw_note_id = c.id
-        WHERE s.id = ?
-    """, (snf_id,))
-    row = cur.fetchone()
-    latest_note_id = row[0] if row else None
-
-    if latest_note_id:
+        # Find latest note tied to this SNF admission
         cur.execute("""
-            UPDATE snf_admissions
-            SET last_reviewed_note_id = ?
-            WHERE id = ?
-        """, (latest_note_id, snf_id))
-        conn.commit()
+            SELECT MAX(c.id)
+            FROM cm_notes_raw c
+            JOIN snf_admissions s ON s.raw_note_id = c.id
+            WHERE s.id = ?
+        """, (snf_id,))
+        row = cur.fetchone()
+        latest_note_id = row[0] if row else None
 
-    return {"ok": True, "last_reviewed_note_id": latest_note_id}
+        if latest_note_id:
+            cur.execute("""
+                UPDATE snf_admissions
+                SET last_reviewed_note_id = ?
+                WHERE id = ?
+            """, (latest_note_id, snf_id))
+            conn.commit()
+
+        return {"ok": True, "last_reviewed_note_id": latest_note_id}
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
