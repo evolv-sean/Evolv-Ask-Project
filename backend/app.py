@@ -4240,22 +4240,53 @@ def mark_snf_reviewed(snf_id: int):
     try:
         cur = conn.cursor()
 
-        # Find latest note tied to this SNF admission
-        cur.execute("""
-            SELECT MAX(c.id)
-            FROM cm_notes_raw c
-            JOIN snf_admissions s ON s.raw_note_id = c.id
-            WHERE s.id = ?
-        """, (snf_id,))
-        row = cur.fetchone()
-        latest_note_id = row[0] if row else None
+        # Load the admission so we can mark reviewed against the full visit stream
+        cur.execute("SELECT id, visit_id, patient_mrn FROM snf_admissions WHERE id = ?", (snf_id,))
+        adm = cur.fetchone()
+        if not adm:
+            raise HTTPException(status_code=404, detail="SNF admission not found")
 
+        visit_id = (adm["visit_id"] or "").strip() if "visit_id" in adm.keys() else ""
+        mrn = (adm["patient_mrn"] or "").strip() if "patient_mrn" in adm.keys() else ""
+
+        latest_note_id = None
+
+        # Find the latest non-ignored CM note for this admission
+        if visit_id:
+            cur.execute(
+                """
+                SELECT MAX(id) AS latest_id
+                FROM cm_notes_raw
+                WHERE visit_id = ?
+                  AND (ignored IS NULL OR ignored = 0)
+                """,
+                (visit_id,),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT MAX(id) AS latest_id
+                FROM cm_notes_raw
+                WHERE patient_mrn = ?
+                  AND (ignored IS NULL OR ignored = 0)
+                """,
+                (mrn,),
+            )
+
+        row = cur.fetchone()
+        latest_note_id = (row["latest_id"] if row and "latest_id" in row.keys() else None)
+
+        # Persist review marker (only if there is a note)
         if latest_note_id:
-            cur.execute("""
+            cur.execute(
+                """
                 UPDATE snf_admissions
-                SET last_reviewed_note_id = ?
+                SET last_reviewed_note_id = ?,
+                    reviewed_at = datetime('now')
                 WHERE id = ?
-            """, (latest_note_id, snf_id))
+                """,
+                (int(latest_note_id), snf_id),
+            )
             conn.commit()
 
         return {"ok": True, "last_reviewed_note_id": latest_note_id}
@@ -11516,6 +11547,39 @@ async def admin_snf_list(
         cur.execute(sql, params)
         items: List[Dict[str, Any]] = []
         for r in cur.fetchall():
+            # --- Reviewed-state: latest note vs last_reviewed_note_id ---
+            visit_id = (r["visit_id"] or "").strip() if "visit_id" in r.keys() else ""
+            mrn = (r["patient_mrn"] or "").strip() if "patient_mrn" in r.keys() else ""
+            last_reviewed = (r["last_reviewed_note_id"] if "last_reviewed_note_id" in r.keys() else None)
+
+            latest_note_id = None
+            if visit_id:
+                cur.execute(
+                    """
+                    SELECT MAX(id) AS latest_id
+                    FROM cm_notes_raw
+                    WHERE visit_id = ?
+                      AND (ignored IS NULL OR ignored = 0)
+                    """,
+                    (visit_id,),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT MAX(id) AS latest_id
+                    FROM cm_notes_raw
+                    WHERE patient_mrn = ?
+                      AND (ignored IS NULL OR ignored = 0)
+                    """,
+                    (mrn,),
+                )
+
+            rr = cur.fetchone()
+            latest_note_id = (rr["latest_id"] if rr and "latest_id" in rr.keys() else None)
+
+            reviewed_up_to_latest = bool(last_reviewed and latest_note_id and int(last_reviewed) == int(latest_note_id))
+            has_new_note_since_review = bool(last_reviewed and latest_note_id and int(latest_note_id) > int(last_reviewed))
+
             items.append(
                 {
                     "id": r["id"],
@@ -11560,6 +11624,13 @@ async def admin_snf_list(
                     "effective_facility_name": r["effective_facility_name"],
                     "effective_facility_city": r["effective_facility_city"],
                     "effective_facility_state": r["effective_facility_state"],
+
+                    # Reviewed-state tracking
+                    "last_reviewed_note_id": (r["last_reviewed_note_id"] if "last_reviewed_note_id" in r.keys() else None),
+
+                    # Compute latest note id (visit-based preferred; MRN fallback)
+                    "reviewed_up_to_latest": reviewed_up_to_latest,
+                    "has_new_note_since_review": has_new_note_since_review,
 
                     "last_seen_active_date": r["last_seen_active_date"],
                     "last_seen_active_date_et": utc_text_to_eastern_display(r["last_seen_active_date"]),
