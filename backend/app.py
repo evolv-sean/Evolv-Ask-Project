@@ -3751,6 +3751,125 @@ def init_db():
         # Don't break app startup if the view can't be created (e.g. missing tables in a fresh DB)
         print("[init_db] Warning: could not create v_facility_listables view:", e)
 
+    # -------------------------------------------------------------------
+    # v_snf_admissions_export view: base SNF admissions row + hospital discharge join
+    # (designed for raw export / reporting)
+    # -------------------------------------------------------------------
+    try:
+        cur.executescript(
+            """
+            DROP VIEW IF EXISTS v_snf_admissions_export;
+
+            CREATE VIEW v_snf_admissions_export AS
+            SELECT
+                -- SNF Admissions (base row)
+                s.visit_id,
+                s.patient_name,
+                s.dob,
+                s.hospital_name,
+                s.admit_date,
+                s.ai_is_snf_candidate AS ai_snf_candidate,
+
+                -- "SNF Agency" = same effective facility logic used elsewhere:
+                -- prefer final name display, else facility table name, else AI raw text
+                COALESCE(
+                    NULLIF(TRIM(s.final_snf_name_display), ''),
+                    NULLIF(TRIM(f.facility_name), ''),
+                    NULLIF(TRIM(s.ai_snf_name_raw), '')
+                ) AS snf_agency,
+
+                s.ai_confidence,
+                s.status,
+
+                -- emailed = 1 if emailed_at has a value
+                CASE
+                    WHEN s.emailed_at IS NOT NULL AND TRIM(s.emailed_at) <> '' THEN 1
+                    ELSE 0
+                END AS emailed,
+
+                s.last_seen_active_date AS last_seen_active,
+                s.updated_at,
+                s.attending,
+
+                s.assignment_confirmation,
+                s.billing_confirmed AS billing_confirmation,
+                s.assignment_notes,
+
+                -- Hospital Discharges (prefixed with h_)
+                h.dc_date      AS h_dc_date,
+                h.disposition  AS h_disposition,
+                h.updated_at   AS h_updated_at,
+                h.dc_agency    AS h_dc_agency,
+                h.pcp          AS h_pcp,
+                h.insurance    AS h_insurance
+
+            FROM snf_admissions s
+            LEFT JOIN hospital_discharges h
+                ON h.visit_id = s.visit_id
+            LEFT JOIN snf_admission_facilities f
+                ON f.id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id);
+            """
+        )
+    except sqlite3.Error as e:
+        print("[init_db] Warning: could not create v_snf_admissions_export view:", e)
+
+    # -------------------------------------------------------------------
+    # v_hospital_discharges_export view: base hospital_discharges row + SNF admissions join
+    # (designed for raw export / reporting)
+    # -------------------------------------------------------------------
+    try:
+        cur.executescript(
+            """
+            DROP VIEW IF EXISTS v_hospital_discharges_export;
+
+            CREATE VIEW v_hospital_discharges_export AS
+            SELECT
+                -- Hospital Discharges (prefixed with h_)
+                h.visit_id      AS h_visit_id,
+                h.patient_name  AS h_patient_name,
+                s.dob           AS snfa_dob,
+                h.hospital_name AS h_hospital_name,
+                h.admit_date    AS h_admit_date,
+                h.dc_date       AS h_dc_date,
+                h.disposition   AS h_disposition,
+                h.updated_at    AS h_updated_at,
+                h.dc_agency     AS h_dc_agency,
+                h.attending     AS h_attending,
+                h.pcp           AS h_pcp,
+                h.insurance     AS h_insurance,
+
+                -- SNF Admissions (prefixed with snfa_)
+                s.ai_is_snf_candidate AS snfa_ai_is_snf_candidate,
+
+                COALESCE(
+                    NULLIF(TRIM(s.final_snf_name_display), ''),
+                    NULLIF(TRIM(f.facility_name), ''),
+                    NULLIF(TRIM(s.ai_snf_name_raw), '')
+                ) AS snfa_snf_agency,
+
+                s.ai_confidence AS snfa_ai_confidence,
+                s.status        AS snfa_status,
+
+                CASE
+                    WHEN s.emailed_at IS NOT NULL AND TRIM(s.emailed_at) <> '' THEN 1
+                    ELSE 0
+                END AS snfa_emailed,
+
+                s.last_seen_active_date   AS snfa_last_seen_active,
+                s.assignment_confirmation AS snfa_assignment_confirmation,
+                s.billing_confirmed       AS snfa_billing_confirmed,
+                s.assignment_notes        AS snfa_assignment_notes
+
+            FROM hospital_discharges h
+            LEFT JOIN snf_admissions s
+                ON s.visit_id = h.visit_id
+            LEFT JOIN snf_admission_facilities f
+                ON f.id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id);
+            """
+        )
+    except sqlite3.Error as e:
+        print("[init_db] Warning: could not create v_hospital_discharges_export view:", e)
+
     conn.commit()
     conn.close()
 
