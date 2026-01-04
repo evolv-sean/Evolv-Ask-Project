@@ -560,6 +560,11 @@
       box-shadow: 0 0 0 3px rgba(168, 230, 207, 0.28);
     }
 
+    .icon-btn.stale{
+      border-color: var(--danger-muted);
+      box-shadow: 0 0 0 3px rgba(199,107,107,0.22);
+    }
+
     .icon-btn .bell {
       width: 50%;                  /* ← change me (icon size inside box) */
       height: 50%;                 /* ← change me */
@@ -588,6 +593,10 @@
       color: #A8E6CF;
     }
 
+    .icon-btn.stale .usercheck{
+      color: var(--danger-muted);
+    }
+
     :root{
       --mint-accent: #A8E6CF;
       --danger-muted: #C76B6B;
@@ -606,6 +615,13 @@
       background: transparent;
       border: 2px solid var(--mint-accent);
       box-shadow: 0 0 0 3px rgba(168,230,207,0.18);
+    }
+
+    /* NEW: muted red outlined circle to indicate "New note since last review" */
+    .assign-dot.danger-ring{
+      background: transparent;
+      border: 2px solid var(--danger-muted);
+      box-shadow: 0 0 0 3px rgba(199,107,107,0.18);
     }
 
     /* NEW: subtle list icon */
@@ -2027,7 +2043,10 @@
       if (data && data.ok) {
         // keep the button mint immediately
         const btn = document.getElementById("reviewed-btn");
-        if (btn) btn.classList.add("on");
+        if (btn) {
+          btn.classList.remove("stale");
+          btn.classList.add("on");
+        }
 
         // refresh list + re-sync selected row state
         await loadAdmissions();
@@ -4176,7 +4195,7 @@
                 ? `<span class="assign-dot mint-ring" title="Reviewed up to latest"></span>`
                 : (
                     (r.has_new_note_since_review)
-                      ? `<span class="assign-dot mint-accent" title="New note since last review"></span>`
+                      ? `<span class="assign-dot danger-ring" title="New note since last review"></span>`
                       : ""
                   )
             }
@@ -4190,17 +4209,27 @@
     async function selectRow(id) {
       selectedId = id;
       
-    // NEW: sync "Reviewed" check button state based on selected row
+      // NEW: sync "Reviewed" check button state based on selected row
       try {
         const r = (admissions || []).find(x => String(x.id) === String(id));
         const btn = document.getElementById("reviewed-btn");
         if (btn && r) {
-          if (r.reviewed_up_to_latest) btn.classList.add("on");
-          else btn.classList.remove("on");
+          // three states:
+          // - never reviewed OR unknown => neutral (no classes)
+          // - reviewed up to latest => mint (on)
+          // - new note since review => muted red outline (stale)
+          btn.classList.remove("on");
+          btn.classList.remove("stale");
+
+          if (r.reviewed_up_to_latest) {
+            btn.classList.add("on");
+          } else if (r.has_new_note_since_review) {
+            btn.classList.add("stale");
+          }
         }
       } catch (e) {
         // non-fatal
-      }      
+      }     
       
       const token = getAdminToken();
       if (!token) {
