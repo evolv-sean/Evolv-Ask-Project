@@ -601,18 +601,11 @@
       margin-top:2px;
       line-height:1.15;
     }
-    .assign-dot{
-      width:8px;
-      height:8px;
-      border-radius:999px;
-      display:inline-block;
+    /* NEW: mint outlined circle to indicate "Reviewed up to latest" */
+    .assign-dot.mint-ring{
+      background: transparent;
+      border: 2px solid var(--mint-accent);
       box-shadow: 0 0 0 3px rgba(168,230,207,0.18);
-      flex: 0 0 auto;
-    }
-    .assign-dot.mint-accent{ background: var(--mint-accent); }
-    .assign-dot.neg-accent{
-      background: var(--danger-muted);
-      box-shadow: 0 0 0 3px rgba(199,107,107,0.18);
     }
 
     /* NEW: subtle list icon */
@@ -2021,17 +2014,24 @@
       }
     }
 
-    async function markReviewedUpToLatest(){
-      if(!selectedSnfId) return;
+    async function markReviewedUpToLatest() {
+      // use the actual selected row id used everywhere else
+      if (!selectedId) return;
 
-      const res = await fetch(`/api/snf/${selectedSnfId}/mark-reviewed`, {
+      const res = await fetch(`/api/snf/${selectedId}/mark-reviewed`, {
         method: "POST"
       });
-      const data = await res.json();
 
-      if(data.ok){
-        document.getElementById("reviewed-btn").classList.add("on");
-        loadAdmissions(); // refresh row indicators
+      const data = await res.json().catch(() => ({}));
+
+      if (data && data.ok) {
+        // keep the button mint immediately
+        const btn = document.getElementById("reviewed-btn");
+        if (btn) btn.classList.add("on");
+
+        // refresh list + re-sync selected row state
+        await loadAdmissions();
+        try { selectRow(selectedId); } catch (e) {}
       }
     }
 
@@ -4172,9 +4172,13 @@
           <td>${emailed}</td>
           <td>
             ${
-              (r.has_new_note_since_review)
-                ? `<span class="assign-dot mint-accent" title="New note since last review"></span>`
-                : ""
+              (r.reviewed_up_to_latest)
+                ? `<span class="assign-dot mint-ring" title="Reviewed up to latest"></span>`
+                : (
+                    (r.has_new_note_since_review)
+                      ? `<span class="assign-dot mint-accent" title="New note since last review"></span>`
+                      : ""
+                  )
             }
             ${formatISOToMDY(r.last_seen_active_date_et || r.last_seen_active_date)}
           </td>
