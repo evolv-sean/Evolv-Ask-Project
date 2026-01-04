@@ -610,18 +610,30 @@
       margin-top:2px;
       line-height:1.15;
     }
-    /* NEW: mint outlined circle to indicate "Reviewed up to latest" */
-    .assign-dot.mint-ring{
-      background: transparent;
-      border: 2px solid var(--mint-accent);
-      box-shadow: 0 0 0 3px rgba(168,230,207,0.18);
+    /* REVIEW MARKER (Last Updated column):
+       Use the same circle-check icon as the Reviewed button (no outline box). */
+    .review-ind{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:16px;
+      height:16px;
+      margin-right:6px;
+      vertical-align:middle;
     }
 
-    /* NEW: muted red outlined circle to indicate "New note since last review" */
-    .assign-dot.danger-ring{
-      background: transparent;
-      border: 2px solid var(--danger-muted);
-      box-shadow: 0 0 0 3px rgba(199,107,107,0.18);
+    .review-ind svg{
+      width:16px;
+      height:16px;
+      display:block;
+    }
+
+    .review-ind.mint{
+      color: var(--mint-accent);
+    }
+
+    .review-ind.danger{
+      color: var(--danger-muted);
     }
 
     /* NEW: subtle list icon */
@@ -4192,10 +4204,26 @@
           <td>
             ${
               (r.reviewed_up_to_latest)
-                ? `<span class="assign-dot mint-ring" title="Reviewed up to latest"></span>`
+                ? `
+                  <span class="review-ind mint" title="Reviewed up to latest" aria-label="Reviewed up to latest">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"></circle>
+                      <path d="M8 12.5l2.5 2.5L16 9" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                  </span>
+                `
                 : (
                     (r.has_new_note_since_review)
-                      ? `<span class="assign-dot danger-ring" title="New note since last review"></span>`
+                      ? `
+                        <span class="review-ind danger" title="New note since last review" aria-label="New note since last review">
+                          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"></circle>
+                            <path d="M8 12.5l2.5 2.5L16 9" stroke="currentColor" stroke-width="2"
+                                  stroke-linecap="round" stroke-linejoin="round"></path>
+                          </svg>
+                        </span>
+                      `
                       : ""
                   )
             }
