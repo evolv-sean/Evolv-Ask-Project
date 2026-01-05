@@ -1875,6 +1875,7 @@
       </div>
 
       <div class="modal-foot" style="justify-content:center;">
+        <button class="btn" onclick="recomputeSnfAiForSelectedAdmission()">Recompute (this visit)</button>
         <button class="btn-lite" onclick="closeAiSummaryModal()">Close</button>
       </div>
     </div>
@@ -2334,6 +2335,70 @@
         console.error("runAiSummary failed:", e);
         if (meta) meta.textContent = "";
         setAiSumMsg("Error: " + (e?.message || e), "error");
+      }
+    }
+
+    // Recompute SNF AI for the currently selected admission (admin-only)
+    async function recomputeSnfAiForSelectedAdmission() {
+      setAiSumMsg("", "");
+
+      const token = getAdminToken();
+      if (!token) {
+        showToast("Please paste your ADMIN_TOKEN first.", "error");
+        return;
+      }
+
+      if (selectedId == null) {
+        showToast("Select a SNF admission row first.", "error");
+        return;
+      }
+
+      const adm = (admissions || []).find(x => x.id === selectedId);
+      if (!adm) {
+        setAiSumMsg("Could not find the selected admission row in memory. Try reloading.", "error");
+        return;
+      }
+
+      const visit_id = String(adm.visit_id || "").trim();
+      const patient_mrn = String(adm.patient_mrn || adm.mrn || "").trim();
+
+      if (!visit_id && !patient_mrn) {
+        setAiSumMsg("This row is missing visit_id/patient_mrn, so I can’t recompute it.", "error");
+        return;
+      }
+
+      setAiSumMsg("Recomputing…", "info");
+
+      try {
+        const resp = await fetch("/admin/snf/admission/recompute", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Token": token
+          },
+          body: JSON.stringify({ visit_id, patient_mrn })
+        });
+
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || (data && data.ok === false)) {
+          throw new Error((data && (data.detail || data.message)) || ("HTTP " + resp.status));
+        }
+
+        // Refresh list + reselect row so Facility(AI) and right-side panel update
+        if (typeof loadAdmissions === "function") await loadAdmissions();
+        if (typeof selectRow === "function") await selectRow(selectedId);
+
+        // Run AI Summary "fresh" once (temporarily forces refresh, but does NOT change the checkbox permanently)
+        const forceBox = document.getElementById("ai-sum-force");
+        const prevForce = forceBox ? !!forceBox.checked : false;
+        if (forceBox) forceBox.checked = true;
+        try { await runAiSummary(); } catch (e) {}
+        if (forceBox) forceBox.checked = prevForce;
+
+        setAiSumMsg("Recompute complete. Summary refreshed.", "info");
+      } catch (err) {
+        console.error("recomputeSnfAiForSelectedAdmission error", err);
+        setAiSumMsg("Recompute failed: " + (err?.message || err), "error");
       }
     }
 
