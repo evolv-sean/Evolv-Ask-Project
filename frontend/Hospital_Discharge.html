@@ -348,10 +348,12 @@
         <div class="subtitle">Documents and sections update as new records arrive</div>
       </div>
       <div class="actions">
-        <div class="token-pill" title="Admin token status (placeholder)">
-          <span class="dot" id="adminDot"></span>
-          <span id="adminStatusText">Admin token: unknown</span>
-        </div>
+        <input
+          id="dischargeSearch"
+          type="text"
+          placeholder="Search patient or visit id…"
+          style="height:40px; width:260px; padding:0 12px; border-radius:12px; border:1px solid var(--cool); background:var(--white); box-shadow:0 10px 24px rgba(0,0,0,.06); font-size:13px; font-weight:800; color:var(--text); outline:none;"
+        />
 <button class="icon-btn" id="btnFilter" title="Filters">
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <path d="M4 6h16"></path>
@@ -491,6 +493,34 @@
           For Hospital Discharges, settings will expand later (e-fax, extraction profiles, etc.).
         </div>
         <div style="height:12px;"></div>
+        <div class="subcard" style="margin-bottom:12px;">
+          <div class="subhead">
+            <strong><span class="mint-accent"></span>Admin Token</strong>
+            <span class="tiny-note" id="adminTokenHelp">Used for Recompute + Manual Add</span>
+          </div>
+          <div class="subbody">
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+              <div class="token-pill" style="box-shadow:none;">
+                <span class="dot" id="adminDot"></span>
+                <span id="adminStatusText">Admin token: unknown</span>
+              </div>
+
+              <input
+                id="adminTokenInput"
+                type="text"
+                placeholder="Paste ADMIN_TOKEN…"
+                style="flex:1; min-width:260px;"
+              />
+
+              <button class="btn ghost" id="btnAdminTokenSave" style="padding:9px 12px;">Save</button>
+              <button class="btn ghost" id="btnAdminTokenClear" style="padding:9px 12px;">Clear</button>
+            </div>
+
+            <div class="tiny-note" style="margin-top:8px;">
+              Stored in your browser as <code>localStorage.evolv_admin_token</code>.
+            </div>
+          </div>
+        </div>
         <div class="subcard" style="max-height:60vh;">
           <div class="subhead">
             <strong><span class="mint-accent"></span>Hospital Extraction Profiles</strong>
@@ -742,6 +772,7 @@
 
   let allItems = [];
   let filteredItems = [];
+  let dischargeSearchTerm = "";
   let selectedVisitId = null;
   let selectedDocId = null;
   // NEW: cache the currently loaded visit object for modal prefills
@@ -967,10 +998,16 @@
             </div>
           </div>
 
-          <div class="vh-meta">
-            <span class="vh-pill"><span class="mini-dot"></span> ${safe(v.hospital_name)}</span>
-            <span class="vh-pill"><span class="mini-dot"></span> Dispo: ${safe(v.disposition)}</span>
-            <span class="vh-pill"><span class="mini-dot"></span> Docs: ${docs.length}</span>
+          <div class="vh-meta" style="flex-direction:column; align-items:flex-end;">
+            <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+              <span class="vh-pill"><span class="mini-dot"></span> ${safe(v.hospital_name)}</span>
+              <span class="vh-pill"><span class="mini-dot"></span> Dispo: ${safe(v.disposition)}</span>
+              <span class="vh-pill"><span class="mini-dot"></span> Docs: ${docs.length}</span>
+            </div>
+
+            <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; width:100%;">
+              <span class="vh-pill"><span class="mini-dot"></span> Agency: ${safe(v.dc_agency)}</span>
+            </div>
           </div>
         </div>
 
@@ -1087,6 +1124,14 @@
       if(disp && d !== disp) return false;
       if(dcFrom && (dc === "—" || dc < dcFrom)) return false;
       if(dcTo && (dc === "—" || dc > dcTo)) return false;
+      // NEW: search by patient_name OR visit_id (case-insensitive)
+      if(dischargeSearchTerm){
+        const hay1 = String(r.patient_name || "").toLowerCase();
+        const hay2 = String(r.visit_id || "").toLowerCase();
+        const needle = dischargeSearchTerm.toLowerCase();
+        if(!hay1.includes(needle) && !hay2.includes(needle)) return false;
+      }
+
       return true;
     });
 
@@ -1128,6 +1173,54 @@
 
   $("#btnProfileNew").addEventListener("click", () => clearProfileEditor());
   $("#btnProfileSave").addEventListener("click", () => saveProfile());
+
+  // ============================
+  // NEW: Discharge search box
+  // ============================
+  const searchEl = document.getElementById("dischargeSearch");
+  if(searchEl){
+    searchEl.addEventListener("input", (e) => {
+      dischargeSearchTerm = String(e.target.value || "").trim();
+      applyFilters(true);
+    });
+  }
+
+  // ============================
+  // NEW: Admin token controls (moved into Settings modal)
+  // ============================
+  function refreshAdminTokenUi(){
+    const tok = getAdminToken();
+    setAdminTokenStatus(!!tok);
+    const inp = document.getElementById("adminTokenInput");
+    if(inp) inp.value = tok || "";
+  }
+
+  const btnTokSave = document.getElementById("btnAdminTokenSave");
+  if(btnTokSave){
+    btnTokSave.addEventListener("click", () => {
+      const inp = document.getElementById("adminTokenInput");
+      const tok = (inp?.value || "").trim();
+      if(tok){
+        localStorage.setItem("evolv_admin_token", tok);
+      }
+      refreshAdminTokenUi();
+    });
+  }
+
+  const btnTokClear = document.getElementById("btnAdminTokenClear");
+  if(btnTokClear){
+    btnTokClear.addEventListener("click", () => {
+      localStorage.removeItem("evolv_admin_token");
+      refreshAdminTokenUi();
+    });
+  }
+
+  // When opening settings, also refresh the token UI
+  $("#btnSettings").addEventListener("click", () => {
+    openModal("#settingsModal");
+    refreshAdminTokenUi();
+    loadProfiles();
+  });
 
   /* ============================
      NEW: Manual Hospital Doc modal
@@ -1423,7 +1516,8 @@
       txt.textContent = "Admin token: not set";
     }
   }
-  setAdminTokenStatus(false);
+  // initialize admin token status based on localStorage
+  setAdminTokenStatus(!!getAdminToken());
 
   loadDischarges().then(renderTable);
 </script>
