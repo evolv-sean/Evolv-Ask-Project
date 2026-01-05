@@ -7683,21 +7683,46 @@ def _snf_latest_note_says_choice_is_not_final(latest_note_text: str) -> bool:
 def _snf_note_text_has_negative_facility_outcome(note_text: str) -> bool:
     """
     True when the note indicates a facility is not viable (declined / no bed / not in network).
+
+    IMPORTANT: the word "declined" is ambiguous (often means the patient declined options).
+    Only treat it as facility-negative when it clearly refers to the FACILITY/REFERRAL declining.
     """
     t = (note_text or "").lower()
-    negative_phrases = [
-        "declined",
+
+    # hard negatives (safe)
+    hard_negative_phrases = [
         "no bed",
         "no beds",
         "not in network",
         "out of network",
-        "denied the case",
-        "denied case",
         "unable to accept",
         "cannot accept",
         "can't accept",
+        "denied by facility",
+        "facility denied",
+        "o.o.n.",  # common shorthand
+        "oon",     # sometimes appears as plain text
     ]
-    return any(p in t for p in negative_phrases)
+    if any(p in t for p in hard_negative_phrases):
+        return True
+
+    # "declined" is ONLY negative if it clearly means facility/referral declined
+    if "declined" in t:
+        facility_decline_signals = [
+            "facility declined",
+            "snf declined",
+            "referral declined",
+            "declined the referral",
+            "declined referral",
+            "declined to accept",
+            "declined acceptance",
+            "declined case",
+            "case declined",
+            "declined by facility",
+        ]
+        return any(p in t for p in facility_decline_signals)
+
+    return False
 
 
 def _snf_should_clear_facility_name(notes: List[sqlite3.Row], snf_name: Optional[str]) -> Optional[str]:
