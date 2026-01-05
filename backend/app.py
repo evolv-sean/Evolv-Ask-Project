@@ -5151,52 +5151,62 @@ def detect_facility_id(
 
 
 def map_snf_name_to_facility_id(
-    snf_name: Optional[str],
     conn: sqlite3.Connection,
-    facility_aliases: Dict[str, str],
-) -> Optional[str]:
+    snf_name: Optional[str],
+) -> tuple[Optional[str], Optional[str]]:
     """
-    Map a free-text SNF name from notes (e.g. 'The Peaks SNF', 'Pks')
-    to a facility_id using:
-      1) dictionary facility_alias entries (kind='facility_alias')
-      2) direct facility_name matches in facilities
+    Map a free-text SNF name to a SNF Admission Facility using ONLY:
+      - snf_admission_facilities.facility_name
+      - snf_admission_facilities.aliases
 
-    Returns facility_id or None if no good match.
+    Returns: (facility_id as str, facility_label as facility_name) or (None, None)
     """
     if not snf_name:
-        return None
+        return None, None
 
-    name_norm = _normalize_for_facility_match(snf_name)
+    def _norm(s: str) -> str:
+        s = str(s or "").lower()
+        s = re.sub(r"[\.\,\(\)\[\]\{\}\-_/\\]+", " ", s)
+        s = re.sub(r"\s+", " ", s).strip()
+        return s
 
-    # 1) Try explicit aliases from dictionary (alias -> facility_id)
-    for alias_text, fid in facility_aliases.items():
-        if not alias_text or not fid:
-            continue
-        alias_norm = _normalize_for_facility_match(alias_text)
-        if not alias_norm:
-            continue
+    def _split_aliases(raw: str) -> list[str]:
+        return [a.strip() for a in re.split(r"[,|;]+", str(raw or "")) if a.strip()]
 
-        # If either string contains the other, treat as a match
-        if alias_norm in name_norm or name_norm in alias_norm:
-            return fid
+    ai_norm = _norm(snf_name)
+    if not ai_norm:
+        return None, None
 
-    # 2) Try matching facility_name from facilities table
     try:
         cur = conn.cursor()
-        cur.execute("SELECT facility_id, facility_name FROM facilities")
-        for row in cur.fetchall():
-            fac_name = (row["facility_name"] or "").strip()
-            if not fac_name:
-                continue
-            fac_norm = _normalize_for_facility_match(fac_name)
-            if not fac_norm:
-                continue
-            if fac_norm in name_norm or name_norm in fac_norm:
-                return row["facility_id"]
-    except sqlite3.Error:
-        return None
+        cur.execute(
+            """
+            SELECT id, facility_name, aliases
+            FROM snf_admission_facilities
+            ORDER BY facility_name COLLATE NOCASE
+            """
+        )
 
-    return None
+        for row in cur.fetchall():
+            fac_id = row["id"]
+            fac_name = (row["facility_name"] or "").strip()
+            aliases = row["aliases"] or ""
+
+            # Match facility_name
+            name_norm = _norm(fac_name)
+            if name_norm and (ai_norm in name_norm or name_norm in ai_norm):
+                return str(fac_id), fac_name
+
+            # Match any alias
+            for a in _split_aliases(aliases):
+                a_norm = _norm(a)
+                if a_norm and (ai_norm in a_norm or a_norm in ai_norm):
+                    return str(fac_id), fac_name
+
+    except sqlite3.Error:
+        return None, None
+
+    return None, None
 
 
 
@@ -9032,10 +9042,9 @@ def snf_upsert_from_notes_for_visit(conn: sqlite3.Connection, visit_id: str) -> 
     facility_id = None
     facility_label = None
 
-    # Map facility name → facility_id using your existing mapping helper if present
+    # Map facility name → SNF Admission Facility (snf_admission_facilities only)
     try:
-        if "map_snf_name_to_facility_id" in globals():
-            facility_id, facility_label = map_snf_name_to_facility_id(conn, snf_name_raw)
+        facility_id, facility_label = map_snf_name_to_facility_id(conn, snf_name_raw)
     except Exception:
         facility_id, facility_label = None, None
 
@@ -9234,8 +9243,8 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
             expected_date = result.get("expected_transfer_date")
             conf = result.get("confidence", 0.0)
 
-            # Map SNF name -> facility_id (if possible)
-            ai_facility_id = map_snf_name_to_facility_id(snf_name_raw, conn, facility_aliases)
+            # Map SNF name -> SNF Admission Facility (snf_admission_facilities only)
+            ai_facility_id, _ai_facility_label = map_snf_name_to_facility_id(conn, snf_name_raw)
 
             # Upsert into snf_admissions: one row per visit_id (admission)
             cur.execute(
@@ -9841,7 +9850,7 @@ def snf_recompute_for_admission(visit_id: str = "", patient_mrn: str = "", retur
         snf_name_raw = result.get("snf_name")
         expected_date = result.get("expected_transfer_date")
         conf = result.get("confidence", 0.0)
-        ai_facility_id = map_snf_name_to_facility_id(snf_name_raw, conn, facility_aliases)
+        ai_facility_id, _ai_facility_label = map_snf_name_to_facility_id(conn, snf_name_raw)
 
         # Update the existing snf_admissions row for this admission group
         if visit_id_db:
@@ -12297,10 +12306,9 @@ async def admin_snf_update(
 
             if facility_free_text:
                 # Manual override ON
-                maps = load_dictionary_maps(conn)
-                facility_aliases = maps["facility_aliases"]
-                mapped_id = map_snf_name_to_facility_id(facility_free_text, conn, facility_aliases)
+                mapped_id, mapped_label = map_snf_name_to_facility_id(conn, facility_free_text)
                 new_final_facility_id = mapped_id
+                # keep exactly what the user typed for display, but now the ID is SNF-library based
                 new_final_name_display = facility_free_text
             else:
                 # Manual override OFF (user selected "(none)")
