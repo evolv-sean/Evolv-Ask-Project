@@ -63,6 +63,7 @@ except Exception:
 from fastapi import FastAPI, HTTPException, Request, Form, Query, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -73,6 +74,9 @@ BASE_DIR = Path(__file__).resolve().parent   # this is your /backend folder
 
 # Where the HTML files actually live, same as old app.py
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
+
+# Static assets (images, logos, etc.)
+STATIC_DIR = BASE_DIR / "static"
 
 SNF_DEFAULT_PIN = (os.getenv("SNF_DEFAULT_PIN") or "").strip()
 
@@ -347,6 +351,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve /static/* from backend/static/*
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -7790,9 +7797,16 @@ def analyze_patient_notes_with_llm(
         "- If the patient is clearly accepted to a SNF, set is_snf_candidate to true.\n"
         "- If SNF is being pursued but the facility choice is NOT FINAL (family changing mind, 'choice not determined', waiting for family decision, refused to authorize),\n"
         "  set is_snf_candidate = TRUE but set snf_name = null and use lower confidence.\n"
-        "- If multiple SNFs are mentioned over time, ONLY choose a facility name if the latest notes indicate that facility is the CURRENT selected/active plan\n"
-        "  (examples: auth being started/submitted for that facility, confirmed placement, 'selected', 'accepted and proceeding').\n"
-        "- Do NOT choose a facility as snf_name if notes indicate it was declined, has no bed, is out-of-network, or the family changed to another choice after it.\n"
+        "\n"
+        "- Facility selection signals (these ARE enough to set snf_name, even if auth is pending):\n"
+        "  • Lines like 'DCP: SNF - <facility>', 'D/C to <facility>', 'Dispo: SNF - <facility>', 'Discharge to <facility>'\n"
+        "    should be treated as the CURRENT selected plan unless a later note clearly changes it.\n"
+        "\n"
+        "- If multiple SNFs are mentioned over time, choose ONLY the facility that the latest notes indicate is the CURRENT selected/active plan.\n"
+        "- IMPORTANT: Do NOT treat the word 'declined' as a facility rejection unless it clearly means the FACILITY or REFERRAL was declined.\n"
+        "  • Count as facility-negative: 'facility declined', 'SNF declined', 'referral declined', 'no bed', 'out of network', 'denied by facility', 'unable to accept'.\n"
+        "  • Do NOT count as facility-negative: 'patient declined list', 'declined to choose', 'declined options', 'declined to sign', etc.\n"
+        "- If the patient/family declined SNF placement entirely and plan changes to home/home health/other LOC, set is_snf_candidate = FALSE.\n"
         "\n"
         "- IMPORTANT: Insurance authorization language must be interpreted carefully:\n"
         "  • If notes say SNF authorization is PENDING / UNDER REVIEW / REQUEST SUBMITTED / REF# present / awaiting decision,\n"
@@ -11288,7 +11302,7 @@ Important:
 """.strip()
 
 
-def _load_recent_cm_notes_for_visit(cur: sqlite3.Cursor, visit_id: str, limit: int = 4) -> List[Dict[str, Any]]:
+def _load_recent_cm_notes_for_visit(cur: sqlite3.Cursor, visit_id: str, limit: int = 6) -> List[Dict[str, Any]]:
     cur.execute(
         """
         SELECT id, note_datetime, note_type, note_text
