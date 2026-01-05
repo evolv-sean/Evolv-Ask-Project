@@ -370,6 +370,16 @@
   </svg>
 </button>
 
+<!-- existing -->
+<button class="icon-btn" id="btnManualHospDoc" title="Add patient (manual hospital document)">
+  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none">
+    <circle cx="10" cy="8" r="4" stroke="currentColor" stroke-width="1.8"></circle>
+    <path d="M4 20c1-3 3.8-5.5 6-5.5s5 2 6 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+    <path d="M18 8v8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+    <path d="M15 11h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+  </svg>
+</button>
+
 <button class="icon-btn" id="btnSettings" title="Settings">
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <path d="M7 10V8a5 5 0 0 1 10 0v2"></path>
@@ -546,6 +556,61 @@
       </div>
       <div class="modal-foot">
         <button class="btn ghost" id="btnSettingsClose">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       NEW: Hospital Discharge AI Summary + Recompute (single visit)
+       ========================================================= -->
+  <div id="hospAiModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="hospAiTitle">
+    <div class="modal-card" style="width:min(720px,100%); display:flex; flex-direction:column;">
+      <div class="modal-head">
+        <div>
+          <div id="hospAiTitle" class="modal-title">AI Summary (Hospital Discharge)</div>
+          <div class="modal-sub">Shows the latest AI Disposition + AI Agency for the selected Visit ID. Recompute uses last 5 documents.</div>
+        </div>
+        <button class="modal-x" id="btnHospAiCloseX" aria-label="Close">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="subcard" style="margin:0;">
+          <div class="subhead">
+            <strong>Visit</strong>
+            <span id="hosp-ai-msg" class="tiny-note"></span>
+          </div>
+
+          <div style="padding:12px;">
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+              <div class="input">
+                <label>Visit ID</label>
+                <input id="hosp-ai-visit-id" type="text" disabled />
+              </div>
+              <div class="input">
+                <label>Source</label>
+                <input id="hosp-ai-source" type="text" disabled placeholder="dispo_source_dt / doc_id" />
+              </div>
+
+              <div class="input">
+                <label>AI Disposition</label>
+                <input id="hosp-ai-dispo" type="text" disabled />
+              </div>
+              <div class="input">
+                <label>AI Agency</label>
+                <input id="hosp-ai-agency" type="text" disabled />
+              </div>
+            </div>
+
+            <div class="tiny-note" style="margin-top:10px;">
+              Recompute will update the hub row if a meaningful disposition is found, and it will <b>not</b> erase an existing agency when no new agency is found.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-foot">
+        <button class="btn ghost" id="btnHospAiCancel">Close</button>
+        <button class="btn" id="btnHospAiRecompute">Recompute (this visit)</button>
       </div>
     </div>
   </div>
@@ -1251,12 +1316,98 @@
   }
 
   // Button wiring
+  function setHospAiMsg(text, isErr=false){
+    const el = document.getElementById("hosp-ai-msg");
+    if(!el) return;
+    el.textContent = text || "";
+    el.style.color = isErr ? "var(--danger)" : "var(--muted)";
+  }
+
+  function fillHospAiFields(){
+    // selectedVisitId / selectedVisitData are already used elsewhere in this page
+    const v = (typeof selectedVisitData !== "undefined" && selectedVisitData) ? selectedVisitData : {};
+    const vid = (typeof selectedVisitId !== "undefined" && selectedVisitId) ? selectedVisitId : "";
+
+    document.getElementById("hosp-ai-visit-id").value = vid || "—";
+    document.getElementById("hosp-ai-dispo").value = (v.disposition || "—");
+    document.getElementById("hosp-ai-agency").value = (v.dc_agency || "—");
+
+    const srcDt = v.dispo_source_dt || "";
+    const srcId = v.dispo_source_doc_id || "";
+    document.getElementById("hosp-ai-source").value =
+      (srcDt || srcId) ? `${srcDt || "—"} / doc ${srcId || "—"}` : "—";
+  }
+
+  function openHospAiModal(){
+    setHospAiMsg("");
+    fillHospAiFields();
+    openModal("#hospAiModal");
+  }
+
+  function closeHospAiModal(){
+    closeModal("#hospAiModal");
+  }
+
+  // Recompute call (admin)
+  async function recomputeHospAiForVisit(){
+    setHospAiMsg("");
+    const token = getAdminToken();
+    if(!token){
+      setHospAiMsg("Please paste your ADMIN_TOKEN in Settings first.", true);
+      return;
+    }
+
+    const vid = (typeof selectedVisitId !== "undefined" && selectedVisitId) ? String(selectedVisitId) : "";
+    if(!vid){
+      setHospAiMsg("Select a visit first (click a row).", true);
+      return;
+    }
+
+    setHospAiMsg("Recomputing…");
+
+    try{
+      const res = await fetch("/admin/hospital-discharges/visit/recompute", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Token": token
+        },
+        body: JSON.stringify({ visit_id: vid })
+      });
+
+      const data = await res.json().catch(()=> ({}));
+      if(!res.ok) throw new Error(data?.detail || ("HTTP " + res.status));
+
+      // Refresh list + reload selected visit so UI reflects updated AI fields
+      if(typeof loadDischarges === "function") await loadDischarges();
+      if(typeof selectVisit === "function") await selectVisit(vid);
+
+      // Now that selectedVisitData is fresh, re-fill fields
+      fillHospAiFields();
+
+      if(data.changed){
+        setHospAiMsg("Updated. (Disposition/Agency recomputed from last 5 docs.)");
+      } else {
+        setHospAiMsg("No change (no meaningful new disposition found).");
+      }
+    } catch(err){
+      console.error("recomputeHospAiForVisit error", err);
+      setHospAiMsg("Recompute failed: " + (err?.message || err), true);
+    }
+  }
+
+  // Button wiring
+  $("#btnHospAiSummary").addEventListener("click", () => openHospAiModal());
+  $("#btnHospAiCancel").addEventListener("click", () => closeHospAiModal());
+  $("#btnHospAiCloseX").addEventListener("click", () => closeHospAiModal());
+  $("#btnHospAiRecompute").addEventListener("click", () => recomputeHospAiForVisit());
+
   $("#btnManualHospDoc").addEventListener("click", () => openManualHospDocModal());
   $("#btnManualHospDocCancel").addEventListener("click", () => closeManualHospDocModal());
   $("#btnManualHospDocCloseX").addEventListener("click", () => closeManualHospDocModal());
   $("#btnManualHospDocSubmit").addEventListener("click", () => submitManualHospDoc());
 
-  ["#filterModal","#settingsModal"].forEach(id=>{
+  ["#filterModal","#settingsModal","#hospAiModal"].forEach(id=>{
     $(id).addEventListener("click", (e)=>{
       if(e.target.classList.contains("modal-backdrop")) closeModal(id);
     });
