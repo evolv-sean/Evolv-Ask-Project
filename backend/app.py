@@ -3034,6 +3034,21 @@ def init_db():
         # Never block app startup on a migration cleanup
         pass
 
+    # -------------------------------------------------------------------
+    # Normalize legacy Rehab dispositions to SNF (hospital_discharges)
+    # -------------------------------------------------------------------
+    try:
+        cur.execute(
+            """
+            UPDATE hospital_discharges
+            SET disposition = 'SNF'
+            WHERE disposition IS NOT NULL
+              AND LOWER(TRIM(disposition)) = 'rehab'
+            """
+        )
+    except sqlite3.Error:
+        # Never block app startup on a migration cleanup
+        pass
 
     # SNF admissions derived from CM notes
     cur.execute(
@@ -7959,7 +7974,7 @@ def _heuristic_disposition_from_text(source_text: str) -> Optional[str]:
 
     # Generic rehab (when NOT clearly IRF)
     if re.search(r"\brehab\b|rehabilitation facility|subacute rehab|sar\b", t):
-        return "Rehab"
+        return "SNF"
 
     return None
 
