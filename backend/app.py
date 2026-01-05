@@ -9497,7 +9497,7 @@ def admin_hospital_discharge_visit_recompute(payload: Dict[str, Any] = Body(...)
                     if before_agency and str(before_agency).strip():
                         new_agency = before_agency
 
-            now_iso = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            now_iso = dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
             cur.execute(
                 """
@@ -9511,6 +9511,7 @@ def admin_hospital_discharge_visit_recompute(payload: Dict[str, Any] = Body(...)
                 """,
                 (new_dispo, new_agency, eff_dt, latest_doc_id, now_iso, visit_id),
             )
+
             conn.commit()
             changed = True
 
