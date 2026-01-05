@@ -4296,6 +4296,52 @@ def mark_snf_reviewed(snf_id: int):
     finally:
         conn.close()
 
+def build_recent_hospital_context(cur: sqlite3.Cursor, visit_id: str, limit: int = 5) -> str:
+    """
+    Build a single source_text string from the most recent hospital_documents for a visit_id.
+    This gives the LLM a better narrative (similar to SNF "multi-note" logic).
+
+    Order: oldest -> newest (within the last N) so it reads like progression.
+    """
+    if not visit_id:
+        return ""
+
+    cur.execute(
+        """
+        SELECT id, document_type, document_datetime, created_at, source_text
+        FROM hospital_documents
+        WHERE visit_id = ?
+        ORDER BY COALESCE(document_datetime, created_at) DESC, id DESC
+        LIMIT ?
+        """,
+        (visit_id, int(limit)),
+    )
+    rows = cur.fetchall() or []
+    if not rows:
+        return ""
+
+    # reverse to chronological (oldest->newest) for readability
+    rows = list(reversed(rows))
+
+    parts = []
+    for r in rows:
+        try:
+            doc_id = r["id"]
+            doc_type = r["document_type"]
+            doc_dt = r["document_datetime"] or r["created_at"]
+            txt = r["source_text"] or ""
+        except Exception:
+            doc_id = r[0]
+            doc_type = r[1]
+            doc_dt = r[2] or r[3]
+            txt = r[4] or ""
+
+        header = f"[Hospital Doc #{doc_id} | {doc_dt or 'unknown_dt'} | {doc_type or 'unknown_type'}]"
+        parts.append(header + "\n" + txt.strip())
+
+    # separator keeps boundaries clear for the model
+    return "\n\n---\n\n".join(p for p in parts if p.strip())
+
 
 # ---------------------------------------------------------------------------
 # Hospital Document ingest (raw text -> document + sections) ✅ NEW
@@ -4557,7 +4603,7 @@ async def pad_hospital_documents_bulk(request: Request):
 
                 # Fetch current "winning" disposition source
                 cur.execute(
-                    "SELECT disposition, dispo_source_dt, dispo_source_doc_id FROM hospital_discharges WHERE visit_id = ?",
+                    "SELECT disposition, dc_agency, dispo_source_dt, dispo_source_doc_id FROM hospital_discharges WHERE visit_id = ?",
                     (doc_payload["visit_id"],),
                 )
                 curr = cur.fetchone()
@@ -4565,16 +4611,18 @@ async def pad_hospital_documents_bulk(request: Request):
                 curr_source_dt = None
                 curr_source_doc_id = None
                 curr_dispo = None
+                curr_dc_agency = None
                 if curr:
-                    # sqlite Row supports dict-like access
                     try:
                         curr_dispo = curr["disposition"]
+                        curr_dc_agency = curr["dc_agency"]
                         curr_source_dt = curr["dispo_source_dt"]
                         curr_source_doc_id = curr["dispo_source_doc_id"]
                     except Exception:
                         curr_dispo = curr[0]
-                        curr_source_dt = curr[1]
-                        curr_source_doc_id = curr[2]
+                        curr_dc_agency = curr[1]
+                        curr_source_dt = curr[2]
+                        curr_source_doc_id = curr[3]
 
                 curr_source_dt = normalize_sortable_dt(curr_source_dt)
 
@@ -4601,6 +4649,13 @@ async def pad_hospital_documents_bulk(request: Request):
                 # - If we DON'T have a meaningful new dispo, keep existing
                 # - If we DO have a meaningful new dispo, only apply if this doc is newer
                 if has_meaningful_dispo and is_newer:
+                    # ✅ Do not let a newer doc erase a good agency when disposition is facility-based
+                    FACILITY_BASED = {"SNF", "IRF", "Rehab", "LTACH", "Hospice"}
+                    if new_dispo in FACILITY_BASED:
+                        if (new_agency is None) or (str(new_agency).strip() == ""):
+                            if curr_dc_agency and str(curr_dc_agency).strip():
+                                new_agency = curr_dc_agency
+
                     cur.execute(
                         """
                         UPDATE hospital_discharges
@@ -4608,16 +4663,10 @@ async def pad_hospital_documents_bulk(request: Request):
                             dc_agency = ?,
                             dispo_source_dt = ?,
                             dispo_source_doc_id = ?,
-                            updated_at = datetime('now')
+                            updated_at = ?
                         WHERE visit_id = ?
                         """,
-                        (
-                            new_dispo,
-                            (new_agency or None),
-                            eff_dt,
-                            int(document_id),
-                            doc_payload["visit_id"],
-                        ),
+                        (new_dispo, new_agency, eff_dt, document_id, now_iso, doc_payload["visit_id"]),
                     )
 
 
@@ -4777,15 +4826,17 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
                 (visit_id, patient_mrn, patient_name, hospital_name, admit_date, dc_date, attending, pcp, insurance),
             )
 
-            # ✅ UPDATED: derive disposition + dc_agency, but only let the "latest doc" win
-            dispo = analyze_discharge_disposition_with_llm(source_text)
+            # ✅ UPDATED: derive disposition + dc_agency using the most recent 5 hospital documents for this visit_id
+            llm_source_text = build_recent_hospital_context(cur, doc_payload["visit_id"], limit=5) or source_text
+
+            dispo = analyze_discharge_disposition_with_llm(llm_source_text)
             new_dispo = (dispo.get("disposition") if dispo else None)
             new_agency = (dispo.get("dc_agency") if dispo else None)
 
             # If this looks like a facility-based discharge, map to canonical SNF facility name using aliases
             FACILITY_BASED = {"SNF", "IRF", "Rehab", "LTACH", "Hospice"}
             if new_dispo in FACILITY_BASED:
-                new_agency = map_dc_agency_using_snf_admission_facilities(conn, new_agency, source_text)
+                new_agency = map_dc_agency_using_snf_admission_facilities(conn, new_agency, llm_source_text)
 
             # Determine this document's effective timestamp:
             # 1) document_datetime (from payload) if present
