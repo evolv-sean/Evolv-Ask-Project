@@ -9404,6 +9404,137 @@ async def admin_hospital_documents_manual_add(payload: ManualHospitalDocumentIn,
     return await hospital_documents_ingest(ingest_payload)
 
 
+@app.post("/admin/hospital-discharges/visit/recompute")
+def admin_hospital_discharge_visit_recompute(payload: Dict[str, Any] = Body(...), admin=Depends(require_admin)):
+    """
+    Recompute AI disposition + dc_agency for ONE visit_id using the most recent 5 hospital_documents.
+
+    Key behaviors (matches your ingest safeguards):
+    - Uses last 5 docs as context (oldest->newest) for narrative consistency.
+    - Will NOT overwrite with "no disposition mentioned" values.
+    - Will NOT clear an existing dc_agency when disposition is facility-based but new_agency is blank
+      (your "don't change agency if nothing new was found" rule).
+    """
+    visit_id = (payload.get("visit_id") or "").strip()
+    if not visit_id:
+        raise HTTPException(status_code=400, detail="visit_id is required")
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Ensure hub row exists
+        cur.execute("SELECT 1 FROM hospital_discharges WHERE visit_id = ? LIMIT 1", (visit_id,))
+        if not cur.fetchone():
+            cur.execute(
+                "INSERT INTO hospital_discharges (visit_id, updated_at) VALUES (?, datetime('now'))",
+                (visit_id,),
+            )
+
+        # Current values (for before/after UI)
+        cur.execute(
+            "SELECT disposition, dc_agency, dispo_source_dt, dispo_source_doc_id FROM hospital_discharges WHERE visit_id = ?",
+            (visit_id,),
+        )
+        curr = cur.fetchone() or {}
+        try:
+            before_dispo = curr["disposition"]
+            before_agency = curr["dc_agency"]
+            before_source_dt = curr["dispo_source_dt"]
+            before_source_doc_id = curr["dispo_source_doc_id"]
+        except Exception:
+            before_dispo = curr[0] if len(curr) > 0 else None
+            before_agency = curr[1] if len(curr) > 1 else None
+            before_source_dt = curr[2] if len(curr) > 2 else None
+            before_source_doc_id = curr[3] if len(curr) > 3 else None
+
+        # Build last-5-docs context (same idea you already use for ingest)
+        llm_source_text = build_recent_hospital_context(cur, visit_id, limit=5)
+        if not (llm_source_text or "").strip():
+            raise HTTPException(status_code=404, detail="No hospital_documents found for this visit_id")
+
+        dispo = analyze_discharge_disposition_with_llm(llm_source_text)
+        new_dispo = (dispo.get("disposition") if dispo else None)
+        new_agency = (dispo.get("dc_agency") if dispo else None)
+
+        FACILITY_BASED = {"SNF", "IRF", "Rehab", "LTACH", "Hospice"}
+        if new_dispo in FACILITY_BASED:
+            new_agency = map_dc_agency_using_snf_admission_facilities(conn, new_agency, llm_source_text)
+
+        NO_DISPO_VALUES = {None, "", "unknown", "n/a", "na"}
+        has_meaningful_dispo = (new_dispo is not None and str(new_dispo).strip().lower() not in NO_DISPO_VALUES)
+
+        # Determine "source" as the most recent hospital_document (stable; does not pretend it's a new doc)
+        cur.execute(
+            """
+            SELECT id, COALESCE(document_datetime, created_at) AS dt
+            FROM hospital_documents
+            WHERE visit_id = ?
+            ORDER BY COALESCE(document_datetime, created_at) DESC, id DESC
+            LIMIT 1
+            """,
+            (visit_id,),
+        )
+        latest = cur.fetchone()
+        latest_doc_id = None
+        latest_dt = None
+        if latest:
+            try:
+                latest_doc_id = latest["id"]
+                latest_dt = latest["dt"]
+            except Exception:
+                latest_doc_id = latest[0]
+                latest_dt = latest[1]
+
+        eff_dt = normalize_sortable_dt(latest_dt)
+
+        changed = False
+
+        if has_meaningful_dispo:
+            # Keep existing agency if disposition is facility-based and new agency is blank
+            if new_dispo in FACILITY_BASED:
+                if (new_agency is None) or (str(new_agency).strip() == ""):
+                    if before_agency and str(before_agency).strip():
+                        new_agency = before_agency
+
+            now_iso = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+            cur.execute(
+                """
+                UPDATE hospital_discharges
+                SET disposition = ?,
+                    dc_agency = ?,
+                    dispo_source_dt = ?,
+                    dispo_source_doc_id = ?,
+                    updated_at = ?
+                WHERE visit_id = ?
+                """,
+                (new_dispo, new_agency, eff_dt, latest_doc_id, now_iso, visit_id),
+            )
+            conn.commit()
+            changed = True
+
+        return {
+            "ok": True,
+            "visit_id": visit_id,
+            "changed": changed,
+            "before": {
+                "disposition": before_dispo,
+                "dc_agency": before_agency,
+                "dispo_source_dt": before_source_dt,
+                "dispo_source_doc_id": before_source_doc_id,
+            },
+            "after": {
+                "disposition": (new_dispo if has_meaningful_dispo else before_dispo),
+                "dc_agency": (new_agency if has_meaningful_dispo else before_agency),
+                "dispo_source_dt": (eff_dt if (has_meaningful_dispo and changed) else before_source_dt),
+                "dispo_source_doc_id": (latest_doc_id if (has_meaningful_dispo and changed) else before_source_doc_id),
+            },
+        }
+    finally:
+        conn.close()
+
+
 @app.post("/admin/snf/cm-notes/manual-add")
 def admin_manual_add_cm_note(payload: ManualCmNoteIn, admin=Depends(require_admin)):
     conn = get_db()
