@@ -4656,6 +4656,8 @@ async def pad_hospital_documents_bulk(request: Request):
                             if curr_dc_agency and str(curr_dc_agency).strip():
                                 new_agency = curr_dc_agency
 
+                    updated_at_iso = now_iso()
+
                     cur.execute(
                         """
                         UPDATE hospital_discharges
@@ -4666,7 +4668,7 @@ async def pad_hospital_documents_bulk(request: Request):
                             updated_at = ?
                         WHERE visit_id = ?
                         """,
-                        (new_dispo, new_agency, eff_dt, document_id, now_iso, doc_payload["visit_id"]),
+                        (new_dispo, new_agency, eff_dt, document_id, updated_at_iso, doc_payload["visit_id"]),
                     )
 
 
