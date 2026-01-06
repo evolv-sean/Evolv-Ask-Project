@@ -11936,6 +11936,10 @@ async def admin_snf_list(
                     "ai_expected_transfer_date": r["ai_expected_transfer_date"],
                     "ai_confidence": r["ai_confidence"],
                     "status": r["status"],
+
+                    # ✅ ADD THIS LINE (so the list can show DC Date)
+                    "dc_date": r["dc_date"],
+
                     "final_snf_facility_id": r["final_snf_facility_id"],
                     "final_snf_name_display": r["final_snf_name_display"],
                     "final_expected_transfer_date": r["final_expected_transfer_date"],
