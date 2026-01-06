@@ -12012,6 +12012,7 @@ async def admin_snf_get_note(
             "final_snf_facility_id": adm["final_snf_facility_id"],
             "final_snf_name_display": adm["final_snf_name_display"],
             "final_expected_transfer_date": adm["final_expected_transfer_date"],
+            "dc_date": adm["dc_date"],
             "review_comments": adm["review_comments"],
             "disposition": adm["disposition"],
             "facility_free_text": adm["facility_free_text"],
@@ -12294,13 +12295,33 @@ async def admin_snf_update(
     ):
         raise HTTPException(status_code=400, detail="Invalid status")
 
-    final_date = payload.get("final_expected_transfer_date")
-    if final_date:
-        final_date = str(final_date).strip()
-        if not re.match(r"^\d{4}-\d{2}-\d{2}$", final_date):
-            raise HTTPException(status_code=400, detail="final_expected_transfer_date must be YYYY-MM-DD")
+    # DC Date (manual) — prefer dc_date, fallback to legacy final_expected_transfer_date
+    dc_date = None
+    if "dc_date" in payload:
+        dc_date = (payload.get("dc_date") or None)
+    elif "final_expected_transfer_date" in payload:
+        dc_date = (payload.get("final_expected_transfer_date") or None)
+
+    if dc_date:
+        dc_date = str(dc_date).strip()
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", dc_date):
+            raise HTTPException(status_code=400, detail="dc_date must be YYYY-MM-DD")
     else:
-        final_date = None
+        dc_date = None
+
+    # Keep existing behavior for final_expected_transfer_date (only update it if explicitly provided)
+    final_date = None
+    if "final_expected_transfer_date" in payload:
+        final_date = payload.get("final_expected_transfer_date")
+        if final_date:
+            final_date = str(final_date).strip()
+            if not re.match(r"^\d{4}-\d{2}-\d{2}$", final_date):
+                raise HTTPException(status_code=400, detail="final_expected_transfer_date must be YYYY-MM-DD")
+        else:
+            final_date = None
+    else:
+        # do not overwrite if not provided
+        final_date = row["final_expected_transfer_date"]
 
     review_comments = (payload.get("review_comments") or "").strip()
     reviewer = (payload.get("reviewed_by") or "admin").strip()
@@ -12334,7 +12355,37 @@ async def admin_snf_update(
         cur.execute("SELECT * FROM snf_admissions WHERE id = ?", (snf_id,))
         row = cur.fetchone()
         if not row:
+            conn.close()
             raise HTTPException(status_code=404, detail="SNF admission not found")
+
+        # DC Date (manual) — prefer dc_date, fallback to legacy final_expected_transfer_date
+        dc_date = None
+        if "dc_date" in payload:
+            dc_date = (payload.get("dc_date") or None)
+        elif "final_expected_transfer_date" in payload:
+            dc_date = (payload.get("final_expected_transfer_date") or None)
+
+        if dc_date:
+            dc_date = str(dc_date).strip()
+            if not re.match(r"^\d{4}-\d{2}-\d{2}$", dc_date):
+                raise HTTPException(status_code=400, detail="dc_date must be YYYY-MM-DD")
+        else:
+            dc_date = None
+
+        # Keep existing behavior for final_expected_transfer_date (only update it if explicitly provided)
+        final_date = None
+        if "final_expected_transfer_date" in payload:
+            final_date = payload.get("final_expected_transfer_date")
+            if final_date:
+                final_date = str(final_date).strip()
+                if not re.match(r"^\d{4}-\d{2}-\d{2}$", final_date):
+                    raise HTTPException(status_code=400, detail="final_expected_transfer_date must be YYYY-MM-DD")
+            else:
+                final_date = None
+        else:
+            # do not overwrite if not provided
+            final_date = row["final_expected_transfer_date"]
+
         # IMPORTANT: prevent unintended resets.
         # Only overwrite these fields if they were included in the payload.
         # Otherwise keep what is already in the database row.
@@ -12453,6 +12504,7 @@ async def admin_snf_update(
             """
             UPDATE snf_admissions
                SET status = ?,
+                   dc_date = ?,
                    final_expected_transfer_date = ?,
                    review_comments = ?,
                    reviewed_by = ?,
@@ -12478,6 +12530,7 @@ async def admin_snf_update(
             """,
             (
                 status,
+                dc_date,
                 final_date,
                 review_comments,
                 reviewer,
