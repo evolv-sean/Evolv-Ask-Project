@@ -2748,7 +2748,7 @@
         // and it requires status + the normal edit fields too.
         const statusVal = (document.getElementById("edit-status")?.value || adm.status || "new");
         const dispositionVal = (document.getElementById("edit-disposition")?.value || adm.disposition || "");
-        const dateVal = (document.getElementById("edit-date")?.value || adm.final_expected_transfer_date || (adm.ai_expected_transfer_date || "") || "");
+        const dateVal = (document.getElementById("edit-date")?.value || adm.dc_date || "");
 
         const facilitySelect = document.getElementById("edit-facility-select");
         const facilityLabel =
@@ -2769,7 +2769,7 @@
             id: adm.id,
             status: statusVal,
             disposition: dispositionVal,
-            final_expected_transfer_date: dateVal || null,
+            dc_date: dateVal || null,
             facility_free_text: facilityLabel || "",
             review_comments: commentsVal || "",
 
@@ -2934,7 +2934,7 @@
             id: adm.id,
             status: statusVal,
             disposition: dispositionVal,
-            final_expected_transfer_date: dateVal || null,
+            dc_date: dateVal || null,
             facility_free_text: facilityLabel || "",
             review_comments: commentsVal || "",
 
@@ -4592,8 +4592,9 @@
 
         document.getElementById("edit-status").value = adm.status || "new";
         document.getElementById("edit-disposition").value = adm.disposition || "";
-        document.getElementById("edit-date").value = adm.final_expected_transfer_date || (adm.ai_expected_transfer_date || "");
+        document.getElementById("edit-date").value = adm.dc_date || "";
         document.getElementById("edit-comments").value = adm.review_comments || "";
+
 
         const aiRaw = (adm.ai_snf_name_raw || "").trim();
         const aiMatchesSystem = !!resolveAiToSystemFacility(aiRaw);
@@ -4660,7 +4661,7 @@
             id: selectedId,
             status: status,
             disposition: disposition || "",
-            final_expected_transfer_date: date || null,
+            dc_date: date || null,
             facility_free_text: facilityLabel || "",
             review_comments: comments || ""
           })
