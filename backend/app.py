@@ -3072,6 +3072,7 @@ def init_db():
             dob                         TEXT,
             attending                   TEXT,
             admit_date                  TEXT,
+            dc_date                     TEXT,
             hospital_name               TEXT,
             note_datetime               TEXT,
 
@@ -3159,7 +3160,7 @@ def init_db():
         # -------------------------
         rows = cur.execute(
             """
-            SELECT id, visit_id, note_datetime, note_text, created_at, dob, admit_date
+            SELECT id, visit_id, note_datetime, note_text, created_at, dob, admit_date, dc_date
             FROM cm_notes_raw
             WHERE note_datetime IS NOT NULL
                OR dob IS NOT NULL
@@ -3409,6 +3410,11 @@ def init_db():
 
     try:
         cur.execute("ALTER TABLE snf_admissions ADD COLUMN admit_date TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN dc_date TEXT")
     except sqlite3.Error:
         pass
 
@@ -9319,6 +9325,7 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     dob,
                     attending,
                     admit_date,
+                    dc_date,
                     hospital_name,
                     note_datetime,
                     ai_is_snf_candidate,
@@ -9338,6 +9345,7 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     dob                       = excluded.dob,
                     attending                 = excluded.attending,
                     admit_date                = excluded.admit_date,
+                    dc_date                   = COALESCE(excluded.dc_date, snf_admissions.dc_date),
                     hospital_name             = excluded.hospital_name,
                     note_datetime             = excluded.note_datetime,
                     ai_is_snf_candidate       = excluded.ai_is_snf_candidate,
@@ -9358,6 +9366,19 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     visit_id_db,
                     patient_mrn,
                     patient_name,
+
+                    (
+                        None
+                        if str(
+                            (latest_note["dc_date"] if "dc_date" in latest_note.keys() else "")
+                            or ""
+                        ).strip().lower() == "na"
+                        else normalize_date_to_iso(
+                            latest_note["dc_date"]
+                            if "dc_date" in latest_note.keys()
+                            else None
+                        )
+                    ),
 
                     # NEW:
                     latest_note["dob"] if "dob" in latest_note.keys() else None,
@@ -11806,7 +11827,7 @@ async def admin_snf_list(
             LEFT JOIN facilities f
               ON f.facility_id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id)
             WHERE {" AND ".join(where) if where else "1=1"}
-            ORDER BY effective_date IS NULL, effective_date, s.patient_name COLLATE NOCASE
+            ORDER BY s.dc_date IS NULL, s.dc_date, s.patient_name COLLATE NOCASE
         """
 
         cur.execute(sql, params)
