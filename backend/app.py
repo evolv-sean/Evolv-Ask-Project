@@ -5201,7 +5201,7 @@ def map_snf_name_to_facility_id(
       - snf_admission_facilities.facility_name
       - snf_admission_facilities.aliases
 
-    Returns: (facility_id as str, facility_label as facility_name) or (None, None)
+    Fix: choose the BEST match (most specific / longest phrase), not the first match.
     """
     if not snf_name:
         return None, None
@@ -5215,9 +5215,31 @@ def map_snf_name_to_facility_id(
     def _split_aliases(raw: str) -> list[str]:
         return [a.strip() for a in re.split(r"[,|;]+", str(raw or "")) if a.strip()]
 
+    def _phrase_hit_len(hay: str, needle: str) -> int:
+        """
+        Return length of the matched phrase when needle/hay contain each other.
+        Uses space-padding so we don't accidentally reward partial word matches.
+        """
+        hay2 = f" {hay} "
+        ned2 = f" {needle} "
+        if needle and ned2 in hay2:
+            return len(needle)
+        if hay and hay2 in ned2:
+            return len(hay)
+        # fallback to original substring logic if space-padding didn't hit
+        if needle and needle in hay:
+            return len(needle)
+        if hay and hay in needle:
+            return len(hay)
+        return 0
+
     ai_norm = _norm(snf_name)
     if not ai_norm:
         return None, None
+
+    best_id: Optional[str] = None
+    best_label: Optional[str] = None
+    best_score: int = 0
 
     try:
         cur = conn.cursor()
@@ -5230,24 +5252,36 @@ def map_snf_name_to_facility_id(
         )
 
         for row in cur.fetchall():
-            fac_id = row["id"]
+            fac_id = str(row["id"])
             fac_name = (row["facility_name"] or "").strip()
             aliases = row["aliases"] or ""
 
-            # Match facility_name
+            # 1) facility_name match (higher priority)
             name_norm = _norm(fac_name)
-            if name_norm and (ai_norm in name_norm or name_norm in ai_norm):
-                return str(fac_id), fac_name
+            hit_len = _phrase_hit_len(ai_norm, name_norm)
+            if hit_len:
+                score = hit_len + 10_000  # big bonus so true facility_name beats alias ties
+                if score > best_score:
+                    best_score = score
+                    best_id = fac_id
+                    best_label = fac_name
 
-            # Match any alias
+            # 2) alias matches (choose longest alias hit)
             for a in _split_aliases(aliases):
                 a_norm = _norm(a)
-                if a_norm and (ai_norm in a_norm or a_norm in ai_norm):
-                    return str(fac_id), fac_name
+                hit_len = _phrase_hit_len(ai_norm, a_norm)
+                if hit_len:
+                    score = hit_len
+                    if score > best_score:
+                        best_score = score
+                        best_id = fac_id
+                        best_label = fac_name
 
     except sqlite3.Error:
         return None, None
 
+    if best_id and best_label:
+        return best_id, best_label
     return None, None
 
 
