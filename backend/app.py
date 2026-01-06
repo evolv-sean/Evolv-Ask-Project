@@ -2577,6 +2577,7 @@ def init_db():
             unit_name       TEXT,
             admission_date  TEXT,
             admit_date      TEXT,
+            dc_date         TEXT,
             attending       TEXT,
 
             -- Note metadata
@@ -2606,6 +2607,11 @@ def init_db():
 
     try:
         cur.execute("ALTER TABLE cm_notes_raw ADD COLUMN admit_date TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE cm_notes_raw ADD COLUMN dc_date TEXT")
     except sqlite3.Error:
         pass
 
@@ -4142,6 +4148,7 @@ async def pad_cm_notes_bulk(
                     unit_name,
                     admission_date,
                     admit_date,
+                    dc_date,
                     attending,
                     note_datetime,
                     note_author,
@@ -4153,7 +4160,7 @@ async def pad_cm_notes_bulk(
                     note_hash,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 """,
                 (
                     patient_mrn,
@@ -4165,6 +4172,7 @@ async def pad_cm_notes_bulk(
                     row.get("unit_name"),
                     normalize_date_to_iso(row.get("admission_date")),
                     normalize_date_to_iso(row.get("admit_date") or row.get("admission_date")),
+                    normalize_date_to_iso(row.get("dc_date")),
                     row.get("attending") or row.get("hospitalist") or row.get("note_author"),
                     note_datetime,
                     row.get("note_author"),
