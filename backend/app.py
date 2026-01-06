@@ -9407,30 +9407,28 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     patient_mrn,
                     patient_name,
 
-                    (
-                        None
-                        if str(
-                            (latest_note["dc_date"] if "dc_date" in latest_note.keys() else "")
-                            or ""
-                        ).strip().lower() == "na"
-                        else normalize_date_to_iso(
-                            latest_note["dc_date"]
-                            if "dc_date" in latest_note.keys()
-                            else None
-                        )
-                    ),
+                    # dob
+                    normalize_date_to_iso(latest_note["dob"] if "dob" in latest_note.keys() else None),
 
-                    # NEW:
-                    latest_note["dob"] if "dob" in latest_note.keys() else None,
+                    # attending
                     (
                         (latest_note["attending"] if "attending" in latest_note.keys() else None)
                         or (latest_note["note_author"] if "note_author" in latest_note.keys() else None)
                         or ""
                     ),
-                    (
+
+                    # admit_date
+                    normalize_date_to_iso(
                         (latest_note["admit_date"] if "admit_date" in latest_note.keys() else None)
                         or (latest_note["admission_date"] if "admission_date" in latest_note.keys() else None)
-                        or ""
+                        or None
+                    ),
+
+                    # dc_date
+                    (
+                        None
+                        if str((latest_note["dc_date"] if "dc_date" in latest_note.keys() else "") or "").strip().lower() == "na"
+                        else normalize_date_to_iso(latest_note["dc_date"] if "dc_date" in latest_note.keys() else None)
                     ),
 
                     hospital_name,
@@ -9982,6 +9980,10 @@ def snf_recompute_for_admission(visit_id: str = "", patient_mrn: str = "", retur
                 UPDATE snf_admissions
                 SET raw_note_id = ?,
                     note_datetime = ?,
+
+                    -- ✅ NEW: backfill dc_date from latest_note when present (but don't wipe existing)
+                    dc_date = COALESCE(?, dc_date),
+
                     ai_is_snf_candidate = 1,
                     ai_snf_name_raw = ?,
                     ai_snf_facility_id = ?,
@@ -9991,7 +9993,20 @@ def snf_recompute_for_admission(visit_id: str = "", patient_mrn: str = "", retur
                     updated_at = datetime('now')
                 WHERE visit_id = ?
                 """,
-                (latest_note["id"], note_datetime, snf_name_raw, ai_facility_id, expected_date, conf, visit_id_db),
+                (
+                    latest_note["id"],
+                    note_datetime,
+                    (
+                        None
+                        if str((latest_note["dc_date"] if "dc_date" in latest_note.keys() else "") or "").strip().lower() == "na"
+                        else normalize_date_to_iso(latest_note["dc_date"] if "dc_date" in latest_note.keys() else None)
+                    ),
+                    snf_name_raw,
+                    ai_facility_id,
+                    expected_date,
+                    conf,
+                    visit_id_db,
+                ),
             )
 
             if cur.rowcount > 0:
