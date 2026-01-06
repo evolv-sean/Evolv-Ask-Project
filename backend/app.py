@@ -12295,34 +12295,6 @@ async def admin_snf_update(
     ):
         raise HTTPException(status_code=400, detail="Invalid status")
 
-    # DC Date (manual) — prefer dc_date, fallback to legacy final_expected_transfer_date
-    dc_date = None
-    if "dc_date" in payload:
-        dc_date = (payload.get("dc_date") or None)
-    elif "final_expected_transfer_date" in payload:
-        dc_date = (payload.get("final_expected_transfer_date") or None)
-
-    if dc_date:
-        dc_date = str(dc_date).strip()
-        if not re.match(r"^\d{4}-\d{2}-\d{2}$", dc_date):
-            raise HTTPException(status_code=400, detail="dc_date must be YYYY-MM-DD")
-    else:
-        dc_date = None
-
-    # Keep existing behavior for final_expected_transfer_date (only update it if explicitly provided)
-    final_date = None
-    if "final_expected_transfer_date" in payload:
-        final_date = payload.get("final_expected_transfer_date")
-        if final_date:
-            final_date = str(final_date).strip()
-            if not re.match(r"^\d{4}-\d{2}-\d{2}$", final_date):
-                raise HTTPException(status_code=400, detail="final_expected_transfer_date must be YYYY-MM-DD")
-        else:
-            final_date = None
-    else:
-        # do not overwrite if not provided
-        final_date = row["final_expected_transfer_date"]
-
     review_comments = (payload.get("review_comments") or "").strip()
     reviewer = (payload.get("reviewed_by") or "admin").strip()
 
