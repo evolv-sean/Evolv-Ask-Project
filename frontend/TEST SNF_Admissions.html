@@ -3969,22 +3969,53 @@
       const aiNorm = normFacilityStr(aiRaw);
       if (!aiNorm) return null;
 
+      function phraseHitLen(hay, needle) {
+        const h = ` ${hay} `;
+        const n = ` ${needle} `;
+        if (needle && h.includes(n)) return needle.length;     // ai contains needle
+        if (hay && n.includes(h)) return hay.length;           // needle contains ai
+        // fallback to original substring logic
+        if (needle && hay.includes(needle)) return needle.length;
+        if (hay && needle.includes(hay)) return hay.length;
+        return 0;
+      }
+
+      let best = null;
+      let bestScore = 0;
+
       for (const f of (snfFacilities || [])) {
         const name = f.facility_name || "";
         const nameNorm = normFacilityStr(name);
-        if (nameNorm && (aiNorm.includes(nameNorm) || nameNorm.includes(aiNorm))) {
-          return f; // matched by facility_name
+
+        // 1) facility_name match (bonus)
+        if (nameNorm) {
+          const hitLen = phraseHitLen(aiNorm, nameNorm);
+          if (hitLen) {
+            const score = hitLen + 10000;
+            if (score > bestScore) {
+              bestScore = score;
+              best = f;
+            }
+          }
         }
 
+        // 2) alias matches (longest wins)
         const aliases = splitAliases(f.aliases);
         for (const a of aliases) {
           const aNorm = normFacilityStr(a);
-          if (aNorm && (aiNorm.includes(aNorm) || aNorm.includes(aiNorm))) {
-            return f; // matched by alias
+          if (!aNorm) continue;
+          const hitLen = phraseHitLen(aiNorm, aNorm);
+          if (hitLen) {
+            const score = hitLen;
+            if (score > bestScore) {
+              bestScore = score;
+              best = f;
+            }
           }
         }
       }
-      return null;
+
+      return best;
     }
 
     function getFacilityAttendingsForRow(r) {
