@@ -3165,10 +3165,11 @@ def init_db():
             WHERE note_datetime IS NOT NULL
                OR dob IS NOT NULL
                OR admit_date IS NOT NULL
+               OR dc_date IS NOT NULL
             """
         ).fetchall()
 
-        for note_id, visit_id, note_dt_raw, note_text, created_at, dob_raw, admit_raw in rows:
+        for note_id, visit_id, note_dt_raw, note_text, created_at, dob_raw, admit_raw, dc_raw in rows:
             norm_dt = normalize_datetime_to_sqlite(note_dt_raw)
 
             # If it's truly garbage (ex: "Date/Time"), fall back to created_at if available
@@ -3182,6 +3183,7 @@ def init_db():
 
             norm_dob = normalize_date_to_iso(dob_raw)
             norm_admit = normalize_date_to_iso(admit_raw)
+            norm_dc = normalize_date_to_iso(dc_raw)
 
             changed = False
 
@@ -3194,6 +3196,9 @@ def init_db():
             if (admit_raw or "") != (norm_admit or ""):
                 changed = True
 
+            if (dc_raw or "") != (norm_dc or ""):
+                changed = True
+
             if changed:
                 new_hash = compute_note_hash(str(visit_id or ""), norm_dt, note_text or "")
                 cur.execute(
@@ -3202,10 +3207,11 @@ def init_db():
                     SET note_datetime = ?,
                         note_hash = ?,
                         dob = ?,
-                        admit_date = ?
+                        admit_date = ?,
+                        dc_date = ?
                     WHERE id = ?
                     """,
-                    (norm_dt, new_hash, norm_dob, norm_admit, note_id),
+                    (norm_dt, new_hash, norm_dob, norm_admit, norm_dc, note_id),
                 )
 
         # -------------------------
