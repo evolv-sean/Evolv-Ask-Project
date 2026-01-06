@@ -1155,7 +1155,7 @@
               <th>Patient</th>
               <th>From (Hospital)</th>
               <th>Facility (AI)</th>
-              <th>Effective date</th>
+              <th>DC Date</th>
               <th>AI conf</th>
               <th>Status</th>
               <th>Emailed</th>
@@ -4323,7 +4323,7 @@
                 : ""
             }
           </td>
-          <td>${formatISOToMDY(r.effective_date)}</td>
+          <td>${formatISOToMDY(r.dc_date)}</td>
           <td>${(r.ai_confidence != null ? r.ai_confidence.toFixed(2) : "")}</td>
           <td>
             ${(() => {
