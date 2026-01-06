@@ -12565,7 +12565,8 @@ async def admin_snf_send_emails(
                 target_cc = ", ".join(ccs)
 
             fac_name = fac_names.get(fid, fid)
-            subject = f"Upcoming SNF admissions for {for_date} – {fac_name}"
+            sent_date = dt.date.today().isoformat()  # date the email is sent (today)
+            subject = f"Upcoming SNF admissions for {sent_date} – {fac_name}"
             if test_only:
                 subject = "[TEST] " + subject
 
@@ -14185,7 +14186,8 @@ async def admin_snf_email_pdf(
         secure_url = f"{base_url}/snf/secure/{raw_token}"
 
         # ✅ NEW: build the outbound email (HTML + plain text)
-        subject = f"Pending SNF Admissions for {facility_name} – {for_date} PLEASE REVIEW"
+        sent_date = dt.date.today().isoformat()  # date the email is sent (today)
+        subject = f"Pending SNF Admissions for {facility_name} – {sent_date} PLEASE REVIEW"
         if test_only:
             subject = "[TEST] " + subject
 
