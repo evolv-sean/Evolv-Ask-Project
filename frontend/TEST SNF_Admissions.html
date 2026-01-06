@@ -4567,11 +4567,11 @@
         const aiRaw = (adm.ai_snf_name_raw || "").trim();
         const aiMatchesSystem = !!resolveAiToSystemFacility(aiRaw);
 
-        // Decide which facility label to use to preselect the dropdown
+        // Facility dropdown is ONLY a manual override.
+        // Default to (none) unless user previously saved a manual selection.
         const facilityLabel =
-          adm.final_snf_name_display ||
           adm.facility_free_text ||
-          adm.ai_snf_name_raw ||
+          adm.final_snf_name_display ||
           "";
         setEditFacilityByLabel(facilityLabel);
 
