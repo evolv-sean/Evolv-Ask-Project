@@ -958,6 +958,87 @@
     </div>
   </div>
 </div>
+<!-- ✅ Service modal -->
+<div id="serviceModalBackdrop" class="modal-backdrop">
+  <div class="modal">
+    <div class="modal-head">
+      <div style="font-weight:800;">Service</div>
+      <button id="closeServiceModal" class="btn">Close</button>
+    </div>
+
+    <div class="modal-body">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <input id="svc_id" type="hidden" />
+        <div style="flex:1;min-width:240px;">
+          <div class="label">Name</div>
+          <input id="svc_name" class="input" placeholder="Service name" />
+        </div>
+        <div style="width:180px;">
+          <div class="label">Type</div>
+          <select id="svc_type" class="input">
+            <option value="dme">DME</option>
+            <option value="hh">HH</option>
+          </select>
+        </div>
+        <div style="width:160px;">
+          <div class="label">Show in dropdown</div>
+          <select id="svc_dropdown" class="input">
+            <option value="1">Yes</option>
+            <option value="0">No</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="svcMsg" class="msg"></div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;">
+        <button id="saveServiceBtn" class="btn primary">Save Service</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ✅ Care Team modal -->
+<div id="careTeamModalBackdrop" class="modal-backdrop">
+  <div class="modal">
+    <div class="modal-head">
+      <div style="font-weight:800;">Care Team</div>
+      <button id="closeCareTeamModal" class="btn">Close</button>
+    </div>
+
+    <div class="modal-body">
+      <input id="ct_id" type="hidden" />
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:240px;">
+          <div class="label">Name</div>
+          <input id="ct_name" class="input" placeholder="Full name" />
+        </div>
+        <div style="width:220px;">
+          <div class="label">Type</div>
+          <input id="ct_type" class="input" placeholder="PT / OT / MD / SW..." />
+        </div>
+        <div style="width:180px;">
+          <div class="label">NPI</div>
+          <input id="ct_npi" class="input" placeholder="NPI" />
+        </div>
+        <div style="width:160px;">
+          <div class="label">Active</div>
+          <select id="ct_active" class="input">
+            <option value="1">Yes</option>
+            <option value="0">No</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="ctMsg" class="msg"></div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;">
+        <button id="saveCareTeamBtn" class="btn primary">Save Care Team</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
   const $ = (id) => document.getElementById(id);
@@ -965,6 +1046,62 @@
   // ✅ Prevent browser from trying to open/save the file when dragged over the page
   document.addEventListener("dragover", (e) => e.preventDefault());
   document.addEventListener("drop", (e) => e.preventDefault());
+
+  function openServiceModal(service){
+    $("svc_id").value = service ? String(service.id || "") : "";
+    $("svc_name").value = service ? (service.name || "") : "";
+    $("svc_type").value = service ? (service.service_type || "dme") : "dme";
+    $("svc_dropdown").value = service ? String(service.dropdown ? 1 : 0) : "1";
+    setMsg($("svcMsg"), "", true);
+    $("serviceModalBackdrop").classList.add("on");
+  }
+  function closeServiceModal(){ $("serviceModalBackdrop").classList.remove("on"); }
+  $("closeServiceModal").onclick = closeServiceModal;
+
+  $("saveServiceBtn").onclick = async () => {
+    try{
+      const payload = {
+        id: $("svc_id").value ? Number($("svc_id").value) : null,
+        name: ($("svc_name").value || "").trim(),
+        service_type: ($("svc_type").value || "").trim(),
+        dropdown: Number($("svc_dropdown").value || 1)
+      };
+      await apiPost("/api/sensys/admin/services/upsert", payload);
+      await refreshServicesList();
+      closeServiceModal();
+    }catch(e){
+      setMsg($("svcMsg"), String(e.message || e), false);
+    }
+  };
+
+  function openCareTeamModal(row){
+    $("ct_id").value = row ? String(row.id || "") : "";
+    $("ct_name").value = row ? (row.name || "") : "";
+    $("ct_type").value = row ? (row.type || "") : "";
+    $("ct_npi").value = row ? (row.npi || "") : "";
+    $("ct_active").value = row ? String(row.active ? 1 : 0) : "1";
+    setMsg($("ctMsg"), "", true);
+    $("careTeamModalBackdrop").classList.add("on");
+  }
+  function closeCareTeamModal(){ $("careTeamModalBackdrop").classList.remove("on"); }
+  $("closeCareTeamModal").onclick = closeCareTeamModal;
+
+  $("saveCareTeamBtn").onclick = async () => {
+    try{
+      const payload = {
+        id: $("ct_id").value ? Number($("ct_id").value) : null,
+        name: ($("ct_name").value || "").trim(),
+        type: ($("ct_type").value || "").trim(),
+        npi: ($("ct_npi").value || "").trim(),
+        active: Number($("ct_active").value || 1)
+      };
+      await apiPost("/api/sensys/admin/care-team/upsert", payload);
+      await refreshCareTeamList();
+      closeCareTeamModal();
+    }catch(e){
+      setMsg($("ctMsg"), String(e.message || e), false);
+    }
+  };
 
   function openUserModal(){
     $("userModalBackdrop").classList.add("on");
@@ -1230,6 +1367,8 @@
   $("bulkAdmissionsIcon").onclick = () => openBulkModal("admissions");
   $("bulkServicesIcon").onclick = () => openBulkModal("services");
   $("bulkCareTeamIcon").onclick = () => openBulkModal("care-team");
+  $("addServiceIcon").onclick = () => openServiceModal(null);
+  $("addCareTeamIcon").onclick = () => openCareTeamModal(null);
 
   $("saveUser").onclick = async () => {
     try{
@@ -1710,6 +1849,22 @@
       endpoint: "/api/sensys/admin/admissions/bulk",
       filename: "sensys_admissions_template.csv",
       headers: ["id","patient_id","agency_id","admit_date","dc_date","room","referring_agency","reason","latest_pcp","notes1","notes2","active","next_location","next_agency_id"]
+    },
+
+    // ✅ ADD
+    services: {
+      label: "Services",
+      endpoint: "/api/sensys/admin/services/bulk",
+      filename: "sensys_services_template.csv",
+      headers: ["id","name","service_type","dropdown"]
+    },
+
+    // ✅ ADD  (NOTE: this matches your icon call openBulkModal("care-team")【turn13:0†Sensys 3.0 - Admin - DEV.html†L75-L76】)
+    "care-team": {
+      label: "Care Team",
+      endpoint: "/api/sensys/admin/care-team/bulk",
+      filename: "sensys_care_team_template.csv",
+      headers: ["id","name","type","npi","active","phone1","phone2","email1","email2"]
     }
   };
 
@@ -1925,8 +2080,12 @@
         await refreshAgenciesList();
       }else if(bulkEntity === "patients"){
         await refreshPatientsList();
-      }else{
+      }else if(bulkEntity === "admissions"){
         await refreshAdmissionsList();
+      }else if(bulkEntity === "services"){
+        await refreshServicesList();
+      }else if(bulkEntity === "care-team"){
+        await refreshCareTeamList();
       }
 
       resetBulkSelection();
