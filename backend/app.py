@@ -16875,6 +16875,26 @@ def sensys_care_team(request: Request):
     ).fetchall()
     return {"ok": True, "care_team": [dict(r) for r in rows]}
 
+
+# ✅ Sensys (User): Services list (needed by Admission Details page)
+@app.get("/api/sensys/services")
+def sensys_services(request: Request):
+    _sensys_require_user(request)
+    conn = get_db()
+
+    rows = conn.execute(
+        """
+        SELECT
+            id, name, service_type, dropdown, reminder_id, deleted_at, created_at, updated_at
+        FROM sensys_services
+        WHERE deleted_at IS NULL
+        ORDER BY service_type COLLATE NOCASE, name COLLATE NOCASE
+        """
+    ).fetchall()
+
+    return {"ok": True, "services": [dict(r) for r in rows]}
+
+
 @app.get("/api/sensys/admission-details/{admission_id}")
 def sensys_admission_details(admission_id: int, request: Request):
     u = _sensys_require_user(request)
