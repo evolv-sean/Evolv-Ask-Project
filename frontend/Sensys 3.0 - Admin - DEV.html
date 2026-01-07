@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sensys 3.0 — Admin</title>
+  <style>
+    :root{
+      --navy:#0d3b66;
+      --mint:#a8e6cf;
+      --sky:#4da8da;
+      --ink:#0f172a;
+      --muted:#64748b;
+      --line:rgba(13,59,102,.14);
+      --bg:#f6f8fb;
+      --card:#ffffff;
+      --shadow: 0 10px 24px rgba(13,59,102,.08);
+      --r16:16px;
+      --r12:12px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      background:var(--bg);
+      color:var(--ink);
+    }
+    .wrap{max-width:1100px;margin:0 auto;padding:18px}
+    .topbar{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--r16);
+      padding:14px 14px;
+      box-shadow: 0 1px 0 rgba(15,23,42,.03);
+      display:flex;align-items:center;justify-content:space-between;gap:12px;
+    }
+    .brand{
+      display:flex;flex-direction:column;gap:2px;
+    }
+    .brand .kicker{
+      font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+    }
+    .brand .title{
+      font-size:18px;font-weight:800;color:var(--navy);
+    }
+    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
+    .field{
+      display:flex;align-items:center;gap:8px;
+      background:#fff;border:1px solid var(--line);
+      border-radius:999px;padding:8px 10px;
+    }
+    .field label{font-size:12px;color:var(--muted)}
+    .field input{
+      border:none;outline:none;font-size:12px;min-width:240px;
+    }
+    .btn{
+      border:1px solid rgba(13,59,102,.18);
+      background:#fff;
+      border-radius:999px;
+      padding:10px 12px;
+      font-weight:800;
+      font-size:12px;
+      cursor:pointer;
+      transition: box-shadow .15s ease, border-color .15s ease, background .15s ease;
+    }
+    .btn:hover{border-color: rgba(168,230,207,.9); box-shadow: 0 0 0 3px rgba(168,230,207,.35);}
+    .btn.primary{
+      background: rgba(168,230,207,.22);
+      border-color: rgba(168,230,207,.95);
+      color: var(--navy);
+    }
+    .grid{
+      display:grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap:14px;
+      margin-top:14px;
+    }
+    @media (max-width: 980px){
+      .grid{grid-template-columns:1fr}
+      .field input{min-width:180px}
+    }
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--r16);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .card .hd{
+      padding:12px 14px;
+      border-bottom:1px solid rgba(15,23,42,.06);
+      display:flex;align-items:flex-end;justify-content:space-between;gap:10px;
+    }
+    .card .hd h2{margin:0;font-size:14px;color:var(--navy)}
+    .hint{font-size:12px;color:var(--muted)}
+    .card .body{padding:12px 14px}
+    .table-wrap{border-radius:16px;border:1px solid rgba(13,59,102,.14);overflow:hidden;background:#fff;}
+    table{width:100%;border-collapse:collapse;font-size:12px}
+    thead{background: rgba(13,59,102,.05);}
+    th,td{padding:10px 12px;text-align:left;vertical-align:middle}
+    th{
+      font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:#475569;
+      border-bottom:1px solid rgba(15,23,42,.08);
+      white-space:nowrap;
+    }
+    tbody tr:nth-child(even){background:#f9fafb}
+    tbody tr:hover{background:#eef2ff}
+    td{border-bottom:1px solid rgba(15,23,42,.06)}
+    tbody tr:last-child td{border-bottom:none}
+    .pill{
+      display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;
+    }
+    .tag{
+      display:inline-flex;align-items:center;justify-content:center;
+      padding:6px 10px;border-radius:999px;
+      border:1px solid rgba(13,59,102,.18);
+      background:#fff;color:#334155;
+      font-weight:800;font-size:11px;line-height:1;
+      cursor:pointer;
+      transition: border-color .15s ease, box-shadow .15s ease, background .15s ease, color .15s ease;
+      user-select:none;
+    }
+    .tag:hover{border-color: rgba(168,230,207,.9); box-shadow: 0 0 0 3px rgba(168,230,207,.35);}
+    .tag.on{
+      border-color: rgba(168,230,207,.95);
+      box-shadow: 0 10px 24px rgba(168,230,207,.18), 0 0 0 3px rgba(168,230,207,.45);
+      background: rgba(168,230,207,.18);
+      color: var(--navy);
+    }
+    .stack{display:flex;gap:10px;flex-wrap:wrap}
+    .input, .select{
+      width:100%;
+      border:1px solid rgba(13,59,102,.18);
+      border-radius:12px;
+      padding:10px 10px;
+      font-size:12px;
+      outline:none;
+      background:#fff;
+    }
+    .label{font-size:11px;color:var(--muted);margin-bottom:6px}
+    .toast{
+      margin-top:10px;
+      font-size:12px;
+      color:#0f172a;
+    }
+    .toast.ok{color:#065f46}
+    .toast.err{color:#991b1b}
+    .mini{
+      font-size:11px;color:var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="kicker">Sensys 3.0</div>
+        <div class="title">Admin — Users</div>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label>ADMIN_TOKEN</label>
+          <input id="token" placeholder="paste token here…" />
+        </div>
+        <button class="btn" id="saveToken">Save</button>
+        <button class="btn primary" id="refresh">Refresh</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- LEFT: Users table -->
+      <div class="card">
+        <div class="hd">
+          <h2>Users</h2>
+          <div class="hint">Click a row to edit. Roles + facilities are saved separately.</div>
+        </div>
+        <div class="body">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Name</th>
+                  <th>Active</th>
+                  <th>Roles</th>
+                  <th>Facilities</th>
+                </tr>
+              </thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+          <div id="listMsg" class="toast"></div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Editor -->
+      <div class="card">
+        <div class="hd">
+          <h2>Edit Selected User</h2>
+          <div class="hint">Quick + clean. More fields later.</div>
+        </div>
+        <div class="body">
+          <div class="mini">Selected user_id: <b id="selId">—</b></div>
+          <div style="height:10px"></div>
+
+          <div class="label">Email</div>
+          <input class="input" id="email" placeholder="user@email.com" />
+
+          <div style="height:10px"></div>
+
+          <div class="label">Display Name</div>
+          <input class="input" id="display_name" placeholder="Full name" />
+
+          <div style="height:10px"></div>
+
+          <div class="label">Active</div>
+          <select class="select" id="is_active">
+            <option value="1">Yes (Active)</option>
+            <option value="0">No (Inactive)</option>
+          </select>
+
+          <div style="height:14px"></div>
+
+          <div class="label">Roles</div>
+          <div class="pill" id="roles"></div>
+
+          <div style="height:14px"></div>
+
+          <div class="label">Facility IDs (comma separated)</div>
+          <input class="input" id="facility_ids" placeholder="Example: 101, 205, 999" />
+
+          <div style="height:14px"></div>
+
+          <div class="stack">
+            <button class="btn primary" id="saveUser">Save User</button>
+            <button class="btn" id="saveRoles">Save Roles</button>
+            <button class="btn" id="saveFacilities">Save Facilities</button>
+            <button class="btn" id="newUser">New User</button>
+          </div>
+
+          <div id="editMsg" class="toast"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  function getToken(){
+    return ($("token").value || localStorage.getItem("SENSYS_ADMIN_TOKEN") || "").trim();
+  }
+
+  function setMsg(el, text, ok=true){
+    el.className = "toast " + (ok ? "ok" : "err");
+    el.textContent = text || "";
+  }
+
+  let rolesMaster = [];
+  let usersCache = [];
+  let selectedUserId = null;
+  let selectedRoleKeys = new Set();
+
+  function parseFacilityIds(){
+    const raw = ($("facility_ids").value || "").trim();
+    if(!raw) return [];
+    return raw.split(",").map(x => x.trim()).filter(Boolean).map(x => parseInt(x,10)).filter(n => !isNaN(n));
+  }
+
+  function renderRolesPills(){
+    const wrap = $("roles");
+    wrap.innerHTML = "";
+    rolesMaster.forEach(r => {
+      const b = document.createElement("span");
+      b.className = "tag " + (selectedRoleKeys.has(r.role_key) ? "on" : "");
+      b.textContent = r.role_name;
+      b.onclick = () => {
+        if(selectedRoleKeys.has(r.role_key)) selectedRoleKeys.delete(r.role_key);
+        else selectedRoleKeys.add(r.role_key);
+        renderRolesPills();
+      };
+      wrap.appendChild(b);
+    });
+  }
+
+  function selectUser(u){
+    selectedUserId = u.user_id;
+    $("selId").textContent = String(u.user_id);
+    $("email").value = u.email || "";
+    $("display_name").value = u.display_name || "";
+    $("is_active").value = String(u.is_active ?? 1);
+
+    selectedRoleKeys = new Set(u.role_keys || []);
+    renderRolesPills();
+
+    $("facility_ids").value = (u.facility_ids || []).join(", ");
+    setMsg($("editMsg"), "", true);
+  }
+
+  function renderUsersTable(){
+    const tbody = $("tbody");
+    tbody.innerHTML = "";
+
+    usersCache.forEach(u => {
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.onclick = () => selectUser(u);
+
+      const roles = (u.role_keys || []).join(", ");
+      const facs = (u.facility_ids || []).join(", ");
+
+      tr.innerHTML = `
+        <td><b>${escapeHtml(u.email || "")}</b></td>
+        <td>${escapeHtml(u.display_name || "")}</td>
+        <td>${u.is_active ? "Yes" : "No"}</td>
+        <td>${escapeHtml(roles)}</td>
+        <td>${escapeHtml(facs)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, (m) => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[m]));
+  }
+
+  async function apiGet(path){
+    const token = getToken();
+    if(!token) throw new Error("Missing ADMIN_TOKEN (paste it top-right, click Save)");
+    const url = path.includes("?") ? `${path}&token=${encodeURIComponent(token)}` : `${path}?token=${encodeURIComponent(token)}`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error(await res.text());
+    return await res.json();
+  }
+
+  async function apiPost(path, payload){
+    const token = getToken();
+    if(!token) throw new Error("Missing ADMIN_TOKEN (paste it top-right, click Save)");
+    const url = path.includes("?") ? `${path}&token=${encodeURIComponent(token)}` : `${path}?token=${encodeURIComponent(token)}`;
+    const res = await fetch(url, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify(payload || {})
+    });
+    if(!res.ok) throw new Error(await res.text());
+    return await res.json();
+  }
+
+  async function refreshAll(){
+    setMsg($("listMsg"), "Loading…", true);
+    try{
+      const rolesResp = await apiGet("/api/sensys/admin/roles");
+      rolesMaster = rolesResp.roles || [];
+      renderRolesPills();
+
+      const usersResp = await apiGet("/api/sensys/admin/users");
+      usersCache = usersResp.users || [];
+      renderUsersTable();
+
+      setMsg($("listMsg"), `Loaded ${usersCache.length} users.`, true);
+
+      // auto-select first user if none selected
+      if(!selectedUserId && usersCache.length){
+        selectUser(usersCache[0]);
+      }
+    }catch(e){
+      setMsg($("listMsg"), String(e.message || e), false);
+    }
+  }
+
+  $("saveToken").onclick = () => {
+    const t = ($("token").value || "").trim();
+    if(t) localStorage.setItem("SENSYS_ADMIN_TOKEN", t);
+    setMsg($("listMsg"), t ? "Token saved locally." : "Token cleared.", true);
+  };
+
+  $("refresh").onclick = refreshAll;
+
+  $("newUser").onclick = () => {
+    selectedUserId = null;
+    $("selId").textContent = "—";
+    $("email").value = "";
+    $("display_name").value = "";
+    $("is_active").value = "1";
+    selectedRoleKeys = new Set();
+    renderRolesPills();
+    $("facility_ids").value = "";
+    setMsg($("editMsg"), "New user mode (Save User to create).", true);
+  };
+
+  $("saveUser").onclick = async () => {
+    try{
+      const payload = {
+        user_id: selectedUserId,
+        email: ($("email").value || "").trim(),
+        display_name: ($("display_name").value || "").trim(),
+        is_active: parseInt($("is_active").value, 10)
+      };
+      await apiPost("/api/sensys/admin/users/upsert", payload);
+      setMsg($("editMsg"), "User saved.", true);
+      await refreshAll();
+    }catch(e){
+      setMsg($("editMsg"), String(e.message || e), false);
+    }
+  };
+
+  $("saveRoles").onclick = async () => {
+    try{
+      if(!selectedUserId) throw new Error("Select a user first (or create one).");
+      await apiPost("/api/sensys/admin/users/set-roles", {
+        user_id: selectedUserId,
+        role_keys: Array.from(selectedRoleKeys)
+      });
+      setMsg($("editMsg"), "Roles saved.", true);
+      await refreshAll();
+    }catch(e){
+      setMsg($("editMsg"), String(e.message || e), false);
+    }
+  };
+
+  $("saveFacilities").onclick = async () => {
+    try{
+      if(!selectedUserId) throw new Error("Select a user first (or create one).");
+      await apiPost("/api/sensys/admin/users/set-facilities", {
+        user_id: selectedUserId,
+        facility_ids: parseFacilityIds()
+      });
+      setMsg($("editMsg"), "Facilities saved.", true);
+      await refreshAll();
+    }catch(e){
+      setMsg($("editMsg"), String(e.message || e), false);
+    }
+  };
+
+  // load saved token on open
+  $("token").value = localStorage.getItem("SENSYS_ADMIN_TOKEN") || "";
+
+  // initial load
+  refreshAll();
+</script>
+</body>
+</html>
