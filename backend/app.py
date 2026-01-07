@@ -238,6 +238,13 @@ SNF_HTML = FRONTEND_DIR / "TEST SNF_Admissions.html"
 HOSPITAL_DISCHARGE_HTML = FRONTEND_DIR / "Hospital_Discharge.html"
 CENSUS_HTML = FRONTEND_DIR / "Census.html"
 
+# -----------------------------
+# NEW: Sensys quick-login + SNF SW test UI pages
+# -----------------------------
+SENSYS_LOGIN_HTML = FRONTEND_DIR / "Sensys Login.html"
+SENSYS_SNF_SW_HTML = FRONTEND_DIR / "Sensys SNF SW.html"
+
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("evolv")
 
@@ -2403,6 +2410,23 @@ def init_db():
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_pages_user ON sensys_user_pages(user_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_pages_page ON sensys_user_pages(page_key)")
+
+    # -------------------------------------------------------------------
+    # NEW: Sensys sessions (simple token auth for test login pages)
+    # -------------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_sessions (
+            token       TEXT PRIMARY KEY,          -- random UUID
+            user_id     INTEGER NOT NULL,
+            created_at  TEXT DEFAULT (datetime('now')),
+            expires_at  TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES sensys_users(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_sessions_user ON sensys_sessions(user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_sessions_exp ON sensys_sessions(expires_at)")
 
     # -------------------------------------------------------------------
     # Sensys 3.0: Patients + Admissions (manual + future automation)
@@ -14946,7 +14970,9 @@ class SensysAdmissionUpsert(BaseModel):
     next_location: Optional[str] = ""
     next_agency_id: Optional[int] = None
 
-
+class SensysLoginIn(BaseModel):
+    email: str
+    password: Optional[str] = None  # ignored for now (testing)
 
 # -----------------------------
 # Sensys Admin: seed roles (safe to call repeatedly)
@@ -14961,6 +14987,7 @@ def _sensys_seed_roles(conn: sqlite3.Connection):
         ("provider", "Provider"),
         ("ccm", "CCM"),
         ("hospital", "Hospital"),
+        ("snf_sw", "SNF SW"),
     ]
     conn.executemany(
         """
@@ -16100,6 +16127,185 @@ def sensys_admin_users_set_facilities(payload: SensysFacilityAssign, token: str)
     conn.commit()
     return {"ok": True}
 
+# =========================================================
+# Sensys simple auth (email-only login for testing)
+# =========================================================
+from uuid import uuid4
+
+def _sensys_create_session(conn: sqlite3.Connection, user_id: int, ttl_hours: int = 24) -> str:
+    token = str(uuid4())
+    conn.execute(
+        """
+        INSERT INTO sensys_sessions (token, user_id, expires_at)
+        VALUES (?, ?, datetime('now', ?))
+        """,
+        (token, int(user_id), f"+{int(ttl_hours)} hours"),
+    )
+    conn.commit()
+    return token
+
+def _sensys_get_user_by_token(conn: sqlite3.Connection, token: str) -> Optional[dict]:
+    token = (token or "").strip()
+    if not token:
+        return None
+
+    row = conn.execute(
+        """
+        SELECT u.id AS user_id, u.email, u.display_name, u.is_active, u.account_locked
+        FROM sensys_sessions s
+        JOIN sensys_users u ON u.id = s.user_id
+        WHERE s.token = ?
+          AND s.expires_at > datetime('now')
+        """,
+        (token,),
+    ).fetchone()
+
+    return dict(row) if row else None
+
+def _sensys_token_from_request(request: Request) -> str:
+    # Authorization: Bearer <token>
+    auth = request.headers.get("authorization") or request.headers.get("Authorization") or ""
+    if auth.lower().startswith("bearer "):
+        return auth.split(" ", 1)[1].strip()
+    # fallback: query param token= (optional)
+    return (request.query_params.get("token") or "").strip()
+
+def _sensys_require_user(request: Request) -> dict:
+    conn = get_db()
+    token = _sensys_token_from_request(request)
+    u = _sensys_get_user_by_token(conn, token)
+    if not u:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if int(u.get("is_active") or 0) != 1:
+        raise HTTPException(status_code=403, detail="User inactive")
+    if int(u.get("account_locked") or 0) == 1:
+        raise HTTPException(status_code=403, detail="Account locked")
+
+    # attach role keys
+    roles = conn.execute(
+        """
+        SELECT r.role_key
+        FROM sensys_user_roles ur
+        JOIN sensys_roles r ON r.id = ur.role_id
+        WHERE ur.user_id = ?
+        """,
+        (int(u["user_id"]),),
+    ).fetchall()
+    u["role_keys"] = sorted([r["role_key"] for r in roles])
+
+    return u
+
+
+@app.post("/api/sensys/login")
+def sensys_login(payload: SensysLoginIn):
+    """
+    Email-only login for testing.
+    - Password is ignored for now.
+    - Returns a token used as Authorization: Bearer <token>
+    """
+    conn = get_db()
+    _sensys_seed_roles(conn)
+
+    email = (payload.email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="email is required")
+
+    user = conn.execute(
+        """
+        SELECT id AS user_id, email, display_name, is_active, account_locked
+        FROM sensys_users
+        WHERE lower(email) = lower(?)
+        """,
+        (email,),
+    ).fetchone()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid login")
+
+    user_id = int(user["user_id"])
+
+    # Roles
+    roles = conn.execute(
+        """
+        SELECT r.role_key
+        FROM sensys_user_roles ur
+        JOIN sensys_roles r ON r.id = ur.role_id
+        WHERE ur.user_id = ?
+        """,
+        (user_id,),
+    ).fetchall()
+    role_keys = sorted([r["role_key"] for r in roles])
+
+    # Decide which page to open based on role
+    # (first page requested: SNF SW)
+    redirect_url = "/sensys/login"
+    if "snf_sw" in role_keys:
+        redirect_url = "/sensys/snf-sw"
+    elif "admin" in role_keys:
+        redirect_url = "/admin/sensys"
+
+    token = _sensys_create_session(conn, user_id=user_id, ttl_hours=24)
+
+    return {
+        "ok": True,
+        "token": token,
+        "user": {
+            "user_id": user_id,
+            "email": user["email"],
+            "display_name": user["display_name"],
+            "role_keys": role_keys,
+        },
+        "redirect_url": redirect_url,
+    }
+
+
+@app.get("/api/sensys/me")
+def sensys_me(request: Request):
+    u = _sensys_require_user(request)
+    return {"ok": True, "user": u}
+
+
+@app.get("/api/sensys/my-admissions")
+def sensys_my_admissions(request: Request):
+    """
+    Returns admissions linked to the logged-in user via:
+      sensys_user_agencies.user_id -> sensys_admissions.agency_id
+    """
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    rows = conn.execute(
+        """
+        SELECT
+            a.id,
+            a.patient_id,
+            (p.last_name || ', ' || p.first_name) AS patient_name,
+            p.dob AS patient_dob,
+
+            a.agency_id,
+            ag.agency_name AS agency_name,
+
+            a.admit_date,
+            a.dc_date,
+            a.room,
+            a.reason,
+            a.latest_pcp,
+            a.active,
+            a.updated_at
+        FROM sensys_user_agencies ua
+        JOIN sensys_admissions a ON a.agency_id = ua.agency_id
+        JOIN sensys_patients p ON p.id = a.patient_id
+        JOIN sensys_agencies ag ON ag.id = a.agency_id
+        WHERE ua.user_id = ?
+        ORDER BY
+            COALESCE(a.admit_date, '') DESC,
+            a.id DESC
+        """,
+        (int(u["user_id"]),),
+    ).fetchall()
+
+    return {"ok": True, "admissions": [dict(r) for r in rows]}
+
 
 # ---------------------------------------------------------------------------
 # HTML routes & health check
@@ -16160,6 +16366,17 @@ async def admin_ui():
 @app.get("/admin/sensys", response_class=HTMLResponse)
 async def sensys_admin_ui():
     return HTMLResponse(content=read_html(SENSYS_ADMIN_HTML))
+
+# -----------------------------
+# NEW: Sensys test login + SNF SW page
+# -----------------------------
+@app.get("/sensys/login", response_class=HTMLResponse)
+async def sensys_login_ui():
+    return HTMLResponse(content=read_html(SENSYS_LOGIN_HTML))
+
+@app.get("/sensys/snf-sw", response_class=HTMLResponse)
+async def sensys_snf_sw_ui():
+    return HTMLResponse(content=read_html(SENSYS_SNF_SW_HTML))
 
 
 @app.get("/snf-admissions", response_class=HTMLResponse)
