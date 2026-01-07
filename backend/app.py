@@ -2483,16 +2483,13 @@ def init_db():
             created_at          TEXT DEFAULT (datetime('now')),
             updated_at          TEXT DEFAULT (datetime('now')),
 
-            -- ✅ Needed for admission-to-user workflow/linking
-            assigned_user_id    INTEGER,  -- sensys_users.id (who owns this admission)
-            assigned_at         TEXT,
+            -- ✅ audit fields are still useful even without "assigned user"
             created_by_user_id  INTEGER,
             updated_by_user_id  INTEGER,
 
             FOREIGN KEY(patient_id) REFERENCES sensys_patients(id),
             FOREIGN KEY(agency_id) REFERENCES sensys_agencies(id),
             FOREIGN KEY(next_agency_id) REFERENCES sensys_agencies(id),
-            FOREIGN KEY(assigned_user_id) REFERENCES sensys_users(id),
             FOREIGN KEY(created_by_user_id) REFERENCES sensys_users(id),
             FOREIGN KEY(updated_by_user_id) REFERENCES sensys_users(id)
         )
@@ -2501,16 +2498,11 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_patient ON sensys_admissions(patient_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_agency ON sensys_admissions(agency_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_active ON sensys_admissions(active)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_assigned_user ON sensys_admissions(assigned_user_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_dates ON sensys_admissions(admit_date, dc_date)")
 
     # ---- Safe migrations (in case DB already exists later) ----
     for ddl in [
-        "ALTER TABLE sensys_patients ADD COLUMN patient_key TEXT",
-        "ALTER TABLE sensys_patients ADD COLUMN external_patient_id TEXT",
-        "ALTER TABLE sensys_patients ADD COLUMN mrn TEXT",
-        "ALTER TABLE sensys_admissions ADD COLUMN assigned_user_id INTEGER",
-        "ALTER TABLE sensys_admissions ADD COLUMN assigned_at TEXT",
+        ...
         "ALTER TABLE sensys_admissions ADD COLUMN created_by_user_id INTEGER",
         "ALTER TABLE sensys_admissions ADD COLUMN updated_by_user_id INTEGER",
     ]:
@@ -14948,7 +14940,6 @@ class SensysAdmissionUpsert(BaseModel):
     next_location: Optional[str] = ""
     next_agency_id: Optional[int] = None
 
-    assigned_user_id: Optional[int] = None
 
 
 # -----------------------------
@@ -15489,16 +15480,12 @@ def sensys_admin_admissions(token: str):
             a.next_agency_id,
             nag.agency_name AS next_agency_name,
 
-            a.assigned_user_id,
-            u.email AS assigned_user_email,
-
             a.created_at,
             a.updated_at
         FROM sensys_admissions a
         JOIN sensys_patients p ON p.id = a.patient_id
         JOIN sensys_agencies ag ON ag.id = a.agency_id
         LEFT JOIN sensys_agencies nag ON nag.id = a.next_agency_id
-        LEFT JOIN sensys_users u ON u.id = a.assigned_user_id
         ORDER BY
             COALESCE(a.admit_date, '') DESC,
             a.id DESC
@@ -15533,7 +15520,6 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
                    active = ?,
                    next_location = ?,
                    next_agency_id = ?,
-                   assigned_user_id = ?,
                    updated_at = datetime('now')
              WHERE id = ?
             """,
@@ -15551,7 +15537,6 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
                 int(payload.active or 0),
                 (payload.next_location or "").strip(),
                 int(payload.next_agency_id) if payload.next_agency_id else None,
-                int(payload.assigned_user_id) if payload.assigned_user_id else None,
                 int(payload.id),
             ),
         )
@@ -15562,13 +15547,11 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
                 (patient_id, agency_id, admit_date, dc_date, room,
                  referring_agency, reason, latest_pcp,
                  notes1, notes2, active,
-                 next_location, next_agency_id,
-                 assigned_user_id, assigned_at)
+                 next_location, next_agency_id)
             VALUES
                 (?, ?, ?, ?, ?,
                  ?, ?, ?,
                  ?, ?, ?,
-                 ?, ?,
                  ?, CASE WHEN ? IS NULL THEN NULL ELSE datetime('now') END)
             """,
             (
@@ -15585,8 +15568,6 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
                 int(payload.active or 1),
                 (payload.next_location or "").strip(),
                 int(payload.next_agency_id) if payload.next_agency_id else None,
-                int(payload.assigned_user_id) if payload.assigned_user_id else None,
-                int(payload.assigned_user_id) if payload.assigned_user_id else None,
             ),
         )
 
