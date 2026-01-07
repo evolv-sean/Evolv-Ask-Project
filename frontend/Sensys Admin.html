@@ -342,6 +342,8 @@
 
         <div class="navitem on" id="tabUsers">Users</div>
         <div class="navitem" id="tabAgencies">Agencies</div>
+        <div class="navitem" id="tabPatients">Patients</div>
+        <div class="navitem" id="tabAdmissions">Admissions</div>
       </div>
 
       <!-- USERS PANEL -->
@@ -381,7 +383,7 @@
         <div class="card" style="display:none"></div>
 
       </div><!-- /panelUsers -->
-
+      
       <!-- =========================
            AGENCIES PANEL
       ========================= -->
@@ -419,6 +421,82 @@
           </div>
         </div>
       </div><!-- /panelAgencies -->     
+      <!-- =========================
+           PATIENTS PANEL
+      ========================= -->
+      <div class="panel" id="panelPatients">
+        <div class="content">
+          <div class="hd" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+            <div>
+              <h2 style="margin:0">Patients</h2>
+              <div class="hint">Manual add/edit for sensys_patients.</div>
+            </div>
+            <button class="iconbtn" id="addPatientIcon" title="Add new patient" aria-label="Add new patient">+</button>
+          </div>
+
+          <div class="body">
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+              <input class="input" id="patientListSearch" placeholder="Search patients (name, DOB, phone, email)..." />
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Patient</th>
+                    <th>DOB</th>
+                    <th>Phone</th>
+                    <th>Active</th>
+                  </tr>
+                </thead>
+                <tbody id="patientTbody"></tbody>
+              </table>
+            </div>
+
+            <div id="patientListMsg" class="toast"></div>
+          </div>
+        </div>
+      </div><!-- /panelPatients -->
+
+
+      <!-- =========================
+           ADMISSIONS PANEL
+      ========================= -->
+      <div class="panel" id="panelAdmissions">
+        <div class="content">
+          <div class="hd" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+            <div>
+              <h2 style="margin:0">Admissions</h2>
+              <div class="hint">Manual add/edit for sensys_admissions (patient + agency + dates).</div>
+            </div>
+            <button class="iconbtn" id="addAdmissionIcon" title="Add new admission" aria-label="Add new admission">+</button>
+          </div>
+
+          <div class="body">
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+              <input class="input" id="admissionListSearch" placeholder="Search admissions (patient, agency, dates)..." />
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Patient</th>
+                    <th>Agency</th>
+                    <th>Admit</th>
+                    <th>DC</th>
+                    <th>Active</th>
+                  </tr>
+                </thead>
+                <tbody id="admissionTbody"></tbody>
+              </table>
+            </div>
+
+            <div id="admissionListMsg" class="toast"></div>
+          </div>
+        </div>
+      </div><!-- /panelAdmissions -->
+
     </div><!-- /layout -->
   </div>
 <!-- =========================
@@ -593,6 +671,135 @@
       </div>
 
       <div id="agencyEditMsg" class="toast"></div>
+    </div>
+  </div>
+</div>
+<!-- =========================
+     PATIENT MODAL
+========================= -->
+<div class="modal-backdrop" id="patientModalBackdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="patientModalTitle">
+    <div class="modal-hd">
+      <div>
+        <h3 class="modal-title" id="patientModalTitle">Edit Patient</h3>
+        <div class="modal-sub">patient_id: <b id="selPatientId">—</b></div>
+      </div>
+      <button class="xbtn" id="closePatientModal" aria-label="Close">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="label">First Name</div>
+      <input class="input" id="p_first_name" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Last Name</div>
+      <input class="input" id="p_last_name" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">DOB</div>
+      <input class="input" id="p_dob" placeholder="YYYY-MM-DD or MM/DD/YYYY" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Gender</div>
+      <input class="input" id="p_gender" placeholder="M/F/Other" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Phone 1</div>
+      <input class="input" id="p_phone1" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Email</div>
+      <input class="input" id="p_email" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Active</div>
+      <select class="select" id="p_active">
+        <option value="1">Yes (Active)</option>
+        <option value="0">No (Inactive)</option>
+      </select>
+
+      <div style="height:14px"></div>
+
+      <div class="stack">
+        <button class="btn primary" id="savePatient">Save Patient</button>
+      </div>
+
+      <div id="patientEditMsg" class="toast"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- =========================
+     ADMISSION MODAL
+========================= -->
+<div class="modal-backdrop" id="admissionModalBackdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="admissionModalTitle">
+    <div class="modal-hd">
+      <div>
+        <h3 class="modal-title" id="admissionModalTitle">Edit Admission</h3>
+        <div class="modal-sub">admission_id: <b id="selAdmissionId">—</b></div>
+      </div>
+      <button class="xbtn" id="closeAdmissionModal" aria-label="Close">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="label">Patient</div>
+      <select class="select" id="a_patient_id"></select>
+
+      <div style="height:10px"></div>
+
+      <div class="label">Agency</div>
+      <select class="select" id="a_agency_id"></select>
+
+      <div style="height:10px"></div>
+
+      <div class="label">Admit Date</div>
+      <input class="input" id="a_admit_date" placeholder="YYYY-MM-DD" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">DC Date</div>
+      <input class="input" id="a_dc_date" placeholder="YYYY-MM-DD" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Room</div>
+      <input class="input" id="a_room" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Reason</div>
+      <input class="input" id="a_reason" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Assigned User</div>
+      <select class="select" id="a_assigned_user_id">
+        <option value="">(Unassigned)</option>
+      </select>
+
+      <div style="height:10px"></div>
+
+      <div class="label">Active</div>
+      <select class="select" id="a_active">
+        <option value="1">Yes (Active)</option>
+        <option value="0">No (Inactive)</option>
+      </select>
+
+      <div style="height:14px"></div>
+
+      <div class="stack">
+        <button class="btn primary" id="saveAdmission">Save Admission</button>
+      </div>
+
+      <div id="admissionEditMsg" class="toast"></div>
     </div>
   </div>
 </div>
@@ -879,28 +1086,41 @@
   $("agencySearch").addEventListener("input", renderAgencyChecklist);
 
   function showPanel(which){
-    const onUsers = which === "users";
+    const panels = ["users","agencies","patients","admissions"];
 
-    $("tabUsers").className = "navitem " + (onUsers ? "on" : "");
-    $("tabAgencies").className = "navitem " + (!onUsers ? "on" : "");
+    // nav highlighting
+    $("tabUsers").className = "navitem " + (which==="users" ? "on" : "");
+    $("tabAgencies").className = "navitem " + (which==="agencies" ? "on" : "");
+    $("tabPatients").className = "navitem " + (which==="patients" ? "on" : "");
+    $("tabAdmissions").className = "navitem " + (which==="admissions" ? "on" : "");
 
-    // hide both panels first
+    // hide all
     $("panelUsers").classList.remove("on");
     $("panelAgencies").classList.remove("on");
+    $("panelPatients").classList.remove("on");
+    $("panelAdmissions").classList.remove("on");
 
-    if(onUsers){
+    if(which==="users"){
       $("panelUsers").classList.add("on");
-    }else{
+    }else if(which==="agencies"){
       $("panelAgencies").classList.add("on");
       refreshAgenciesList();
+    }else if(which==="patients"){
+      $("panelPatients").classList.add("on");
+      refreshPatientsList();
+    }else{
+      $("panelAdmissions").classList.add("on");
+      refreshAdmissionsList();
     }
 
-    // optional: jump to top so it feels like a real tab switch
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   $("tabUsers").onclick = () => showPanel("users");
   $("tabAgencies").onclick = () => showPanel("agencies");
+  $("tabPatients").onclick = () => showPanel("patients");
+  $("tabAdmissions").onclick = () => showPanel("admissions");
+
 
   // --- Agencies page logic ---
   function renderAgenciesTable(){
@@ -1028,6 +1248,308 @@
   // Default panel: Users (no .panel needed). Agencies panel stays hidden until clicked.
 
   // initial load
+  
+  function openPatientModal(){ $("patientModalBackdrop").classList.add("on"); }
+  function closePatientModal(){ $("patientModalBackdrop").classList.remove("on"); }
+
+  function openAdmissionModal(){ $("admissionModalBackdrop").classList.add("on"); }
+  function closeAdmissionModal(){ $("admissionModalBackdrop").classList.remove("on"); }
+
+  $("patientModalBackdrop").addEventListener("click", (e) => {
+    if(e.target.id === "patientModalBackdrop") closePatientModal();
+  });
+  $("admissionModalBackdrop").addEventListener("click", (e) => {
+    if(e.target.id === "admissionModalBackdrop") closeAdmissionModal();
+  });
+
+  $("closePatientModal").onclick = closePatientModal;
+  $("closeAdmissionModal").onclick = closeAdmissionModal;
+
+  // extend ESC close
+  document.addEventListener("keydown", (e) => {
+    if(e.key !== "Escape") return;
+    closePatientModal();
+    closeAdmissionModal();
+  });
+
+  let patientsCache = [];
+  let selectedPatientId = null;
+
+  let admissionsCache = [];
+  let selectedAdmissionId = null;
+
+  function renderPatientsTable(){
+    const tbody = $("patientTbody");
+    tbody.innerHTML = "";
+
+    const q = ($("patientListSearch").value || "").trim().toLowerCase();
+    const items = (patientsCache || []).filter(p => {
+      const hay = `${p.last_name||""} ${p.first_name||""} ${p.dob||""} ${p.phone1||""} ${p.email||""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+
+    items.forEach(p => {
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.onclick = () => selectPatient(p);
+      tr.innerHTML = `
+        <td><b>${escapeHtml((p.last_name||"") + ", " + (p.first_name||""))}</b></td>
+        <td>${escapeHtml(p.dob||"")}</td>
+        <td>${escapeHtml(p.phone1||"")}</td>
+        <td>${p.active ? "Yes" : "No"}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function selectPatient(p){
+    selectedPatientId = p.id;
+    $("selPatientId").textContent = String(p.id);
+
+    $("p_first_name").value = p.first_name || "";
+    $("p_last_name").value = p.last_name || "";
+    $("p_dob").value = p.dob || "";
+    $("p_gender").value = p.gender || "";
+    $("p_phone1").value = p.phone1 || "";
+    $("p_email").value = p.email || "";
+    $("p_active").value = String(p.active ? 1 : 0);
+
+    setMsg($("patientEditMsg"), "", true);
+    openPatientModal();
+  }
+
+  async function refreshPatientsList(){
+    setMsg($("patientListMsg"), "Loading…", true);
+    try{
+      const resp = await apiGet("/api/sensys/admin/patients");
+      patientsCache = resp.patients || [];
+      renderPatientsTable();
+      setMsg($("patientListMsg"), `Loaded ${patientsCache.length} patients.`, true);
+    }catch(e){
+      setMsg($("patientListMsg"), String(e.message || e), false);
+    }
+  }
+
+  $("patientListSearch").addEventListener("input", renderPatientsTable);
+
+  function startNewPatient(){
+    selectedPatientId = null;
+    $("selPatientId").textContent = "—";
+    $("p_first_name").value = "";
+    $("p_last_name").value = "";
+    $("p_dob").value = "";
+    $("p_gender").value = "";
+    $("p_phone1").value = "";
+    $("p_email").value = "";
+    $("p_active").value = "1";
+    setMsg($("patientEditMsg"), "New patient mode (Save Patient to create).", true);
+    openPatientModal();
+  }
+
+  $("addPatientIcon").onclick = startNewPatient;
+
+  $("savePatient").onclick = async () => {
+    try{
+      const payload = {
+        id: selectedPatientId,
+        first_name: ($("p_first_name").value || "").trim(),
+        last_name: ($("p_last_name").value || "").trim(),
+        dob: ($("p_dob").value || "").trim(),
+        gender: ($("p_gender").value || "").trim(),
+        phone1: ($("p_phone1").value || "").trim(),
+        email: ($("p_email").value || "").trim(),
+        active: parseInt($("p_active").value, 10)
+      };
+      await apiPost("/api/sensys/admin/patients/upsert", payload);
+      setMsg($("patientEditMsg"), "Patient saved.", true);
+      await refreshPatientsList();
+    }catch(e){
+      setMsg($("patientEditMsg"), String(e.message || e), false);
+    }
+  };
+
+
+  function _fillSelect(el, options, valueKey, labelFn, selectedVal){
+    el.innerHTML = "";
+    options.forEach(o => {
+      const opt = document.createElement("option");
+      opt.value = String(o[valueKey]);
+      opt.textContent = labelFn(o);
+      if(selectedVal != null && String(selectedVal) === String(o[valueKey])) opt.selected = true;
+      el.appendChild(opt);
+    });
+  }
+
+  function renderAdmissionsTable(){
+    const tbody = $("admissionTbody");
+    tbody.innerHTML = "";
+
+    const q = ($("admissionListSearch").value || "").trim().toLowerCase();
+    const items = (admissionsCache || []).filter(a => {
+      const hay = `${a.patient_name||""} ${a.agency_name||""} ${a.admit_date||""} ${a.dc_date||""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+
+    items.forEach(a => {
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.onclick = () => selectAdmission(a);
+      tr.innerHTML = `
+        <td><b>${escapeHtml(a.patient_name||"")}</b></td>
+        <td>${escapeHtml(a.agency_name||"")}</td>
+        <td>${escapeHtml(a.admit_date||"")}</td>
+        <td>${escapeHtml(a.dc_date||"")}</td>
+        <td>${a.active ? "Yes" : "No"}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function refreshAdmissionsList(){
+    setMsg($("admissionListMsg"), "Loading…", true);
+    try{
+      // ensure dropdown sources exist
+      if(!patientsCache.length){
+        const p = await apiGet("/api/sensys/admin/patients");
+        patientsCache = p.patients || [];
+      }
+      if(!agenciesMaster.length){
+        const ag = await apiGet("/api/sensys/admin/agencies");
+        agenciesMaster = ag.agencies || [];
+      }
+      if(!usersCache.length){
+        const u = await apiGet("/api/sensys/admin/users");
+        usersCache = u.users || [];
+      }
+
+      const resp = await apiGet("/api/sensys/admin/admissions");
+      admissionsCache = resp.admissions || [];
+      renderAdmissionsTable();
+
+      setMsg($("admissionListMsg"), `Loaded ${admissionsCache.length} admissions.`, true);
+    }catch(e){
+      setMsg($("admissionListMsg"), String(e.message || e), false);
+    }
+  }
+
+  $("admissionListSearch").addEventListener("input", renderAdmissionsTable);
+
+  function selectAdmission(a){
+    selectedAdmissionId = a.id;
+    $("selAdmissionId").textContent = String(a.id);
+
+    // dropdowns
+    _fillSelect(
+      $("a_patient_id"),
+      patientsCache,
+      "id",
+      (p) => `${(p.last_name||"")}, ${(p.first_name||"")} (${p.dob||""})`,
+      a.patient_id
+    );
+
+    _fillSelect(
+      $("a_agency_id"),
+      agenciesMaster,
+      "id",
+      (x) => `${x.agency_name||""} — ${x.agency_type||""}`,
+      a.agency_id
+    );
+
+    // assigned user dropdown
+    const assignedSel = $("a_assigned_user_id");
+    assignedSel.innerHTML = `<option value="">(Unassigned)</option>`;
+    usersCache.forEach(u => {
+      const opt = document.createElement("option");
+      opt.value = String(u.user_id);
+      opt.textContent = u.email || String(u.user_id);
+      if(a.assigned_user_id && String(a.assigned_user_id) === String(u.user_id)) opt.selected = true;
+      assignedSel.appendChild(opt);
+    });
+
+    $("a_admit_date").value = a.admit_date || "";
+    $("a_dc_date").value = a.dc_date || "";
+    $("a_room").value = a.room || "";
+    $("a_reason").value = a.reason || "";
+    $("a_active").value = String(a.active ? 1 : 0);
+
+    setMsg($("admissionEditMsg"), "", true);
+    openAdmissionModal();
+  }
+
+  function startNewAdmission(){
+    selectedAdmissionId = null;
+    $("selAdmissionId").textContent = "—";
+
+    _fillSelect(
+      $("a_patient_id"),
+      patientsCache,
+      "id",
+      (p) => `${(p.last_name||"")}, ${(p.first_name||"")} (${p.dob||""})`,
+      null
+    );
+
+    _fillSelect(
+      $("a_agency_id"),
+      agenciesMaster,
+      "id",
+      (x) => `${x.agency_name||""} — ${x.agency_type||""}`,
+      null
+    );
+
+    const assignedSel = $("a_assigned_user_id");
+    assignedSel.innerHTML = `<option value="">(Unassigned)</option>`;
+    usersCache.forEach(u => {
+      const opt = document.createElement("option");
+      opt.value = String(u.user_id);
+      opt.textContent = u.email || String(u.user_id);
+      assignedSel.appendChild(opt);
+    });
+
+    $("a_admit_date").value = "";
+    $("a_dc_date").value = "";
+    $("a_room").value = "";
+    $("a_reason").value = "";
+    $("a_active").value = "1";
+
+    setMsg($("admissionEditMsg"), "New admission mode (Save Admission to create).", true);
+    openAdmissionModal();
+  }
+
+  $("addAdmissionIcon").onclick = async () => {
+    if(!patientsCache.length) await refreshPatientsList();
+    if(!agenciesMaster.length){
+      const ag = await apiGet("/api/sensys/admin/agencies");
+      agenciesMaster = ag.agencies || [];
+    }
+    if(!usersCache.length){
+      const u = await apiGet("/api/sensys/admin/users");
+      usersCache = u.users || [];
+    }
+    startNewAdmission();
+  };
+
+  $("saveAdmission").onclick = async () => {
+    try{
+      const payload = {
+        id: selectedAdmissionId,
+        patient_id: parseInt($("a_patient_id").value, 10),
+        agency_id: parseInt($("a_agency_id").value, 10),
+        admit_date: ($("a_admit_date").value || "").trim(),
+        dc_date: ($("a_dc_date").value || "").trim(),
+        room: ($("a_room").value || "").trim(),
+        reason: ($("a_reason").value || "").trim(),
+        assigned_user_id: ($("a_assigned_user_id").value || "") ? parseInt($("a_assigned_user_id").value, 10) : null,
+        active: parseInt($("a_active").value, 10)
+      };
+
+      await apiPost("/api/sensys/admin/admissions/upsert", payload);
+      setMsg($("admissionEditMsg"), "Admission saved.", true);
+      await refreshAdmissionsList();
+    }catch(e){
+      setMsg($("admissionEditMsg"), String(e.message || e), false);
+    }
+  };
+  
   refreshAll();
 </script>
 </body>
