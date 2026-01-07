@@ -17256,8 +17256,12 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
             ),
         )
 
+    new_id = payload.id
+    if not new_id:
+        new_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
     conn.commit()
-    return {"ok": True}
+    return {"ok": True, "id": int(new_id)}
 
 @app.post("/api/sensys/admission-dc-submissions/delete")
 def sensys_admission_dc_submissions_delete(payload: IdOnly, request: Request):
