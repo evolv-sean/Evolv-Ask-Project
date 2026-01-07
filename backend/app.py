@@ -15555,7 +15555,7 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
                 (?, ?, ?, ?, ?,
                  ?, ?, ?,
                  ?, ?, ?,
-                 ?, CASE WHEN ? IS NULL THEN NULL ELSE datetime('now') END)
+                 ?, ?)
             """,
             (
                 int(payload.patient_id),
