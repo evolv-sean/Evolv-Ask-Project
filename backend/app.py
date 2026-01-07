@@ -14672,7 +14672,7 @@ class SensysRoleAssign(BaseModel):
 
 class SensysFacilityAssign(BaseModel):
     user_id: int
-    facility_ids: List[int]
+    facility_names: List[str]
 
 
 # -----------------------------
@@ -14724,7 +14724,7 @@ def sensys_admin_users(token: str):
     users = conn.execute(
         """
         SELECT
-            u.user_id,
+            u.id AS user_id,
             u.email,
             u.display_name,
             u.is_active
@@ -14738,7 +14738,7 @@ def sensys_admin_users(token: str):
         """
         SELECT ur.user_id, r.role_key
         FROM sensys_user_roles ur
-        JOIN sensys_roles r ON r.role_id = ur.role_id
+        JOIN sensys_roles r ON r.id = ur.role_id
         """
     ).fetchall()
 
@@ -14749,20 +14749,20 @@ def sensys_admin_users(token: str):
     # facilities per user
     fac_rows = conn.execute(
         """
-        SELECT user_id, facility_id
+        SELECT user_id, facility_name
         FROM sensys_user_facilities
         """
     ).fetchall()
 
     fac_by_user = {}
     for fr in fac_rows:
-        fac_by_user.setdefault(fr["user_id"], []).append(fr["facility_id"])
+        fac_by_user.setdefault(fr["user_id"], []).append(fr["facility_name"])
 
     out = []
     for u in users:
         d = dict(u)
         d["role_keys"] = sorted(roles_by_user.get(u["user_id"], []))
-        d["facility_ids"] = sorted(fac_by_user.get(u["user_id"], []))
+        d["facility_names"] = sorted(fac_by_user.get(u["user_id"], []))
         out.append(d)
 
     return {"users": out}
@@ -14786,8 +14786,8 @@ def sensys_admin_users_upsert(payload: SensysUserUpsert, token: str):
         conn.execute(
             """
             UPDATE sensys_users
-            SET email = ?, display_name = ?, is_active = ?
-            WHERE user_id = ?
+            SET email = ?, display_name = ?, is_active = ?, updated_at = datetime('now')
+            WHERE id = ?
             """,
             (email, display_name, int(payload.is_active), int(payload.user_id)),
         )
@@ -14822,7 +14822,7 @@ def sensys_admin_users_set_roles(payload: SensysRoleAssign, token: str):
     if role_keys:
         role_rows = conn.execute(
             """
-            SELECT role_id, role_key
+            SELECT id AS role_id, role_key
             FROM sensys_roles
             WHERE role_key IN ({})
             """.format(",".join(["?"] * len(role_keys))),
@@ -14830,6 +14830,7 @@ def sensys_admin_users_set_roles(payload: SensysRoleAssign, token: str):
         ).fetchall()
 
         role_ids = [r["role_id"] for r in role_rows]
+
         conn.executemany(
             """
             INSERT INTO sensys_user_roles (user_id, role_id)
@@ -14837,7 +14838,6 @@ def sensys_admin_users_set_roles(payload: SensysRoleAssign, token: str):
             """,
             [(user_id, rid) for rid in role_ids],
         )
-
     conn.commit()
     return {"ok": True}
 
