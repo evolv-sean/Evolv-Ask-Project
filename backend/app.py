@@ -2502,7 +2502,10 @@ def init_db():
 
     # ---- Safe migrations (in case DB already exists later) ----
     for ddl in [
-        ...
+        "ALTER TABLE sensys_patients ADD COLUMN patient_key TEXT",
+        "ALTER TABLE sensys_patients ADD COLUMN external_patient_id TEXT",
+        "ALTER TABLE sensys_patients ADD COLUMN mrn TEXT",
+
         "ALTER TABLE sensys_admissions ADD COLUMN created_by_user_id INTEGER",
         "ALTER TABLE sensys_admissions ADD COLUMN updated_by_user_id INTEGER",
     ]:
