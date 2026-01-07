@@ -14783,8 +14783,11 @@ def _sensys_seed_roles(conn: sqlite3.Connection):
     roles = [
         ("admin", "Admin"),
         ("cm", "Care Manager"),
-        ("liaison", "Liaison"),
-        ("viewer", "Viewer"),
+
+        ("home_health", "Home Health"),
+        ("provider", "Provider"),
+        ("ccm", "CCM"),
+        ("hospital", "Hospital"),
     ]
     conn.executemany(
         """
@@ -14793,6 +14796,13 @@ def _sensys_seed_roles(conn: sqlite3.Connection):
         """,
         roles,
     )
+    
+    # Remove deprecated roles (and any user-role links to them)
+    conn.execute(
+        "DELETE FROM sensys_user_roles WHERE role_id IN (SELECT id FROM sensys_roles WHERE role_key IN ('viewer','liaison'))"
+    )
+    conn.execute("DELETE FROM sensys_roles WHERE role_key IN ('viewer','liaison')")
+
     conn.commit()
 
 
@@ -14944,8 +14954,10 @@ def sensys_admin_users_upsert(payload: SensysUserUpsert, token: str):
             (email, display_name, int(payload.is_active), password, cell_phone, account_locked),
         )
 
+    # Return the user_id so the UI can immediately save roles/agencies
     conn.commit()
-    return {"ok": True}
+    return {"ok": True, "user_id": int(payload.user_id) if payload.user_id else int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])}
+
 
 # -----------------------------
 # Sensys Admin: set roles for user (replace)
