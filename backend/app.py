@@ -243,6 +243,7 @@ CENSUS_HTML = FRONTEND_DIR / "Census.html"
 # -----------------------------
 SENSYS_LOGIN_HTML = FRONTEND_DIR / "Sensys Login.html"
 SENSYS_SNF_SW_HTML = FRONTEND_DIR / "Sensys SNF SW.html"
+SENSYS_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Admission Details.html"
 
 
 logging.basicConfig(level=logging.INFO)
@@ -16822,6 +16823,520 @@ def sensys_my_admissions(request: Request):
 
     return {"ok": True, "admissions": [dict(r) for r in rows]}
 
+# -----------------------------
+# Sensys: Admission Details APIs (tasks / notes / dc submissions / services / care team)
+# -----------------------------
+from pydantic import BaseModel
+from typing import Optional, List
+
+def _sensys_assert_admission_access(conn, user_id: int, admission_id: int):
+    ok = conn.execute(
+        """
+        SELECT 1
+        FROM sensys_user_agencies ua
+        JOIN sensys_admissions a ON a.agency_id = ua.agency_id
+        WHERE ua.user_id = ?
+          AND a.id = ?
+        """,
+        (int(user_id), int(admission_id)),
+    ).fetchone()
+    if not ok:
+        raise HTTPException(status_code=403, detail="Forbidden: admission not linked to your agencies")
+
+@app.get("/api/sensys/services")
+def sensys_services(request: Request):
+    _sensys_require_user(request)
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT id, name, service_type, dropdown, reminder_id, deleted_at, created_at, updated_at
+        FROM sensys_services
+        WHERE deleted_at IS NULL
+        ORDER BY service_type COLLATE NOCASE, name COLLATE NOCASE
+        """
+    ).fetchall()
+    return {"ok": True, "services": [dict(r) for r in rows]}
+
+@app.get("/api/sensys/care-team")
+def sensys_care_team(request: Request):
+    _sensys_require_user(request)
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT
+            id, name, type, npi, aliases,
+            address1, address2, city, state, zip,
+            practice_name, phone1, phone2, email1, email2, fax,
+            active, created_at, updated_at, deleted_at
+        FROM sensys_care_team
+        WHERE deleted_at IS NULL
+        ORDER BY active DESC, type COLLATE NOCASE, name COLLATE NOCASE
+        """
+    ).fetchall()
+    return {"ok": True, "care_team": [dict(r) for r in rows]}
+
+@app.get("/api/sensys/admission-details/{admission_id}")
+def sensys_admission_details(admission_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+
+    admission = conn.execute(
+        """
+        SELECT
+            a.id,
+            a.patient_id,
+            (p.last_name || ', ' || p.first_name) AS patient_name,
+            p.dob AS patient_dob,
+
+            a.agency_id,
+            ag.agency_name AS agency_name,
+
+            a.admit_date,
+            a.dc_date,
+            a.room,
+            a.reason,
+            a.latest_pcp,
+            a.active,
+            a.updated_at
+        FROM sensys_admissions a
+        JOIN sensys_patients p ON p.id = a.patient_id
+        JOIN sensys_agencies ag ON ag.id = a.agency_id
+        WHERE a.id = ?
+        """,
+        (int(admission_id),),
+    ).fetchone()
+
+    if not admission:
+        raise HTTPException(status_code=404, detail="Admission not found")
+
+    tasks = conn.execute(
+        """
+        SELECT
+            id, admission_id, assigned_user_id, task_status,
+            task_name, task_comments, created_at, updated_at, deleted_at
+        FROM sensys_admission_tasks
+        WHERE admission_id = ?
+          AND deleted_at IS NULL
+        ORDER BY id DESC
+        """,
+        (int(admission_id),),
+    ).fetchall()
+
+    notes = conn.execute(
+        """
+        SELECT
+            n.id, n.admission_id, n.note_name, n.note_comments,
+            n.created_at, n.created_by, n.deleted_at, n.updated_at,
+            u.display_name AS created_by_name
+        FROM sensys_admission_notes n
+        LEFT JOIN sensys_users u ON u.id = n.created_by
+        WHERE n.admission_id = ?
+          AND n.deleted_at IS NULL
+        ORDER BY n.id DESC
+        """,
+        (int(admission_id),),
+    ).fetchall()
+
+    dc = conn.execute(
+        """
+        SELECT
+            id, admission_id, created_at, created_by,
+            dc_date, dc_time, dc_confirmed, dc_urgent, urgent_comments,
+            dc_destination, destination_comments, dc_with,
+            hh_comments, dme_comments, aid_consult, pcp_freetext,
+            coordinate_caregiver, caregiver_name, caregiver_number,
+            apealling_dc, appeal_comments
+        FROM sensys_admission_dc_submissions
+        WHERE admission_id = ?
+        ORDER BY id DESC
+        """,
+        (int(admission_id),),
+    ).fetchall()
+
+    dc_ids = [int(r["id"]) for r in dc]
+    services_by_dc = {}
+    if dc_ids:
+        qmarks = ",".join(["?"] * len(dc_ids))
+        svc_rows = conn.execute(
+            f"""
+            SELECT id, services_id, admission_dc_submission_id, created_at
+            FROM sensys_dc_submission_services
+            WHERE admission_dc_submission_id IN ({qmarks})
+            """,
+            tuple(dc_ids),
+        ).fetchall()
+        for r in svc_rows:
+            sid = int(r["admission_dc_submission_id"])
+            services_by_dc.setdefault(sid, []).append(dict(r))
+
+    dc_out = []
+    for r in dc:
+        d = dict(r)
+        d["services"] = services_by_dc.get(int(r["id"]), [])
+        dc_out.append(d)
+
+    care_team_links = conn.execute(
+        """
+        SELECT
+            act.id AS link_id,
+            ct.id AS care_team_id,
+            ct.name, ct.type, ct.phone1, ct.phone2, ct.email1, ct.email2
+        FROM sensys_admission_care_team act
+        JOIN sensys_care_team ct ON ct.id = act.care_team_id
+        WHERE act.admission_id = ?
+          AND act.deleted_at IS NULL
+          AND ct.deleted_at IS NULL
+        ORDER BY ct.type COLLATE NOCASE, ct.name COLLATE NOCASE
+        """,
+        (int(admission_id),),
+    ).fetchall()
+
+    return {
+        "ok": True,
+        "admission": dict(admission),
+        "tasks": [dict(r) for r in tasks],
+        "notes": [dict(r) for r in notes],
+        "dc_submissions": dc_out,
+        "care_team": [dict(r) for r in care_team_links],
+    }
+
+class AdmissionTaskUpsert(BaseModel):
+    id: Optional[int] = None
+    admission_id: int
+    assigned_user_id: Optional[int] = None
+    task_status: str = "New"
+    task_name: str
+    task_comments: Optional[str] = ""
+
+@app.post("/api/sensys/admission-tasks/upsert")
+def sensys_admission_tasks_upsert(payload: AdmissionTaskUpsert, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
+
+    if not (payload.task_name or "").strip():
+        raise HTTPException(status_code=400, detail="task_name is required")
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_admission_tasks
+               SET assigned_user_id = ?,
+                   task_status = ?,
+                   task_name = ?,
+                   task_comments = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (
+                int(payload.assigned_user_id) if payload.assigned_user_id else None,
+                (payload.task_status or "New").strip(),
+                (payload.task_name or "").strip(),
+                (payload.task_comments or "").strip(),
+                int(payload.id),
+            ),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_admission_tasks
+                (admission_id, assigned_user_id, task_status, task_name, task_comments)
+            VALUES
+                (?, ?, ?, ?, ?)
+            """,
+            (
+                int(payload.admission_id),
+                int(payload.assigned_user_id) if payload.assigned_user_id else None,
+                (payload.task_status or "New").strip(),
+                (payload.task_name or "").strip(),
+                (payload.task_comments or "").strip(),
+            ),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+class IdOnly(BaseModel):
+    id: int
+
+@app.post("/api/sensys/admission-tasks/delete")
+def sensys_admission_tasks_delete(payload: IdOnly, request: Request):
+    _sensys_require_user(request)
+    conn = get_db()
+    conn.execute(
+        """
+        UPDATE sensys_admission_tasks
+           SET deleted_at = datetime('now'),
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (int(payload.id),),
+    )
+    conn.commit()
+    return {"ok": True}
+
+class AdmissionNoteUpsert(BaseModel):
+    id: Optional[int] = None
+    admission_id: int
+    note_name: str
+    note_comments: Optional[str] = ""
+
+@app.post("/api/sensys/admission-notes/upsert")
+def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
+
+    if not (payload.note_name or "").strip():
+        raise HTTPException(status_code=400, detail="note_name is required")
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_admission_notes
+               SET note_name = ?,
+                   note_comments = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (
+                (payload.note_name or "").strip(),
+                (payload.note_comments or "").strip(),
+                int(payload.id),
+            ),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_admission_notes
+                (admission_id, note_name, note_comments, created_by)
+            VALUES
+                (?, ?, ?, ?)
+            """,
+            (
+                int(payload.admission_id),
+                (payload.note_name or "").strip(),
+                (payload.note_comments or "").strip(),
+                int(u["user_id"]),
+            ),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+@app.post("/api/sensys/admission-notes/delete")
+def sensys_admission_notes_delete(payload: IdOnly, request: Request):
+    _sensys_require_user(request)
+    conn = get_db()
+    conn.execute(
+        """
+        UPDATE sensys_admission_notes
+           SET deleted_at = datetime('now'),
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (int(payload.id),),
+    )
+    conn.commit()
+    return {"ok": True}
+
+class DcSubmissionUpsert(BaseModel):
+    id: Optional[int] = None
+    admission_id: int
+
+    dc_date: Optional[str] = ""
+    dc_time: Optional[str] = ""
+    dc_confirmed: int = 0
+    dc_urgent: int = 0
+    urgent_comments: Optional[str] = ""
+
+    dc_destination: Optional[str] = "Home"
+    destination_comments: Optional[str] = ""
+    dc_with: Optional[str] = "alone"
+
+    hh_comments: Optional[str] = ""
+    dme_comments: Optional[str] = ""
+    aid_consult: Optional[str] = ""
+    pcp_freetext: Optional[str] = ""
+    coordinate_caregiver: int = 0
+    caregiver_name: Optional[str] = ""
+    caregiver_number: Optional[str] = ""
+    apealling_dc: int = 0
+    appeal_comments: Optional[str] = ""
+
+@app.post("/api/sensys/admission-dc-submissions/upsert")
+def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_admission_dc_submissions
+               SET dc_date = ?,
+                   dc_time = ?,
+                   dc_confirmed = ?,
+                   dc_urgent = ?,
+                   urgent_comments = ?,
+                   dc_destination = ?,
+                   destination_comments = ?,
+                   dc_with = ?,
+                   hh_comments = ?,
+                   dme_comments = ?,
+                   aid_consult = ?,
+                   pcp_freetext = ?,
+                   coordinate_caregiver = ?,
+                   caregiver_name = ?,
+                   caregiver_number = ?,
+                   apealling_dc = ?,
+                   appeal_comments = ?
+             WHERE id = ?
+            """,
+            (
+                (payload.dc_date or "").strip(),
+                (payload.dc_time or "").strip(),
+                int(payload.dc_confirmed or 0),
+                int(payload.dc_urgent or 0),
+                (payload.urgent_comments or "").strip(),
+                (payload.dc_destination or "").strip(),
+                (payload.destination_comments or "").strip(),
+                (payload.dc_with or "").strip(),
+                (payload.hh_comments or "").strip(),
+                (payload.dme_comments or "").strip(),
+                (payload.aid_consult or "").strip(),
+                (payload.pcp_freetext or "").strip(),
+                int(payload.coordinate_caregiver or 0),
+                (payload.caregiver_name or "").strip(),
+                (payload.caregiver_number or "").strip(),
+                int(payload.apealling_dc or 0),
+                (payload.appeal_comments or "").strip(),
+                int(payload.id),
+            ),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_admission_dc_submissions
+                (admission_id, created_by,
+                 dc_date, dc_time, dc_confirmed, dc_urgent, urgent_comments,
+                 dc_destination, destination_comments, dc_with,
+                 hh_comments, dme_comments, aid_consult, pcp_freetext,
+                 coordinate_caregiver, caregiver_name, caregiver_number,
+                 apealling_dc, appeal_comments)
+            VALUES
+                (?, ?,
+                 ?, ?, ?, ?, ?,
+                 ?, ?, ?,
+                 ?, ?, ?, ?,
+                 ?, ?, ?,
+                 ?, ?)
+            """,
+            (
+                int(payload.admission_id),
+                int(u["user_id"]),
+                (payload.dc_date or "").strip(),
+                (payload.dc_time or "").strip(),
+                int(payload.dc_confirmed or 0),
+                int(payload.dc_urgent or 0),
+                (payload.urgent_comments or "").strip(),
+                (payload.dc_destination or "").strip(),
+                (payload.destination_comments or "").strip(),
+                (payload.dc_with or "").strip(),
+                (payload.hh_comments or "").strip(),
+                (payload.dme_comments or "").strip(),
+                (payload.aid_consult or "").strip(),
+                (payload.pcp_freetext or "").strip(),
+                int(payload.coordinate_caregiver or 0),
+                (payload.caregiver_name or "").strip(),
+                (payload.caregiver_number or "").strip(),
+                int(payload.apealling_dc or 0),
+                (payload.appeal_comments or "").strip(),
+            ),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+@app.post("/api/sensys/admission-dc-submissions/delete")
+def sensys_admission_dc_submissions_delete(payload: IdOnly, request: Request):
+    _sensys_require_user(request)
+    conn = get_db()
+    conn.execute("DELETE FROM sensys_dc_submission_services WHERE admission_dc_submission_id = ?", (int(payload.id),))
+    conn.execute("DELETE FROM sensys_admission_dc_submissions WHERE id = ?", (int(payload.id),))
+    conn.commit()
+    return {"ok": True}
+
+class DcSubmissionServicesSet(BaseModel):
+    admission_dc_submission_id: int
+    services_ids: List[int] = []
+
+@app.post("/api/sensys/dc-submission-services/set")
+def sensys_dc_submission_services_set(payload: DcSubmissionServicesSet, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    row = conn.execute(
+        "SELECT admission_id FROM sensys_admission_dc_submissions WHERE id = ?",
+        (int(payload.admission_dc_submission_id),),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="DC submission not found")
+
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(row["admission_id"]))
+
+    conn.execute(
+        "DELETE FROM sensys_dc_submission_services WHERE admission_dc_submission_id = ?",
+        (int(payload.admission_dc_submission_id),),
+    )
+    for sid in payload.services_ids or []:
+        conn.execute(
+            """
+            INSERT INTO sensys_dc_submission_services (services_id, admission_dc_submission_id)
+            VALUES (?, ?)
+            """,
+            (int(sid), int(payload.admission_dc_submission_id)),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+class AdmissionCareTeamLink(BaseModel):
+    admission_id: int
+    care_team_id: int
+
+@app.post("/api/sensys/admission-care-team/link")
+def sensys_admission_care_team_link(payload: AdmissionCareTeamLink, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
+
+    conn.execute(
+        """
+        INSERT INTO sensys_admission_care_team (care_team_id, admission_id)
+        VALUES (?, ?)
+        """,
+        (int(payload.care_team_id), int(payload.admission_id)),
+    )
+    conn.commit()
+    return {"ok": True}
+
+@app.post("/api/sensys/admission-care-team/unlink")
+def sensys_admission_care_team_unlink(payload: IdOnly, request: Request):
+    _sensys_require_user(request)
+    conn = get_db()
+    conn.execute(
+        """
+        UPDATE sensys_admission_care_team
+           SET deleted_at = datetime('now'),
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (int(payload.id),),
+    )
+    conn.commit()
+    return {"ok": True}
 
 # ---------------------------------------------------------------------------
 # HTML routes & health check
@@ -16893,6 +17408,10 @@ async def sensys_login_ui():
 @app.get("/sensys/snf-sw", response_class=HTMLResponse)
 async def sensys_snf_sw_ui():
     return HTMLResponse(content=read_html(SENSYS_SNF_SW_HTML))
+
+@app.get("/sensys/admission-details", response_class=HTMLResponse)
+async def sensys_admission_details_ui():
+    return HTMLResponse(content=read_html(SENSYS_ADMISSION_DETAILS_HTML))
 
 
 @app.get("/snf-admissions", response_class=HTMLResponse)
