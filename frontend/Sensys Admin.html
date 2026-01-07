@@ -229,7 +229,7 @@
     <div class="topbar">
       <div class="brand">
         <div class="kicker">Sensys 3.0</div>
-        <div class="title">Admin — Users</div>
+        <div class="title">Admin</div>
       </div>
 
       <div class="row">
@@ -253,223 +253,225 @@
         <div class="navitem" id="tabAgencies">Agencies</div>
       </div>
 
-      <!-- RIGHT CONTENT -->
-      <div class="content">
-        <div class="hd">
-          <h2>Users</h2>
-          <div class="hint">Click a row to edit. Roles + facilities are saved separately.</div>
-        </div>
-        <div class="body">
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Email</th>
-                  <th>Name</th>
-                  <th>Active</th>
-                  <th>Roles</th>
-                  <th>Agencies</th>
-                  <th>Locked</th>
-                </tr>
-              </thead>
-              <tbody id="tbody"></tbody>
-            </table>
+      <!-- USERS PANEL -->
+      <div class="panel on" id="panelUsers">
+        <!-- RIGHT CONTENT -->
+        <div class="content">
+          <div class="hd">
+            <h2>Users</h2>
+            <div class="hint">Click a row to edit. Roles + facilities are saved separately.</div>
           </div>
-          <div id="listMsg" class="toast"></div>
-        </div>
-      </div>
-
-      <!-- RIGHT: Editor -->
-      <div class="card">
-        <div class="hd">
-          <h2>Edit Selected User</h2>
-          <div class="hint">Quick + clean. More fields later.</div>
-        </div>
-        <div class="body">
-          <div class="mini">Selected user_id: <b id="selId">—</b></div>
-          <div style="height:10px"></div>
-
-          <div class="label">Email</div>
-          <input class="input" id="email" placeholder="user@email.com" />
-
-          <div style="height:10px"></div>
-
-          <div class="label">Display Name</div>
-          <input class="input" id="display_name" placeholder="Full name" />
-
-          <div style="height:10px"></div>
-
-          <div class="label">Active</div>
-          <select class="select" id="is_active">
-            <option value="1">Yes (Active)</option>
-            <option value="0">No (Inactive)</option>
-          </select>
-
-          <div style="height:14px"></div>
-
-          <div class="label">Roles</div>
-          <div class="pill" id="roles"></div>
-
-          <div style="height:14px"></div>
-
-          <div class="label">Cell Phone</div>
-          <input class="input" id="cell_phone" placeholder="(xxx) xxx-xxxx" />
-
-          <div style="height:10px"></div>
-
-          <div class="label">Password</div>
-          <input class="input" id="password" type="password" placeholder="Leave blank to keep unchanged" />
-
-          <div style="height:10px"></div>
-
-          <div class="label">Account Locked</div>
-          <select class="select" id="account_locked">
-            <option value="0">No</option>
-            <option value="1">Yes (Locked)</option>
-          </select>
-
-          <div style="height:14px"></div>
-
-          <div class="label">Agencies (multi-select)</div>
-          <div class="checkwrap">
-            <input class="checksearch" id="agencySearch" placeholder="Search agencies..." />
-            <div class="checklist" id="agencyChecklist"></div>
-          </div>
-
-          <div style="height:14px"></div>
-
-          <div class="stack">
-            <button class="btn primary" id="saveUser">Save User</button>
-            <button class="btn" id="saveRoles">Save Roles</button>
-            <button class="btn" id="saveFacilities">Save Agencies</button>
-            <button class="btn" id="newUser">New User</button>
-          </div>
-
-          <div id="editMsg" class="toast"></div>
-        </div>
-      </div>
-      <!-- =========================
-           AGENCIES PANEL
-      ========================= -->
-      <div class="panel" id="panelAgencies">
-        <div class="grid">
-          <!-- LEFT: Agencies table -->
-          <div class="card">
-            <div class="hd">
-              <h2>Agencies</h2>
-              <div class="hint">List used for user admission linking and multi-agency access.</div>
+          <div class="body">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Name</th>
+                    <th>Active</th>
+                    <th>Roles</th>
+                    <th>Agencies</th>
+                    <th>Locked</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody"></tbody>
+              </table>
             </div>
-            <div class="body">
-              <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
-                <input class="input" id="agencyListSearch" placeholder="Search agencies..." />
-                <button class="btn" id="newAgency">New</button>
-              </div>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Type</th>
-                      <th>Evolv Client</th>
-                    </tr>
-                  </thead>
-                  <tbody id="agencyTbody"></tbody>
-                </table>
-              </div>
-              <div id="agencyListMsg" class="toast"></div>
-            </div>
-          </div>
-
-          <!-- RIGHT: Agency editor -->
-          <div class="card">
-            <div class="hd">
-              <h2>Edit Agency</h2>
-              <div class="hint">Add/maintain agencies for admissions linking.</div>
-            </div>
-            <div class="body">
-              <div class="mini">Selected agency_id: <b id="selAgencyId">—</b></div>
-              <div style="height:10px"></div>
-
-              <div class="label">Agency Name</div>
-              <input class="input" id="agency_name" placeholder="Agency name" />
-
-              <div style="height:10px"></div>
-
-              <div class="label">Agency Type</div>
-              <select class="select" id="agency_type">
-                <option value="Hospital">Hospital</option>
-                <option value="SNF">SNF</option>
-                <option value="Home Health">Home Health</option>
-                <option value="IRF">IRF</option>
-                <option value="LTACH">LTACH</option>
-                <option value="Hospice">Hospice</option>
-                <option value="Outpatient PT">Outpatient PT</option>
-              </select>
-
-              <div style="height:10px"></div>
-
-              <div class="label">Facility Code</div>
-              <input class="input" id="facility_code" placeholder="Optional code" />
-
-              <div style="height:10px"></div>
-
-              <div class="label">Address</div>
-              <input class="input" id="address" placeholder="Street address" />
-
-              <div style="height:10px"></div>
-
-              <div class="label">City / State / Zip</div>
-              <div style="display:grid;grid-template-columns:1fr .6fr .6fr;gap:10px">
-                <input class="input" id="city" placeholder="City" />
-                <input class="input" id="state" placeholder="State" />
-                <input class="input" id="zip" placeholder="Zip" />
-              </div>
-
-              <div style="height:10px"></div>
-
-              <div class="label">Phone 1 / Phone 2</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                <input class="input" id="phone1" placeholder="Phone 1" />
-                <input class="input" id="phone2" placeholder="Phone 2" />
-              </div>
-
-              <div style="height:10px"></div>
-
-              <div class="label">Email / Fax</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                <input class="input" id="email2" placeholder="Email" />
-                <input class="input" id="fax" placeholder="Fax" />
-              </div>
-
-              <div style="height:10px"></div>
-
-              <div class="label">Notes</div>
-              <input class="input" id="notes" placeholder="Notes" />
-
-              <div style="height:10px"></div>
-
-              <div class="label">Notes 2</div>
-              <input class="input" id="notes2" placeholder="Notes 2" />
-
-              <div style="height:10px"></div>
-
-              <div class="label">Evolv Client</div>
-              <select class="select" id="evolv_client">
-                <option value="0">No</option>
-                <option value="1">Yes</option>
-              </select>
-
-              <div style="height:14px"></div>
-
-              <div class="stack">
-                <button class="btn primary" id="saveAgency">Save Agency</button>
-              </div>
-
-              <div id="agencyEditMsg" class="toast"></div>
-            </div>
+            <div id="listMsg" class="toast"></div>
           </div>
         </div>
-      </div>      
+
+        <!-- RIGHT: Editor -->
+        <div class="card">
+          <div class="hd">
+            <h2>Edit Selected User</h2>
+            <div class="hint">Quick + clean. More fields later.</div>
+          </div>
+          <div class="body">
+            <div class="mini">Selected user_id: <b id="selId">—</b></div>
+            <div style="height:10px"></div>
+
+            <div class="label">Email</div>
+            <input class="input" id="email" placeholder="user@email.com" />
+
+            <div style="height:10px"></div>
+
+            <div class="label">Display Name</div>
+            <input class="input" id="display_name" placeholder="Full name" />
+
+            <div style="height:10px"></div>
+
+            <div class="label">Active</div>
+            <select class="select" id="is_active">
+              <option value="1">Yes (Active)</option>
+              <option value="0">No (Inactive)</option>
+            </select>
+
+            <div style="height:14px"></div>
+
+            <div class="label">Roles</div>
+            <div class="pill" id="roles"></div>
+
+            <div style="height:14px"></div>
+
+            <div class="label">Cell Phone</div>
+            <input class="input" id="cell_phone" placeholder="(xxx) xxx-xxxx" />
+
+            <div style="height:10px"></div>
+
+            <div class="label">Password</div>
+            <input class="input" id="password" type="password" placeholder="Leave blank to keep unchanged" />
+
+            <div style="height:10px"></div>
+
+            <div class="label">Account Locked</div>
+            <select class="select" id="account_locked">
+              <option value="0">No</option>
+              <option value="1">Yes (Locked)</option>
+            </select>
+
+            <div style="height:14px"></div>
+
+            <div class="label">Agencies (multi-select)</div>
+            <div class="checkwrap">
+              <input class="checksearch" id="agencySearch" placeholder="Search agencies..." />
+              <div class="checklist" id="agencyChecklist"></div>
+            </div>
+
+            <div style="height:14px"></div>
+
+            <div class="stack">
+              <button class="btn primary" id="saveUser">Save User</button>
+              <button class="btn" id="saveRoles">Save Roles</button>
+              <button class="btn" id="saveFacilities">Save Agencies</button>
+              <button class="btn" id="newUser">New User</button>
+            </div>
+
+            <div id="editMsg" class="toast"></div>
+          </div>
+        </div>
+        <!-- =========================
+             AGENCIES PANEL
+        ========================= -->
+        <div class="panel" id="panelAgencies">
+          <div class="grid">
+            <!-- LEFT: Agencies table -->
+            <div class="card">
+              <div class="hd">
+                <h2>Agencies</h2>
+                <div class="hint">List used for user admission linking and multi-agency access.</div>
+              </div>
+              <div class="body">
+                <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+                  <input class="input" id="agencyListSearch" placeholder="Search agencies..." />
+                  <button class="btn" id="newAgency">New</button>
+                </div>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Evolv Client</th>
+                      </tr>
+                    </thead>
+                    <tbody id="agencyTbody"></tbody>
+                  </table>
+                </div>
+                <div id="agencyListMsg" class="toast"></div>
+              </div>
+            </div>
+
+            <!-- RIGHT: Agency editor -->
+            <div class="card">
+              <div class="hd">
+                <h2>Edit Agency</h2>
+                <div class="hint">Add/maintain agencies for admissions linking.</div>
+              </div>
+              <div class="body">
+                <div class="mini">Selected agency_id: <b id="selAgencyId">—</b></div>
+                <div style="height:10px"></div>
+
+                <div class="label">Agency Name</div>
+                <input class="input" id="agency_name" placeholder="Agency name" />
+
+                <div style="height:10px"></div>
+
+                <div class="label">Agency Type</div>
+                <select class="select" id="agency_type">
+                  <option value="Hospital">Hospital</option>
+                  <option value="SNF">SNF</option>
+                  <option value="Home Health">Home Health</option>
+                  <option value="IRF">IRF</option>
+                  <option value="LTACH">LTACH</option>
+                  <option value="Hospice">Hospice</option>
+                  <option value="Outpatient PT">Outpatient PT</option>
+                </select>
+
+                <div style="height:10px"></div>
+
+                <div class="label">Facility Code</div>
+                <input class="input" id="facility_code" placeholder="Optional code" />
+
+                <div style="height:10px"></div>
+
+                <div class="label">Address</div>
+                <input class="input" id="address" placeholder="Street address" />
+
+                <div style="height:10px"></div>
+
+                <div class="label">City / State / Zip</div>
+                <div style="display:grid;grid-template-columns:1fr .6fr .6fr;gap:10px">
+                  <input class="input" id="city" placeholder="City" />
+                  <input class="input" id="state" placeholder="State" />
+                  <input class="input" id="zip" placeholder="Zip" />
+                </div>
+
+                <div style="height:10px"></div>
+
+                <div class="label">Phone 1 / Phone 2</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                  <input class="input" id="phone1" placeholder="Phone 1" />
+                  <input class="input" id="phone2" placeholder="Phone 2" />
+                </div>
+
+                <div style="height:10px"></div>
+
+                <div class="label">Email / Fax</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                  <input class="input" id="email2" placeholder="Email" />
+                  <input class="input" id="fax" placeholder="Fax" />
+                </div>
+
+                <div style="height:10px"></div>
+
+                <div class="label">Notes</div>
+                <input class="input" id="notes" placeholder="Notes" />
+
+                <div style="height:10px"></div>
+
+                <div class="label">Notes 2</div>
+                <input class="input" id="notes2" placeholder="Notes 2" />
+
+                <div style="height:10px"></div>
+
+                <div class="label">Evolv Client</div>
+                <select class="select" id="evolv_client">
+                  <option value="0">No</option>
+                  <option value="1">Yes</option>
+                </select>
+
+                <div style="height:14px"></div>
+
+                <div class="stack">
+                  <button class="btn primary" id="saveAgency">Save Agency</button>
+                </div>
+
+                <div id="agencyEditMsg" class="toast"></div>
+              </div>
+            </div>
+          </div>
+        </div>      
       </div><!-- /content -->
     </div><!-- /layout -->
   </div>
@@ -662,9 +664,14 @@
     $("email").value = "";
     $("display_name").value = "";
     $("is_active").value = "1";
+
     selectedRoleKeys = new Set();
     renderRolesPills();
-    $("facility_ids").value = "";
+
+    // NEW: clear agency selection for a brand new user
+    selectedAgencyIds = new Set();
+    renderAgencyChecklist();
+
     setMsg($("editMsg"), "New user mode (Save User to create).", true);
   };
 
@@ -722,21 +729,24 @@
   $("agencySearch").addEventListener("input", renderAgencyChecklist);
 
   function showPanel(which){
-    // which: "users" | "agencies"
     const onUsers = which === "users";
 
     $("tabUsers").className = "navitem " + (onUsers ? "on" : "");
     $("tabAgencies").className = "navitem " + (!onUsers ? "on" : "");
 
-    // Users panel is your existing cards (we’ll treat the existing content as panelUsers)
-    document.querySelectorAll(".panel").forEach(p => p.classList.remove("on"));
-    if(!onUsers){
-      $("panelAgencies").classList.add("on");
-      document.querySelector(".brand .title").textContent = "Admin — Agencies";
-      refreshAgenciesList();
+    // hide both panels first
+    $("panelUsers").classList.remove("on");
+    $("panelAgencies").classList.remove("on");
+
+    if(onUsers){
+      $("panelUsers").classList.add("on");
     }else{
-      document.querySelector(".brand .title").textContent = "Admin — Users";
+      $("panelAgencies").classList.add("on");
+      refreshAgenciesList();
     }
+
+    // optional: jump to top so it feels like a real tab switch
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   $("tabUsers").onclick = () => showPanel("users");
