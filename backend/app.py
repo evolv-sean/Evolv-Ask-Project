@@ -2707,6 +2707,9 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ct_adm ON sensys_admission_care_team(admission_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ct_ct ON sensys_admission_care_team(care_team_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ct_deleted ON sensys_admission_care_team(deleted_at)")
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_sensys_adm_ct_pair ON sensys_admission_care_team(admission_id, care_team_id)"
+    )
 
     # ---- Safe migrations (in case DB already exists later) ----
     for ddl in [
@@ -17338,8 +17341,12 @@ def sensys_admission_care_team_link(payload: AdmissionCareTeamLink, request: Req
 
     conn.execute(
         """
-        INSERT INTO sensys_admission_care_team (care_team_id, admission_id)
-        VALUES (?, ?)
+        INSERT INTO sensys_admission_care_team (care_team_id, admission_id, deleted_at, updated_at)
+        VALUES (?, ?, NULL, datetime('now'))
+        ON CONFLICT(admission_id, care_team_id)
+        DO UPDATE SET
+            deleted_at = NULL,
+            updated_at = datetime('now')
         """,
         (int(payload.care_team_id), int(payload.admission_id)),
     )
