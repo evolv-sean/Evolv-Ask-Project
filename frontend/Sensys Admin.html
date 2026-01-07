@@ -1650,11 +1650,6 @@
   $("chooseFileBtn").onclick = () => $("bulkFileInput").click();
   $("dropzone").addEventListener("click", () => $("bulkFileInput").click());
 
-  $("bulkFileInput").addEventListener("change", async (e) => {
-    const f = e.target.files && e.target.files[0];
-    if(f) await handleBulkFile(f);
-  });
-
   // NEW: keep state so user can explicitly submit
   let bulkSelectedFile = null;
 
@@ -1671,9 +1666,20 @@
     $("bulkSubmitBtn").disabled = !file;
   }
 
+  // ✅ Only ONE change handler (pick file does NOT upload immediately)
   $("bulkFileInput").addEventListener("change", (e) => {
     const f = e.target.files && e.target.files[0];
     if(f) handleBulkFilePicked(f);
+  });
+
+  // ✅ Drag & drop UX
+  $("dropzone").addEventListener("dragover", (e) => {
+    e.preventDefault();
+    $("dropzone").classList.add("on");
+  });
+
+  $("dropzone").addEventListener("dragleave", () => {
+    $("dropzone").classList.remove("on");
   });
 
   $("dropzone").addEventListener("drop", (e) => {
@@ -1683,7 +1689,7 @@
     if(f) handleBulkFilePicked(f);
   });
 
-  // CHANGED: picking a file no longer uploads immediately
+  // picking a file no longer uploads immediately
   function handleBulkFilePicked(file){
     try{
       if(!String(file.name || "").toLowerCase().endsWith(".csv")){
@@ -1697,7 +1703,7 @@
     }
   }
 
-  // NEW: explicit submit button
+  // explicit submit button
   $("bulkSubmitBtn").onclick = async () => {
     try{
       if(!bulkSelectedFile) throw new Error("Please choose a CSV file first.");
@@ -1721,7 +1727,6 @@
         await refreshAdmissionsList();
       }
 
-      // optional: clear selection after success
       resetBulkSelection();
     }catch(err){
       setMsg($("bulkMsg"), String(err.message || err), false);
