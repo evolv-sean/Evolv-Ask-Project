@@ -22,6 +22,7 @@ import asyncio
 import shutil
 import subprocess
 
+
 try:
     import pdfplumber
     HAVE_PDFPLUMBER = True
@@ -61,6 +62,8 @@ except Exception:
     HAVE_WEASYPRINT = False
 
 from fastapi import FastAPI, HTTPException, Request, Form, Query, Body, Depends
+import csv
+import io
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -15576,6 +15579,460 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
 
     conn.commit()
     return {"ok": True}
+
+
+# =========================================================
+# Sensys Admin: BULK UPLOAD (CSV) — users/agencies/patients/admissions
+# =========================================================
+
+def _csv_to_rows(file_bytes: bytes) -> list[dict]:
+    """
+    Accepts UTF-8 CSV with headers.
+    Returns list of dict rows, trimming whitespace.
+    """
+    text = file_bytes.decode("utf-8-sig", errors="replace")
+    f = io.StringIO(text)
+    reader = csv.DictReader(f)
+    out = []
+    for r in reader:
+        if not r:
+            continue
+        clean = { (k or "").strip(): (v or "").strip() for k, v in r.items() }
+        # skip totally empty lines
+        if any(v for v in clean.values()):
+            out.append(clean)
+    return out
+
+
+def _to_int(v: str, default=None):
+    v = (v or "").strip()
+    if v == "":
+        return default
+    try:
+        return int(v)
+    except Exception:
+        return default
+
+
+def _to_bool_int(v: str, default=0):
+    s = (v or "").strip().lower()
+    if s in ("1", "true", "yes", "y", "t"):
+        return 1
+    if s in ("0", "false", "no", "n", "f"):
+        return 0
+    return default
+
+
+def _split_list(v: str) -> list[str]:
+    """
+    Accepts: "a,b,c" or "a|b|c"
+    """
+    s = (v or "").strip()
+    if not s:
+        return []
+    sep = "|" if "|" in s else ","
+    return [x.strip() for x in s.split(sep) if x.strip()]
+
+
+# -----------------------------
+# BULK: Users
+# -----------------------------
+@app.post("/api/sensys/admin/users/bulk")
+async def sensys_admin_users_bulk(token: str, file: UploadFile = File(...)):
+    _require_admin_token(token)
+    conn = get_db()
+    _sensys_seed_roles(conn)
+
+    raw = await file.read()
+    rows = _csv_to_rows(raw)
+
+    inserted = 0
+    updated = 0
+    errors = []
+
+    for idx, r in enumerate(rows, start=2):  # row 1 is header
+        try:
+            email = (r.get("email", "") or "").strip().lower()
+            if not email:
+                raise ValueError("email is required")
+
+            user_id = _to_int(r.get("user_id") or r.get("id"))
+
+            display_name = (r.get("display_name", "") or "").strip()
+            is_active = _to_int(r.get("is_active"), 1)
+            password = (r.get("password", "") or "").strip()
+            cell_phone = (r.get("cell_phone", "") or "").strip()
+            account_locked = _to_bool_int(r.get("account_locked"), 0)
+
+            if user_id:
+                # update (password only if provided)
+                if password:
+                    conn.execute(
+                        """
+                        UPDATE sensys_users
+                           SET email = ?,
+                               display_name = ?,
+                               is_active = ?,
+                               password = ?,
+                               cell_phone = ?,
+                               account_locked = ?,
+                               updated_at = datetime('now')
+                         WHERE id = ?
+                        """,
+                        (email, display_name, int(is_active), password, cell_phone, int(account_locked), int(user_id)),
+                    )
+                else:
+                    conn.execute(
+                        """
+                        UPDATE sensys_users
+                           SET email = ?,
+                               display_name = ?,
+                               is_active = ?,
+                               cell_phone = ?,
+                               account_locked = ?,
+                               updated_at = datetime('now')
+                         WHERE id = ?
+                        """,
+                        (email, display_name, int(is_active), cell_phone, int(account_locked), int(user_id)),
+                    )
+                updated += 1
+                saved_user_id = int(user_id)
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO sensys_users (email, display_name, is_active, password, cell_phone, account_locked)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (email, display_name, int(is_active), password, cell_phone, int(account_locked)),
+                )
+                saved_user_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+                inserted += 1
+
+            # Optional: role_keys column (comma or | separated)
+            role_keys = [x.lower() for x in _split_list(r.get("role_keys", ""))]
+            if role_keys:
+                conn.execute("DELETE FROM sensys_user_roles WHERE user_id = ?", (saved_user_id,))
+                role_rows = conn.execute(
+                    "SELECT id AS role_id, role_key FROM sensys_roles WHERE role_key IN ({})".format(
+                        ",".join(["?"] * len(role_keys))
+                    ),
+                    role_keys,
+                ).fetchall()
+                role_ids = [rr["role_id"] for rr in role_rows]
+                conn.executemany(
+                    "INSERT INTO sensys_user_roles (user_id, role_id) VALUES (?, ?)",
+                    [(saved_user_id, rid) for rid in role_ids],
+                )
+
+            # Optional: agency_ids column (comma or | separated)
+            agency_ids = [_to_int(x) for x in _split_list(r.get("agency_ids", ""))]
+            agency_ids = [x for x in agency_ids if x]
+            if agency_ids:
+                conn.execute("DELETE FROM sensys_user_agencies WHERE user_id = ?", (saved_user_id,))
+                conn.executemany(
+                    "INSERT OR IGNORE INTO sensys_user_agencies (user_id, agency_id) VALUES (?, ?)",
+                    [(saved_user_id, aid) for aid in agency_ids],
+                )
+
+        except Exception as e:
+            errors.append({"row": idx, "error": str(e)})
+
+    conn.commit()
+    return {"ok": True, "inserted": inserted, "updated": updated, "error_count": len(errors), "errors": errors[:50]}
+
+
+# -----------------------------
+# BULK: Agencies
+# -----------------------------
+@app.post("/api/sensys/admin/agencies/bulk")
+async def sensys_admin_agencies_bulk(token: str, file: UploadFile = File(...)):
+    _require_admin_token(token)
+    conn = get_db()
+
+    raw = await file.read()
+    rows = _csv_to_rows(raw)
+
+    inserted = 0
+    updated = 0
+    errors = []
+
+    for idx, r in enumerate(rows, start=2):
+        try:
+            agency_id = _to_int(r.get("id"))
+            name = (r.get("agency_name", "") or "").strip()
+            a_type = (r.get("agency_type", "") or "").strip()
+            if not name:
+                raise ValueError("agency_name is required")
+            if not a_type:
+                raise ValueError("agency_type is required")
+
+            evolv_client = _to_bool_int(r.get("evolv_client"), 0)
+
+            vals = (
+                name,
+                a_type,
+                (r.get("facility_code", "") or "").strip(),
+                (r.get("notes", "") or "").strip(),
+                (r.get("notes2", "") or "").strip(),
+                (r.get("address", "") or "").strip(),
+                (r.get("city", "") or "").strip(),
+                (r.get("state", "") or "").strip(),
+                (r.get("zip", "") or "").strip(),
+                (r.get("phone1", "") or "").strip(),
+                (r.get("phone2", "") or "").strip(),
+                (r.get("email", "") or "").strip(),
+                (r.get("fax", "") or "").strip(),
+                int(evolv_client),
+            )
+
+            if agency_id:
+                conn.execute(
+                    """
+                    UPDATE sensys_agencies
+                       SET agency_name   = ?,
+                           agency_type   = ?,
+                           facility_code = ?,
+                           notes         = ?,
+                           notes2        = ?,
+                           address       = ?,
+                           city          = ?,
+                           state         = ?,
+                           zip           = ?,
+                           phone1        = ?,
+                           phone2        = ?,
+                           email         = ?,
+                           fax           = ?,
+                           evolv_client  = ?,
+                           updated_at    = datetime('now')
+                     WHERE id = ?
+                    """,
+                    vals + (int(agency_id),),
+                )
+                updated += 1
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO sensys_agencies
+                        (agency_name, agency_type, facility_code, notes, notes2, address, city, state, zip, phone1, phone2, email, fax, evolv_client)
+                    VALUES
+                        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    vals,
+                )
+                inserted += 1
+
+        except Exception as e:
+            errors.append({"row": idx, "error": str(e)})
+
+    conn.commit()
+    return {"ok": True, "inserted": inserted, "updated": updated, "error_count": len(errors), "errors": errors[:50]}
+
+
+# -----------------------------
+# BULK: Patients
+# -----------------------------
+@app.post("/api/sensys/admin/patients/bulk")
+async def sensys_admin_patients_bulk(token: str, file: UploadFile = File(...)):
+    _require_admin_token(token)
+    conn = get_db()
+
+    raw = await file.read()
+    rows = _csv_to_rows(raw)
+
+    inserted = 0
+    updated = 0
+    errors = []
+
+    for idx, r in enumerate(rows, start=2):
+        try:
+            pid = _to_int(r.get("id"))
+            first = (r.get("first_name", "") or "").strip()
+            last = (r.get("last_name", "") or "").strip()
+            dob = (r.get("dob", "") or "").strip()
+
+            firstname_initial = (first[:1].upper() if first else "")
+            lastname_three = ((last[:3].upper()) if last else "")
+            pkey = _patient_key(first, last, dob)
+
+            active = _to_int(r.get("active"), 1)
+
+            vals = (
+                first,
+                last,
+                dob,
+                (r.get("gender", "") or "").strip(),
+                (r.get("phone1", "") or "").strip(),
+                (r.get("phone2", "") or "").strip(),
+                (r.get("email", "") or "").strip(),
+                (r.get("email2", "") or "").strip(),
+                (r.get("address1", "") or "").strip(),
+                (r.get("address2", "") or "").strip(),
+                (r.get("city", "") or "").strip(),
+                (r.get("state", "") or "").strip(),
+                (r.get("zip", "") or "").strip(),
+                (r.get("insurance_name1", "") or "").strip(),
+                (r.get("insurance_number1", "") or "").strip(),
+                (r.get("insurance_name2", "") or "").strip(),
+                (r.get("insurance_number2", "") or "").strip(),
+                int(active),
+                (r.get("notes1", "") or "").strip(),
+                (r.get("notes2", "") or "").strip(),
+                ((r.get("source", "") or "manual").strip() or "manual"),
+                firstname_initial,
+                lastname_three,
+                pkey,
+                (r.get("external_patient_id", "") or "").strip(),
+                (r.get("mrn", "") or "").strip(),
+            )
+
+            if pid:
+                conn.execute(
+                    """
+                    UPDATE sensys_patients
+                       SET first_name = ?,
+                           last_name = ?,
+                           dob = ?,
+                           gender = ?,
+                           phone1 = ?,
+                           phone2 = ?,
+                           email = ?,
+                           email2 = ?,
+                           address1 = ?,
+                           address2 = ?,
+                           city = ?,
+                           state = ?,
+                           zip = ?,
+                           insurance_name1 = ?,
+                           insurance_number1 = ?,
+                           insurance_name2 = ?,
+                           insurance_number2 = ?,
+                           active = ?,
+                           notes1 = ?,
+                           notes2 = ?,
+                           source = ?,
+                           firstname_initial = ?,
+                           lastname_three = ?,
+                           patient_key = ?,
+                           external_patient_id = ?,
+                           mrn = ?,
+                           updated_at = datetime('now')
+                     WHERE id = ?
+                    """,
+                    vals + (int(pid),),
+                )
+                updated += 1
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO sensys_patients
+                        (first_name,last_name,dob,gender,phone1,phone2,email,email2,
+                         address1,address2,city,state,zip,
+                         insurance_name1,insurance_number1,insurance_name2,insurance_number2,
+                         active,notes1,notes2,source,firstname_initial,lastname_three,patient_key,external_patient_id,mrn)
+                    VALUES
+                        (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    vals,
+                )
+                inserted += 1
+
+        except Exception as e:
+            errors.append({"row": idx, "error": str(e)})
+
+    conn.commit()
+    return {"ok": True, "inserted": inserted, "updated": updated, "error_count": len(errors), "errors": errors[:50]}
+
+
+# -----------------------------
+# BULK: Admissions
+# -----------------------------
+@app.post("/api/sensys/admin/admissions/bulk")
+async def sensys_admin_admissions_bulk(token: str, file: UploadFile = File(...)):
+    _require_admin_token(token)
+    conn = get_db()
+
+    raw = await file.read()
+    rows = _csv_to_rows(raw)
+
+    inserted = 0
+    updated = 0
+    errors = []
+
+    for idx, r in enumerate(rows, start=2):
+        try:
+            aid = _to_int(r.get("id"))
+            patient_id = _to_int(r.get("patient_id"))
+            agency_id = _to_int(r.get("agency_id"))
+            if not patient_id:
+                raise ValueError("patient_id is required")
+            if not agency_id:
+                raise ValueError("agency_id is required")
+
+            active = _to_int(r.get("active"), 1)
+
+            vals = (
+                int(patient_id),
+                int(agency_id),
+                (r.get("admit_date", "") or "").strip(),
+                (r.get("dc_date", "") or "").strip(),
+                (r.get("room", "") or "").strip(),
+                (r.get("referring_agency", "") or "").strip(),
+                (r.get("reason", "") or "").strip(),
+                (r.get("latest_pcp", "") or "").strip(),
+                (r.get("notes1", "") or "").strip(),
+                (r.get("notes2", "") or "").strip(),
+                int(active),
+                (r.get("next_location", "") or "").strip(),
+                _to_int(r.get("next_agency_id"), None),
+            )
+
+            if aid:
+                conn.execute(
+                    """
+                    UPDATE sensys_admissions
+                       SET patient_id = ?,
+                           agency_id = ?,
+                           admit_date = ?,
+                           dc_date = ?,
+                           room = ?,
+                           referring_agency = ?,
+                           reason = ?,
+                           latest_pcp = ?,
+                           notes1 = ?,
+                           notes2 = ?,
+                           active = ?,
+                           next_location = ?,
+                           next_agency_id = ?,
+                           updated_at = datetime('now')
+                     WHERE id = ?
+                    """,
+                    vals + (int(aid),),
+                )
+                updated += 1
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO sensys_admissions
+                        (patient_id, agency_id, admit_date, dc_date, room,
+                         referring_agency, reason, latest_pcp,
+                         notes1, notes2, active,
+                         next_location, next_agency_id)
+                    VALUES
+                        (?, ?, ?, ?, ?,
+                         ?, ?, ?,
+                         ?, ?, ?,
+                         ?, ?)
+                    """,
+                    vals,
+                )
+                inserted += 1
+
+        except Exception as e:
+            errors.append({"row": idx, "error": str(e)})
+
+    conn.commit()
+    return {"ok": True, "inserted": inserted, "updated": updated, "error_count": len(errors), "errors": errors[:50]}
+
 
 # -----------------------------
 # Sensys Admin: set agencies for user (replace)
