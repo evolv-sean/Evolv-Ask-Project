@@ -15786,7 +15786,8 @@ async def sensys_admin_agencies_bulk(token: str, file: UploadFile = File(...)):
             )
 
             if agency_id:
-                conn.execute(
+                # ✅ If ID provided, UPDATE if it exists; otherwise INSERT (so CSVs with new IDs work)
+                cur = conn.execute(
                     """
                     UPDATE sensys_agencies
                        SET agency_name   = ?,
@@ -15808,7 +15809,21 @@ async def sensys_admin_agencies_bulk(token: str, file: UploadFile = File(...)):
                     """,
                     vals + (int(agency_id),),
                 )
-                updated += 1
+
+                if cur.rowcount and cur.rowcount > 0:
+                    updated += 1
+                else:
+                    # INSERT with explicit id (SQLite allows this)
+                    conn.execute(
+                        """
+                        INSERT INTO sensys_agencies
+                            (id, agency_name, agency_type, facility_code, notes, notes2, address, city, state, zip, phone1, phone2, email, fax, evolv_client)
+                        VALUES
+                            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (int(agency_id),) + vals,
+                    )
+                    inserted += 1
             else:
                 conn.execute(
                     """
