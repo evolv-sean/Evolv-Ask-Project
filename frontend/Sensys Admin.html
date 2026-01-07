@@ -520,8 +520,13 @@
       };
 
       const label = document.createElement("div");
+      const locRaw =
+        (a.city || a.state)
+          ? (String(a.city || "") + (a.city && a.state ? ", " : "") + String(a.state || ""))
+          : "";
+
       label.innerHTML = `<b>${escapeHtml(a.agency_name || "")}</b>
-        <small>${escapeHtml(a.agency_type || "")}${(a.city||a.state) ? " • " + escapeHtml(`${a.city||""}${a.city&&a.state?", ":""}${a.state||""}`) : ""}</small>`;
+        <small>${escapeHtml(a.agency_type || "")}${locRaw ? " • " + escapeHtml(locRaw) : ""}</small>`;
 
       row.appendChild(cb);
       row.appendChild(label);
