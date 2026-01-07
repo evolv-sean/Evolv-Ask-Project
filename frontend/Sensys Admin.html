@@ -268,6 +268,15 @@
     return raw.split(",").map(x => x.trim()).filter(Boolean).map(x => parseInt(x,10)).filter(n => !isNaN(n));
   }
 
+  function parseFacilityNames(){
+    const raw = ($("facility_ids").value || "").trim();
+    if(!raw) return [];
+    return raw
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean);
+  }
+
   function renderRolesPills(){
     const wrap = $("roles");
     wrap.innerHTML = "";
@@ -426,7 +435,7 @@
       if(!selectedUserId) throw new Error("Select a user first (or create one).");
       await apiPost("/api/sensys/admin/users/set-facilities", {
         user_id: selectedUserId,
-        facility_ids: parseFacilityIds()
+        facility_names: parseFacilityNames()
       });
       setMsg($("editMsg"), "Facilities saved.", true);
       await refreshAll();
