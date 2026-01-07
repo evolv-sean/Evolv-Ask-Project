@@ -1,0 +1,623 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sensys - Admission Details</title>
+</head>
+
+<body style="margin:0;font-family:Arial,Helvetica,sans-serif;background:#f6f7fb;">
+  <div style="max-width:1100px;margin:0 auto;padding:18px;">
+
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+      <div>
+        <div style="font-size:18px;font-weight:800;">Admission Details</div>
+        <div id="subhead" style="font-size:12px;color:#667085;margin-top:4px;"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button id="backBtn"
+          style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+          ← Back
+        </button>
+        <button id="logoutBtn"
+          style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+          Log out
+        </button>
+      </div>
+    </div>
+
+    <div id="msg" style="margin-top:10px;font-size:12px;color:#b42318;display:none;"></div>
+
+    <!-- Header -->
+    <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
+        <div>
+          <div id="patientName" style="font-size:16px;font-weight:800;color:#111827;">—</div>
+          <div id="metaLine" style="margin-top:4px;font-size:12px;color:#667085;">—</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <div style="font-size:12px;color:#475467;">Admission ID: <span id="admissionIdTag" style="font-weight:800;color:#111827;"></span></div>
+          <button id="refreshBtn"
+            style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">
+            Refresh
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- GRID -->
+    <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <!-- Tasks -->
+      <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <div style="font-size:13px;color:#111827;font-weight:800;">Tasks</div>
+        </div>
+
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+          <select id="taskStatus"
+            style="padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+            <option>New</option>
+            <option>Moved</option>
+            <option>Pending</option>
+            <option>Completed</option>
+          </select>
+          <input id="taskName" placeholder="Task name"
+            style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+          <input id="taskAssignedUser" placeholder="Assigned user id (optional)"
+            style="width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+          <input id="taskComments" placeholder="Comments (optional)"
+            style="flex:1;min-width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+          <button id="addTaskBtn"
+            style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+            Add
+          </button>
+        </div>
+
+        <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+          <table style="width:100%;border-collapse:collapse;min-width:760px;">
+            <thead>
+              <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Status</th>
+                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Task</th>
+                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Assigned</th>
+                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Comments</th>
+                <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tasksTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <div style="font-size:13px;color:#111827;font-weight:800;">Notes</div>
+        </div>
+
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+          <input id="noteName" placeholder="Note name"
+            style="width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+          <input id="noteComments" placeholder="Note comments"
+            style="flex:1;min-width:320px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+          <button id="addNoteBtn"
+            style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+            Add
+          </button>
+        </div>
+
+        <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+          <table style="width:100%;border-collapse:collapse;min-width:760px;">
+            <thead>
+              <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Name</th>
+                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Comments</th>
+                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Created</th>
+                <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="notesTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- DC submissions (full width) -->
+    <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div style="font-size:13px;color:#111827;font-weight:800;">DC Submissions</div>
+      </div>
+
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <input id="dcDate" placeholder="DC date (YYYY-MM-DD)"
+          style="width:190px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+        <input id="dcTime" placeholder="DC time (HH:MM)"
+          style="width:150px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+        <label style="font-size:12px;color:#475467;display:flex;gap:6px;align-items:center;">
+          <input id="dcConfirmed" type="checkbox" /> Confirmed
+        </label>
+        <label style="font-size:12px;color:#475467;display:flex;gap:6px;align-items:center;">
+          <input id="dcUrgent" type="checkbox" /> Urgent
+        </label>
+
+        <input id="urgentComments" placeholder="Urgent comments"
+          style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+        <select id="dcDestination"
+          style="padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+          <option>Home</option>
+          <option>ALF</option>
+          <option>ILF</option>
+          <option>Hospital</option>
+          <option>LTC</option>
+          <option>AMA</option>
+          <option>Other</option>
+        </select>
+
+        <input id="destinationComments" placeholder="Destination comments"
+          style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+        <select id="dcWith"
+          style="padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+          <option>alone</option>
+          <option>spouse</option>
+          <option>other family</option>
+          <option>caregiver</option>
+        </select>
+
+        <button id="addDcBtn"
+          style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+          Add DC Submission
+        </button>
+      </div>
+
+      <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+        <table style="width:100%;border-collapse:collapse;min-width:1050px;">
+          <thead>
+            <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">DC</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Destination</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Urgent</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Services</th>
+              <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="dcTbody"></tbody>
+        </table>
+      </div>
+
+      <div style="margin-top:10px;font-size:12px;color:#667085;">
+        Tip: Services are loaded from your Services admin tab (DME / HH). Use “Edit services” per submission.
+      </div>
+    </div>
+
+    <!-- Care team (full width) -->
+    <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div style="font-size:13px;color:#111827;font-weight:800;">Care Team (linked to this admission)</div>
+      </div>
+
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <select id="careTeamSelect"
+          style="flex:1;min-width:320px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+          <option value="">Loading care team…</option>
+        </select>
+
+        <button id="addCareTeamBtn"
+          style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+          Link to Admission
+        </button>
+      </div>
+
+      <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+        <table style="width:100%;border-collapse:collapse;min-width:900px;">
+          <thead>
+            <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Name</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Type</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Phone</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Email</th>
+              <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="careTeamTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+<script>
+  function qs(name) {
+    const u = new URL(window.location.href);
+    return u.searchParams.get(name);
+  }
+
+  function showMsg(text) {
+    const el = document.getElementById('msg');
+    el.style.display = text ? 'block' : 'none';
+    el.textContent = text || '';
+  }
+
+  function token() {
+    return localStorage.getItem('sensys_token') || '';
+  }
+
+  async function api(path, opts) {
+    const t = token();
+    if (!t) throw new Error("Missing token. Please log in again.");
+
+    const res = await fetch(path, {
+      ...(opts || {}),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + t,
+        ...((opts && opts.headers) || {})
+      }
+    });
+
+    if (!res.ok) {
+      let msg = 'Request failed (' + res.status + ')';
+      try {
+        const j = await res.json();
+        if (j && j.detail) msg = j.detail;
+      } catch (e) {}
+      throw new Error(msg);
+    }
+    return await res.json();
+  }
+
+  let ADMISSION_ID = null;
+  let SERVICES = [];
+  let CARE_TEAM = [];
+  let DETAILS = null;
+
+  function escapeHtml(s) {
+    return (s || '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+  }
+
+  function renderTasks() {
+    const tb = document.getElementById('tasksTbody');
+    const rows = (DETAILS && DETAILS.tasks) || [];
+    tb.innerHTML = rows.map(r => {
+      return `
+        <tr style="border-bottom:1px solid #eef0f5;">
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.task_status || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.task_name || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(String(r.assigned_user_id || ''))}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.task_comments || '')}</td>
+          <td style="padding:10px;text-align:right;">
+            <button data-del-task="${r.id}"
+              style="padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+              Delete
+            </button>
+          </td>
+        </tr>`;
+    }).join('');
+
+    tb.querySelectorAll('[data-del-task]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-del-task');
+        try {
+          showMsg('');
+          await api('/api/sensys/admission-tasks/delete', {
+            method:'POST',
+            body: JSON.stringify({ id: Number(id) })
+          });
+          await loadAll();
+        } catch(e) { showMsg(e.message); }
+      });
+    });
+  }
+
+  function renderNotes() {
+    const tb = document.getElementById('notesTbody');
+    const rows = (DETAILS && DETAILS.notes) || [];
+    tb.innerHTML = rows.map(r => {
+      return `
+        <tr style="border-bottom:1px solid #eef0f5;">
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.note_name || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.note_comments || '')}</td>
+          <td style="padding:10px;font-size:12px;color:#667085;">${escapeHtml(r.created_at || '')}</td>
+          <td style="padding:10px;text-align:right;">
+            <button data-del-note="${r.id}"
+              style="padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+              Delete
+            </button>
+          </td>
+        </tr>`;
+    }).join('');
+
+    tb.querySelectorAll('[data-del-note]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-del-note');
+        try {
+          showMsg('');
+          await api('/api/sensys/admission-notes/delete', {
+            method:'POST',
+            body: JSON.stringify({ id: Number(id) })
+          });
+          await loadAll();
+        } catch(e) { showMsg(e.message); }
+      });
+    });
+  }
+
+  function serviceNameById(id) {
+    const s = SERVICES.find(x => Number(x.id) === Number(id));
+    return s ? (s.name + ' (' + s.service_type + ')') : ('#' + id);
+  }
+
+  function renderDc() {
+    const tb = document.getElementById('dcTbody');
+    const rows = (DETAILS && DETAILS.dc_submissions) || [];
+    tb.innerHTML = rows.map(r => {
+      const serviceIds = (r.services || []).map(x => Number(x.services_id));
+      const svcLabel = serviceIds.length
+        ? serviceIds.map(serviceNameById).join(', ')
+        : '—';
+
+      const urgent = Number(r.dc_urgent || 0) === 1 ? ('Yes: ' + (r.urgent_comments || '')) : 'No';
+
+      return `
+        <tr style="border-bottom:1px solid #eef0f5;">
+          <td style="padding:10px;font-size:13px;color:#111827;">
+            ${escapeHtml((r.dc_date || '') + ' ' + (r.dc_time || ''))}
+            <div style="font-size:12px;color:#667085;margin-top:2px;">
+              Confirmed: ${Number(r.dc_confirmed||0)===1 ? 'Yes' : 'No'} • With: ${escapeHtml(r.dc_with || '')}
+            </div>
+          </td>
+          <td style="padding:10px;font-size:13px;color:#111827;">
+            ${escapeHtml(r.dc_destination || '')}
+            <div style="font-size:12px;color:#667085;margin-top:2px;">
+              ${escapeHtml(r.destination_comments || '')}
+            </div>
+          </td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(urgent)}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">
+            ${escapeHtml(svcLabel)}
+            <div style="margin-top:6px;">
+              <button data-edit-services="${r.id}"
+                style="padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+                Edit services
+              </button>
+            </div>
+          </td>
+          <td style="padding:10px;text-align:right;">
+            <button data-del-dc="${r.id}"
+              style="padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+              Delete
+            </button>
+          </td>
+        </tr>`;
+    }).join('');
+
+    tb.querySelectorAll('[data-del-dc]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-del-dc');
+        try {
+          showMsg('');
+          await api('/api/sensys/admission-dc-submissions/delete', {
+            method:'POST',
+            body: JSON.stringify({ id: Number(id) })
+          });
+          await loadAll();
+        } catch(e) { showMsg(e.message); }
+      });
+    });
+
+    tb.querySelectorAll('[data-edit-services]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const submissionId = Number(btn.getAttribute('data-edit-services'));
+        const row = rows.find(x => Number(x.id) === submissionId);
+        const current = new Set(((row && row.services) || []).map(x => Number(x.services_id)));
+
+        // simple prompt-based multi-select
+        const lines = SERVICES.map(s => {
+          const on = current.has(Number(s.id)) ? '[x]' : '[ ]';
+          return `${on} ${s.id}: ${s.name} (${s.service_type})`;
+        }).join('\n');
+
+        const input = prompt(
+          'Select services for DC Submission #' + submissionId + '\n\n' +
+          'Copy/paste the service IDs you want, comma-separated.\n\n' +
+          lines + '\n\nExample: 1,2,5'
+        );
+
+        if (input === null) return;
+
+        const ids = input.split(',').map(x => Number((x||'').trim())).filter(x => Number.isFinite(x) && x > 0);
+
+        try {
+          showMsg('');
+          await api('/api/sensys/dc-submission-services/set', {
+            method:'POST',
+            body: JSON.stringify({
+              admission_dc_submission_id: submissionId,
+              services_ids: ids
+            })
+          });
+          await loadAll();
+        } catch(e) { showMsg(e.message); }
+      });
+    });
+  }
+
+  function renderCareTeamSelect() {
+    const sel = document.getElementById('careTeamSelect');
+    sel.innerHTML = ['<option value="">Select a care team person…</option>']
+      .concat(CARE_TEAM.map(c => {
+        const label = (c.name || '') + ' — ' + (c.type || '');
+        return `<option value="${c.id}">${escapeHtml(label)}</option>`;
+      }))
+      .join('');
+  }
+
+  function renderCareTeamLinked() {
+    const tb = document.getElementById('careTeamTbody');
+    const rows = (DETAILS && DETAILS.care_team) || [];
+    tb.innerHTML = rows.map(r => {
+      return `
+        <tr style="border-bottom:1px solid #eef0f5;">
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.name || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.type || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.phone1 || r.phone2 || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.email1 || r.email2 || '')}</td>
+          <td style="padding:10px;text-align:right;">
+            <button data-unlink-ct="${r.link_id}"
+              style="padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+              Unlink
+            </button>
+          </td>
+        </tr>`;
+    }).join('');
+
+    tb.querySelectorAll('[data-unlink-ct]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const linkId = Number(btn.getAttribute('data-unlink-ct'));
+        try {
+          showMsg('');
+          await api('/api/sensys/admission-care-team/unlink', {
+            method:'POST',
+            body: JSON.stringify({ id: linkId })
+          });
+          await loadAll();
+        } catch(e) { showMsg(e.message); }
+      });
+    });
+  }
+
+  function renderHeader() {
+    const a = DETAILS && DETAILS.admission;
+    if (!a) return;
+    document.getElementById('admissionIdTag').textContent = String(a.id || '');
+    document.getElementById('patientName').textContent = a.patient_name || '—';
+    document.getElementById('metaLine').textContent =
+      (a.agency_name ? ('Agency: ' + a.agency_name + ' • ') : '') +
+      (a.patient_dob ? ('DOB: ' + a.patient_dob + ' • ') : '') +
+      ('Admit: ' + (a.admit_date || '—') + ' • DC: ' + (a.dc_date || '—')) +
+      (a.room ? (' • Room: ' + a.room) : '');
+
+    document.getElementById('subhead').textContent =
+      (a.reason ? ('Reason: ' + a.reason) : 'View and edit tasks, notes, DC submissions, services, and care team.');
+  }
+
+  async function loadAll() {
+    showMsg('');
+    const [details, services, careTeam] = await Promise.all([
+      api('/api/sensys/admission-details/' + ADMISSION_ID, { method:'GET' }),
+      api('/api/sensys/services', { method:'GET' }),
+      api('/api/sensys/care-team', { method:'GET' })
+    ]);
+
+    DETAILS = details;
+    SERVICES = (services && services.services) || [];
+    CARE_TEAM = (careTeam && careTeam.care_team) || [];
+
+    renderHeader();
+    renderTasks();
+    renderNotes();
+    renderDc();
+    renderCareTeamSelect();
+    renderCareTeamLinked();
+  }
+
+  document.getElementById('refreshBtn').addEventListener('click', () => loadAll().catch(e => showMsg(e.message)));
+
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('sensys_token');
+    window.location.href = '/sensys/login';
+  });
+
+  document.getElementById('backBtn').addEventListener('click', () => {
+    window.location.href = '/sensys/snf-sw';
+  });
+
+  document.getElementById('addTaskBtn').addEventListener('click', async () => {
+    try {
+      showMsg('');
+      const payload = {
+        admission_id: Number(ADMISSION_ID),
+        assigned_user_id: document.getElementById('taskAssignedUser').value.trim() || null,
+        task_status: document.getElementById('taskStatus').value,
+        task_name: document.getElementById('taskName').value.trim(),
+        task_comments: document.getElementById('taskComments').value.trim()
+      };
+      await api('/api/sensys/admission-tasks/upsert', { method:'POST', body: JSON.stringify(payload) });
+      document.getElementById('taskName').value = '';
+      document.getElementById('taskComments').value = '';
+      document.getElementById('taskAssignedUser').value = '';
+      await loadAll();
+    } catch(e) { showMsg(e.message); }
+  });
+
+  document.getElementById('addNoteBtn').addEventListener('click', async () => {
+    try {
+      showMsg('');
+      const payload = {
+        admission_id: Number(ADMISSION_ID),
+        note_name: document.getElementById('noteName').value.trim(),
+        note_comments: document.getElementById('noteComments').value.trim()
+      };
+      await api('/api/sensys/admission-notes/upsert', { method:'POST', body: JSON.stringify(payload) });
+      document.getElementById('noteName').value = '';
+      document.getElementById('noteComments').value = '';
+      await loadAll();
+    } catch(e) { showMsg(e.message); }
+  });
+
+  document.getElementById('addDcBtn').addEventListener('click', async () => {
+    try {
+      showMsg('');
+      const payload = {
+        admission_id: Number(ADMISSION_ID),
+        dc_date: document.getElementById('dcDate').value.trim(),
+        dc_time: document.getElementById('dcTime').value.trim(),
+        dc_confirmed: document.getElementById('dcConfirmed').checked ? 1 : 0,
+        dc_urgent: document.getElementById('dcUrgent').checked ? 1 : 0,
+        urgent_comments: document.getElementById('urgentComments').value.trim(),
+        dc_destination: document.getElementById('dcDestination').value,
+        destination_comments: document.getElementById('destinationComments').value.trim(),
+        dc_with: document.getElementById('dcWith').value
+      };
+      await api('/api/sensys/admission-dc-submissions/upsert', { method:'POST', body: JSON.stringify(payload) });
+
+      document.getElementById('dcDate').value = '';
+      document.getElementById('dcTime').value = '';
+      document.getElementById('dcConfirmed').checked = false;
+      document.getElementById('dcUrgent').checked = false;
+      document.getElementById('urgentComments').value = '';
+      document.getElementById('destinationComments').value = '';
+      await loadAll();
+    } catch(e) { showMsg(e.message); }
+  });
+
+  document.getElementById('addCareTeamBtn').addEventListener('click', async () => {
+    try {
+      showMsg('');
+      const careTeamId = document.getElementById('careTeamSelect').value;
+      if (!careTeamId) throw new Error("Select a care team person first.");
+      await api('/api/sensys/admission-care-team/link', {
+        method:'POST',
+        body: JSON.stringify({ admission_id: Number(ADMISSION_ID), care_team_id: Number(careTeamId) })
+      });
+      document.getElementById('careTeamSelect').value = '';
+      await loadAll();
+    } catch(e) { showMsg(e.message); }
+  });
+
+  (async function init(){
+    try {
+      ADMISSION_ID = Number(qs('admission_id') || '');
+      if (!ADMISSION_ID) throw new Error("Missing admission_id in URL.");
+      document.getElementById('admissionIdTag').textContent = String(ADMISSION_ID);
+      await loadAll();
+    } catch(e) {
+      showMsg(e.message);
+    }
+  })();
+</script>
+
+</body>
+</html>
