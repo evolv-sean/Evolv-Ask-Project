@@ -960,10 +960,13 @@
 </div>
 <!-- ✅ Service modal -->
 <div id="serviceModalBackdrop" class="modal-backdrop">
-  <div class="modal">
-    <div class="modal-head">
-      <div style="font-weight:800;">Service</div>
-      <button id="closeServiceModal" class="btn">Close</button>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="serviceModalTitle">
+    <div class="modal-hd">
+      <div>
+        <h3 class="modal-title" id="serviceModalTitle">Edit Service</h3>
+        <div class="modal-sub">service_id: <b id="selServiceId">—</b></div>
+      </div>
+      <button class="xbtn" id="closeServiceModal" aria-label="Close">✕</button>
     </div>
 
     <div class="modal-body">
@@ -989,7 +992,7 @@
         </div>
       </div>
 
-      <div id="svcMsg" class="msg"></div>
+      <div id="svcMsg" class="toast"></div>
 
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;">
         <button id="saveServiceBtn" class="btn primary">Save Service</button>
@@ -1000,10 +1003,13 @@
 
 <!-- ✅ Care Team modal -->
 <div id="careTeamModalBackdrop" class="modal-backdrop">
-  <div class="modal">
-    <div class="modal-head">
-      <div style="font-weight:800;">Care Team</div>
-      <button id="closeCareTeamModal" class="btn">Close</button>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="careTeamModalTitle">
+    <div class="modal-hd">
+      <div>
+        <h3 class="modal-title" id="careTeamModalTitle">Edit Care Team</h3>
+        <div class="modal-sub">care_team_id: <b id="selCareTeamId">—</b></div>
+      </div>
+      <button class="xbtn" id="closeCareTeamModal" aria-label="Close">✕</button>
     </div>
 
     <div class="modal-body">
@@ -1031,7 +1037,7 @@
         </div>
       </div>
 
-      <div id="ctMsg" class="msg"></div>
+      <div id="ctMsg" class="toast"></div>
 
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;">
         <button id="saveCareTeamBtn" class="btn primary">Save Care Team</button>
@@ -1049,6 +1055,7 @@
 
   function openServiceModal(service){
     $("svc_id").value = service ? String(service.id || "") : "";
+    $("selServiceId").textContent = service && service.id ? String(service.id) : "—";
     $("svc_name").value = service ? (service.name || "") : "";
     $("svc_type").value = service ? (service.service_type || "dme") : "dme";
     $("svc_dropdown").value = service ? String(service.dropdown ? 1 : 0) : "1";
@@ -1068,6 +1075,7 @@
       };
       await apiPost("/api/sensys/admin/services/upsert", payload);
       await refreshServicesList();
+      setMsg($("servicesListMsg"), "Service saved.", true);
       closeServiceModal();
     }catch(e){
       setMsg($("svcMsg"), String(e.message || e), false);
@@ -1076,6 +1084,7 @@
 
   function openCareTeamModal(row){
     $("ct_id").value = row ? String(row.id || "") : "";
+    $("selCareTeamId").textContent = row && row.id ? String(row.id) : "—";
     $("ct_name").value = row ? (row.name || "") : "";
     $("ct_type").value = row ? (row.type || "") : "";
     $("ct_npi").value = row ? (row.npi || "") : "";
@@ -1125,6 +1134,14 @@
     if(e.target.id === "agencyModalBackdrop") closeAgencyModal();
   });
 
+  // ✅ ADD: close services + care team when clicking the dark backdrop
+  $("serviceModalBackdrop").addEventListener("click", (e) => {
+    if(e.target.id === "serviceModalBackdrop") closeServiceModal();
+  });
+  $("careTeamModalBackdrop").addEventListener("click", (e) => {
+    if(e.target.id === "careTeamModalBackdrop") closeCareTeamModal();
+  });
+
   // Close buttons
   $("closeUserModal").onclick = closeUserModal;
   $("closeAgencyModal").onclick = closeAgencyModal;
@@ -1136,6 +1153,8 @@
     closeAgencyModal();
     closePatientModal();
     closeAdmissionModal();
+    closeServiceModal();
+    closeCareTeamModal();
     closeBulkModal();
   });
 
@@ -1885,6 +1904,9 @@
 
     items.forEach(s => {
       const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.onclick = () => openServiceModal(s);
+
       tr.innerHTML = `
         <td><b>${escapeHtml(s.name||"")}</b></td>
         <td>${escapeHtml((s.service_type||"").toUpperCase())}</td>
@@ -1925,6 +1947,9 @@
 
     items.forEach(c => {
       const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.onclick = () => openCareTeamModal(c);
+
       tr.innerHTML = `
         <td><b>${escapeHtml(c.name||"")}</b></td>
         <td>${escapeHtml(c.type||"")}</td>
