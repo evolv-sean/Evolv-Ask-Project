@@ -780,13 +780,6 @@
 
       <div style="height:10px"></div>
 
-      <div class="label">Assigned User</div>
-      <select class="select" id="a_assigned_user_id">
-        <option value="">(Unassigned)</option>
-      </select>
-
-      <div style="height:10px"></div>
-
       <div class="label">Active</div>
       <select class="select" id="a_active">
         <option value="1">Yes (Active)</option>
@@ -1417,10 +1410,6 @@
         const ag = await apiGet("/api/sensys/admin/agencies");
         agenciesMaster = ag.agencies || [];
       }
-      if(!usersCache.length){
-        const u = await apiGet("/api/sensys/admin/users");
-        usersCache = u.users || [];
-      }
 
       const resp = await apiGet("/api/sensys/admin/admissions");
       admissionsCache = resp.admissions || [];
@@ -1455,17 +1444,6 @@
       a.agency_id
     );
 
-    // assigned user dropdown
-    const assignedSel = $("a_assigned_user_id");
-    assignedSel.innerHTML = `<option value="">(Unassigned)</option>`;
-    usersCache.forEach(u => {
-      const opt = document.createElement("option");
-      opt.value = String(u.user_id);
-      opt.textContent = u.email || String(u.user_id);
-      if(a.assigned_user_id && String(a.assigned_user_id) === String(u.user_id)) opt.selected = true;
-      assignedSel.appendChild(opt);
-    });
-
     $("a_admit_date").value = a.admit_date || "";
     $("a_dc_date").value = a.dc_date || "";
     $("a_room").value = a.room || "";
@@ -1496,15 +1474,6 @@
       null
     );
 
-    const assignedSel = $("a_assigned_user_id");
-    assignedSel.innerHTML = `<option value="">(Unassigned)</option>`;
-    usersCache.forEach(u => {
-      const opt = document.createElement("option");
-      opt.value = String(u.user_id);
-      opt.textContent = u.email || String(u.user_id);
-      assignedSel.appendChild(opt);
-    });
-
     $("a_admit_date").value = "";
     $("a_dc_date").value = "";
     $("a_room").value = "";
@@ -1521,10 +1490,6 @@
       const ag = await apiGet("/api/sensys/admin/agencies");
       agenciesMaster = ag.agencies || [];
     }
-    if(!usersCache.length){
-      const u = await apiGet("/api/sensys/admin/users");
-      usersCache = u.users || [];
-    }
     startNewAdmission();
   };
 
@@ -1538,7 +1503,6 @@
         dc_date: ($("a_dc_date").value || "").trim(),
         room: ($("a_room").value || "").trim(),
         reason: ($("a_reason").value || "").trim(),
-        assigned_user_id: ($("a_assigned_user_id").value || "") ? parseInt($("a_assigned_user_id").value, 10) : null,
         active: parseInt($("a_active").value, 10)
       };
 
