@@ -2401,6 +2401,124 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_pages_user ON sensys_user_pages(user_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_pages_page ON sensys_user_pages(page_key)")
 
+    # -------------------------------------------------------------------
+    # Sensys 3.0: Patients + Admissions (manual + future automation)
+    # -------------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_patients (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            first_name          TEXT,
+            last_name           TEXT,
+            dob                 TEXT,
+            gender              TEXT,
+
+            phone1              TEXT,
+            phone2              TEXT,
+            email               TEXT,
+            email2              TEXT,
+
+            address1            TEXT,
+            address2            TEXT,
+            city                TEXT,
+            state               TEXT,
+            zip                 TEXT,
+
+            insurance_name1     TEXT,
+            insurance_number1   TEXT,
+            insurance_name2     TEXT,
+            insurance_number2   TEXT,
+
+            active              INTEGER DEFAULT 1,
+            notes1              TEXT,
+            notes2              TEXT,
+
+            created_at          TEXT DEFAULT (datetime('now')),
+            updated_at          TEXT DEFAULT (datetime('now')),
+            deleted_at          TEXT,
+
+            source              TEXT DEFAULT 'manual',
+
+            -- Search helpers (you asked for these)
+            firstname_initial   TEXT,
+            lastname_three      TEXT,
+
+            -- ✅ Needed for linking/dedupe logic (safe, optional)
+            patient_key         TEXT,     -- app-generated stable key (e.g., lastname|firstname|dob)
+            external_patient_id TEXT,     -- if you later ingest from an EMR
+            mrn                 TEXT      -- optional
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_patients_name ON sensys_patients(last_name, first_name)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_patients_dob ON sensys_patients(dob)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_patients_active ON sensys_patients(active)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_patients_key ON sensys_patients(patient_key)")
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_admissions (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            patient_id          INTEGER NOT NULL,
+            agency_id           INTEGER NOT NULL,
+
+            admit_date          TEXT,
+            dc_date             TEXT,
+
+            room                TEXT,
+            referring_agency    TEXT,
+            reason              TEXT,
+            latest_pcp          TEXT,
+
+            notes1              TEXT,
+            notes2              TEXT,
+
+            active              INTEGER DEFAULT 1,
+
+            next_location       TEXT,
+            next_agency_id      INTEGER,
+
+            created_at          TEXT DEFAULT (datetime('now')),
+            updated_at          TEXT DEFAULT (datetime('now')),
+
+            -- ✅ Needed for admission-to-user workflow/linking
+            assigned_user_id    INTEGER,  -- sensys_users.id (who owns this admission)
+            assigned_at         TEXT,
+            created_by_user_id  INTEGER,
+            updated_by_user_id  INTEGER,
+
+            FOREIGN KEY(patient_id) REFERENCES sensys_patients(id),
+            FOREIGN KEY(agency_id) REFERENCES sensys_agencies(id),
+            FOREIGN KEY(next_agency_id) REFERENCES sensys_agencies(id),
+            FOREIGN KEY(assigned_user_id) REFERENCES sensys_users(id),
+            FOREIGN KEY(created_by_user_id) REFERENCES sensys_users(id),
+            FOREIGN KEY(updated_by_user_id) REFERENCES sensys_users(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_patient ON sensys_admissions(patient_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_agency ON sensys_admissions(agency_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_active ON sensys_admissions(active)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_assigned_user ON sensys_admissions(assigned_user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_dates ON sensys_admissions(admit_date, dc_date)")
+
+    # ---- Safe migrations (in case DB already exists later) ----
+    for ddl in [
+        "ALTER TABLE sensys_patients ADD COLUMN patient_key TEXT",
+        "ALTER TABLE sensys_patients ADD COLUMN external_patient_id TEXT",
+        "ALTER TABLE sensys_patients ADD COLUMN mrn TEXT",
+        "ALTER TABLE sensys_admissions ADD COLUMN assigned_user_id INTEGER",
+        "ALTER TABLE sensys_admissions ADD COLUMN assigned_at TEXT",
+        "ALTER TABLE sensys_admissions ADD COLUMN created_by_user_id INTEGER",
+        "ALTER TABLE sensys_admissions ADD COLUMN updated_by_user_id INTEGER",
+    ]:
+        try:
+            cur.execute(ddl)
+        except sqlite3.Error:
+            pass
+
 
     # PAD API run log (one row per API call, even if 0 inserts)
     cur.execute(
@@ -14775,6 +14893,64 @@ class SensysUserAgencyAssign(BaseModel):
     user_id: int
     agency_ids: List[int]
 
+
+class SensysPatientUpsert(BaseModel):
+    id: Optional[int] = None
+    first_name: Optional[str] = ""
+    last_name: Optional[str] = ""
+    dob: Optional[str] = ""
+    gender: Optional[str] = ""
+
+    phone1: Optional[str] = ""
+    phone2: Optional[str] = ""
+    email: Optional[str] = ""
+    email2: Optional[str] = ""
+
+    address1: Optional[str] = ""
+    address2: Optional[str] = ""
+    city: Optional[str] = ""
+    state: Optional[str] = ""
+    zip: Optional[str] = ""
+
+    insurance_name1: Optional[str] = ""
+    insurance_number1: Optional[str] = ""
+    insurance_name2: Optional[str] = ""
+    insurance_number2: Optional[str] = ""
+
+    active: Optional[int] = 1
+    notes1: Optional[str] = ""
+    notes2: Optional[str] = ""
+
+    source: Optional[str] = "manual"
+    external_patient_id: Optional[str] = ""
+    mrn: Optional[str] = ""
+
+
+class SensysAdmissionUpsert(BaseModel):
+    id: Optional[int] = None
+
+    patient_id: int
+    agency_id: int
+
+    admit_date: Optional[str] = ""
+    dc_date: Optional[str] = ""
+    room: Optional[str] = ""
+
+    referring_agency: Optional[str] = ""
+    reason: Optional[str] = ""
+    latest_pcp: Optional[str] = ""
+
+    notes1: Optional[str] = ""
+    notes2: Optional[str] = ""
+
+    active: Optional[int] = 1
+
+    next_location: Optional[str] = ""
+    next_agency_id: Optional[int] = None
+
+    assigned_user_id: Optional[int] = None
+
+
 # -----------------------------
 # Sensys Admin: seed roles (safe to call repeatedly)
 # -----------------------------
@@ -15118,6 +15294,304 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
     conn.commit()
     return {"ok": True}
 
+# -----------------------------
+# Sensys Admin: list patients
+# -----------------------------
+@app.get("/api/sensys/admin/patients")
+def sensys_admin_patients(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    rows = conn.execute(
+        """
+        SELECT
+            id,
+            first_name, last_name, dob, gender,
+            phone1, phone2, email, email2,
+            address1, address2, city, state, zip,
+            insurance_name1, insurance_number1,
+            insurance_name2, insurance_number2,
+            active, notes1, notes2,
+            created_at, updated_at, deleted_at,
+            source, firstname_initial, lastname_three,
+            patient_key, external_patient_id, mrn
+        FROM sensys_patients
+        WHERE deleted_at IS NULL
+        ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE
+        """
+    ).fetchall()
+
+    return {"patients": [dict(r) for r in rows]}
+
+
+def _patient_key(first_name: str, last_name: str, dob: str) -> str:
+    fn = (first_name or "").strip().lower()
+    ln = (last_name or "").strip().lower()
+    d = (dob or "").strip().lower()
+    return f"{ln}|{fn}|{d}"
+
+
+# -----------------------------
+# Sensys Admin: upsert patient
+# -----------------------------
+@app.post("/api/sensys/admin/patients/upsert")
+def sensys_admin_patients_upsert(payload: SensysPatientUpsert, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    first = (payload.first_name or "").strip()
+    last = (payload.last_name or "").strip()
+    dob = (payload.dob or "").strip()
+
+    firstname_initial = (first[:1].upper() if first else "")
+    lastname_three = ((last[:3].upper()) if last else "")
+
+    pkey = _patient_key(first, last, dob)
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_patients
+               SET first_name = ?,
+                   last_name = ?,
+                   dob = ?,
+                   gender = ?,
+                   phone1 = ?,
+                   phone2 = ?,
+                   email = ?,
+                   email2 = ?,
+                   address1 = ?,
+                   address2 = ?,
+                   city = ?,
+                   state = ?,
+                   zip = ?,
+                   insurance_name1 = ?,
+                   insurance_number1 = ?,
+                   insurance_name2 = ?,
+                   insurance_number2 = ?,
+                   active = ?,
+                   notes1 = ?,
+                   notes2 = ?,
+                   source = ?,
+                   firstname_initial = ?,
+                   lastname_three = ?,
+                   patient_key = ?,
+                   external_patient_id = ?,
+                   mrn = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (
+                first, last, dob, (payload.gender or "").strip(),
+                (payload.phone1 or "").strip(),
+                (payload.phone2 or "").strip(),
+                (payload.email or "").strip(),
+                (payload.email2 or "").strip(),
+                (payload.address1 or "").strip(),
+                (payload.address2 or "").strip(),
+                (payload.city or "").strip(),
+                (payload.state or "").strip(),
+                (payload.zip or "").strip(),
+                (payload.insurance_name1 or "").strip(),
+                (payload.insurance_number1 or "").strip(),
+                (payload.insurance_name2 or "").strip(),
+                (payload.insurance_number2 or "").strip(),
+                int(payload.active or 0),
+                (payload.notes1 or "").strip(),
+                (payload.notes2 or "").strip(),
+                (payload.source or "manual").strip() or "manual",
+                firstname_initial,
+                lastname_three,
+                pkey,
+                (payload.external_patient_id or "").strip(),
+                (payload.mrn or "").strip(),
+                int(payload.id),
+            ),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_patients
+                (first_name, last_name, dob, gender,
+                 phone1, phone2, email, email2,
+                 address1, address2, city, state, zip,
+                 insurance_name1, insurance_number1, insurance_name2, insurance_number2,
+                 active, notes1, notes2,
+                 source, firstname_initial, lastname_three, patient_key, external_patient_id, mrn)
+            VALUES
+                (?, ?, ?, ?,
+                 ?, ?, ?, ?,
+                 ?, ?, ?, ?, ?,
+                 ?, ?, ?, ?,
+                 ?, ?, ?,
+                 ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                first, last, dob, (payload.gender or "").strip(),
+                (payload.phone1 or "").strip(),
+                (payload.phone2 or "").strip(),
+                (payload.email or "").strip(),
+                (payload.email2 or "").strip(),
+                (payload.address1 or "").strip(),
+                (payload.address2 or "").strip(),
+                (payload.city or "").strip(),
+                (payload.state or "").strip(),
+                (payload.zip or "").strip(),
+                (payload.insurance_name1 or "").strip(),
+                (payload.insurance_number1 or "").strip(),
+                (payload.insurance_name2 or "").strip(),
+                (payload.insurance_number2 or "").strip(),
+                int(payload.active or 1),
+                (payload.notes1 or "").strip(),
+                (payload.notes2 or "").strip(),
+                (payload.source or "manual").strip() or "manual",
+                firstname_initial,
+                lastname_three,
+                pkey,
+                (payload.external_patient_id or "").strip(),
+                (payload.mrn or "").strip(),
+            ),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+
+# -----------------------------
+# Sensys Admin: list admissions (with joins for easy admin view)
+# -----------------------------
+@app.get("/api/sensys/admin/admissions")
+def sensys_admin_admissions(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    rows = conn.execute(
+        """
+        SELECT
+            a.id,
+            a.patient_id,
+            (p.last_name || ', ' || p.first_name) AS patient_name,
+            p.dob AS patient_dob,
+
+            a.agency_id,
+            ag.agency_name AS agency_name,
+
+            a.admit_date,
+            a.dc_date,
+            a.room,
+            a.referring_agency,
+            a.reason,
+            a.latest_pcp,
+            a.notes1,
+            a.notes2,
+            a.active,
+            a.next_location,
+            a.next_agency_id,
+            nag.agency_name AS next_agency_name,
+
+            a.assigned_user_id,
+            u.email AS assigned_user_email,
+
+            a.created_at,
+            a.updated_at
+        FROM sensys_admissions a
+        JOIN sensys_patients p ON p.id = a.patient_id
+        JOIN sensys_agencies ag ON ag.id = a.agency_id
+        LEFT JOIN sensys_agencies nag ON nag.id = a.next_agency_id
+        LEFT JOIN sensys_users u ON u.id = a.assigned_user_id
+        ORDER BY
+            COALESCE(a.admit_date, '') DESC,
+            a.id DESC
+        """
+    ).fetchall()
+
+    return {"admissions": [dict(r) for r in rows]}
+
+
+# -----------------------------
+# Sensys Admin: upsert admission
+# -----------------------------
+@app.post("/api/sensys/admin/admissions/upsert")
+def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_admissions
+               SET patient_id = ?,
+                   agency_id = ?,
+                   admit_date = ?,
+                   dc_date = ?,
+                   room = ?,
+                   referring_agency = ?,
+                   reason = ?,
+                   latest_pcp = ?,
+                   notes1 = ?,
+                   notes2 = ?,
+                   active = ?,
+                   next_location = ?,
+                   next_agency_id = ?,
+                   assigned_user_id = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (
+                int(payload.patient_id),
+                int(payload.agency_id),
+                (payload.admit_date or "").strip(),
+                (payload.dc_date or "").strip(),
+                (payload.room or "").strip(),
+                (payload.referring_agency or "").strip(),
+                (payload.reason or "").strip(),
+                (payload.latest_pcp or "").strip(),
+                (payload.notes1 or "").strip(),
+                (payload.notes2 or "").strip(),
+                int(payload.active or 0),
+                (payload.next_location or "").strip(),
+                int(payload.next_agency_id) if payload.next_agency_id else None,
+                int(payload.assigned_user_id) if payload.assigned_user_id else None,
+                int(payload.id),
+            ),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_admissions
+                (patient_id, agency_id, admit_date, dc_date, room,
+                 referring_agency, reason, latest_pcp,
+                 notes1, notes2, active,
+                 next_location, next_agency_id,
+                 assigned_user_id, assigned_at)
+            VALUES
+                (?, ?, ?, ?, ?,
+                 ?, ?, ?,
+                 ?, ?, ?,
+                 ?, ?,
+                 ?, CASE WHEN ? IS NULL THEN NULL ELSE datetime('now') END)
+            """,
+            (
+                int(payload.patient_id),
+                int(payload.agency_id),
+                (payload.admit_date or "").strip(),
+                (payload.dc_date or "").strip(),
+                (payload.room or "").strip(),
+                (payload.referring_agency or "").strip(),
+                (payload.reason or "").strip(),
+                (payload.latest_pcp or "").strip(),
+                (payload.notes1 or "").strip(),
+                (payload.notes2 or "").strip(),
+                int(payload.active or 1),
+                (payload.next_location or "").strip(),
+                int(payload.next_agency_id) if payload.next_agency_id else None,
+                int(payload.assigned_user_id) if payload.assigned_user_id else None,
+                int(payload.assigned_user_id) if payload.assigned_user_id else None,
+            ),
+        )
+
+    conn.commit()
+    return {"ok": True}
 
 # -----------------------------
 # Sensys Admin: set agencies for user (replace)
