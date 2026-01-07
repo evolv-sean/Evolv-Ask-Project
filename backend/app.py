@@ -17438,6 +17438,11 @@ async def facility_ui():
     return HTMLResponse(content=read_html(FACILITY_HTML))
 
 
+@app.get("/")
+async def root():
+    # Helps Render (and bots) confirm the service is alive
+    return {"ok": True}
+
 @app.get("/health")
 async def health():
     return {"ok": True, "db_path": DB_PATH}
