@@ -207,20 +207,31 @@
      outline:none;
      margin-bottom:10px;
    }
+   /* Agencies list inside Edit User modal */
    .checklist{
-     max-height:260px;
-     overflow:auto;
-     padding-right:6px;
+     max-height: 38vh;     /* gives it its own scroll area inside modal */
+     overflow: auto;
+     padding-right: 6px;
    }
+
    .checkrow{
      display:flex;
      align-items:flex-start;
      gap:10px;
      padding:8px 6px;
      border-radius:10px;
+
+     font-size: 12px;      /* smaller overall font in agencies list */
+     line-height: 1.25;
    }
-   .checkrow:hover{background: rgba(77,168,218,.08);}
-   .checkrow small{color:var(--muted);display:block;margin-top:2px}
+   .checkrow:hover{background: rgba(77,168,218,08);}
+
+   /* meta text shown next to name */
+   .checkrow .agmeta{
+     color: var(--muted);
+     font-size: 11px;
+     font-weight: 700;
+   }
 
    /* --- Modals (full-screen lock + scroll) --- */
    .modal-backdrop{
@@ -424,7 +435,7 @@
     </div>
 
     <div class="modal-body">
-      <div class="label">Email</div>
+      <div class="label">Email/Username</div>
       <input class="input" id="email" placeholder="user@email.com" />
 
       <div style="height:10px"></div>
@@ -475,8 +486,6 @@
 
       <div class="stack">
         <button class="btn primary" id="saveUser">Save User</button>
-        <button class="btn" id="saveRoles">Save Roles</button>
-        <button class="btn" id="saveFacilities">Save Agencies</button>
       </div>
 
       <div id="editMsg" class="toast"></div>
@@ -672,8 +681,16 @@
           ? (String(a.city || "") + (a.city && a.state ? ", " : "") + String(a.state || ""))
           : "";
 
-      label.innerHTML = `<b>${escapeHtml(a.agency_name || "")}</b>
-        <small>${escapeHtml(a.agency_type || "")}${locRaw ? " • " + escapeHtml(locRaw) : ""}</small>`;
+      const evolvTag = a.evolv_client ? " (Evolv Client)" : "";
+      const metaParts = [
+        `${escapeHtml(a.agency_type || "")}${evolvTag}`,
+        (locRaw ? escapeHtml(locRaw) : "")
+      ].filter(Boolean);
+
+      label.innerHTML = `
+        <b>${escapeHtml(a.agency_name || "")}</b>
+        <span class="agmeta"> — ${metaParts.join(" • ")}</span>
+      `;
 
       row.appendChild(cb);
       row.appendChild(label);
@@ -831,36 +848,25 @@
         password: ($("password").value || "").trim(), // blank = keep unchanged (backend handles)
         account_locked: $("account_locked").value === "1"
       };
-      await apiPost("/api/sensys/admin/users/upsert", payload);
-      setMsg($("editMsg"), "User saved.", true);
-      await refreshAll();
-    }catch(e){
-      setMsg($("editMsg"), String(e.message || e), false);
-    }
-  };
 
-  $("saveRoles").onclick = async () => {
-    try{
-      if(!selectedUserId) throw new Error("Select a user first (or create one).");
+      // 1) Save core user (backend will return user_id)
+      const upsertResp = await apiPost("/api/sensys/admin/users/upsert", payload);
+      selectedUserId = upsertResp.user_id;              // important for "new user" flow
+      $("selId").textContent = String(selectedUserId);  // update modal header id
+
+      // 2) Save roles
       await apiPost("/api/sensys/admin/users/set-roles", {
         user_id: selectedUserId,
         role_keys: Array.from(selectedRoleKeys)
       });
-      setMsg($("editMsg"), "Roles saved.", true);
-      await refreshAll();
-    }catch(e){
-      setMsg($("editMsg"), String(e.message || e), false);
-    }
-  };
 
-  $("saveFacilities").onclick = async () => {
-    try{
-      if(!selectedUserId) throw new Error("Select a user first (or create one).");
+      // 3) Save agencies
       await apiPost("/api/sensys/admin/users/set-agencies", {
         user_id: selectedUserId,
         agency_ids: Array.from(selectedAgencyIds)
       });
-      setMsg($("editMsg"), "Agencies saved.", true);
+
+      setMsg($("editMsg"), "User + roles + agencies saved.", true);
       await refreshAll();
     }catch(e){
       setMsg($("editMsg"), String(e.message || e), false);
