@@ -299,7 +299,30 @@
      justify-content:center;
      color: var(--navy);
    }
-   .iconbtn:hover{ box-shadow: 0 0 0 3px rgba(77,168,218,.18); }
+   .iconbtn:hover{ box-shadow: 0 0 0 3px rgba(77,168,218,18); }
+
+   /* Bulk upload modal */
+   .dropzone{
+     border:2px dashed rgba(13,59,102,25);
+     border-radius:16px;
+     padding:18px;
+     background: rgba(250,250,252,1);
+     display:flex;
+     flex-direction:column;
+     gap:10px;
+     align-items:center;
+     justify-content:center;
+     text-align:center;
+   }
+   .dropzone.on{
+     box-shadow: 0 0 0 3px rgba(77,168,218,18);
+     border-color: rgba(77,168,218,60);
+   }
+   .smallhint{
+     color: var(--muted);
+     font-size:12px;
+     line-height:1.35;
+   }
 
    .xbtn{
      width:40px;
@@ -357,7 +380,10 @@
             </div>
 
             <!-- Add New User (top-right icon) -->
-            <button class="iconbtn" id="addUserIcon" title="Add new user" aria-label="Add new user">+</button>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="iconbtn" id="bulkUsersIcon" title="Bulk upload users" aria-label="Bulk upload users">⇪</button>
+              <button class="iconbtn" id="addUserIcon" title="Add new user" aria-label="Add new user">+</button>
+            </div>
           </div>
           <div class="body">
             <div class="table-wrap">
@@ -396,7 +422,10 @@
             </div>
 
             <!-- Add New Agency (top-right icon) -->
-            <button class="iconbtn" id="addAgencyIcon" title="Add new agency" aria-label="Add new agency">+</button>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="iconbtn" id="bulkAgenciesIcon" title="Bulk upload agencies" aria-label="Bulk upload agencies">⇪</button>
+              <button class="iconbtn" id="addAgencyIcon" title="Add new agency" aria-label="Add new agency">+</button>
+            </div>
           </div>
 
           <div class="body">
@@ -431,7 +460,10 @@
               <h2 style="margin:0">Patients</h2>
               <div class="hint">Manual add/edit for sensys_patients.</div>
             </div>
-            <button class="iconbtn" id="addPatientIcon" title="Add new patient" aria-label="Add new patient">+</button>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="iconbtn" id="bulkPatientsIcon" title="Bulk upload patients" aria-label="Bulk upload patients">⇪</button>
+              <button class="iconbtn" id="addPatientIcon" title="Add new patient" aria-label="Add new patient">+</button>
+            </div>
           </div>
 
           <div class="body">
@@ -469,7 +501,10 @@
               <h2 style="margin:0">Admissions</h2>
               <div class="hint">Manual add/edit for sensys_admissions (patient + agency + dates).</div>
             </div>
-            <button class="iconbtn" id="addAdmissionIcon" title="Add new admission" aria-label="Add new admission">+</button>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="iconbtn" id="bulkAdmissionsIcon" title="Bulk upload admissions" aria-label="Bulk upload admissions">⇪</button>
+              <button class="iconbtn" id="addAdmissionIcon" title="Add new admission" aria-label="Add new admission">+</button>
+            </div>
           </div>
 
           <div class="body">
@@ -797,6 +832,41 @@
   </div>
 </div>
 
+<!-- =========================
+     BULK UPLOAD MODAL (Reusable)
+========================= -->
+<div class="modal-backdrop" id="bulkModalBackdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="bulkModalTitle">
+    <div class="modal-hd">
+      <div>
+        <h3 class="modal-title" id="bulkModalTitle">Bulk Upload</h3>
+        <div class="modal-sub" id="bulkModalSub">Download a template, then upload your CSV.</div>
+      </div>
+      <button class="xbtn" id="closeBulkModal" aria-label="Close">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn" id="downloadTemplateBtn">Download CSV Template</button>
+        <div class="smallhint" id="bulkEntityHint"></div>
+      </div>
+
+      <div style="height:12px"></div>
+
+      <div class="dropzone" id="dropzone">
+        <div style="font-weight:900;color:var(--navy)">Drag &amp; drop CSV here</div>
+        <div class="smallhint">Or click to select a file. Headers must match the template.</div>
+        <input type="file" id="bulkFileInput" accept=".csv,text/csv" style="display:none" />
+        <button class="btn primary" id="chooseFileBtn">Choose CSV File</button>
+      </div>
+
+      <div style="height:12px"></div>
+
+      <div id="bulkMsg" class="toast"></div>
+    </div>
+  </div>
+</div>
+
 <script>
   const $ = (id) => document.getElementById(id);
 
@@ -831,12 +901,21 @@
     if(e.key !== "Escape") return;
     closeUserModal();
     closeAgencyModal();
+    closePatientModal();
+    closeAdmissionModal();
+    closeBulkModal();
   });
 
   function getToken(){
     return ($("token").value || localStorage.getItem("SENSYS_ADMIN_TOKEN") || "").trim();
   }
 
+  function getTokenOrThrow(){
+    const t = getToken();
+    if(!t) throw new Error("Missing ADMIN_TOKEN (paste it top-right, click Save)");
+    return t;
+  }
+  
   function setMsg(el, text, ok=true){
     el.className = "toast " + (ok ? "ok" : "err");
     el.textContent = text || "";
@@ -989,6 +1068,19 @@
     return await res.json();
   }
 
+  async function apiUploadCsv(path, file){
+    const token = getTokenOrThrow();
+    const url = path.includes("?")
+      ? `${path}&token=${encodeURIComponent(token)}` : `${path}?token=${encodeURIComponent(token)}`;
+
+    const fd = new FormData();
+    fd.append("file", file);
+
+    const res = await fetch(url, { method:"POST", body: fd });
+    if(!res.ok) throw new Error(await res.text());
+    return await res.json();
+  }
+
   async function refreshAll(){
     setMsg($("listMsg"), "Loading…", true);
     try{
@@ -1035,6 +1127,11 @@
 
   // NEW: top-right icon
   $("addUserIcon").onclick = startNewUser;
+
+  $("bulkUsersIcon").onclick = () => openBulkModal("users");
+  $("bulkAgenciesIcon").onclick = () => openBulkModal("agencies");
+  $("bulkPatientsIcon").onclick = () => openBulkModal("patients");
+  $("bulkAdmissionsIcon").onclick = () => openBulkModal("admissions");
 
   $("saveUser").onclick = async () => {
     try{
@@ -1258,13 +1355,6 @@
   $("closePatientModal").onclick = closePatientModal;
   $("closeAdmissionModal").onclick = closeAdmissionModal;
 
-  // extend ESC close
-  document.addEventListener("keydown", (e) => {
-    if(e.key !== "Escape") return;
-    closePatientModal();
-    closeAdmissionModal();
-  });
-
   let patientsCache = [];
   let selectedPatientId = null;
 
@@ -1482,6 +1572,122 @@
 
     setMsg($("admissionEditMsg"), "New admission mode (Save Admission to create).", true);
     openAdmissionModal();
+  }
+
+  let bulkEntity = "users";
+
+  const bulkConfig = {
+    users: {
+      label: "Users",
+      endpoint: "/api/sensys/admin/users/bulk",
+      filename: "sensys_users_template.csv",
+      headers: ["user_id","email","display_name","is_active","password","cell_phone","account_locked","role_keys","agency_ids"]
+    },
+    agencies: {
+      label: "Agencies",
+      endpoint: "/api/sensys/admin/agencies/bulk",
+      filename: "sensys_agencies_template.csv",
+      headers: ["id","agency_name","agency_type","facility_code","address","city","state","zip","phone1","phone2","email","fax","notes","notes2","evolv_client"]
+    },
+    patients: {
+      label: "Patients",
+      endpoint: "/api/sensys/admin/patients/bulk",
+      filename: "sensys_patients_template.csv",
+      headers: ["id","first_name","last_name","dob","gender","phone1","phone2","email","email2","address1","address2","city","state","zip","insurance_name1","insurance_number1","insurance_name2","insurance_number2","active","notes1","notes2","source","external_patient_id","mrn"]
+    },
+    admissions: {
+      label: "Admissions",
+      endpoint: "/api/sensys/admin/admissions/bulk",
+      filename: "sensys_admissions_template.csv",
+      headers: ["id","patient_id","agency_id","admit_date","dc_date","room","referring_agency","reason","latest_pcp","notes1","notes2","active","next_location","next_agency_id"]
+    }
+  };
+
+  function openBulkModal(entityKey){
+    bulkEntity = entityKey;
+    const cfg = bulkConfig[bulkEntity];
+
+    $("bulkModalTitle").textContent = `Bulk Upload — ${cfg.label}`;
+    $("bulkEntityHint").textContent = `Uploads to: ${cfg.endpoint}`;
+    setMsg($("bulkMsg"), "", true);
+
+    $("bulkModalBackdrop").classList.add("on");
+  }
+
+  function closeBulkModal(){
+    $("bulkModalBackdrop").classList.remove("on");
+  }
+
+  $("bulkModalBackdrop").addEventListener("click", (e) => {
+    if(e.target.id === "bulkModalBackdrop") closeBulkModal();
+  });
+  $("closeBulkModal").onclick = closeBulkModal;
+
+  function downloadCsvTemplate(){
+    const cfg = bulkConfig[bulkEntity];
+    const headerLine = cfg.headers.join(",") + "\n";
+    const blob = new Blob([headerLine], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = cfg.filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  $("downloadTemplateBtn").onclick = downloadCsvTemplate;
+
+  $("chooseFileBtn").onclick = () => $("bulkFileInput").click();
+  $("dropzone").addEventListener("click", () => $("bulkFileInput").click());
+
+  $("bulkFileInput").addEventListener("change", async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if(f) await handleBulkFile(f);
+  });
+
+  $("dropzone").addEventListener("dragover", (e) => {
+    e.preventDefault();
+    $("dropzone").classList.add("on");
+  });
+  $("dropzone").addEventListener("dragleave", () => $("dropzone").classList.remove("on"));
+  $("dropzone").addEventListener("drop", async (e) => {
+    e.preventDefault();
+    $("dropzone").classList.remove("on");
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if(f) await handleBulkFile(f);
+  });
+
+  async function handleBulkFile(file){
+    try{
+      if(!String(file.name || "").toLowerCase().endsWith(".csv")){
+        throw new Error("Please upload a .csv file.");
+      }
+
+      setMsg($("bulkMsg"), `Uploading ${file.name}…`, true);
+
+      const cfg = bulkConfig[bulkEntity];
+      const resp = await apiUploadCsv(cfg.endpoint, file);
+
+      const msg = `Done. Inserted: ${resp.inserted || 0}, Updated: ${resp.updated || 0}, Errors: ${resp.error_count || 0}`;
+      setMsg($("bulkMsg"), msg, true);
+
+      // Refresh the right list after upload
+      if(bulkEntity === "users"){
+        await refreshAll();
+      }else if(bulkEntity === "agencies"){
+        await refreshAgenciesList();
+      }else if(bulkEntity === "patients"){
+        await refreshPatientsList();
+      }else{
+        await refreshAdmissionsList();
+      }
+
+    }catch(err){
+      setMsg($("bulkMsg"), String(err.message || err), false);
+    }
   }
 
   $("addAdmissionIcon").onclick = async () => {
