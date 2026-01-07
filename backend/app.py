@@ -229,6 +229,7 @@ else:
 # HTML files (mirror of your old app.py wiring)
 ASK_HTML = FRONTEND_DIR / "TEST Ask.html"
 ADMIN_HTML = FRONTEND_DIR / "TEST Admin.html"
+SENSYS_ADMIN_HTML = FRONTEND_DIR / "Sensys Admin.html"
 FACILITY_HTML = FRONTEND_DIR / "TEST  Facility_Details.html"  # note double space
 SNF_HTML = FRONTEND_DIR / "TEST SNF_Admissions.html"
 HOSPITAL_DISCHARGE_HTML = FRONTEND_DIR / "Hospital_Discharge.html"
@@ -14643,6 +14644,229 @@ async def intake_submit(payload: dict = Body(...)):
 
     return {"ok": True, "facility_id": fac_id}
 
+from pydantic import BaseModel
+from typing import Optional, List
+
+# -----------------------------
+# Sensys Admin auth helper
+# -----------------------------
+def _require_admin_token(token: str):
+    if token != os.getenv("ADMIN_TOKEN"):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+# -----------------------------
+# Sensys Admin models
+# -----------------------------
+class SensysUserUpsert(BaseModel):
+    user_id: Optional[int] = None
+    email: str
+    display_name: Optional[str] = ""
+    is_active: int = 1
+
+
+class SensysRoleAssign(BaseModel):
+    user_id: int
+    role_keys: List[str]
+
+
+class SensysFacilityAssign(BaseModel):
+    user_id: int
+    facility_ids: List[int]
+
+
+# -----------------------------
+# Sensys Admin: seed roles (safe to call repeatedly)
+# -----------------------------
+def _sensys_seed_roles(conn: sqlite3.Connection):
+    # Adjust these role keys any time; inserts are idempotent
+    roles = [
+        ("admin", "Admin"),
+        ("cm", "Care Manager"),
+        ("liaison", "Liaison"),
+        ("viewer", "Viewer"),
+    ]
+    conn.executemany(
+        """
+        INSERT OR IGNORE INTO sensys_roles (role_key, role_name)
+        VALUES (?, ?)
+        """,
+        roles,
+    )
+    conn.commit()
+
+
+# -----------------------------
+# Sensys Admin: list roles
+# -----------------------------
+@app.get("/api/sensys/admin/roles")
+def sensys_admin_roles(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    _sensys_seed_roles(conn)
+
+    rows = conn.execute(
+        "SELECT role_key, role_name FROM sensys_roles ORDER BY role_name"
+    ).fetchall()
+
+    return {"roles": [dict(r) for r in rows]}
+
+
+# -----------------------------
+# Sensys Admin: list users + roles + facilities
+# -----------------------------
+@app.get("/api/sensys/admin/users")
+def sensys_admin_users(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    _sensys_seed_roles(conn)
+
+    users = conn.execute(
+        """
+        SELECT
+            u.user_id,
+            u.email,
+            u.display_name,
+            u.is_active
+        FROM sensys_users u
+        ORDER BY u.email
+        """
+    ).fetchall()
+
+    # roles per user
+    role_rows = conn.execute(
+        """
+        SELECT ur.user_id, r.role_key
+        FROM sensys_user_roles ur
+        JOIN sensys_roles r ON r.role_id = ur.role_id
+        """
+    ).fetchall()
+
+    roles_by_user = {}
+    for rr in role_rows:
+        roles_by_user.setdefault(rr["user_id"], []).append(rr["role_key"])
+
+    # facilities per user
+    fac_rows = conn.execute(
+        """
+        SELECT user_id, facility_id
+        FROM sensys_user_facilities
+        """
+    ).fetchall()
+
+    fac_by_user = {}
+    for fr in fac_rows:
+        fac_by_user.setdefault(fr["user_id"], []).append(fr["facility_id"])
+
+    out = []
+    for u in users:
+        d = dict(u)
+        d["role_keys"] = sorted(roles_by_user.get(u["user_id"], []))
+        d["facility_ids"] = sorted(fac_by_user.get(u["user_id"], []))
+        out.append(d)
+
+    return {"users": out}
+
+
+# -----------------------------
+# Sensys Admin: create/update user
+# -----------------------------
+@app.post("/api/sensys/admin/users/upsert")
+def sensys_admin_users_upsert(payload: SensysUserUpsert, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    email = (payload.email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="email is required")
+
+    display_name = (payload.display_name or "").strip()
+
+    if payload.user_id:
+        conn.execute(
+            """
+            UPDATE sensys_users
+            SET email = ?, display_name = ?, is_active = ?
+            WHERE user_id = ?
+            """,
+            (email, display_name, int(payload.is_active), int(payload.user_id)),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_users (email, display_name, is_active)
+            VALUES (?, ?, ?)
+            """,
+            (email, display_name, int(payload.is_active)),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+
+# -----------------------------
+# Sensys Admin: set roles for user (replace)
+# -----------------------------
+@app.post("/api/sensys/admin/users/set-roles")
+def sensys_admin_users_set_roles(payload: SensysRoleAssign, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    _sensys_seed_roles(conn)
+
+    user_id = int(payload.user_id)
+    role_keys = [rk.strip().lower() for rk in payload.role_keys if rk and rk.strip()]
+
+    # clear existing
+    conn.execute("DELETE FROM sensys_user_roles WHERE user_id = ?", (user_id,))
+
+    if role_keys:
+        role_rows = conn.execute(
+            """
+            SELECT role_id, role_key
+            FROM sensys_roles
+            WHERE role_key IN ({})
+            """.format(",".join(["?"] * len(role_keys))),
+            role_keys,
+        ).fetchall()
+
+        role_ids = [r["role_id"] for r in role_rows]
+        conn.executemany(
+            """
+            INSERT INTO sensys_user_roles (user_id, role_id)
+            VALUES (?, ?)
+            """,
+            [(user_id, rid) for rid in role_ids],
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+
+# -----------------------------
+# Sensys Admin: set facilities for user (replace)
+# -----------------------------
+@app.post("/api/sensys/admin/users/set-facilities")
+def sensys_admin_users_set_facilities(payload: SensysFacilityAssign, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    user_id = int(payload.user_id)
+    facility_ids = sorted({int(x) for x in payload.facility_ids if str(x).strip()})
+
+    conn.execute("DELETE FROM sensys_user_facilities WHERE user_id = ?", (user_id,))
+
+    if facility_ids:
+        conn.executemany(
+            """
+            INSERT INTO sensys_user_facilities (user_id, facility_id)
+            VALUES (?, ?)
+            """,
+            [(user_id, fid) for fid in facility_ids],
+        )
+
+    conn.commit()
+    return {"ok": True}
+
 
 # ---------------------------------------------------------------------------
 # HTML routes & health check
@@ -14699,6 +14923,10 @@ async def ask_page():
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_ui():
     return HTMLResponse(content=read_html(ADMIN_HTML))
+
+@app.get("/admin/sensys", response_class=HTMLResponse)
+async def sensys_admin_ui():
+    return HTMLResponse(content=read_html(SENSYS_ADMIN_HTML))
 
 
 @app.get("/snf-admissions", response_class=HTMLResponse)
