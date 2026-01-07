@@ -856,8 +856,13 @@
       <div class="dropzone" id="dropzone">
         <div style="font-weight:900;color:var(--navy)">Drag &amp; drop CSV here</div>
         <div class="smallhint">Or click to select a file. Headers must match the template.</div>
+
         <input type="file" id="bulkFileInput" accept=".csv,text/csv" style="display:none" />
         <button class="btn primary" id="chooseFileBtn">Choose CSV File</button>
+
+        <!-- NEW: selected file + explicit submit -->
+        <div class="smallhint" id="bulkFileName" style="margin-top:6px;"></div>
+        <button class="btn primary" id="bulkSubmitBtn" disabled>Upload CSV</button>
       </div>
 
       <div style="height:12px"></div>
@@ -1611,6 +1616,8 @@
     $("bulkEntityHint").textContent = `Uploads to: ${cfg.endpoint}`;
     setMsg($("bulkMsg"), "", true);
 
+    resetBulkSelection(); // NEW: clear previous file + re-enable same-file upload
+
     $("bulkModalBackdrop").classList.add("on");
   }
 
@@ -1648,28 +1655,57 @@
     if(f) await handleBulkFile(f);
   });
 
-  $("dropzone").addEventListener("dragover", (e) => {
-    e.preventDefault();
-    $("dropzone").classList.add("on");
+  // NEW: keep state so user can explicitly submit
+  let bulkSelectedFile = null;
+
+  function resetBulkSelection(){
+    bulkSelectedFile = null;
+    $("bulkFileInput").value = "";                 // allows re-selecting the same file
+    $("bulkFileName").textContent = "";
+    $("bulkSubmitBtn").disabled = true;
+  }
+
+  function setBulkSelectedFile(file){
+    bulkSelectedFile = file;
+    $("bulkFileName").textContent = file ? `Selected: ${file.name}` : "";
+    $("bulkSubmitBtn").disabled = !file;
+  }
+
+  $("bulkFileInput").addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    if(f) handleBulkFilePicked(f);
   });
-  $("dropzone").addEventListener("dragleave", () => $("dropzone").classList.remove("on"));
-  $("dropzone").addEventListener("drop", async (e) => {
+
+  $("dropzone").addEventListener("drop", (e) => {
     e.preventDefault();
     $("dropzone").classList.remove("on");
     const f = e.dataTransfer.files && e.dataTransfer.files[0];
-    if(f) await handleBulkFile(f);
+    if(f) handleBulkFilePicked(f);
   });
 
-  async function handleBulkFile(file){
+  // CHANGED: picking a file no longer uploads immediately
+  function handleBulkFilePicked(file){
     try{
       if(!String(file.name || "").toLowerCase().endsWith(".csv")){
         throw new Error("Please upload a .csv file.");
       }
+      setBulkSelectedFile(file);
+      setMsg($("bulkMsg"), "Ready to upload. Click “Upload CSV”.", true);
+    }catch(err){
+      setBulkSelectedFile(null);
+      setMsg($("bulkMsg"), String(err.message || err), false);
+    }
+  }
 
-      setMsg($("bulkMsg"), `Uploading ${file.name}…`, true);
+  // NEW: explicit submit button
+  $("bulkSubmitBtn").onclick = async () => {
+    try{
+      if(!bulkSelectedFile) throw new Error("Please choose a CSV file first.");
+
+      setMsg($("bulkMsg"), `Uploading ${bulkSelectedFile.name}…`, true);
 
       const cfg = bulkConfig[bulkEntity];
-      const resp = await apiUploadCsv(cfg.endpoint, file);
+      const resp = await apiUploadCsv(cfg.endpoint, bulkSelectedFile);
 
       const msg = `Done. Inserted: ${resp.inserted || 0}, Updated: ${resp.updated || 0}, Errors: ${resp.error_count || 0}`;
       setMsg($("bulkMsg"), msg, true);
@@ -1685,10 +1721,12 @@
         await refreshAdmissionsList();
       }
 
+      // optional: clear selection after success
+      resetBulkSelection();
     }catch(err){
       setMsg($("bulkMsg"), String(err.message || err), false);
     }
-  }
+  };
 
   $("addAdmissionIcon").onclick = async () => {
     if(!patientsCache.length) await refreshPatientsList();
