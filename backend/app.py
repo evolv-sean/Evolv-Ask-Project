@@ -14683,6 +14683,73 @@ async def download_db(token: str):
         media_type="application/octet-stream",
     )
 
+@app.get("/admin/upload-db", response_class=HTMLResponse)
+async def upload_db_form(token: str):
+    # Security: require your admin token
+    if token != os.getenv("ADMIN_TOKEN"):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    # Simple browser form to upload a SQLite DB file
+    return HTMLResponse(
+        f"""
+        <html>
+          <body style="font-family: Arial, sans-serif; padding: 24px;">
+            <h2>Upload SQLite DB (DEV ONLY)</h2>
+            <p>This will replace the DB at: <code>{DB_PATH}</code></p>
+            <form action="/admin/upload-db" method="post" enctype="multipart/form-data">
+              <input type="hidden" name="token" value="{token}" />
+              <div style="margin: 12px 0;">
+                <input type="file" name="dbfile" accept=".db,.sqlite,.sqlite3,application/octet-stream" required />
+              </div>
+              <button type="submit">Upload and Replace DB</button>
+            </form>
+          </body>
+        </html>
+        """
+    )
+
+
+@app.post("/admin/upload-db")
+async def upload_db(token: str = Form(...), dbfile: UploadFile = File(...)):
+    # Security: require your admin token
+    if token != os.getenv("ADMIN_TOKEN"):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    if not dbfile.filename:
+        raise HTTPException(status_code=400, detail="No file uploaded")
+
+    db_path = Path(DB_PATH)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Write to a temp file first, then swap in atomically
+    tmp_path = db_path.with_suffix(db_path.suffix + ".new")
+
+    try:
+        # Save uploaded file
+        with tmp_path.open("wb") as f:
+            while True:
+                chunk = await dbfile.read(1024 * 1024)  # 1MB chunks
+                if not chunk:
+                    break
+                f.write(chunk)
+
+        # Basic sanity check: file should be non-trivial
+        if tmp_path.stat().st_size < 1024:
+            raise HTTPException(status_code=400, detail="Uploaded file too small to be a valid DB")
+
+        # Replace DB file
+        os.replace(str(tmp_path), str(db_path))
+
+        return {"ok": True, "message": "DB uploaded and replaced", "db_path": str(db_path)}
+
+    finally:
+        # Cleanup temp file if it still exists
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except Exception:
+            pass
+
 
 from fastapi.responses import HTMLResponse, Response
 
