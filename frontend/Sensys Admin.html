@@ -860,10 +860,12 @@
         <input type="file" id="bulkFileInput" accept=".csv,text/csv" style="display:none" />
         <button class="btn primary" id="chooseFileBtn">Choose CSV File</button>
 
-        <!-- NEW: selected file + explicit submit -->
         <div class="smallhint" id="bulkFileName" style="margin-top:6px;"></div>
-        <button class="btn primary" id="bulkSubmitBtn" disabled>Upload CSV</button>
       </div>
+
+      <!-- explicit submit BELOW the dotted dropzone -->
+      <div style="height:10px"></div>
+      <button class="btn primary" id="bulkSubmitBtn" disabled>Process CSV</button>
 
       <div style="height:12px"></div>
 
@@ -874,6 +876,10 @@
 
 <script>
   const $ = (id) => document.getElementById(id);
+
+  // ✅ Prevent browser from trying to open/save the file when dragged over the page
+  document.addEventListener("dragover", (e) => e.preventDefault());
+  document.addEventListener("drop", (e) => e.preventDefault());
 
   function openUserModal(){
     $("userModalBackdrop").classList.add("on");
@@ -1647,8 +1653,24 @@
 
   $("downloadTemplateBtn").onclick = downloadCsvTemplate;
 
-  $("chooseFileBtn").onclick = () => $("bulkFileInput").click();
-  $("dropzone").addEventListener("click", () => $("bulkFileInput").click());
+  // Prevent dropzone click from hijacking button clicks
+  $("chooseFileBtn").addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    $("bulkFileInput").click();
+  });
+
+  // Only open file picker if the user clicks the dropzone itself (not the buttons)
+  $("dropzone").addEventListener("click", (e) => {
+    const t = e.target;
+    if (t && (t.id === "chooseFileBtn" || t.id === "bulkSubmitBtn")) return;
+    $("bulkFileInput").click();
+  });
+
+  // Also ensure the submit button never bubbles up into the dropzone click
+  $("bulkSubmitBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
 
   // NEW: keep state so user can explicitly submit
   let bulkSelectedFile = null;
