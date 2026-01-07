@@ -961,7 +961,8 @@
       renderAgencyChecklist();
 
       setMsg($("agencyListMsg"), `Loaded ${agenciesCache.length} agencies.`, true);
-      if(agenciesCache.length && !selectedAgencyId) selectAgency(agenciesCache[0]);
+      // Do NOT auto-open the first agency. Wait for row click or "Add new" button.
+
     }catch(e){
       setMsg($("agencyListMsg"), String(e.message || e), false);
     }
