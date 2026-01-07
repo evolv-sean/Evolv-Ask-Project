@@ -227,12 +227,12 @@ else:
     DB_PATH = str(BASE_DIR / "evolv(3).db")
 
 # HTML files (mirror of your old app.py wiring)
-ASK_HTML = FRONTEND_DIR / "TEST AskDEV.html"
-ADMIN_HTML = FRONTEND_DIR / "TEST AdminDEV.html"
-FACILITY_HTML = FRONTEND_DIR / "TEST  Facility_DetailsDEV.html"  # note double space
-SNF_HTML = FRONTEND_DIR / "TEST SNF_AdmissionsDEV.html"
-HOSPITAL_DISCHARGE_HTML = FRONTEND_DIR / "Hospital_DischargeDEV.html"
-CENSUS_HTML = FRONTEND_DIR / "CensusDEV.html"
+ASK_HTML = FRONTEND_DIR / "TEST Ask.html"
+ADMIN_HTML = FRONTEND_DIR / "TEST Admin.html"
+FACILITY_HTML = FRONTEND_DIR / "TEST  Facility_Details.html"  # note double space
+SNF_HTML = FRONTEND_DIR / "TEST SNF_Admissions.html"
+HOSPITAL_DISCHARGE_HTML = FRONTEND_DIR / "Hospital_Discharge.html"
+CENSUS_HTML = FRONTEND_DIR / "Census.html"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("evolv")
@@ -14763,4 +14763,5 @@ if __name__ == "__main__":
 
     port = int(os.getenv("PORT", "8000"))
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
+
 
