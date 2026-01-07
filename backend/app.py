@@ -2249,6 +2249,88 @@ def init_db():
         """
     )
 
+    # -------------------------------------------------------------------
+    # Sensys 3.0: Users / Roles / Access Control (core "spine")
+    # -------------------------------------------------------------------
+
+    # Users (app users that log in to Sensys)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_users (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            email           TEXT NOT NULL UNIQUE,
+            display_name    TEXT,
+            is_active       INTEGER DEFAULT 1,
+            created_at      TEXT DEFAULT (datetime('now')),
+            updated_at      TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+
+    # Roles (Admin / Care Manager / Viewer / etc.)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_roles (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            role_key    TEXT NOT NULL UNIQUE,   -- e.g. 'admin', 'cm', 'viewer'
+            role_name   TEXT NOT NULL,          -- e.g. 'Admin', 'Care Manager'
+            created_at  TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+
+    # User <-> Role (many-to-many)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_user_roles (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL,
+            role_id     INTEGER NOT NULL,
+            created_at  TEXT DEFAULT (datetime('now')),
+            UNIQUE(user_id, role_id),
+            FOREIGN KEY(user_id) REFERENCES sensys_users(id),
+            FOREIGN KEY(role_id) REFERENCES sensys_roles(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_roles_user ON sensys_user_roles(user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_roles_role ON sensys_user_roles(role_id)")
+
+    # User access to facilities (controls what facility data they can even see)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_user_facilities (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id         INTEGER NOT NULL,
+            facility_name   TEXT NOT NULL,      -- matches your existing facility naming patterns
+            is_active       INTEGER DEFAULT 1,
+            created_at      TEXT DEFAULT (datetime('now')),
+            UNIQUE(user_id, facility_name),
+            FOREIGN KEY(user_id) REFERENCES sensys_users(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_facilities_user ON sensys_user_facilities(user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_facilities_fac ON sensys_user_facilities(facility_name)")
+
+    # User access to pages/features (drives which UI pages they see)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_user_pages (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL,
+            page_key    TEXT NOT NULL,          -- e.g. 'census', 'snf_admissions', 'hospital_discharges'
+            is_enabled  INTEGER DEFAULT 1,
+            created_at  TEXT DEFAULT (datetime('now')),
+            UNIQUE(user_id, page_key),
+            FOREIGN KEY(user_id) REFERENCES sensys_users(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_pages_user ON sensys_user_pages(user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_pages_page ON sensys_user_pages(page_key)")
+
+
     # PAD API run log (one row per API call, even if 0 inserts)
     cur.execute(
         """
@@ -14763,5 +14845,3 @@ if __name__ == "__main__":
 
     port = int(os.getenv("PORT", "8000"))
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
-
-
