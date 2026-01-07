@@ -99,7 +99,7 @@
       tr.style.borderBottom = '1px solid #eef0f5';
 
       tr.innerHTML = `
-        <td style="padding:10px;font-size:13px;color:#111827;">${safe(r.patient_name)}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;"><b>${safe(r.patient_name)}</b></td>
         <td style="padding:10px;font-size:13px;color:#111827;">${safe(r.patient_dob)}</td>
         <td style="padding:10px;font-size:13px;color:#111827;">${safe(r.agency_name)}</td>
         <td style="padding:10px;font-size:13px;color:#111827;">${safe(r.admit_date)}</td>
@@ -107,6 +107,14 @@
         <td style="padding:10px;font-size:13px;color:#111827;">${safe(r.room)}</td>
         <td style="padding:10px;font-size:13px;color:#111827;">${(r.active ? 'Yes' : 'No')}</td>
       `;
+
+      // ✅ click row to open Admission Details (new page)
+      tr.style.cursor = "pointer";
+      tr.addEventListener("click", () => {
+        if(!r.id) return;
+        window.location.href = "/sensys/admission-details?admission_id=" + encodeURIComponent(String(r.id));
+      });
+
       tbody.appendChild(tr);
     }
 
