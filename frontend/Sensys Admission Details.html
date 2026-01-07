@@ -166,6 +166,10 @@
           <option>caregiver</option>
         </select>
 
+        <select id="dcServicesMulti" multiple
+          style="min-width:260px;max-width:320px;height:42px;padding:8px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+        </select>
+
         <button id="addDcBtn"
           style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
           Add DC Submission
@@ -256,6 +260,7 @@
         ...((opts && opts.headers) || {})
       }
     });
+
 
     if (!res.ok) {
       let msg = 'Request failed (' + res.status + ')';
@@ -454,6 +459,16 @@
       .join('');
   }
 
+  function renderDcServicesMulti(){
+    const el = document.getElementById("dcServicesMulti");
+    const opts = ['']
+      .concat((SERVICES || []).map(s => {
+        const label = `${s.name || ''} (${(s.service_type || '').toUpperCase()})`;
+        return `<option value="${s.id}">${escapeHtml(label)}</option>`;
+      }));
+    el.innerHTML = opts.join('');
+  }
+
   function renderCareTeamLinked() {
     const tb = document.getElementById('careTeamTbody');
     const rows = (DETAILS && DETAILS.care_team) || [];
@@ -519,6 +534,7 @@
     renderTasks();
     renderNotes();
     renderDc();
+    renderDcServicesMulti();
     renderCareTeamSelect();
     renderCareTeamLinked();
   }
@@ -581,7 +597,27 @@
         destination_comments: document.getElementById('destinationComments').value.trim(),
         dc_with: document.getElementById('dcWith').value
       };
-      await api('/api/sensys/admission-dc-submissions/upsert', { method:'POST', body: JSON.stringify(payload) });
+      const resp = await api('/api/sensys/admission-dc-submissions/upsert', {
+        method:'POST',
+        body: JSON.stringify(payload)
+      });
+
+      const submissionId = resp && resp.id ? Number(resp.id) : null;
+
+      // ✅ write join table from the multi-select
+      const selectedServiceIds = Array.from(document.getElementById("dcServicesMulti").selectedOptions)
+        .map(o => Number(o.value))
+        .filter(n => Number.isFinite(n) && n > 0);
+
+      if(submissionId){
+        await api('/api/sensys/dc-submission-services/set', {
+          method:'POST',
+          body: JSON.stringify({
+            admission_dc_submission_id: submissionId,
+            services_ids: selectedServiceIds
+          })
+        });
+      }
 
       document.getElementById('dcDate').value = '';
       document.getElementById('dcTime').value = '';
@@ -589,6 +625,8 @@
       document.getElementById('dcUrgent').checked = false;
       document.getElementById('urgentComments').value = '';
       document.getElementById('destinationComments').value = '';
+      document.getElementById('dcServicesMulti').selectedIndex = -1; // ✅ clear selection
+
       await loadAll();
     } catch(e) { showMsg(e.message); }
   });
