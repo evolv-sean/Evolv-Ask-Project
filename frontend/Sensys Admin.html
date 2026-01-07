@@ -148,6 +148,80 @@
     .mini{
       font-size:11px;color:var(--muted);
     }
+    
+   /* --- NEW: left sidebar layout --- */
+   .layout{
+     display:grid;
+     grid-template-columns: 220px 1fr;
+     gap:14px;
+     margin-top:14px;
+   }
+   .sidebar{
+     background:var(--card);
+     border:1px solid var(--line);
+     border-radius:var(--r16);
+     box-shadow: 0 1px 0 rgba(15,23,42,03);
+     padding:12px;
+     height: calc(100vh - 120px);
+     position: sticky;
+     top: 18px;
+     display:flex;
+     flex-direction:column;
+     gap:10px;
+   }
+   .navitem{
+     display:flex;
+     align-items:center;
+     justify-content:space-between;
+     gap:10px;
+     padding:10px 12px;
+     border-radius:12px;
+     border:1px solid rgba(13,59,102,14);
+     cursor:pointer;
+     font-weight:900;
+     color: var(--navy);
+     background:#fff;
+   }
+   .navitem.on{
+     background: rgba(168,230,207,18);
+     border-color: rgba(168,230,207,95);
+     box-shadow: 0 0 0 3px rgba(168,230,207,35);
+   }
+   .content{min-width:0}
+   .panel{display:none}
+   .panel.on{display:block}
+
+   /* --- NEW: agency multi-select checklist --- */
+   .checkwrap{
+     border:1px solid rgba(13,59,102,18);
+     border-radius:12px;
+     background:#fff;
+     padding:10px;
+   }
+   .checksearch{
+     width:100%;
+     border:1px solid rgba(13,59,102,18);
+     border-radius:12px;
+     padding:10px;
+     font-size:12px;
+     outline:none;
+     margin-bottom:10px;
+   }
+   .checklist{
+     max-height:260px;
+     overflow:auto;
+     padding-right:6px;
+   }
+   .checkrow{
+     display:flex;
+     align-items:flex-start;
+     gap:10px;
+     padding:8px 6px;
+     border-radius:10px;
+   }
+   .checkrow:hover{background: rgba(77,168,218,08);}
+   .checkrow small{color:var(--muted);display:block;margin-top:2px}
+
   </style>
 </head>
 <body>
@@ -168,9 +242,19 @@
       </div>
     </div>
 
-    <div class="grid">
-      <!-- LEFT: Users table -->
-      <div class="card">
+    <div class="layout">
+      <!-- LEFT SIDEBAR -->
+      <div class="sidebar">
+        <div class="mini" style="font-weight:900;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;">
+          Sections
+        </div>
+
+        <div class="navitem on" id="tabUsers">Users</div>
+        <div class="navitem" id="tabAgencies">Agencies</div>
+      </div>
+
+      <!-- RIGHT CONTENT -->
+      <div class="content">
         <div class="hd">
           <h2>Users</h2>
           <div class="hint">Click a row to edit. Roles + facilities are saved separately.</div>
@@ -184,7 +268,8 @@
                   <th>Name</th>
                   <th>Active</th>
                   <th>Roles</th>
-                  <th>Facilities</th>
+                  <th>Agencies</th>
+                  <th>Locked</th>
                 </tr>
               </thead>
               <tbody id="tbody"></tbody>
@@ -227,22 +312,166 @@
 
           <div style="height:14px"></div>
 
-          <div class="label">Facility IDs (comma separated)</div>
-          <input class="input" id="facility_ids" placeholder="Example: 101, 205, 999" />
+          <div class="label">Cell Phone</div>
+          <input class="input" id="cell_phone" placeholder="(xxx) xxx-xxxx" />
+
+          <div style="height:10px"></div>
+
+          <div class="label">Password</div>
+          <input class="input" id="password" type="password" placeholder="Leave blank to keep unchanged" />
+
+          <div style="height:10px"></div>
+
+          <div class="label">Account Locked</div>
+          <select class="select" id="account_locked">
+            <option value="0">No</option>
+            <option value="1">Yes (Locked)</option>
+          </select>
+
+          <div style="height:14px"></div>
+
+          <div class="label">Agencies (multi-select)</div>
+          <div class="checkwrap">
+            <input class="checksearch" id="agencySearch" placeholder="Search agencies..." />
+            <div class="checklist" id="agencyChecklist"></div>
+          </div>
 
           <div style="height:14px"></div>
 
           <div class="stack">
             <button class="btn primary" id="saveUser">Save User</button>
             <button class="btn" id="saveRoles">Save Roles</button>
-            <button class="btn" id="saveFacilities">Save Facilities</button>
+            <button class="btn" id="saveFacilities">Save Agencies</button>
             <button class="btn" id="newUser">New User</button>
           </div>
 
           <div id="editMsg" class="toast"></div>
         </div>
       </div>
-    </div>
+      <!-- =========================
+           AGENCIES PANEL
+      ========================= -->
+      <div class="panel" id="panelAgencies">
+        <div class="grid">
+          <!-- LEFT: Agencies table -->
+          <div class="card">
+            <div class="hd">
+              <h2>Agencies</h2>
+              <div class="hint">List used for user admission linking and multi-agency access.</div>
+            </div>
+            <div class="body">
+              <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+                <input class="input" id="agencyListSearch" placeholder="Search agencies..." />
+                <button class="btn" id="newAgency">New</button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Type</th>
+                      <th>Evolv Client</th>
+                    </tr>
+                  </thead>
+                  <tbody id="agencyTbody"></tbody>
+                </table>
+              </div>
+              <div id="agencyListMsg" class="toast"></div>
+            </div>
+          </div>
+
+          <!-- RIGHT: Agency editor -->
+          <div class="card">
+            <div class="hd">
+              <h2>Edit Agency</h2>
+              <div class="hint">Add/maintain agencies for admissions linking.</div>
+            </div>
+            <div class="body">
+              <div class="mini">Selected agency_id: <b id="selAgencyId">—</b></div>
+              <div style="height:10px"></div>
+
+              <div class="label">Agency Name</div>
+              <input class="input" id="agency_name" placeholder="Agency name" />
+
+              <div style="height:10px"></div>
+
+              <div class="label">Agency Type</div>
+              <select class="select" id="agency_type">
+                <option value="Hospital">Hospital</option>
+                <option value="SNF">SNF</option>
+                <option value="Home Health">Home Health</option>
+                <option value="IRF">IRF</option>
+                <option value="LTACH">LTACH</option>
+                <option value="Hospice">Hospice</option>
+                <option value="Outpatient PT">Outpatient PT</option>
+              </select>
+
+              <div style="height:10px"></div>
+
+              <div class="label">Facility Code</div>
+              <input class="input" id="facility_code" placeholder="Optional code" />
+
+              <div style="height:10px"></div>
+
+              <div class="label">Address</div>
+              <input class="input" id="address" placeholder="Street address" />
+
+              <div style="height:10px"></div>
+
+              <div class="label">City / State / Zip</div>
+              <div style="display:grid;grid-template-columns:1fr .6fr .6fr;gap:10px">
+                <input class="input" id="city" placeholder="City" />
+                <input class="input" id="state" placeholder="State" />
+                <input class="input" id="zip" placeholder="Zip" />
+              </div>
+
+              <div style="height:10px"></div>
+
+              <div class="label">Phone 1 / Phone 2</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <input class="input" id="phone1" placeholder="Phone 1" />
+                <input class="input" id="phone2" placeholder="Phone 2" />
+              </div>
+
+              <div style="height:10px"></div>
+
+              <div class="label">Email / Fax</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <input class="input" id="email2" placeholder="Email" />
+                <input class="input" id="fax" placeholder="Fax" />
+              </div>
+
+              <div style="height:10px"></div>
+
+              <div class="label">Notes</div>
+              <input class="input" id="notes" placeholder="Notes" />
+
+              <div style="height:10px"></div>
+
+              <div class="label">Notes 2</div>
+              <input class="input" id="notes2" placeholder="Notes 2" />
+
+              <div style="height:10px"></div>
+
+              <div class="label">Evolv Client</div>
+              <select class="select" id="evolv_client">
+                <option value="0">No</option>
+                <option value="1">Yes</option>
+              </select>
+
+              <div style="height:14px"></div>
+
+              <div class="stack">
+                <button class="btn primary" id="saveAgency">Save Agency</button>
+              </div>
+
+              <div id="agencyEditMsg" class="toast"></div>
+            </div>
+          </div>
+        </div>
+      </div>      
+      </div><!-- /content -->
+    </div><!-- /layout -->
   </div>
 
 <script>
@@ -262,19 +491,42 @@
   let selectedUserId = null;
   let selectedRoleKeys = new Set();
 
-  function parseFacilityIds(){
-    const raw = ($("facility_ids").value || "").trim();
-    if(!raw) return [];
-    return raw.split(",").map(x => x.trim()).filter(Boolean).map(x => parseInt(x,10)).filter(n => !isNaN(n));
-  }
+  let agenciesMaster = [];
+  let selectedAgencyIds = new Set();
 
-  function parseFacilityNames(){
-    const raw = ($("facility_ids").value || "").trim();
-    if(!raw) return [];
-    return raw
-      .split(",")
-      .map(s => s.trim())
-      .filter(Boolean);
+  let agenciesCache = [];
+  let selectedAgencyId = null;
+
+  function renderAgencyChecklist(){
+    const wrap = $("agencyChecklist");
+    const q = ($("agencySearch").value || "").trim().toLowerCase();
+    wrap.innerHTML = "";
+
+    const items = (agenciesMaster || []).filter(a => {
+      const hay = `${a.agency_name || ""} ${a.agency_type || ""} ${a.city || ""} ${a.state || ""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+
+    items.forEach(a => {
+      const row = document.createElement("div");
+      row.className = "checkrow";
+
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = selectedAgencyIds.has(a.id);
+      cb.onchange = () => {
+        if(cb.checked) selectedAgencyIds.add(a.id);
+        else selectedAgencyIds.delete(a.id);
+      };
+
+      const label = document.createElement("div");
+      label.innerHTML = `<b>${escapeHtml(a.agency_name || "")}</b>
+        <small>${escapeHtml(a.agency_type || "")}${(a.city||a.state) ? " • " + escapeHtml(`${a.city||""}${a.city&&a.state?", ":""}${a.state||""}`) : ""}</small>`;
+
+      row.appendChild(cb);
+      row.appendChild(label);
+      wrap.appendChild(row);
+    });
   }
 
   function renderRolesPills(){
@@ -303,7 +555,13 @@
     selectedRoleKeys = new Set(u.role_keys || []);
     renderRolesPills();
 
-    $("facility_ids").value = (u.facility_ids || []).join(", ");
+    $("cell_phone").value = u.cell_phone || "";
+    $("password").value = ""; // never auto-fill password
+    $("account_locked").value = String(u.account_locked ? 1 : 0);
+
+    selectedAgencyIds = new Set(u.agency_ids || []);
+    renderAgencyChecklist();
+
     setMsg($("editMsg"), "", true);
   }
 
@@ -317,14 +575,15 @@
       tr.onclick = () => selectUser(u);
 
       const roles = (u.role_keys || []).join(", ");
-      const facs = (u.facility_ids || []).join(", ");
+      const ags = (u.agency_names || []).join(", ");
 
       tr.innerHTML = `
         <td><b>${escapeHtml(u.email || "")}</b></td>
         <td>${escapeHtml(u.display_name || "")}</td>
         <td>${u.is_active ? "Yes" : "No"}</td>
         <td>${escapeHtml(roles)}</td>
-        <td>${escapeHtml(facs)}</td>
+        <td>${escapeHtml(ags)}</td>
+        <td>${u.account_locked ? "Yes" : "No"}</td>
       `;
       tbody.appendChild(tr);
     });
@@ -364,6 +623,10 @@
       const rolesResp = await apiGet("/api/sensys/admin/roles");
       rolesMaster = rolesResp.roles || [];
       renderRolesPills();
+
+      const agResp = await apiGet("/api/sensys/admin/agencies");
+      agenciesMaster = agResp.agencies || [];
+      renderAgencyChecklist();
 
       const usersResp = await apiGet("/api/sensys/admin/users");
       usersCache = usersResp.users || [];
@@ -406,7 +669,11 @@
         user_id: selectedUserId,
         email: ($("email").value || "").trim(),
         display_name: ($("display_name").value || "").trim(),
-        is_active: parseInt($("is_active").value, 10)
+        is_active: parseInt($("is_active").value, 10),
+
+        cell_phone: ($("cell_phone").value || "").trim(),
+        password: ($("password").value || "").trim(), // blank = keep unchanged (backend handles)
+        account_locked: $("account_locked").value === "1"
       };
       await apiPost("/api/sensys/admin/users/upsert", payload);
       setMsg($("editMsg"), "User saved.", true);
@@ -433,11 +700,11 @@
   $("saveFacilities").onclick = async () => {
     try{
       if(!selectedUserId) throw new Error("Select a user first (or create one).");
-      await apiPost("/api/sensys/admin/users/set-facilities", {
+      await apiPost("/api/sensys/admin/users/set-agencies", {
         user_id: selectedUserId,
-        facility_names: parseFacilityNames()
+        agency_ids: Array.from(selectedAgencyIds)
       });
-      setMsg($("editMsg"), "Facilities saved.", true);
+      setMsg($("editMsg"), "Agencies saved.", true);
       await refreshAll();
     }catch(e){
       setMsg($("editMsg"), String(e.message || e), false);
@@ -446,6 +713,143 @@
 
   // load saved token on open
   $("token").value = localStorage.getItem("SENSYS_ADMIN_TOKEN") || "";
+
+  $("agencySearch").addEventListener("input", renderAgencyChecklist);
+
+  function showPanel(which){
+    // which: "users" | "agencies"
+    const onUsers = which === "users";
+
+    $("tabUsers").className = "navitem " + (onUsers ? "on" : "");
+    $("tabAgencies").className = "navitem " + (!onUsers ? "on" : "");
+
+    // Users panel is your existing cards (we’ll treat the existing content as panelUsers)
+    document.querySelectorAll(".panel").forEach(p => p.classList.remove("on"));
+    if(!onUsers){
+      $("panelAgencies").classList.add("on");
+      document.querySelector(".brand .title").textContent = "Admin — Agencies";
+      refreshAgenciesList();
+    }else{
+      document.querySelector(".brand .title").textContent = "Admin — Users";
+    }
+  }
+
+  $("tabUsers").onclick = () => showPanel("users");
+  $("tabAgencies").onclick = () => showPanel("agencies");
+
+  // --- Agencies page logic ---
+  function renderAgenciesTable(){
+    const tbody = $("agencyTbody");
+    tbody.innerHTML = "";
+
+    const q = ($("agencyListSearch").value || "").trim().toLowerCase();
+    const items = (agenciesCache || []).filter(a => {
+      const hay = `${a.agency_name||""} ${a.agency_type||""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+
+    items.forEach(a => {
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.onclick = () => selectAgency(a);
+      tr.innerHTML = `
+        <td><b>${escapeHtml(a.agency_name||"")}</b></td>
+        <td>${escapeHtml(a.agency_type||"")}</td>
+        <td>${a.evolv_client ? "Yes" : "No"}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function selectAgency(a){
+    selectedAgencyId = a.id;
+    $("selAgencyId").textContent = String(a.id);
+
+    $("agency_name").value = a.agency_name || "";
+    $("agency_type").value = a.agency_type || "Hospital";
+    $("facility_code").value = a.facility_code || "";
+    $("address").value = a.address || "";
+    $("city").value = a.city || "";
+    $("state").value = a.state || "";
+    $("zip").value = a.zip || "";
+    $("phone1").value = a.phone1 || "";
+    $("phone2").value = a.phone2 || "";
+    $("email2").value = a.email || "";
+    $("fax").value = a.fax || "";
+    $("notes").value = a.notes || "";
+    $("notes2").value = a.notes2 || "";
+    $("evolv_client").value = String(a.evolv_client ? 1 : 0);
+
+    setMsg($("agencyEditMsg"), "", true);
+  }
+
+  async function refreshAgenciesList(){
+    setMsg($("agencyListMsg"), "Loading…", true);
+    try{
+      const agResp = await apiGet("/api/sensys/admin/agencies");
+      agenciesCache = agResp.agencies || [];
+      agenciesMaster = agenciesCache;       // keep master in sync for user checklist
+      renderAgenciesTable();
+      renderAgencyChecklist();
+
+      setMsg($("agencyListMsg"), `Loaded ${agenciesCache.length} agencies.`, true);
+      if(agenciesCache.length && !selectedAgencyId) selectAgency(agenciesCache[0]);
+    }catch(e){
+      setMsg($("agencyListMsg"), String(e.message || e), false);
+    }
+  }
+
+  $("agencyListSearch").addEventListener("input", renderAgenciesTable);
+
+  $("newAgency").onclick = () => {
+    selectedAgencyId = null;
+    $("selAgencyId").textContent = "—";
+    $("agency_name").value = "";
+    $("agency_type").value = "Hospital";
+    $("facility_code").value = "";
+    $("address").value = "";
+    $("city").value = "";
+    $("state").value = "";
+    $("zip").value = "";
+    $("phone1").value = "";
+    $("phone2").value = "";
+    $("email2").value = "";
+    $("fax").value = "";
+    $("notes").value = "";
+    $("notes2").value = "";
+    $("evolv_client").value = "0";
+    setMsg($("agencyEditMsg"), "New agency mode (Save Agency to create).", true);
+  };
+
+  $("saveAgency").onclick = async () => {
+    try{
+      const payload = {
+        id: selectedAgencyId,
+        agency_name: ($("agency_name").value || "").trim(),
+        agency_type: ($("agency_type").value || "").trim(),
+        facility_code: ($("facility_code").value || "").trim(),
+        address: ($("address").value || "").trim(),
+        city: ($("city").value || "").trim(),
+        state: ($("state").value || "").trim(),
+        zip: ($("zip").value || "").trim(),
+        phone1: ($("phone1").value || "").trim(),
+        phone2: ($("phone2").value || "").trim(),
+        email: ($("email2").value || "").trim(),
+        fax: ($("fax").value || "").trim(),
+        notes: ($("notes").value || "").trim(),
+        notes2: ($("notes2").value || "").trim(),
+        evolv_client: $("evolv_client").value === "1"
+      };
+
+      await apiPost("/api/sensys/admin/agencies/upsert", payload);
+      setMsg($("agencyEditMsg"), "Agency saved.", true);
+      await refreshAgenciesList();
+    }catch(e){
+      setMsg($("agencyEditMsg"), String(e.message || e), false);
+    }
+  };
+
+  // Default panel: Users (no .panel needed). Agencies panel stays hidden until clicked.
 
   // initial load
   refreshAll();
