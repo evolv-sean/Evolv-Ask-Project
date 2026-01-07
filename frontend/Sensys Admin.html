@@ -367,6 +367,13 @@
         <div class="navitem" id="tabAgencies">Agencies</div>
         <div class="navitem" id="tabPatients">Patients</div>
         <div class="navitem" id="tabAdmissions">Admissions</div>
+
+        <div style="height:10px"></div>
+        <div class="mini" style="font-weight:900;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;">
+          Reference
+        </div>
+        <div class="navitem" id="tabServices">Services</div>
+        <div class="navitem" id="tabCareTeam">Care Team</div>
       </div>
 
       <!-- USERS PANEL -->
@@ -531,6 +538,84 @@
           </div>
         </div>
       </div><!-- /panelAdmissions -->
+      <!-- =========================
+           SERVICES PANEL
+      ========================= -->
+      <div class="panel" id="panelServices">
+        <div class="content">
+          <div class="hd" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+            <div>
+              <h2 style="margin:0">Services</h2>
+              <div class="hint">Reference list used for DC submissions (DME / HH).</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="iconbtn" id="bulkServicesIcon" title="Bulk upload services" aria-label="Bulk upload services">⇪</button>
+              <button class="iconbtn" id="addServiceIcon" title="Add new service" aria-label="Add new service">+</button>
+            </div>
+          </div>
+
+          <div class="body">
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+              <input class="input" id="servicesListSearch" placeholder="Search services (name/type)." />
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Dropdown</th>
+                  </tr>
+                </thead>
+                <tbody id="servicesTbody"></tbody>
+              </table>
+            </div>
+
+            <div id="servicesListMsg" class="toast"></div>
+          </div>
+        </div>
+      </div><!-- /panelServices -->
+
+      <!-- =========================
+           CARE TEAM PANEL
+      ========================= -->
+      <div class="panel" id="panelCareTeam">
+        <div class="content">
+          <div class="hd" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+            <div>
+              <h2 style="margin:0">Care Team</h2>
+              <div class="hint">Reference list of providers/contacts used on admissions.</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="iconbtn" id="bulkCareTeamIcon" title="Bulk upload care team" aria-label="Bulk upload care team">⇪</button>
+              <button class="iconbtn" id="addCareTeamIcon" title="Add new care team member" aria-label="Add new care team member">+</button>
+            </div>
+          </div>
+
+          <div class="body">
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+              <input class="input" id="careTeamListSearch" placeholder="Search care team (name/type/npi)." />
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>NPI</th>
+                    <th>Active</th>
+                  </tr>
+                </thead>
+                <tbody id="careTeamTbody"></tbody>
+              </table>
+            </div>
+
+            <div id="careTeamListMsg" class="toast"></div>
+          </div>
+        </div>
+      </div><!-- /panelCareTeam -->
 
     </div><!-- /layout -->
   </div>
@@ -1143,6 +1228,8 @@
   $("bulkAgenciesIcon").onclick = () => openBulkModal("agencies");
   $("bulkPatientsIcon").onclick = () => openBulkModal("patients");
   $("bulkAdmissionsIcon").onclick = () => openBulkModal("admissions");
+  $("bulkServicesIcon").onclick = () => openBulkModal("services");
+  $("bulkCareTeamIcon").onclick = () => openBulkModal("care-team");
 
   $("saveUser").onclick = async () => {
     try{
@@ -1187,19 +1274,23 @@
   $("agencySearch").addEventListener("input", renderAgencyChecklist);
 
   function showPanel(which){
-    const panels = ["users","agencies","patients","admissions"];
+    const panels = ["users","agencies","patients","admissions","services","careTeam"];
 
     // nav highlighting
     $("tabUsers").className = "navitem " + (which==="users" ? "on" : "");
     $("tabAgencies").className = "navitem " + (which==="agencies" ? "on" : "");
     $("tabPatients").className = "navitem " + (which==="patients" ? "on" : "");
     $("tabAdmissions").className = "navitem " + (which==="admissions" ? "on" : "");
+    $("tabServices").className = "navitem " + (which==="services" ? "on" : "");
+    $("tabCareTeam").className = "navitem " + (which==="careTeam" ? "on" : "");
 
     // hide all
     $("panelUsers").classList.remove("on");
     $("panelAgencies").classList.remove("on");
     $("panelPatients").classList.remove("on");
     $("panelAdmissions").classList.remove("on");
+    $("panelServices").classList.remove("on");
+    $("panelCareTeam").classList.remove("on");
 
     if(which==="users"){
       $("panelUsers").classList.add("on");
@@ -1209,9 +1300,15 @@
     }else if(which==="patients"){
       $("panelPatients").classList.add("on");
       refreshPatientsList();
-    }else{
+    }else if(which==="admissions"){
       $("panelAdmissions").classList.add("on");
       refreshAdmissionsList();
+    }else if(which==="services"){
+      $("panelServices").classList.add("on");
+      refreshServicesList();
+    }else{
+      $("panelCareTeam").classList.add("on");
+      refreshCareTeamList();
     }
 
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1221,6 +1318,8 @@
   $("tabAgencies").onclick = () => showPanel("agencies");
   $("tabPatients").onclick = () => showPanel("patients");
   $("tabAdmissions").onclick = () => showPanel("admissions");
+  $("tabServices").onclick = () => showPanel("services");
+  $("tabCareTeam").onclick = () => showPanel("careTeam");
 
 
   // --- Agencies page logic ---
@@ -1613,6 +1712,87 @@
       headers: ["id","patient_id","agency_id","admit_date","dc_date","room","referring_agency","reason","latest_pcp","notes1","notes2","active","next_location","next_agency_id"]
     }
   };
+
+  // -----------------------------
+  // Services page logic
+  // -----------------------------
+  let servicesCache = [];
+
+  function renderServicesTable(){
+    const tbody = $("servicesTbody");
+    tbody.innerHTML = "";
+
+    const q = ($("servicesListSearch").value || "").trim().toLowerCase();
+    const items = (servicesCache || []).filter(s => {
+      const hay = `${s.name||""} ${s.service_type||""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+
+    items.forEach(s => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><b>${escapeHtml(s.name||"")}</b></td>
+        <td>${escapeHtml((s.service_type||"").toUpperCase())}</td>
+        <td>${(String(s.dropdown||0)==="1") ? "Yes" : "No"}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function refreshServicesList(){
+    setMsg($("servicesListMsg"), "Loading…", true);
+    try{
+      const resp = await apiGet("/api/sensys/admin/services");
+      servicesCache = resp.services || [];
+      renderServicesTable();
+      setMsg($("servicesListMsg"), `Loaded ${servicesCache.length} services.`, true);
+    }catch(e){
+      setMsg($("servicesListMsg"), String(e.message || e), false);
+    }
+  }
+
+  $("servicesListSearch").addEventListener("input", renderServicesTable);
+
+  // -----------------------------
+  // Care Team page logic
+  // -----------------------------
+  let careTeamCache = [];
+
+  function renderCareTeamTable(){
+    const tbody = $("careTeamTbody");
+    tbody.innerHTML = "";
+
+    const q = ($("careTeamListSearch").value || "").trim().toLowerCase();
+    const items = (careTeamCache || []).filter(c => {
+      const hay = `${c.name||""} ${c.type||""} ${c.npi||""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+
+    items.forEach(c => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><b>${escapeHtml(c.name||"")}</b></td>
+        <td>${escapeHtml(c.type||"")}</td>
+        <td>${escapeHtml(c.npi||"")}</td>
+        <td>${c.active ? "Yes" : "No"}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function refreshCareTeamList(){
+    setMsg($("careTeamListMsg"), "Loading…", true);
+    try{
+      const resp = await apiGet("/api/sensys/admin/care-team");
+      careTeamCache = resp.care_team || [];
+      renderCareTeamTable();
+      setMsg($("careTeamListMsg"), `Loaded ${careTeamCache.length} care team records.`, true);
+    }catch(e){
+      setMsg($("careTeamListMsg"), String(e.message || e), false);
+    }
+  }
+
+  $("careTeamListSearch").addEventListener("input", renderCareTeamTable);
 
   function openBulkModal(entityKey){
     bulkEntity = entityKey;
