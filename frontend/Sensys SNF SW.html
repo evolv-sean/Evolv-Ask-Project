@@ -1,0 +1,186 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sensys - SNF SW</title>
+</head>
+<body style="margin:0;font-family:Arial,Helvetica,sans-serif;background:#f6f7fb;">
+  <div style="max-width:1050px;margin:0 auto;padding:18px;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+      <div>
+        <div style="font-size:18px;font-weight:800;">SNF SW</div>
+        <div style="font-size:12px;color:#667085;margin-top:4px;">
+          Test page: shows admissions linked to your user (via assigned agencies).
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button id="logoutBtn"
+          style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+          Log out
+        </button>
+      </div>
+    </div>
+
+    <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div style="font-size:13px;color:#111827;font-weight:700;">My Admissions</div>
+        <div id="userTag" style="font-size:12px;color:#667085;"></div>
+      </div>
+
+      <div style="margin-top:10px;display:flex;gap:10px;align-items:center;">
+        <input id="q" placeholder="Search patient / agency / dates..."
+          style="flex:1;box-sizing:border-box;padding:10px 10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+        <button id="refreshBtn"
+          style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">
+          Refresh
+        </button>
+      </div>
+
+      <div id="msg" style="margin-top:10px;font-size:12px;color:#b42318;display:none;"></div>
+
+      <div style="margin-top:10px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+        <table style="width:100%;border-collapse:collapse;min-width:820px;">
+          <thead>
+            <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Patient</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">DOB</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Agency</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Admit</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">DC</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Room</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Active</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+
+      <div id="count" style="margin-top:10px;font-size:12px;color:#667085;"></div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const tbody = document.getElementById('tbody');
+  const msg = document.getElementById('msg');
+  const q = document.getElementById('q');
+  const refreshBtn = document.getElementById('refreshBtn');
+  const userTag = document.getElementById('userTag');
+  const count = document.getElementById('count');
+  const logoutBtn = document.getElementById('logoutBtn');
+
+  let allRows = [];
+
+  function token(){
+    return (localStorage.getItem('sensys_token') || '').trim();
+  }
+
+  function authHeaders(){
+    return { 'Authorization': 'Bearer ' + token() };
+  }
+
+  function showError(t){
+    msg.style.display = 'block';
+    msg.textContent = t || 'Error';
+  }
+
+  function clearError(){
+    msg.style.display = 'none';
+    msg.textContent = '';
+  }
+
+  function safe(v){ return (v === null || v === undefined) ? '' : String(v); }
+
+  function render(rows){
+    tbody.innerHTML = '';
+    for(const r of rows){
+      const tr = document.createElement('tr');
+      tr.style.borderBottom = '1px solid #eef0f5';
+
+      tr.innerHTML = `
+        <td style="padding:10px;font-size:13px;color:#111827;">${safe(r.patient_name)}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">${safe(r.patient_dob)}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">${safe(r.agency_name)}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">${safe(r.admit_date)}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">${safe(r.dc_date)}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">${safe(r.room)}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">${(r.active ? 'Yes' : 'No')}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    count.textContent = rows.length ? (rows.length + ' admissions') : 'No admissions found.';
+  }
+
+  function applyFilter(){
+    const s = (q.value || '').trim().toLowerCase();
+    if(!s){
+      render(allRows);
+      return;
+    }
+    const filtered = allRows.filter(r => {
+      const blob = [
+        r.patient_name, r.patient_dob, r.agency_name,
+        r.admit_date, r.dc_date, r.room
+      ].map(safe).join(' ').toLowerCase();
+      return blob.includes(s);
+    });
+    render(filtered);
+  }
+
+  async function load(){
+    clearError();
+
+    if(!token()){
+      window.location.href = '/sensys/login';
+      return;
+    }
+
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = 'Loading...';
+
+    try{
+      // who am I
+      const meRes = await fetch('/api/sensys/me', { headers: authHeaders() });
+      const meData = await meRes.json();
+      if(!meRes.ok || !meData.ok){
+        localStorage.removeItem('sensys_token');
+        window.location.href = '/sensys/login';
+        return;
+      }
+
+      const u = meData.user || {};
+      userTag.textContent = (u.display_name ? u.display_name + ' — ' : '') + (u.email || '');
+
+      // admissions
+      const res = await fetch('/api/sensys/my-admissions', { headers: authHeaders() });
+      const data = await res.json();
+      if(!res.ok || !data.ok){
+        showError((data && data.detail) ? data.detail : 'Failed to load admissions');
+        return;
+      }
+
+      allRows = data.admissions || [];
+      applyFilter();
+    }catch(e){
+      showError('Network error');
+    }finally{
+      refreshBtn.disabled = false;
+      refreshBtn.textContent = 'Refresh';
+    }
+  }
+
+  refreshBtn.addEventListener('click', load);
+  q.addEventListener('input', applyFilter);
+
+  logoutBtn.addEventListener('click', function(){
+    localStorage.removeItem('sensys_token');
+    window.location.href = '/sensys/login';
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>

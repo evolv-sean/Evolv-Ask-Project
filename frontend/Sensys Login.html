@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sensys - Login</title>
+</head>
+<body style="margin:0;font-family:Arial,Helvetica,sans-serif;background:#f6f7fb;">
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;">
+    <div style="width:100%;max-width:420px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:18px 18px 16px 18px;">
+      <div style="font-size:18px;font-weight:700;margin-bottom:6px;">Sensys</div>
+      <div style="font-size:12px;color:#667085;margin-bottom:14px;">Test login (password ignored for now)</div>
+
+      <label style="display:block;font-size:12px;color:#475467;margin-bottom:6px;">Email / Username</label>
+      <input id="email" type="email" placeholder="name@company.com"
+             style="width:100%;box-sizing:border-box;padding:10px 10px;border:1px solid #d0d5dd;border-radius:10px;font-size:14px;outline:none;" />
+
+      <label style="display:block;font-size:12px;color:#475467;margin:12px 0 6px;">Password</label>
+      <input id="password" type="password" placeholder="(ignored for testing)"
+             style="width:100%;box-sizing:border-box;padding:10px 10px;border:1px solid #d0d5dd;border-radius:10px;font-size:14px;outline:none;" />
+
+      <button id="btn"
+              style="margin-top:14px;width:100%;padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">
+        Sign In
+      </button>
+
+      <div id="msg" style="margin-top:12px;font-size:12px;color:#b42318;display:none;"></div>
+
+      <div style="margin-top:14px;font-size:11px;color:#667085;">
+        Tip: this stores a test token in <code>localStorage</code> as <code>sensys_token</code>.
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const msg = document.getElementById('msg');
+  const btn = document.getElementById('btn');
+
+  function showError(t){
+    msg.style.display = 'block';
+    msg.textContent = t || 'Login failed';
+  }
+
+  btn.addEventListener('click', async function(){
+    msg.style.display = 'none';
+
+    const email = (document.getElementById('email').value || '').trim();
+    const password = (document.getElementById('password').value || '').trim();
+
+    if(!email){
+      showError('Email is required');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Signing in...';
+
+    try{
+      const res = await fetch('/api/sensys/login', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ email: email, password: password })
+      });
+
+      const data = await res.json();
+      if(!res.ok || !data || !data.ok){
+        showError((data && data.detail) ? data.detail : 'Invalid login');
+        return;
+      }
+
+      localStorage.setItem('sensys_token', data.token || '');
+      window.location.href = data.redirect_url || '/sensys/snf-sw';
+    }catch(e){
+      showError('Network error');
+    }finally{
+      btn.disabled = false;
+      btn.textContent = 'Sign In';
+    }
+  });
+})();
+</script>
+</body>
+</html>
