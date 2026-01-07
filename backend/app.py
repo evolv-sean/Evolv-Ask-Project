@@ -2262,11 +2262,30 @@ def init_db():
             email           TEXT NOT NULL UNIQUE,
             display_name    TEXT,
             is_active       INTEGER DEFAULT 1,
+
+            -- NEW (Admin → Users tab)
+            password        TEXT DEFAULT '',
+            cell_phone      TEXT DEFAULT '',
+            account_locked  INTEGER DEFAULT 0,
+
             created_at      TEXT DEFAULT (datetime('now')),
             updated_at      TEXT DEFAULT (datetime('now'))
         )
         """
     )
+
+    # ---- Safe migrations for older DBs (idempotent) ----
+    for ddl in [
+        "ALTER TABLE sensys_users ADD COLUMN password TEXT DEFAULT ''",
+        "ALTER TABLE sensys_users ADD COLUMN cell_phone TEXT DEFAULT ''",
+        "ALTER TABLE sensys_users ADD COLUMN account_locked INTEGER DEFAULT 0",
+    ]:
+        try:
+            cur.execute(ddl)
+        except sqlite3.Error:
+            # duplicate column name → already migrated
+            pass
+
 
     # Roles (Admin / Care Manager / Viewer / etc.)
     cur.execute(
@@ -2313,6 +2332,57 @@ def init_db():
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_facilities_user ON sensys_user_facilities(user_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_facilities_fac ON sensys_user_facilities(facility_name)")
+
+    # -------------------------------------------------------------------
+    # Sensys 3.0: Agencies (for admissions linking + user multi-agency access)
+    # -------------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_agencies (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            agency_name   TEXT NOT NULL,
+            agency_type   TEXT NOT NULL,  -- Hospital, SNF, Home Health, IRF, LTACH, Hospice, Outpatient PT
+
+            facility_code TEXT DEFAULT '',
+            notes         TEXT DEFAULT '',
+            notes2        TEXT DEFAULT '',
+
+            address       TEXT DEFAULT '',
+            city          TEXT DEFAULT '',
+            state         TEXT DEFAULT '',
+            zip           TEXT DEFAULT '',
+
+            phone1        TEXT DEFAULT '',
+            phone2        TEXT DEFAULT '',
+            email         TEXT DEFAULT '',
+            fax           TEXT DEFAULT '',
+
+            evolv_client  INTEGER DEFAULT 0,
+
+            created_at    TEXT DEFAULT (datetime('now')),
+            updated_at    TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_agencies_name ON sensys_agencies(agency_name)")
+
+    # User <-> Agency (many-to-many)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_user_agencies (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL,
+            agency_id  INTEGER NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(user_id, agency_id),
+            FOREIGN KEY(user_id) REFERENCES sensys_users(id),
+            FOREIGN KEY(agency_id) REFERENCES sensys_agencies(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_agencies_user ON sensys_user_agencies(user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_agencies_agency ON sensys_user_agencies(agency_id)")
 
     # User access to pages/features (drives which UI pages they see)
     cur.execute(
@@ -14664,6 +14734,11 @@ class SensysUserUpsert(BaseModel):
     display_name: Optional[str] = ""
     is_active: int = 1
 
+    # NEW
+    password: Optional[str] = None
+    cell_phone: Optional[str] = ""
+    account_locked: Optional[bool] = False
+
 
 class SensysRoleAssign(BaseModel):
     user_id: int
@@ -14674,6 +14749,31 @@ class SensysFacilityAssign(BaseModel):
     user_id: int
     facility_names: List[str]
 
+class SensysAgencyUpsert(BaseModel):
+    id: Optional[int] = None
+    agency_name: str
+    agency_type: str
+
+    facility_code: Optional[str] = ""
+    notes: Optional[str] = ""
+    notes2: Optional[str] = ""
+
+    address: Optional[str] = ""
+    city: Optional[str] = ""
+    state: Optional[str] = ""
+    zip: Optional[str] = ""
+
+    phone1: Optional[str] = ""
+    phone2: Optional[str] = ""
+    email: Optional[str] = ""
+    fax: Optional[str] = ""
+
+    evolv_client: Optional[bool] = False
+
+
+class SensysUserAgencyAssign(BaseModel):
+    user_id: int
+    agency_ids: List[int]
 
 # -----------------------------
 # Sensys Admin: seed roles (safe to call repeatedly)
@@ -14727,7 +14827,12 @@ def sensys_admin_users(token: str):
             u.id AS user_id,
             u.email,
             u.display_name,
-            u.is_active
+            u.is_active,
+
+            -- NEW
+            u.password,
+            u.cell_phone,
+            u.account_locked
         FROM sensys_users u
         ORDER BY u.email
         """
@@ -14746,24 +14851,34 @@ def sensys_admin_users(token: str):
     for rr in role_rows:
         roles_by_user.setdefault(rr["user_id"], []).append(rr["role_key"])
 
-    # facilities per user
-    fac_rows = conn.execute(
+    # agencies per user
+    ag_rows = conn.execute(
         """
-        SELECT user_id, facility_name
-        FROM sensys_user_facilities
+        SELECT ua.user_id, a.id AS agency_id, a.agency_name
+        FROM sensys_user_agencies ua
+        JOIN sensys_agencies a ON a.id = ua.agency_id
         """
     ).fetchall()
 
-    fac_by_user = {}
-    for fr in fac_rows:
-        fac_by_user.setdefault(fr["user_id"], []).append(fr["facility_name"])
+    agency_ids_by_user = {}
+    agency_names_by_user = {}
+    for r in ag_rows:
+        uid = r["user_id"]
+        agency_ids_by_user.setdefault(uid, []).append(int(r["agency_id"]))
+        agency_names_by_user.setdefault(uid, []).append(r["agency_name"])
+
 
     out = []
     for u in users:
         d = dict(u)
         d["role_keys"] = sorted(roles_by_user.get(u["user_id"], []))
-        d["facility_names"] = sorted(fac_by_user.get(u["user_id"], []))
+
+        # NEW
+        d["agency_ids"] = sorted(agency_ids_by_user.get(u["user_id"], []))
+        d["agency_names"] = sorted(agency_names_by_user.get(u["user_id"], []), key=lambda x: (x or "").lower())
+
         out.append(d)
+
 
     return {"users": out}
 
@@ -14782,27 +14897,55 @@ def sensys_admin_users_upsert(payload: SensysUserUpsert, token: str):
 
     display_name = (payload.display_name or "").strip()
 
+    # NEW fields
+    cell_phone = (payload.cell_phone or "").strip()
+    account_locked = 1 if bool(payload.account_locked) else 0
+    password = (payload.password or "")
+    password = password.strip() if isinstance(password, str) else ""
+
     if payload.user_id:
-        conn.execute(
-            """
-            UPDATE sensys_users
-            SET email = ?, display_name = ?, is_active = ?, updated_at = datetime('now')
-            WHERE id = ?
-            """,
-            (email, display_name, int(payload.is_active), int(payload.user_id)),
-        )
+        # Update password ONLY if the admin typed one (blank means "leave unchanged")
+        if password:
+            conn.execute(
+                """
+                UPDATE sensys_users
+                SET email = ?,
+                    display_name = ?,
+                    is_active = ?,
+                    password = ?,
+                    cell_phone = ?,
+                    account_locked = ?,
+                    updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (email, display_name, int(payload.is_active), password, cell_phone, account_locked, int(payload.user_id)),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE sensys_users
+                SET email = ?,
+                    display_name = ?,
+                    is_active = ?,
+                    cell_phone = ?,
+                    account_locked = ?,
+                    updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (email, display_name, int(payload.is_active), cell_phone, account_locked, int(payload.user_id)),
+            )
+
     else:
         conn.execute(
             """
-            INSERT INTO sensys_users (email, display_name, is_active)
-            VALUES (?, ?, ?)
+            INSERT INTO sensys_users (email, display_name, is_active, password, cell_phone, account_locked)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (email, display_name, int(payload.is_active)),
+            (email, display_name, int(payload.is_active), password, cell_phone, account_locked),
         )
 
     conn.commit()
     return {"ok": True}
-
 
 # -----------------------------
 # Sensys Admin: set roles for user (replace)
@@ -14841,6 +14984,154 @@ def sensys_admin_users_set_roles(payload: SensysRoleAssign, token: str):
     conn.commit()
     return {"ok": True}
 
+# -----------------------------
+# Sensys Admin: list agencies
+# -----------------------------
+@app.get("/api/sensys/admin/agencies")
+def sensys_admin_agencies(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    rows = conn.execute(
+        """
+        SELECT
+            id,
+            agency_name,
+            agency_type,
+            facility_code,
+            notes,
+            notes2,
+            address,
+            city,
+            state,
+            zip,
+            phone1,
+            phone2,
+            email,
+            fax,
+            evolv_client,
+            created_at,
+            updated_at
+        FROM sensys_agencies
+        ORDER BY agency_name COLLATE NOCASE
+        """
+    ).fetchall()
+
+    return {"agencies": [dict(r) for r in rows]}
+
+
+# -----------------------------
+# Sensys Admin: upsert agency
+# -----------------------------
+@app.post("/api/sensys/admin/agencies/upsert")
+def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    name = (payload.agency_name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="agency_name is required")
+
+    a_type = (payload.agency_type or "").strip()
+    if not a_type:
+        raise HTTPException(status_code=400, detail="agency_type is required")
+
+    evolv_client = 1 if bool(payload.evolv_client) else 0
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_agencies
+               SET agency_name   = ?,
+                   agency_type   = ?,
+                   facility_code = ?,
+                   notes         = ?,
+                   notes2        = ?,
+                   address       = ?,
+                   city          = ?,
+                   state         = ?,
+                   zip           = ?,
+                   phone1        = ?,
+                   phone2        = ?,
+                   email         = ?,
+                   fax           = ?,
+                   evolv_client  = ?,
+                   updated_at    = datetime('now')
+             WHERE id = ?
+            """,
+            (
+                name,
+                a_type,
+                (payload.facility_code or "").strip(),
+                (payload.notes or "").strip(),
+                (payload.notes2 or "").strip(),
+                (payload.address or "").strip(),
+                (payload.city or "").strip(),
+                (payload.state or "").strip(),
+                (payload.zip or "").strip(),
+                (payload.phone1 or "").strip(),
+                (payload.phone2 or "").strip(),
+                (payload.email or "").strip(),
+                (payload.fax or "").strip(),
+                evolv_client,
+                int(payload.id),
+            ),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_agencies
+                (agency_name, agency_type, facility_code, notes, notes2, address, city, state, zip, phone1, phone2, email, fax, evolv_client)
+            VALUES
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                name,
+                a_type,
+                (payload.facility_code or "").strip(),
+                (payload.notes or "").strip(),
+                (payload.notes2 or "").strip(),
+                (payload.address or "").strip(),
+                (payload.city or "").strip(),
+                (payload.state or "").strip(),
+                (payload.zip or "").strip(),
+                (payload.phone1 or "").strip(),
+                (payload.phone2 or "").strip(),
+                (payload.email or "").strip(),
+                (payload.fax or "").strip(),
+                evolv_client,
+            ),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+
+# -----------------------------
+# Sensys Admin: set agencies for user (replace)
+# -----------------------------
+@app.post("/api/sensys/admin/users/set-agencies")
+def sensys_admin_users_set_agencies(payload: SensysUserAgencyAssign, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    user_id = int(payload.user_id)
+    agency_ids = [int(x) for x in (payload.agency_ids or [])]
+
+    # clear existing
+    conn.execute("DELETE FROM sensys_user_agencies WHERE user_id = ?", (user_id,))
+
+    if agency_ids:
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO sensys_user_agencies (user_id, agency_id)
+            VALUES (?, ?)
+            """,
+            [(user_id, aid) for aid in agency_ids],
+        )
+
+    conn.commit()
+    return {"ok": True}
 
 # -----------------------------
 # Sensys Admin: set facilities for user (replace)
