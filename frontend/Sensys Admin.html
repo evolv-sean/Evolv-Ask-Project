@@ -723,8 +723,14 @@
 
       <div style="height:10px"></div>
 
+      <div class="label">Aliases</div>
+      <input class="input" id="aliases" placeholder="Comma-separated aliases (optional)" />
+
+      <div style="height:10px"></div>
+
       <div class="label">Facility Code</div>
       <input class="input" id="facility_code" placeholder="Optional code" />
+
 
       <div style="height:10px"></div>
 
@@ -877,6 +883,21 @@
 
       <div class="label">Agency</div>
       <select class="select" id="a_agency_id"></select>
+
+      <div style="height:10px"></div>
+
+      <div class="label">MRN</div>
+      <input class="input" id="a_mrn" placeholder="MRN" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Visit ID</div>
+      <input class="input" id="a_visit_id" placeholder="Visit ID" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Facility Code</div>
+      <input class="input" id="a_facility_code" placeholder="Facility code" />
 
       <div style="height:10px"></div>
 
@@ -1510,6 +1531,7 @@
 
     $("agency_name").value = a.agency_name || "";
     $("agency_type").value = a.agency_type || "Hospital";
+    $("aliases").value = a.aliases || ""; // ✅ NEW
     $("facility_code").value = a.facility_code || "";
     $("address").value = a.address || "";
     $("city").value = a.city || "";
@@ -1553,6 +1575,7 @@
     $("selAgencyId").textContent = "—";
     $("agency_name").value = "";
     $("agency_type").value = "Hospital";
+    $("aliases").value = ""; // ✅ NEW
     $("facility_code").value = "";
     $("address").value = "";
     $("city").value = "";
@@ -1581,6 +1604,7 @@
         id: selectedAgencyId,
         agency_name: ($("agency_name").value || "").trim(),
         agency_type: ($("agency_type").value || "").trim(),
+        aliases: ($("aliases").value || "").trim(), // ✅ NEW
         facility_code: ($("facility_code").value || "").trim(),
         address: ($("address").value || "").trim(),
         city: ($("city").value || "").trim(),
@@ -1802,6 +1826,10 @@
       a.agency_id
     );
 
+    $("a_mrn").value = a.mrn || "";                 // ✅ NEW
+    $("a_visit_id").value = a.visit_id || "";       // ✅ NEW
+    $("a_facility_code").value = a.facility_code || ""; // ✅ NEW
+
     $("a_admit_date").value = a.admit_date || "";
     $("a_dc_date").value = a.dc_date || "";
     $("a_room").value = a.room || "";
@@ -1832,6 +1860,10 @@
       null
     );
 
+    $("a_mrn").value = "";           // ✅ NEW
+    $("a_visit_id").value = "";      // ✅ NEW
+    $("a_facility_code").value = ""; // ✅ NEW
+
     $("a_admit_date").value = "";
     $("a_dc_date").value = "";
     $("a_room").value = "";
@@ -1855,7 +1887,7 @@
       label: "Agencies",
       endpoint: "/api/sensys/admin/agencies/bulk",
       filename: "sensys_agencies_template.csv",
-      headers: ["id","agency_name","agency_type","facility_code","address","city","state","zip","phone1","phone2","email","fax","notes","notes2","evolv_client"]
+      headers: ["id","agency_name","agency_type","aliases","facility_code","address","city","state","zip","phone1","phone2","email","fax","notes","notes2","evolv_client"]
     },
     patients: {
       label: "Patients",
@@ -1880,6 +1912,12 @@
         "patient_external_patient_id",
 
         "agency_id",
+
+        // ✅ NEW admission identifiers
+        "mrn",
+        "visit_id",
+        "facility_code",
+
         "admit_date","dc_date","room","referring_agency","reason","latest_pcp",
         "notes1","notes2","active","next_location","next_agency_id"
       ]
@@ -2149,12 +2187,18 @@
         id: selectedAdmissionId,
         patient_id: parseInt($("a_patient_id").value, 10),
         agency_id: parseInt($("a_agency_id").value, 10),
+
+        // ✅ NEW
+        mrn: ($("a_mrn").value || "").trim(),
+        visit_id: ($("a_visit_id").value || "").trim(),
+        facility_code: ($("a_facility_code").value || "").trim(),
+
         admit_date: ($("a_admit_date").value || "").trim(),
         dc_date: ($("a_dc_date").value || "").trim(),
         room: ($("a_room").value || "").trim(),
         reason: ($("a_reason").value || "").trim(),
         active: parseInt($("a_active").value, 10)
-      };
+      }
 
       await apiPost("/api/sensys/admin/admissions/upsert", payload);
       setMsg($("admissionEditMsg"), "Admission saved.", true);
