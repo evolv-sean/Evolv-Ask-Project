@@ -237,17 +237,20 @@ def log_pad_request_debug(request: Request, raw_text: str, payload: dict):
 
 
 # ---------------------------------------------------------------------------
-# DB PATH – wired for Render, but still overrideable via DB_PATH
+# DB PATH – Render-only (no local fallback)
 # ---------------------------------------------------------------------------
 RENDER_DEFAULT_DB = "/opt/render/project/data/evolv.db"
-_env_db = os.getenv("DB_PATH")
-if _env_db:
-    DB_PATH = _env_db
-elif os.path.exists(RENDER_DEFAULT_DB):
-    DB_PATH = RENDER_DEFAULT_DB
-else:
-    # Local/dev fallback if you're running off the uploaded DB
-    DB_PATH = str(BASE_DIR / "evolv(3).db")
+
+# Allow explicit override (mainly for local dev/testing), but NEVER auto-fallback.
+DB_PATH = (os.getenv("DB_PATH") or "").strip() or RENDER_DEFAULT_DB
+
+# Fail hard if the DB file isn't present (prevents silent writes to evolv(3).db)
+if not os.path.exists(DB_PATH):
+    raise RuntimeError(
+        f"[DB] SQLite DB file not found at '{DB_PATH}'. "
+        f"On Render this should exist at '{RENDER_DEFAULT_DB}'. "
+        f"If running locally, set DB_PATH to a valid .db file."
+    )
 
 # HTML files (mirror of your old app.py wiring)
 ASK_HTML = FRONTEND_DIR / "TEST Ask.html"
@@ -15522,8 +15525,14 @@ def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request:
         raise
     # ------------------------------------------
 
-    return {"ok": True, "id": int(new_id)}
-
+    # return extra debug so UI/logs can prove which DB handled this write
+    return {
+        "ok": True,
+        "id": int(new_id),
+        "op": op,
+        "db_file": db_file,
+        "verify_exists": int(exists),
+    }
 
 
 @app.post("/api/sensys/admission-referrals/delete")
@@ -17754,6 +17763,51 @@ class AdmissionTaskUpsert(BaseModel):
     task_status: str = "New"
     task_name: str
     task_comments: Optional[str] = ""
+
+@app.get("/api/sensys/debug/db-state")
+def sensys_debug_db_state(request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    # which physical DB file is this process using?
+    db_row = conn.execute("PRAGMA database_list").fetchone()
+    db_file = (db_row["file"] if db_row and "file" in db_row.keys() else None) or DB_PATH
+
+    # basic counts to compare with your downloaded DB
+    ref_total = conn.execute("SELECT COUNT(1) AS c FROM sensys_admission_referrals").fetchone()["c"]
+    ref_active = conn.execute(
+        "SELECT COUNT(1) AS c FROM sensys_admission_referrals WHERE deleted_at IS NULL"
+    ).fetchone()["c"]
+
+    ref_by_adm = conn.execute(
+        """
+        SELECT admission_id,
+               COUNT(1) AS total,
+               SUM(CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END) AS active
+        FROM sensys_admission_referrals
+        GROUP BY admission_id
+        ORDER BY admission_id
+        """
+    ).fetchall()
+
+    logger.info(
+        "[SENSYS][DEBUG][DB_STATE] user_id=%s db=%s ref_total=%s ref_active=%s",
+        int(u["user_id"]),
+        db_file,
+        int(ref_total),
+        int(ref_active),
+    )
+
+    return {
+        "ok": True,
+        "db_file": db_file,
+        "referrals": {
+            "total": int(ref_total),
+            "active": int(ref_active),
+            "by_admission": [dict(r) for r in ref_by_adm],
+        },
+    }
+
 
 @app.post("/api/sensys/admission-tasks/upsert")
 def sensys_admission_tasks_upsert(payload: AdmissionTaskUpsert, request: Request):
