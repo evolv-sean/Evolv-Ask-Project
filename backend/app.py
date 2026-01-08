@@ -2727,8 +2727,19 @@ def init_db():
         CREATE TABLE IF NOT EXISTS sensys_admission_notes (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             admission_id INTEGER NOT NULL,
+
+            -- NOTE TYPE / TEMPLATE KEY (existing behavior)
             note_name    TEXT NOT NULL,
+
+            -- NEW: common fields
+            note_title   TEXT,
+            status       TEXT NOT NULL DEFAULT 'New',
+            response1    TEXT,
+            response2    TEXT,
+
+            -- LEGACY (keep for backward compatibility while UI transitions)
             note_comments TEXT,
+
             created_at   TEXT DEFAULT (datetime('now')),
             created_by   INTEGER, -- user_id
             deleted_at   TEXT,
@@ -2738,8 +2749,24 @@ def init_db():
         )
         """
     )
+
+    # --- SAFE MIGRATION: add new columns if DB already existed without them ---
+    cur.execute("PRAGMA table_info(sensys_admission_notes)")
+    existing_cols = {r[1] for r in cur.fetchall()}
+
+    if "note_title" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN note_title TEXT")
+    if "status" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN status TEXT NOT NULL DEFAULT 'New'")
+    if "response1" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN response1 TEXT")
+    if "response2" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN response2 TEXT")
+
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_adm ON sensys_admission_notes(admission_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_deleted ON sensys_admission_notes(deleted_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_status ON sensys_admission_notes(status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_name ON sensys_admission_notes(note_name)")
 
     # Join table: admission ↔ care team
     cur.execute(
@@ -17636,7 +17663,16 @@ def sensys_admission_details(admission_id: int, request: Request):
     notes = conn.execute(
         """
         SELECT
-            n.id, n.admission_id, n.note_name, n.note_comments,
+            n.id, n.admission_id,
+            n.note_name,
+            n.note_title,
+            n.status,
+            n.response1,
+            n.response2,
+
+            -- keep legacy field available for now
+            n.note_comments,
+
             n.created_at, n.created_by, n.deleted_at, n.updated_at,
             u.display_name AS created_by_name
         FROM sensys_admission_notes n
@@ -17879,7 +17915,17 @@ def sensys_admission_tasks_delete(payload: IdOnly, request: Request):
 class AdmissionNoteUpsert(BaseModel):
     id: Optional[int] = None
     admission_id: int
+
+    # Note type/template key (keep required)
     note_name: str
+
+    # NEW fields
+    note_title: Optional[str] = ""
+    status: Optional[str] = "New"
+    response1: Optional[str] = ""
+    response2: Optional[str] = ""
+
+    # LEGACY (keep so older UI still works)
     note_comments: Optional[str] = ""
 
 @app.post("/api/sensys/admission-notes/upsert")
@@ -17891,17 +17937,30 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
     if not (payload.note_name or "").strip():
         raise HTTPException(status_code=400, detail="note_name is required")
 
+    # Back-compat: if older UI only sends note_comments, treat it like response1
+    effective_response1 = (payload.response1 or "").strip()
+    if not effective_response1 and (payload.note_comments or "").strip():
+        effective_response1 = (payload.note_comments or "").strip()
+
     if payload.id:
         conn.execute(
             """
             UPDATE sensys_admission_notes
                SET note_name = ?,
+                   note_title = ?,
+                   status = ?,
+                   response1 = ?,
+                   response2 = ?,
                    note_comments = ?,
                    updated_at = datetime('now')
              WHERE id = ?
             """,
             (
                 (payload.note_name or "").strip(),
+                (payload.note_title or "").strip(),
+                (payload.status or "New").strip(),
+                effective_response1,
+                (payload.response2 or "").strip(),
                 (payload.note_comments or "").strip(),
                 int(payload.id),
             ),
@@ -17910,13 +17969,17 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
         conn.execute(
             """
             INSERT INTO sensys_admission_notes
-                (admission_id, note_name, note_comments, created_by)
+                (admission_id, note_name, note_title, status, response1, response2, note_comments, created_by)
             VALUES
-                (?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 int(payload.admission_id),
                 (payload.note_name or "").strip(),
+                (payload.note_title or "").strip(),
+                (payload.status or "New").strip(),
+                effective_response1,
+                (payload.response2 or "").strip(),
                 (payload.note_comments or "").strip(),
                 int(u["user_id"]),
             ),
@@ -17924,6 +17987,7 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
 
     conn.commit()
     return {"ok": True}
+
 
 @app.post("/api/sensys/admission-notes/delete")
 def sensys_admission_notes_delete(payload: IdOnly, request: Request):
