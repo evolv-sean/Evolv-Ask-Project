@@ -85,6 +85,17 @@ STATIC_DIR = BASE_DIR / "static"
 
 SNF_DEFAULT_PIN = (os.getenv("SNF_DEFAULT_PIN") or "").strip()
 
+def log_db_write(action, table, details=None):
+    try:
+        logging.info(
+            "[DB-WRITE] action=%s table=%s db=%s details=%s",
+            action,
+            table,
+            DB_PATH,
+            details
+        )
+    except Exception as e:
+        logging.error("[DB-WRITE-LOG-ERROR] %s", e)
 
 def require_admin(request: Request):
     """Simple header-based admin guard via ADMIN_TOKEN env var."""
@@ -15424,6 +15435,8 @@ def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request:
     conn = get_db()
     _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
 
+    op = "update" if payload.id else "insert"
+
     if payload.id:
         conn.execute(
             """
@@ -15447,8 +15460,41 @@ def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request:
     if not new_id:
         new_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
 
-    conn.commit()
+    # ---- WRITE WRAP LOG (db path + verify) ----
+    try:
+        db_row = conn.execute("PRAGMA database_list").fetchone()
+        db_file = (db_row["file"] if db_row and "file" in db_row.keys() else None) or DB_PATH
+
+        conn.commit()
+
+        exists = conn.execute(
+            "SELECT COUNT(1) AS c FROM admission_referrals WHERE id = ?",
+            (int(new_id),),
+        ).fetchone()["c"]
+
+        logger.info(
+            "[SENSYS][WRITE] table=admission_referrals op=%s id=%s admission_id=%s agency_id=%s user_id=%s db=%s verify_exists=%s",
+            op,
+            int(new_id),
+            int(payload.admission_id),
+            int(payload.agency_id),
+            int(u["user_id"]),
+            db_file,
+            int(exists),
+        )
+    except Exception:
+        logger.exception(
+            "[SENSYS][WRITE][ERROR] table=admission_referrals op=%s id=%s admission_id=%s db=%s",
+            op,
+            int(new_id),
+            int(payload.admission_id),
+            DB_PATH,
+        )
+        raise
+    # ------------------------------------------
+
     return {"ok": True, "id": int(new_id)}
+
 
 
 @app.post("/api/sensys/admission-referrals/delete")
@@ -17920,8 +17966,40 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
     if not new_id:
         new_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
 
-    conn.commit()
+    # ---- WRITE WRAP LOG (db path + verify) ----
+    try:
+        db_row = conn.execute("PRAGMA database_list").fetchone()
+        db_file = (db_row["file"] if db_row and "file" in db_row.keys() else None) or DB_PATH
+
+        conn.commit()
+
+        exists = conn.execute(
+            "SELECT COUNT(1) AS c FROM sensys_admission_dc_submissions WHERE id = ?",
+            (int(new_id),),
+        ).fetchone()["c"]
+
+        logger.info(
+            "[SENSYS][WRITE] table=sensys_admission_dc_submissions op=%s id=%s admission_id=%s user_id=%s db=%s verify_exists=%s",
+            ("update" if payload.id else "insert"),
+            int(new_id),
+            int(payload.admission_id),
+            int(u["user_id"]),
+            db_file,
+            int(exists),
+        )
+    except Exception:
+        logger.exception(
+            "[SENSYS][WRITE][ERROR] table=sensys_admission_dc_submissions op=%s id=%s admission_id=%s db=%s",
+            ("update" if payload.id else "insert"),
+            int(new_id),
+            int(payload.admission_id),
+            DB_PATH,
+        )
+        raise
+    # ------------------------------------------
+
     return {"ok": True, "id": int(new_id)}
+
 
 @app.post("/api/sensys/admission-dc-submissions/delete")
 def sensys_admission_dc_submissions_delete(payload: IdOnly, request: Request):
