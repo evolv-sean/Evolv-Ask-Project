@@ -16868,6 +16868,208 @@ async def sensys_admin_care_team_bulk(token: str, file: UploadFile = File(...)):
     conn.commit()
     return {"ok": True, "inserted": inserted, "updated": updated, "error_count": len(errors), "errors": errors[:50]}
 
+# -----------------------------
+# Sensys Admin: Note Templates (list / upsert / delete)
+# -----------------------------
+class SensysNoteTemplateUpsert(BaseModel):
+    id: Optional[int] = None
+    agency_id: Optional[int] = None   # NULL = global template
+    template_name: str
+    active: int = 1
+
+class SensysNoteTemplateDelete(BaseModel):
+    id: int
+
+@app.get("/api/sensys/admin/note-templates")
+def sensys_admin_note_templates(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    templates = conn.execute(
+        """
+        SELECT
+            t.id, t.agency_id, t.template_name, t.active, t.created_at, t.updated_at
+        FROM sensys_note_templates t
+        WHERE t.deleted_at IS NULL
+        ORDER BY
+            CASE WHEN t.agency_id IS NULL THEN 0 ELSE 1 END,
+            t.template_name COLLATE NOCASE
+        """
+    ).fetchall()
+    tpl_list = [dict(r) for r in templates]
+
+    if not tpl_list:
+        return {"ok": True, "templates": []}
+
+    tpl_ids = [int(t["id"]) for t in tpl_list]
+    fields = conn.execute(
+        f"""
+        SELECT
+            id, template_id, field_key, field_label, field_type,
+            required, sort_order, options_json, created_at, updated_at
+        FROM sensys_note_template_fields
+        WHERE deleted_at IS NULL
+          AND template_id IN ({",".join(["?"] * len(tpl_ids))})
+        ORDER BY template_id, sort_order ASC, id ASC
+        """,
+        tuple(tpl_ids),
+    ).fetchall()
+
+    by_tpl = {}
+    for f in fields:
+        d = dict(f)
+        by_tpl.setdefault(int(d["template_id"]), []).append(d)
+
+    for t in tpl_list:
+        t["fields"] = by_tpl.get(int(t["id"]), [])
+
+    return {"ok": True, "templates": tpl_list}
+
+@app.post("/api/sensys/admin/note-templates/upsert")
+def sensys_admin_note_templates_upsert(payload: SensysNoteTemplateUpsert, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    name = (payload.template_name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="template_name is required")
+
+    active = 1 if int(payload.active or 0) == 1 else 0
+    agency_id = int(payload.agency_id) if payload.agency_id else None
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_note_templates
+               SET agency_id = ?,
+                   template_name = ?,
+                   active = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (agency_id, name, active, int(payload.id)),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_note_templates (agency_id, template_name, active)
+            VALUES (?, ?, ?)
+            """,
+            (agency_id, name, active),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+@app.post("/api/sensys/admin/note-templates/delete")
+def sensys_admin_note_templates_delete(payload: SensysNoteTemplateDelete, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    conn.execute(
+        "UPDATE sensys_note_templates SET deleted_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+        (int(payload.id),),
+    )
+    conn.execute(
+        "UPDATE sensys_note_template_fields SET deleted_at = datetime('now'), updated_at = datetime('now') WHERE template_id = ?",
+        (int(payload.id),),
+    )
+    conn.commit()
+    return {"ok": True}
+
+
+# -----------------------------
+# Sensys Admin: Note Template Fields (questions) (upsert / delete)
+# -----------------------------
+class SensysNoteTemplateFieldUpsert(BaseModel):
+    id: Optional[int] = None
+    template_id: int
+    field_key: str
+    field_label: str
+    field_type: str              # text|textarea|number|date|boolean|select
+    required: int = 0
+    sort_order: int = 0
+    options_json: Optional[str] = None   # JSON array string for select options
+
+class SensysNoteTemplateFieldDelete(BaseModel):
+    id: int
+
+@app.post("/api/sensys/admin/note-template-fields/upsert")
+def sensys_admin_note_template_fields_upsert(payload: SensysNoteTemplateFieldUpsert, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    template_id = int(payload.template_id)
+    field_key = (payload.field_key or "").strip()
+    field_label = (payload.field_label or "").strip()
+    field_type = (payload.field_type or "").strip().lower()
+
+    if not template_id:
+        raise HTTPException(status_code=400, detail="template_id is required")
+    if not field_key:
+        raise HTTPException(status_code=400, detail="field_key is required")
+    if not field_label:
+        raise HTTPException(status_code=400, detail="field_label is required")
+
+    if field_type not in ("text", "textarea", "number", "int", "float", "date", "boolean", "checkbox", "select"):
+        raise HTTPException(status_code=400, detail="field_type invalid")
+
+    required = 1 if int(payload.required or 0) == 1 else 0
+    sort_order = int(payload.sort_order or 0)
+
+    options_json = (payload.options_json or "").strip() or None
+    if field_type == "select":
+        # must be valid JSON array string if provided
+        if not options_json:
+            options_json = "[]"
+        try:
+            obj = json.loads(options_json)
+            if not isinstance(obj, list):
+                raise ValueError("options_json must be a JSON array")
+        except Exception:
+            raise HTTPException(status_code=400, detail="options_json must be a valid JSON array string")
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_note_template_fields
+               SET template_id = ?,
+                   field_key = ?,
+                   field_label = ?,
+                   field_type = ?,
+                   required = ?,
+                   sort_order = ?,
+                   options_json = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (template_id, field_key, field_label, field_type, required, sort_order, options_json, int(payload.id)),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_note_template_fields
+                (template_id, field_key, field_label, field_type, required, sort_order, options_json)
+            VALUES
+                (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (template_id, field_key, field_label, field_type, required, sort_order, options_json),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+@app.post("/api/sensys/admin/note-template-fields/delete")
+def sensys_admin_note_template_fields_delete(payload: SensysNoteTemplateFieldDelete, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    conn.execute(
+        "UPDATE sensys_note_template_fields SET deleted_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+        (int(payload.id),),
+    )
+    conn.commit()
+    return {"ok": True}
 
 # =========================================================
 # Sensys Admin: BULK UPLOAD (CSV) — users/agencies/patients/admissions
