@@ -2787,6 +2787,72 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ct_ct ON sensys_admission_care_team(care_team_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ct_deleted ON sensys_admission_care_team(deleted_at)")
 
+    # -----------------------------
+    # Notes: Templates + Fields + User Assignments + Answers
+    # -----------------------------
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sensys_note_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      agency_id INTEGER NULL,                 -- NULL = global, else client-specific by agency
+      template_name TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      deleted_at TEXT
+    )
+    """)
+
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sensys_note_template_fields (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_id INTEGER NOT NULL,
+      field_key TEXT NOT NULL,
+      field_label TEXT NOT NULL,
+      field_type TEXT NOT NULL,               -- text|number|date|boolean|select
+      required INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      options_json TEXT,                      -- JSON array for select options
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      deleted_at TEXT,
+      UNIQUE(template_id, field_key)
+    )
+    """)
+
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sensys_user_note_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      template_id INTEGER NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      deleted_at TEXT,
+      UNIQUE(user_id, template_id)
+    )
+    """)
+
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sensys_admission_note_answers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      note_id INTEGER NOT NULL,
+      field_key TEXT NOT NULL,
+      value_text TEXT,
+      value_num REAL,
+      value_date TEXT,
+      value_bool INTEGER,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      deleted_at TEXT,
+      UNIQUE(note_id, field_key)
+    )
+    """)
+
+    # helpful indexes
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_note_templates_agency ON sensys_note_templates(agency_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_note_fields_template ON sensys_note_template_fields(template_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_note_tpl_user ON sensys_user_note_templates(user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_note_answers_note ON sensys_admission_note_answers(note_id)")
+
+
     # ------------------------------------------------------------
     # Admission referrals / appointments (SENSYS-prefixed tables)
     # Includes a safe startup migration to rename old tables.
