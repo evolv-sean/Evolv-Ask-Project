@@ -2707,9 +2707,34 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ct_adm ON sensys_admission_care_team(admission_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ct_ct ON sensys_admission_care_team(care_team_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ct_deleted ON sensys_admission_care_team(deleted_at)")
+
+    # ✅ Clean up any duplicate pairs BEFORE adding the unique index
+    # Keep the "best" row per (admission_id, care_team_id):
+    #   - prefer deleted_at IS NULL (active link)
+    #   - otherwise keep the lowest id
+    cur.execute(
+        """
+        WITH ranked AS (
+            SELECT
+                id,
+                ROW_NUMBER() OVER (
+                    PARTITION BY admission_id, care_team_id
+                    ORDER BY
+                        CASE WHEN deleted_at IS NULL THEN 0 ELSE 1 END,
+                        id
+                ) AS rn
+            FROM sensys_admission_care_team
+        )
+        DELETE FROM sensys_admission_care_team
+        WHERE id IN (SELECT id FROM ranked WHERE rn > 1)
+        """
+    )
+
+    # ✅ Now it’s safe to add the unique index
     cur.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_sensys_adm_ct_pair ON sensys_admission_care_team(admission_id, care_team_id)"
     )
+
 
     # ---- Safe migrations (in case DB already exists later) ----
     for ddl in [
@@ -17351,7 +17376,24 @@ def sensys_admission_care_team_link(payload: AdmissionCareTeamLink, request: Req
         (int(payload.care_team_id), int(payload.admission_id)),
     )
     conn.commit()
-    return {"ok": True}
+
+    # ✅ Verify it actually exists (prevents "UI looks linked but DB isn't" confusion)
+    row = conn.execute(
+        """
+        SELECT id
+        FROM sensys_admission_care_team
+        WHERE admission_id = ?
+          AND care_team_id = ?
+          AND deleted_at IS NULL
+        """,
+        (int(payload.admission_id), int(payload.care_team_id)),
+    ).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=500, detail="Care team link did not persist to the database.")
+
+    return {"ok": True, "link_id": int(row["id"])}
+
 
 @app.post("/api/sensys/admission-care-team/unlink")
 def sensys_admission_care_team_unlink(payload: IdOnly, request: Request):
