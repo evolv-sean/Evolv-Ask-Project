@@ -2758,11 +2758,40 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ct_deleted ON sensys_admission_care_team(deleted_at)")
 
     # ------------------------------------------------------------
+    # Admission referrals / appointments (SENSYS-prefixed tables)
+    # Includes a safe startup migration to rename old tables.
+    # ------------------------------------------------------------
+
+    # --- SAFE MIGRATION: rename old tables if they exist and new ones do not ---
+    cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='admission_referrals'")
+    old_ref_exists = bool(cur.fetchone())
+    cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sensys_admission_referrals'")
+    new_ref_exists = bool(cur.fetchone())
+    if old_ref_exists and not new_ref_exists:
+        cur.execute("ALTER TABLE admission_referrals RENAME TO sensys_admission_referrals")
+
+    cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='admission_appointments'")
+    old_appt_exists = bool(cur.fetchone())
+    cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sensys_admission_appointments'")
+    new_appt_exists = bool(cur.fetchone())
+    if old_appt_exists and not new_appt_exists:
+        cur.execute("ALTER TABLE admission_appointments RENAME TO sensys_admission_appointments")
+
+    # If old indexes exist with old names, remove them so we can create consistently named ones
+    cur.execute("DROP INDEX IF EXISTS idx_adm_ref_adm")
+    cur.execute("DROP INDEX IF EXISTS idx_adm_ref_agency")
+    cur.execute("DROP INDEX IF EXISTS idx_adm_ref_deleted")
+
+    cur.execute("DROP INDEX IF EXISTS idx_adm_appt_adm")
+    cur.execute("DROP INDEX IF EXISTS idx_adm_appt_status")
+    cur.execute("DROP INDEX IF EXISTS idx_adm_appt_deleted")
+
+    # ------------------------------------------------------------
     # Admission referrals
     # ------------------------------------------------------------
     cur.execute(
         """
-        CREATE TABLE IF NOT EXISTS admission_referrals (
+        CREATE TABLE IF NOT EXISTS sensys_admission_referrals (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             admission_id INTEGER NOT NULL,
             agency_id    INTEGER NOT NULL,
@@ -2776,16 +2805,16 @@ def init_db():
         )
         """
     )
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_adm_ref_adm ON admission_referrals(admission_id)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_adm_ref_agency ON admission_referrals(agency_id)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_adm_ref_deleted ON admission_referrals(deleted_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ref_adm ON sensys_admission_referrals(admission_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ref_agency ON sensys_admission_referrals(agency_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ref_deleted ON sensys_admission_referrals(deleted_at)")
 
     # ------------------------------------------------------------
     # Admission appointments
     # ------------------------------------------------------------
     cur.execute(
         """
-        CREATE TABLE IF NOT EXISTS admission_appointments (
+        CREATE TABLE IF NOT EXISTS sensys_admission_appointments (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             admission_id  INTEGER NOT NULL,
             appt_datetime TEXT,
@@ -2801,9 +2830,9 @@ def init_db():
         )
         """
     )
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_adm_appt_adm ON admission_appointments(admission_id)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_adm_appt_status ON admission_appointments(appt_status)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_adm_appt_deleted ON admission_appointments(deleted_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_appt_adm ON sensys_admission_appointments(admission_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_appt_status ON sensys_admission_appointments(appt_status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_appt_deleted ON sensys_admission_appointments(deleted_at)")
 
 
     # ✅ Clean up any duplicate pairs BEFORE adding the unique index
@@ -15440,7 +15469,7 @@ def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request:
     if payload.id:
         conn.execute(
             """
-            UPDATE admission_referrals
+            UPDATE sensys_admission_referrals
                SET agency_id = ?,
                    updated_at = datetime('now')
              WHERE id = ?
@@ -15450,7 +15479,7 @@ def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request:
     else:
         conn.execute(
             """
-            INSERT INTO admission_referrals (admission_id, agency_id)
+            INSERT INTO sensys_admission_referrals (admission_id, agency_id)
             VALUES (?, ?)
             """,
             (int(payload.admission_id), int(payload.agency_id)),
@@ -15468,12 +15497,12 @@ def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request:
         conn.commit()
 
         exists = conn.execute(
-            "SELECT COUNT(1) AS c FROM admission_referrals WHERE id = ?",
+            "SELECT COUNT(1) AS c FROM sensys_admission_referrals WHERE id = ?",
             (int(new_id),),
         ).fetchone()["c"]
 
         logger.info(
-            "[SENSYS][WRITE] table=admission_referrals op=%s id=%s admission_id=%s agency_id=%s user_id=%s db=%s verify_exists=%s",
+            "[SENSYS][WRITE] table=sensys_admission_referrals op=%s id=%s admission_id=%s agency_id=%s user_id=%s db=%s verify_exists=%s",
             op,
             int(new_id),
             int(payload.admission_id),
@@ -15503,7 +15532,7 @@ def sensys_admission_referrals_delete(payload: IdOnly, request: Request):
     conn = get_db()
 
     row = conn.execute(
-        "SELECT admission_id FROM admission_referrals WHERE id = ? AND deleted_at IS NULL",
+        "SELECT admission_id FROM sensys_admission_referrals WHERE id = ? AND deleted_at IS NULL",
         (int(payload.id),),
     ).fetchone()
     if not row:
@@ -15513,7 +15542,7 @@ def sensys_admission_referrals_delete(payload: IdOnly, request: Request):
 
     conn.execute(
         """
-        UPDATE admission_referrals
+        UPDATE sensys_admission_referrals
            SET deleted_at = datetime('now'),
                updated_at = datetime('now')
          WHERE id = ?
@@ -15543,7 +15572,7 @@ def sensys_admission_appointments_upsert(payload: AdmissionAppointmentUpsert, re
     if payload.id:
         conn.execute(
             """
-            UPDATE admission_appointments
+            UPDATE sensys_admission_appointments
                SET appt_datetime = ?,
                    care_team_id = ?,
                    appt_status = ?,
@@ -15560,7 +15589,7 @@ def sensys_admission_appointments_upsert(payload: AdmissionAppointmentUpsert, re
     else:
         conn.execute(
             """
-            INSERT INTO admission_appointments (admission_id, appt_datetime, care_team_id, appt_status)
+            INSERT INTO sensys_admission_appointments (admission_id, appt_datetime, care_team_id, appt_status)
             VALUES (?, ?, ?, ?)
             """,
             (
@@ -15584,7 +15613,7 @@ def sensys_admission_appointments_delete(payload: IdOnly, request: Request):
     conn = get_db()
 
     row = conn.execute(
-        "SELECT admission_id FROM admission_appointments WHERE id = ? AND deleted_at IS NULL",
+        "SELECT admission_id FROM sensys_admission_appointments WHERE id = ? AND deleted_at IS NULL",
         (int(payload.id),),
     ).fetchone()
     if not row:
@@ -15594,7 +15623,7 @@ def sensys_admission_appointments_delete(payload: IdOnly, request: Request):
 
     conn.execute(
         """
-        UPDATE admission_appointments
+        UPDATE sensys_admission_appointments
            SET deleted_at = datetime('now'),
                updated_at = datetime('now')
          WHERE id = ?
@@ -17322,12 +17351,26 @@ def _sensys_token_from_request(request: Request) -> str:
 def _sensys_require_user(request: Request) -> dict:
     conn = get_db()
     token = _sensys_token_from_request(request)
+
+    # Helpful context for Render logs
+    path = str(getattr(request.url, "path", "") or "")
+    ip = request.client.host if request.client else None
+
+    if not (token or "").strip():
+        logger.warning("[SENSYS][AUTH][MISSING_TOKEN] path=%s ip=%s", path, ip)
+        raise HTTPException(status_code=401, detail="Unauthorized (missing token)")
+
     u = _sensys_get_user_by_token(conn, token)
     if not u:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+        logger.warning("[SENSYS][AUTH][INVALID_OR_EXPIRED_TOKEN] path=%s ip=%s", path, ip)
+        raise HTTPException(status_code=401, detail="Unauthorized (invalid or expired token)")
+
     if int(u.get("is_active") or 0) != 1:
+        logger.warning("[SENSYS][AUTH][USER_INACTIVE] user_id=%s path=%s ip=%s", u.get("user_id"), path, ip)
         raise HTTPException(status_code=403, detail="User inactive")
+
     if int(u.get("account_locked") or 0) == 1:
+        logger.warning("[SENSYS][AUTH][ACCOUNT_LOCKED] user_id=%s path=%s ip=%s", u.get("user_id"), path, ip)
         raise HTTPException(status_code=403, detail="Account locked")
 
     # attach role keys
@@ -17472,7 +17515,13 @@ def _sensys_assert_admission_access(conn, user_id: int, admission_id: int):
         """,
         (int(user_id), int(admission_id)),
     ).fetchone()
+
     if not ok:
+        logger.warning(
+            "[SENSYS][ACCESS][FORBIDDEN_ADMISSION] user_id=%s admission_id=%s",
+            int(user_id),
+            int(admission_id),
+        )
         raise HTTPException(status_code=403, detail="Forbidden: admission not linked to your agencies")
 
 @app.get("/api/sensys/services")
@@ -17655,7 +17704,7 @@ def sensys_admission_details(admission_id: int, request: Request):
             ag.agency_type,
             ar.created_at,
             ar.updated_at
-        FROM admission_referrals ar
+        FROM sensys_admission_referrals ar
         JOIN sensys_agencies ag ON ag.id = ar.agency_id
         WHERE ar.admission_id = ?
           AND ar.deleted_at IS NULL
@@ -17675,7 +17724,7 @@ def sensys_admission_details(admission_id: int, request: Request):
             aa.appt_status,
             aa.created_at,
             aa.updated_at
-        FROM admission_appointments aa
+        FROM sensys_admission_appointments aa
         LEFT JOIN sensys_care_team ct ON ct.id = aa.care_team_id
         WHERE aa.admission_id = ?
           AND aa.deleted_at IS NULL
