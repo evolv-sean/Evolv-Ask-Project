@@ -386,19 +386,14 @@ SMTP_PORT         = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER         = os.getenv("SMTP_USER", INTAKE_EMAIL_FROM or "")
 SMTP_PASSWORD     = os.getenv("SMTP_PASSWORD", "")
 
-# Optional: direct URL back to the Facility Details page (?f=&t=)
-FACILITY_FORM_BASE_URL = os.getenv("FACILITY_FORM_BASE_URL", "")
-
-
 # ---------------------------------------------------------------------------
-# Email / SMTP config for Facility Details intake notifications
+# RingCentral / SMS config
 # ---------------------------------------------------------------------------
-INTAKE_EMAIL_FROM = os.getenv("INTAKE_EMAIL_FROM", "")
-INTAKE_EMAIL_TO   = os.getenv("INTAKE_EMAIL_TO", "")
-SMTP_HOST         = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT         = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER         = os.getenv("SMTP_USER", INTAKE_EMAIL_FROM or "")
-SMTP_PASSWORD     = os.getenv("SMTP_PASSWORD", "")
+RC_SERVER_URL    = os.getenv("RC_SERVER_URL", "https://platform.ringcentral.com")
+RC_CLIENT_ID     = os.getenv("RC_CLIENT_ID", "")
+RC_CLIENT_SECRET = os.getenv("RC_CLIENT_SECRET", "")
+RC_JWT           = os.getenv("RC_JWT", "")
+RC_FROM_NUMBER   = os.getenv("RC_FROM_NUMBER", "")  # E.164 format, ex: +15551234567
 
 # Optional: direct URL back to the Facility Details page (?f=&t=)
 FACILITY_FORM_BASE_URL = os.getenv("FACILITY_FORM_BASE_URL", "")
@@ -478,6 +473,57 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
 
 def _safe(s: str) -> str:
     return (s or "").strip()
+
+import requests
+
+_rc_token_cache = {"token": None, "exp": 0}
+
+def _rc_get_access_token():
+    now = time.time()
+    if _rc_token_cache["token"] and now < _rc_token_cache["exp"] - 60:
+        return _rc_token_cache["token"]
+
+    if not (RC_CLIENT_ID and RC_CLIENT_SECRET and RC_JWT):
+        raise RuntimeError("RingCentral credentials not configured")
+
+    resp = requests.post(
+        f"{RC_SERVER_URL}/restapi/oauth/token",
+        data={
+            "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+            "assertion": RC_JWT,
+        },
+        auth=(RC_CLIENT_ID, RC_CLIENT_SECRET),
+        timeout=20,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+
+    _rc_token_cache["token"] = data["access_token"]
+    _rc_token_cache["exp"] = now + int(data.get("expires_in", 3600))
+    return _rc_token_cache["token"]
+
+
+def send_sms_rc(to_number: str, text: str, from_number: str | None = None):
+    token = _rc_get_access_token()
+
+    payload = {
+        "from": {"phoneNumber": from_number or RC_FROM_NUMBER},
+        "to": [{"phoneNumber": to_number}],
+        "text": text,
+    }
+
+    r = requests.post(
+        f"{RC_SERVER_URL}/restapi/v1.0/account/~/extension/~/sms",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=20,
+    )
+    r.raise_for_status()
+    return r.json()
+
 
 def _split_name(full: str) -> tuple[str, str]:
     full = _safe(full)
@@ -2305,6 +2351,44 @@ def init_db():
         )
         """
     )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_sms_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT DEFAULT (datetime('now')),
+            created_by_user_id INTEGER,
+
+            -- ✅ NEW: link SMS to an admission
+            admission_id INTEGER,
+
+            -- optional but helpful for later (inbound SMS, etc.)
+            direction TEXT DEFAULT 'outbound',
+
+            to_phone TEXT NOT NULL,
+            from_phone TEXT,
+            message TEXT,
+            rc_message_id TEXT,
+            status TEXT,
+            error TEXT,
+
+            FOREIGN KEY(admission_id) REFERENCES sensys_admissions(id)
+        )
+        """
+    )
+
+    # ✅ SAFE MIGRATIONS for sensys_sms_log (older DBs)
+    for ddl in [
+        "ALTER TABLE sensys_sms_log ADD COLUMN admission_id INTEGER",
+        "ALTER TABLE sensys_sms_log ADD COLUMN direction TEXT DEFAULT 'outbound'",
+    ]:
+        try:
+            cur.execute(ddl)
+        except sqlite3.Error:
+            pass
+
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_sms_log_adm ON sensys_sms_log(admission_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_sms_log_created ON sensys_sms_log(created_at)")
 
     # Ensure debug_sql column exists on older DBs
     try:
@@ -13531,6 +13615,62 @@ def get_snf_universal_pin_hash(cur) -> str:
     row = cur.fetchone()
     return ((row["value"] if row else "") or "").strip()
 
+@app.post("/admin/sms/send")
+async def admin_send_sms(
+    request: Request,
+    payload: Dict[str, Any] = Body(...),
+):
+    require_admin(request)
+
+    to_phone = (payload.get("to_phone") or "").strip()
+    text = (payload.get("text") or "").strip()
+
+    if not to_phone or not text:
+        raise HTTPException(status_code=400, detail="to_phone and text are required")
+
+    conn = get_db()
+    try:
+        try:
+            rc_resp = send_sms_rc(to_phone, text)
+            msg_id = rc_resp.get("id") or ""
+            status = "sent"
+            error = ""
+        except Exception as e:
+            logger.exception("SMS send failed")
+            msg_id = ""
+            status = "error"
+            error = str(e)
+
+        admission_id = payload.get("admission_id")
+        admission_id = int(admission_id) if str(admission_id or "").strip().isdigit() else None
+
+        conn.execute(
+            """
+            INSERT INTO sensys_sms_log
+            (created_by_user_id, admission_id, direction, to_phone, from_phone, message, rc_message_id, status, error)
+            VALUES (?, ?, 'outbound', ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                request.state.user["user_id"],
+                admission_id,
+                to_phone,
+                RC_FROM_NUMBER,
+                text,
+                msg_id,
+                status,
+                error,
+            ),
+        )
+        conn.commit()
+
+        if status != "sent":
+            raise HTTPException(status_code=500, detail="SMS failed to send")
+
+        return {"ok": True, "message_id": msg_id}
+    finally:
+        conn.close()
+
+
 @app.get("/admin/snf/universal-pin/get")
 async def admin_snf_universal_pin_get(request: Request):
     require_admin(request)
@@ -17923,6 +18063,97 @@ def _sensys_assert_admission_access(conn, user_id: int, admission_id: int):
             int(admission_id),
         )
         raise HTTPException(status_code=403, detail="Forbidden: admission not linked to your agencies")
+
+class SensysAdmissionSmsSend(BaseModel):
+    admission_id: int
+    to_phone: str
+    text: str
+    from_phone: Optional[str] = None  # optional override (rare)
+
+
+@app.get("/api/sensys/admission-sms/{admission_id}")
+def sensys_admission_sms_list(admission_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    try:
+        _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+
+        rows = conn.execute(
+            """
+            SELECT
+                id, created_at, created_by_user_id, admission_id, direction,
+                to_phone, from_phone, message, rc_message_id, status, error
+            FROM sensys_sms_log
+            WHERE admission_id = ?
+            ORDER BY datetime(created_at) DESC, id DESC
+            LIMIT 100
+            """,
+            (int(admission_id),),
+        ).fetchall()
+
+        return {"ok": True, "sms": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+
+@app.post("/api/sensys/admission-sms/send")
+def sensys_admission_sms_send(payload: SensysAdmissionSmsSend, request: Request):
+    u = _sensys_require_user(request)
+
+    admission_id = int(payload.admission_id)
+    to_phone = (payload.to_phone or "").strip()
+    text = (payload.text or "").strip()
+    from_phone = (payload.from_phone or "").strip() or RC_FROM_NUMBER
+
+    if not admission_id:
+        raise HTTPException(status_code=400, detail="admission_id is required")
+    if not to_phone or not text:
+        raise HTTPException(status_code=400, detail="to_phone and text are required")
+    if not from_phone:
+        raise HTTPException(status_code=400, detail="RC_FROM_NUMBER is not configured")
+
+    conn = get_db()
+    try:
+        _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+
+        try:
+            rc_resp = send_sms_rc(to_phone, text, from_number=from_phone)
+            msg_id = rc_resp.get("id") or ""
+            status = "sent"
+            error = ""
+        except Exception as e:
+            logger.exception("[SENSYS][SMS][SEND_FAILED] admission_id=%s to=%s", admission_id, to_phone)
+            msg_id = ""
+            status = "error"
+            error = str(e)
+
+        cur = conn.execute(
+            """
+            INSERT INTO sensys_sms_log
+              (created_by_user_id, admission_id, direction, to_phone, from_phone, message, rc_message_id, status, error)
+            VALUES
+              (?, ?, 'outbound', ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(u["user_id"]),
+                admission_id,
+                to_phone,
+                from_phone,
+                text,
+                msg_id,
+                status,
+                error,
+            ),
+        )
+        conn.commit()
+
+        if status != "sent":
+            raise HTTPException(status_code=500, detail="SMS failed to send")
+
+        return {"ok": True, "id": int(cur.lastrowid), "message_id": msg_id}
+    finally:
+        conn.close()
+
 
 @app.get("/api/sensys/services")
 def sensys_services(request: Request):
