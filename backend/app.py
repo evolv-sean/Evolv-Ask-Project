@@ -2361,7 +2361,7 @@ def init_db():
 
             agency_name   TEXT NOT NULL,
             agency_type   TEXT NOT NULL,  -- Hospital, SNF, Home Health, IRF, LTACH, Hospice, Outpatient PT
-
+            aliases       TEXT DEFAULT '',
             facility_code TEXT DEFAULT '',
             notes         TEXT DEFAULT '',
             notes2        TEXT DEFAULT '',
@@ -2498,6 +2498,10 @@ def init_db():
 
             patient_id          INTEGER NOT NULL,
             agency_id           INTEGER NOT NULL,
+            
+            mrn                 TEXT,               
+            visit_id            TEXT,          
+            facility_code       TEXT,      
 
             admit_date          TEXT,
             dc_date             TEXT,
@@ -2714,6 +2718,55 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ct_adm ON sensys_admission_care_team(admission_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ct_ct ON sensys_admission_care_team(care_team_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ct_deleted ON sensys_admission_care_team(deleted_at)")
+
+    # ------------------------------------------------------------
+    # Admission referrals
+    # ------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS admission_referrals (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            admission_id INTEGER NOT NULL,
+            agency_id    INTEGER NOT NULL,
+
+            created_at   TEXT DEFAULT (datetime('now')),
+            updated_at   TEXT DEFAULT (datetime('now')),
+            deleted_at   TEXT,
+
+            FOREIGN KEY(admission_id) REFERENCES sensys_admissions(id),
+            FOREIGN KEY(agency_id) REFERENCES sensys_agencies(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_adm_ref_adm ON admission_referrals(admission_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_adm_ref_agency ON admission_referrals(agency_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_adm_ref_deleted ON admission_referrals(deleted_at)")
+
+    # ------------------------------------------------------------
+    # Admission appointments
+    # ------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS admission_appointments (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            admission_id  INTEGER NOT NULL,
+            appt_datetime TEXT,
+            care_team_id  INTEGER,
+            appt_status   TEXT NOT NULL DEFAULT 'New',  -- New, Attended, Missed, Rescheduled
+
+            created_at    TEXT DEFAULT (datetime('now')),
+            updated_at    TEXT DEFAULT (datetime('now')),
+            deleted_at    TEXT,
+
+            FOREIGN KEY(admission_id) REFERENCES sensys_admissions(id),
+            FOREIGN KEY(care_team_id) REFERENCES sensys_care_team(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_adm_appt_adm ON admission_appointments(admission_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_adm_appt_status ON admission_appointments(appt_status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_adm_appt_deleted ON admission_appointments(deleted_at)")
+
 
     # ✅ Clean up any duplicate pairs BEFORE adding the unique index
     # Keep the "best" row per (admission_id, care_team_id):
@@ -4059,7 +4112,14 @@ def init_db():
 
     # NEW: Medrina SNF flag (0/1)
     ensure_column(conn, "snf_admission_facilities", "medrina_snf", "medrina_snf INTEGER DEFAULT 0")
-
+    
+    # ✅ ensure new columns exist (safe migration)
+    ensure_column(conn, "sensys_agencies", "aliases", "TEXT")
+    
+    # ✅ ensure new columns exist (safe migration)
+    ensure_column(conn, "sensys_admissions", "mrn", "TEXT")
+    ensure_column(conn, "sensys_admissions", "visit_id", "TEXT")
+    ensure_column(conn, "sensys_admissions", "facility_code", "TEXT")
 
     # Secure expiring links table (store only token HASH, never the raw token)
     cur.execute(
@@ -15109,7 +15169,7 @@ class SensysAgencyUpsert(BaseModel):
     id: Optional[int] = None
     agency_name: str
     agency_type: str
-
+    aliases: Optional[str] = None
     facility_code: Optional[str] = ""
     notes: Optional[str] = ""
     notes2: Optional[str] = ""
@@ -15169,6 +15229,11 @@ class SensysAdmissionUpsert(BaseModel):
 
     patient_id: int
     agency_id: int
+
+    # ✅ NEW: admission identifiers
+    mrn: Optional[str] = ""
+    visit_id: Optional[str] = ""
+    facility_code: Optional[str] = ""
 
     admit_date: Optional[str] = ""
     dc_date: Optional[str] = ""
@@ -15237,6 +15302,19 @@ def sensys_admin_roles(token: str):
 
     return {"roles": [dict(r) for r in rows]}
 
+@app.get("/api/sensys/agencies")
+def sensys_agencies_list(request: Request):
+    _sensys_require_user(request)
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT id, agency_name, agency_type
+        FROM sensys_agencies
+        WHERE deleted_at IS NULL
+        ORDER BY agency_name COLLATE NOCASE
+        """
+    ).fetchall()
+    return {"ok": True, "agencies": [dict(r) for r in rows]}
 
 # -----------------------------
 # Sensys Admin: list users + roles + facilities
@@ -15307,6 +15385,122 @@ def sensys_admin_users(token: str):
 
 
     return {"users": out}
+
+class AdmissionReferralUpsert(BaseModel):
+    id: Optional[int] = None
+    admission_id: int
+    agency_id: int
+
+@app.post("/api/sensys/admission-referrals/upsert")
+def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE admission_referrals
+               SET agency_id = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (int(payload.agency_id), int(payload.id)),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO admission_referrals (admission_id, agency_id)
+            VALUES (?, ?)
+            """,
+            (int(payload.admission_id), int(payload.agency_id)),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+@app.post("/api/sensys/admission-referrals/delete")
+def sensys_admission_referrals_delete(payload: IdOnly, request: Request):
+    _sensys_require_user(request)
+    conn = get_db()
+    conn.execute(
+        """
+        UPDATE admission_referrals
+           SET deleted_at = datetime('now'),
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (int(payload.id),),
+    )
+    conn.commit()
+    return {"ok": True}
+
+class AdmissionAppointmentUpsert(BaseModel):
+    id: Optional[int] = None
+    admission_id: int
+    appt_datetime: Optional[str] = ""   # store as ISO string from UI
+    care_team_id: Optional[int] = None
+    appt_status: str = "New"            # New, Attended, Missed, Rescheduled
+
+@app.post("/api/sensys/admission-appointments/upsert")
+def sensys_admission_appointments_upsert(payload: AdmissionAppointmentUpsert, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
+
+    st = (payload.appt_status or "New").strip()
+    if st not in ("New", "Attended", "Missed", "Rescheduled"):
+        raise HTTPException(status_code=400, detail="appt_status invalid")
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE admission_appointments
+               SET appt_datetime = ?,
+                   care_team_id = ?,
+                   appt_status = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (
+                (payload.appt_datetime or "").strip(),
+                int(payload.care_team_id) if payload.care_team_id else None,
+                st,
+                int(payload.id),
+            ),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO admission_appointments (admission_id, appt_datetime, care_team_id, appt_status)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                int(payload.admission_id),
+                (payload.appt_datetime or "").strip(),
+                int(payload.care_team_id) if payload.care_team_id else None,
+                st,
+            ),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+@app.post("/api/sensys/admission-appointments/delete")
+def sensys_admission_appointments_delete(payload: IdOnly, request: Request):
+    _sensys_require_user(request)
+    conn = get_db()
+    conn.execute(
+        """
+        UPDATE admission_appointments
+           SET deleted_at = datetime('now'),
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (int(payload.id),),
+    )
+    conn.commit()
+    return {"ok": True}
 
 
 # -----------------------------
@@ -15973,6 +16167,11 @@ def sensys_admin_admissions(token: str):
             a.agency_id,
             ag.agency_name AS agency_name,
 
+            -- ✅ NEW
+            a.mrn,
+            a.visit_id,
+            a.facility_code,
+
             a.admit_date,
             a.dc_date,
             a.room,
@@ -16015,6 +16214,12 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
             UPDATE sensys_admissions
                SET patient_id = ?,
                    agency_id = ?,
+
+                   -- ✅ NEW
+                   mrn = ?,
+                   visit_id = ?,
+                   facility_code = ?,
+
                    admit_date = ?,
                    dc_date = ?,
                    room = ?,
@@ -16032,6 +16237,12 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
             (
                 int(payload.patient_id),
                 int(payload.agency_id),
+
+                # ✅ NEW
+                (payload.mrn or "").strip(),
+                (payload.visit_id or "").strip(),
+                (payload.facility_code or "").strip(),
+
                 (payload.admit_date or "").strip(),
                 (payload.dc_date or "").strip(),
                 (payload.room or "").strip(),
@@ -16050,7 +16261,9 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
         conn.execute(
             """
             INSERT INTO sensys_admissions
-                (patient_id, agency_id, admit_date, dc_date, room,
+                (patient_id, agency_id,
+                 mrn, visit_id, facility_code,
+                 admit_date, dc_date, room,
                  referring_agency, reason, latest_pcp,
                  notes1, notes2, active,
                  next_location, next_agency_id)
@@ -16063,6 +16276,12 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
             (
                 int(payload.patient_id),
                 int(payload.agency_id),
+
+                # ✅ NEW
+                (payload.mrn or "").strip(),
+                (payload.visit_id or "").strip(),
+                (payload.facility_code or "").strip(),
+
                 (payload.admit_date or "").strip(),
                 (payload.dc_date or "").strip(),
                 (payload.room or "").strip(),
@@ -16829,6 +17048,12 @@ async def sensys_admin_admissions_bulk(token: str, file: UploadFile = File(...))
             vals = (
                 int(patient_id),
                 int(agency_id),
+
+                # ✅ NEW
+                (r.get("mrn", "") or "").strip(),
+                (r.get("visit_id", "") or "").strip(),
+                (r.get("facility_code", "") or "").strip(),
+
                 (r.get("admit_date", "") or "").strip(),
                 (r.get("dc_date", "") or "").strip(),
                 (r.get("room", "") or "").strip(),
@@ -16846,10 +17071,16 @@ async def sensys_admin_admissions_bulk(token: str, file: UploadFile = File(...))
                 conn.execute(
                     """
                     UPDATE sensys_admissions
-                       SET patient_id = ?,
-                           agency_id = ?,
-                           admit_date = ?,
-                           dc_date = ?,
+                        SET patient_id = ?,
+                            agency_id = ?,
+
+                            -- ✅ NEW
+                            mrn = ?,
+                            visit_id = ?,
+                            facility_code = ?,
+
+                            admit_date = ?,
+                            dc_date = ?,
                            room = ?,
                            referring_agency = ?,
                            reason = ?,
@@ -16869,7 +17100,9 @@ async def sensys_admin_admissions_bulk(token: str, file: UploadFile = File(...))
                 conn.execute(
                     """
                     INSERT INTO sensys_admissions
-                        (patient_id, agency_id, admit_date, dc_date, room,
+                        (patient_id, agency_id,
+                         mrn, visit_id, facility_code,
+                         admit_date, dc_date, room,
                          referring_agency, reason, latest_pcp,
                          notes1, notes2, active,
                          next_location, next_agency_id)
@@ -17309,6 +17542,44 @@ def sensys_admission_details(admission_id: int, request: Request):
         (int(admission_id),),
     ).fetchall()
 
+    referrals = conn.execute(
+        """
+        SELECT
+            ar.id,
+            ar.agency_id,
+            ag.agency_name,
+            ag.agency_type,
+            ar.created_at,
+            ar.updated_at
+        FROM admission_referrals ar
+        JOIN sensys_agencies ag ON ag.id = ar.agency_id
+        WHERE ar.admission_id = ?
+          AND ar.deleted_at IS NULL
+        ORDER BY ag.agency_name COLLATE NOCASE
+        """,
+        (int(admission_id),),
+    ).fetchall()
+
+    appointments = conn.execute(
+        """
+        SELECT
+            aa.id,
+            aa.appt_datetime,
+            aa.care_team_id,
+            ct.name AS care_team_name,
+            ct.type AS care_team_type,
+            aa.appt_status,
+            aa.created_at,
+            aa.updated_at
+        FROM admission_appointments aa
+        LEFT JOIN sensys_care_team ct ON ct.id = aa.care_team_id
+        WHERE aa.admission_id = ?
+          AND aa.deleted_at IS NULL
+        ORDER BY COALESCE(aa.appt_datetime, '') DESC, aa.id DESC
+        """,
+        (int(admission_id),),
+    ).fetchall()
+
     return {
         "ok": True,
         "admission": dict(admission),
@@ -17316,7 +17587,12 @@ def sensys_admission_details(admission_id: int, request: Request):
         "notes": [dict(r) for r in notes],
         "dc_submissions": dc_out,
         "care_team": [dict(r) for r in care_team_links],
+
+        # ✅ NEW
+        "referrals": [dict(r) for r in referrals],
+        "appointments": [dict(r) for r in appointments],
     }
+
 
 class AdmissionTaskUpsert(BaseModel):
     id: Optional[int] = None
