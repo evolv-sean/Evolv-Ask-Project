@@ -153,6 +153,39 @@
           </table>
         </div>
       </div>
+      <!-- SMS -->
+      <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <div style="font-size:13px;color:#111827;font-weight:800;">SMS</div>
+        </div>
+
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <input id="smsToPhone" placeholder="To phone (E.164 preferred, e.g. +15551234567)"
+            style="width:280px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+          <input id="smsText" placeholder="Message"
+            style="flex:1;min-width:300px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+          <button id="sendSmsBtn"
+            style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+            Send SMS
+          </button>
+        </div>
+
+        <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+          <table style="width:100%;border-collapse:collapse;min-width:760px;">
+            <thead>
+              <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">To</th>
+                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Message</th>
+                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Created</th>
+                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Status</th>
+              </tr>
+            </thead>
+            <tbody id="smsTbody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- DC submissions (full width) -->
@@ -412,6 +445,7 @@
   let DETAILS = null;
   let AGENCIES = [];
   let NOTE_TEMPLATES = []; // ✅ NEW
+  let SMS_LOG = [];
 
   function escapeHtml(s) {
     return (s || '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
@@ -584,6 +618,23 @@
         } catch(e) { showMsg(e.message); }
       });
     });
+  }
+
+  function renderSms(){
+    const tb = document.getElementById('smsTbody');
+    if(!tb) return;
+
+    const rows = (SMS_LOG || []);
+    tb.innerHTML = rows.map(r => `
+      <tr style="border-bottom:1px solid #eef0f5;">
+        <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.to_phone || '')}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.message || '')}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.created_at || '')}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">
+          ${escapeHtml(r.status || '')}${r.error ? (' • ' + escapeHtml(r.error)) : ''}
+        </td>
+      </tr>
+    `).join('');
   }
 
   function renderReferralsSelect(){
@@ -850,12 +901,13 @@
 
   async function loadAll() {
     showMsg('');
-    const [details, services, careTeam, agencies, noteTemplates] = await Promise.all([
+    const [details, services, careTeam, agencies, noteTemplates, smsLogs] = await Promise.all([
       api('/api/sensys/admission-details/' + ADMISSION_ID, { method:'GET' }),
       api('/api/sensys/services', { method:'GET' }),
       api('/api/sensys/care-team', { method:'GET' }),
       api('/api/sensys/agencies', { method:'GET' }),
-      api('/api/sensys/note-templates', { method:'GET' }) // ✅ NEW
+      api('/api/sensys/note-templates', { method:'GET' }),
+      api('/api/sensys/admission-sms/' + ADMISSION_ID, { method:'GET' })
     ]);
 
     DETAILS = details;
@@ -866,10 +918,11 @@
     NOTE_TEMPLATES = (noteTemplates && noteTemplates.templates) || [];
     renderNoteTemplatesSelect();
     renderDynamicNoteFieldsForSelectedTemplate();
-
+    SMS_LOG = (smsLogs && smsLogs.sms) || [];
     renderHeader();
     renderTasks();
     renderNotes();
+    renderSms();
     renderDc();
     renderDcServicesMulti();
     renderReferralsSelect();   // ✅ NEW
@@ -879,6 +932,32 @@
     renderCareTeamSelect();
     renderCareTeamLinked();
   }
+
+  document.getElementById('sendSmsBtn')?.addEventListener('click', async () => {
+    try{
+      showMsg('');
+      const to_phone = document.getElementById('smsToPhone').value.trim();
+      const text = document.getElementById('smsText').value.trim();
+
+      if(!to_phone) throw new Error("SMS not sent: missing To phone.");
+      if(!text) throw new Error("SMS not sent: missing message text.");
+      if(!ADMISSION_ID) throw new Error("SMS not sent: missing ADMISSION_ID.");
+
+      await api('/api/sensys/admission-sms/send', {
+        method:'POST',
+        body: JSON.stringify({
+          admission_id: Number(ADMISSION_ID),
+          to_phone,
+          text
+        })
+      });
+
+      document.getElementById('smsText').value = '';
+      await loadAll();
+    }catch(e){
+      showMsg(e.message || 'SMS not sent.');
+    }
+  });
 
   document.getElementById('refreshBtn').addEventListener('click', () => loadAll().catch(e => showMsg(e.message)));
 
