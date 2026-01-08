@@ -15565,6 +15565,260 @@ def _patient_key(first_name: str, last_name: str, dob: str) -> str:
 
 
 # -----------------------------
+# Patient fuzzy-match helpers (DOB anchor + close name)
+# -----------------------------
+_SUFFIXES = {"jr", "sr", "ii", "iii", "iv"}
+_NICKNAMES = {
+    "bob": {"robert"},
+    "bobby": {"robert"},
+    "rob": {"robert"},
+    "bill": {"william"},
+    "billy": {"william"},
+    "will": {"william"},
+    "kate": {"katherine", "kathryn", "catherine"},
+    "kathy": {"katherine", "kathryn", "catherine"},
+    "liz": {"elizabeth"},
+    "beth": {"elizabeth"},
+    "jim": {"james"},
+    "jimmy": {"james"},
+    "mike": {"michael"},
+    "tony": {"anthony"},
+    "dave": {"david"},
+    "steve": {"steven", "stephen"},
+}
+
+def _norm_name(s: str) -> str:
+    s = (s or "").strip().lower()
+    # keep letters/numbers/spaces; remove punctuation
+    out = []
+    for ch in s:
+        if ch.isalnum() or ch.isspace():
+            out.append(ch)
+        # else drop punctuation like . , ' -
+    s = "".join(out)
+    # collapse spaces
+    s = " ".join(s.split())
+    # drop suffix tokens
+    toks = [t for t in s.split() if t not in _SUFFIXES]
+    return " ".join(toks).strip()
+
+def _first_token(s: str) -> str:
+    s = _norm_name(s)
+    return s.split()[0] if s else ""
+
+def _last_token(s: str) -> str:
+    s = _norm_name(s)
+    return s.split()[-1] if s else ""
+
+def _nick_equiv(a: str, b: str) -> bool:
+    a = _first_token(a)
+    b = _first_token(b)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    return (b in _NICKNAMES.get(a, set())) or (a in _NICKNAMES.get(b, set()))
+
+def _levenshtein(a: str, b: str, max_dist: int = 2) -> int:
+    """
+    Small Levenshtein with early-exit when distance > max_dist.
+    """
+    a = a or ""
+    b = b or ""
+    if a == b:
+        return 0
+    if abs(len(a) - len(b)) > max_dist:
+        return max_dist + 1
+
+    # DP rows
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        cur = [i]
+        row_min = cur[0]
+        for j, cb in enumerate(b, start=1):
+            ins = cur[j - 1] + 1
+            dele = prev[j] + 1
+            sub = prev[j - 1] + (0 if ca == cb else 1)
+            v = ins if ins < dele else dele
+            if sub < v:
+                v = sub
+            cur.append(v)
+            if v < row_min:
+                row_min = v
+        if row_min > max_dist:
+            return max_dist + 1
+        prev = cur
+    return prev[-1]
+
+def _score_last_name(in_ln: str, db_ln: str) -> int:
+    a = _last_token(in_ln)
+    b = _last_token(db_ln)
+    if not a or not b:
+        return 0
+    if a == b:
+        return 100
+    if a[:4] and b.startswith(a[:4]) or b[:4] and a.startswith(b[:4]):
+        # strong prefix similarity
+        return 88
+    d = _levenshtein(a, b, max_dist=2)
+    if d == 1:
+        return 90
+    if d == 2:
+        return 80
+    return 0
+
+def _score_first_name(in_fn: str, db_fn: str) -> int:
+    a = _first_token(in_fn)
+    b = _first_token(db_fn)
+    if not a or not b:
+        return 0
+    if a == b:
+        return 100
+    if _nick_equiv(a, b):
+        return 95
+    if a[:3] and b.startswith(a[:3]) or b[:3] and a.startswith(b[:3]):
+        return 82
+    d = _levenshtein(a, b, max_dist=2)
+    if d == 1:
+        return 86
+    if d == 2:
+        return 76
+    return 0
+
+def _create_patient_from_admission_row(conn, r: dict) -> int:
+    first = (r.get("patient_first_name", "") or "").strip()
+    last = (r.get("patient_last_name", "") or "").strip()
+    dob = (r.get("patient_dob", "") or "").strip()
+
+    if not (first and last and dob):
+        raise ValueError("patient_id OR (patient_first_name + patient_last_name + patient_dob) is required")
+
+    external_patient_id = (r.get("patient_external_patient_id", "") or "").strip()
+    mrn = (r.get("patient_mrn", "") or "").strip()
+
+    firstname_initial = (first[:1].upper() if first else "")
+    lastname_three = ((last[:3].upper()) if last else "")
+    pkey = _patient_key(first, last, dob)
+
+    conn.execute(
+        """
+        INSERT INTO sensys_patients
+            (first_name, last_name, dob,
+             active, source,
+             firstname_initial, lastname_three, patient_key,
+             external_patient_id, mrn)
+        VALUES
+            (?, ?, ?,
+             1, 'bulk_admissions',
+             ?, ?, ?,
+             ?, ?)
+        """,
+        (first, last, dob, firstname_initial, lastname_three, pkey, external_patient_id, mrn),
+    )
+    return int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+
+def _find_or_create_patient_for_admission_row(conn, r: dict, cache: dict | None = None) -> int:
+    """
+    Finds/creates patient_id for admissions bulk.
+    If ambiguous match on DOB+fuzzy-name -> CREATE NEW (per user request).
+    """
+    cache = cache or {}
+
+    # 1) explicit patient_id
+    explicit_id = _to_int(r.get("patient_id"))
+    if explicit_id:
+        return int(explicit_id)
+
+    # normalize inputs
+    dob = (r.get("patient_dob", "") or "").strip()
+    first_in = (r.get("patient_first_name", "") or "").strip()
+    last_in = (r.get("patient_last_name", "") or "").strip()
+    ext_in = (r.get("patient_external_patient_id", "") or "").strip()
+    mrn_in = (r.get("patient_mrn", "") or "").strip()
+
+    # cache key (prevents duplicates in same CSV)
+    ck = None
+    if ext_in:
+        ck = f"ext|{ext_in}"
+    elif mrn_in:
+        ck = f"mrn|{mrn_in}"
+    elif dob and first_in and last_in:
+        ck = f"dobname|{dob.strip()}|{_first_token(first_in)}|{_last_token(last_in)}"
+    if ck and ck in cache:
+        return cache[ck]
+
+    # 2) external_patient_id
+    if ext_in:
+        row = conn.execute(
+            "SELECT id FROM sensys_patients WHERE external_patient_id = ? AND deleted_at IS NULL",
+            (ext_in,),
+        ).fetchone()
+        if row:
+            pid = int(row["id"])
+            if ck:
+                cache[ck] = pid
+            return pid
+
+    # 3) mrn
+    if mrn_in:
+        row = conn.execute(
+            "SELECT id FROM sensys_patients WHERE mrn = ? AND deleted_at IS NULL",
+            (mrn_in,),
+        ).fetchone()
+        if row:
+            pid = int(row["id"])
+            if ck:
+                cache[ck] = pid
+            return pid
+
+    # 4) DOB + fuzzy name
+    if dob:
+        candidates = conn.execute(
+            """
+            SELECT id, first_name, last_name
+              FROM sensys_patients
+             WHERE dob = ?
+               AND deleted_at IS NULL
+            """,
+            (dob,),
+        ).fetchall()
+
+        scored = []
+        for c in candidates:
+            ln_score = _score_last_name(last_in, c["last_name"])
+            fn_score = _score_first_name(first_in, c["first_name"])
+
+            # require decent last+first to even consider
+            if ln_score >= 80 and fn_score >= 76:
+                total = int(round(ln_score * 0.6 + fn_score * 0.4))
+                scored.append((total, int(c["id"])))
+
+        if scored:
+            scored.sort(reverse=True)  # highest first
+            best_total, best_id = scored[0]
+
+            # ambiguous if another candidate is too close
+            ambiguous = any((best_total - t) <= 4 for (t, _) in scored[1:])
+
+            if (best_total >= 86) and (not ambiguous):
+                if ck:
+                    cache[ck] = best_id
+                return best_id
+
+            # ambiguous or not strong enough -> CREATE NEW (your rule)
+            pid = _create_patient_from_admission_row(conn, r)
+            if ck:
+                cache[ck] = pid
+            return pid
+
+    # 5) no match path -> create (requires first+last+dob)
+    pid = _create_patient_from_admission_row(conn, r)
+    if ck:
+        cache[ck] = pid
+    return pid
+
+
+# -----------------------------
 # Sensys Admin: upsert patient
 # -----------------------------
 @app.post("/api/sensys/admin/patients/upsert")
@@ -16548,10 +16802,14 @@ async def sensys_admin_admissions_bulk(token: str, file: UploadFile = File(...))
     for idx, r in enumerate(rows, start=2):
         try:
             aid = _to_int(r.get("id"))
-            patient_id = _to_int(r.get("patient_id"))
+
+            # cache prevents creating duplicates within the same CSV upload
+            if "patient_cache" not in locals():
+                patient_cache = {}
+
+            patient_id = _find_or_create_patient_for_admission_row(conn, r, patient_cache)
+
             agency_id = _to_int(r.get("agency_id"))
-            if not patient_id:
-                raise ValueError("patient_id is required")
             if not agency_id:
                 raise ValueError("agency_id is required")
 
