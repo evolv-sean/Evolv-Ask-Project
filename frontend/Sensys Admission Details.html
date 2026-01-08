@@ -943,7 +943,9 @@
       if(!text) throw new Error("SMS not sent: missing message text.");
       if(!ADMISSION_ID) throw new Error("SMS not sent: missing ADMISSION_ID.");
 
-      await api('/api/sensys/admission-sms/send', {
+      console.log('[SENSYS][SMS][SUBMIT]', { admission_id: Number(ADMISSION_ID), to_phone, text_len: text.length });
+
+      const resp = await api('/api/sensys/admission-sms/send', {
         method:'POST',
         body: JSON.stringify({
           admission_id: Number(ADMISSION_ID),
@@ -951,6 +953,13 @@
           text
         })
       });
+
+      console.log('[SENSYS][SMS][SENT]', resp);
+      showMsg(`SMS sent • sms_log_id=${resp.id} • rc_message_id=${resp.message_id}`);
+
+      document.getElementById('smsText').value = '';
+      await loadAll();
+
 
       document.getElementById('smsText').value = '';
       await loadAll();
