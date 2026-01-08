@@ -2381,7 +2381,8 @@ def init_db():
             evolv_client  INTEGER DEFAULT 0,
 
             created_at    TEXT DEFAULT (datetime('now')),
-            updated_at    TEXT DEFAULT (datetime('now'))
+            updated_at    TEXT DEFAULT (datetime('now')),
+            deleted_at    TEXT
         )
         """
     )
