@@ -326,17 +326,28 @@
 
   async function api(path, opts) {
     const t = token();
-    if (!t) throw new Error("Missing token. Please log in again.");
+    if (!t) {
+      // Front-end visible error + console error
+      console.error('[SENSYS][API][ERROR] Missing token for request:', path);
+      showMsg("Missing token. Please log in again.");
+      throw new Error("Missing token. Please log in again.");
+    }
 
-    const res = await fetch(path, {
-      ...(opts || {}),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + t,
-        ...((opts && opts.headers) || {})
-      }
-    });
-
+    let res;
+    try {
+      res = await fetch(path, {
+        ...(opts || {}),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + t,
+          ...((opts && opts.headers) || {})
+        }
+      });
+    } catch (err) {
+      console.error('[SENSYS][API][NETWORK_ERROR]', path, err);
+      showMsg("Network error calling " + path + ". Check connection / server logs.");
+      throw err;
+    }
 
     if (!res.ok) {
       let msg = 'Request failed (' + res.status + ')';
@@ -344,10 +355,23 @@
         const j = await res.json();
         if (j && j.detail) msg = j.detail;
       } catch (e) {}
+
+      console.error('[SENSYS][API][HTTP_ERROR]', path, res.status, msg);
+
+      // If auth-related, give a clearer message
+      if (res.status === 401) {
+        msg = "Unauthorized (401). Your session may be expired. Please log in again.";
+      } else if (res.status === 403) {
+        msg = "Forbidden (403). You may not have access to this admission.";
+      }
+
+      showMsg(msg + " (Endpoint: " + path + ")");
       throw new Error(msg);
     }
+
     return await res.json();
   }
+
 
   let ADMISSION_ID = null;
   let SERVICES = [];
@@ -727,12 +751,19 @@
   });
 
   document.getElementById('addReferralBtn')?.addEventListener('click', async () => {
+    const endpoint = '/api/sensys/admission-referrals/upsert';
+
     try{
       showMsg('');
-      const agencyId = document.getElementById('referralAgencySelect').value;
-      if(!agencyId) throw new Error("Select an agency first.");
 
-      await api('/api/sensys/admission-referrals/upsert', {
+      const agencyId = document.getElementById('referralAgencySelect').value;
+      if(!agencyId) throw new Error("Referral not saved: please select an agency first.");
+
+      if(!ADMISSION_ID) throw new Error("Referral not saved: missing ADMISSION_ID on page.");
+
+      console.log('[SENSYS][REFERRAL][SUBMIT]', { admission_id: Number(ADMISSION_ID), agency_id: Number(agencyId) });
+
+      await api(endpoint, {
         method:'POST',
         body: JSON.stringify({
           admission_id: Number(ADMISSION_ID),
@@ -742,8 +773,12 @@
 
       document.getElementById('referralAgencySelect').value = '';
       await loadAll();
-    }catch(e){ showMsg(e.message); }
+    }catch(e){
+      console.error('[SENSYS][REFERRAL][ERROR]', endpoint, e);
+      showMsg((e && e.message ? e.message : 'Referral not saved due to an unknown error.') + " (Referrals)");
+    }
   });
+
 
   document.getElementById('addApptBtn')?.addEventListener('click', async () => {
     try{
