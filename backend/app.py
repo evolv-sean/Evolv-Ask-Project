@@ -185,16 +185,23 @@ def normalize_date_to_iso(value: Any) -> Optional[str]:
 
     cleaned = s.replace("-", "/")
 
-    m = re.fullmatch(r"(\d{2})/(\d{2})/(\d{4})", cleaned)
+    # MM/DD/YYYY (allow 1 or 2 digit month/day)
+    m = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", cleaned)
     if m:
-        mm, dd, yyyy = m.group(1), m.group(2), m.group(3)
-        return f"{yyyy}-{mm}-{dd}"
+        mm = int(m.group(1))
+        dd = int(m.group(2))
+        yyyy = int(m.group(3))
+        return f"{yyyy:04d}-{mm:02d}-{dd:02d}"
 
-    m = re.fullmatch(r"(\d{2})/(\d{2})/(\d{2})", cleaned)
+    # MM/DD/YY (allow 1 or 2 digit month/day)
+    m = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{2})", cleaned)
     if m:
-        mm, dd, yy = m.group(1), m.group(2), int(m.group(3))
+        mm = int(m.group(1))
+        dd = int(m.group(2))
+        yy = int(m.group(3))
         yyyy = 2000 + yy if yy <= 69 else 1900 + yy
-        return f"{yyyy:04d}-{mm}-{dd}"
+        return f"{yyyy:04d}-{mm:02d}-{dd:02d}"
+
 
     # If it’s some other format we don’t recognize, don’t destroy it
     return s
@@ -15688,7 +15695,8 @@ def _score_first_name(in_fn: str, db_fn: str) -> int:
 def _create_patient_from_admission_row(conn, r: dict) -> int:
     first = (r.get("patient_first_name", "") or "").strip()
     last = (r.get("patient_last_name", "") or "").strip()
-    dob = (r.get("patient_dob", "") or "").strip()
+    dob_raw = (r.get("patient_dob", "") or "").strip()
+    dob = (normalize_date_to_iso(dob_raw) or "").strip()
 
     if not (first and last and dob):
         raise ValueError("patient_id OR (patient_first_name + patient_last_name + patient_dob) is required")
@@ -15730,7 +15738,8 @@ def _find_or_create_patient_for_admission_row(conn, r: dict, cache: dict | None 
         return int(explicit_id)
 
     # normalize inputs
-    dob = (r.get("patient_dob", "") or "").strip()
+    dob_raw = (r.get("patient_dob", "") or "").strip()
+    dob = (normalize_date_to_iso(dob_raw) or "").strip()
     first_in = (r.get("patient_first_name", "") or "").strip()
     last_in = (r.get("patient_last_name", "") or "").strip()
     ext_in = (r.get("patient_external_patient_id", "") or "").strip()
@@ -15828,7 +15837,8 @@ def sensys_admin_patients_upsert(payload: SensysPatientUpsert, token: str):
 
     first = (payload.first_name or "").strip()
     last = (payload.last_name or "").strip()
-    dob = (payload.dob or "").strip()
+    dob_raw = (payload.dob or "").strip()
+    dob = (normalize_date_to_iso(dob_raw) or "").strip()
 
     firstname_initial = (first[:1].upper() if first else "")
     lastname_three = ((last[:3].upper()) if last else "")
@@ -16689,7 +16699,8 @@ async def sensys_admin_patients_bulk(token: str, file: UploadFile = File(...)):
             pid = _to_int(r.get("id"))
             first = (r.get("first_name", "") or "").strip()
             last = (r.get("last_name", "") or "").strip()
-            dob = (r.get("dob", "") or "").strip()
+            dob_raw = (r.get("dob", "") or "").strip()
+            dob = (normalize_date_to_iso(dob_raw) or "").strip()
 
             firstname_initial = (first[:1].upper() if first else "")
             lastname_three = ((last[:3].upper()) if last else "")
