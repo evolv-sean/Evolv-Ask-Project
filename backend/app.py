@@ -2388,6 +2388,30 @@ def init_db():
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_agencies_name ON sensys_agencies(agency_name)")
 
+    # ---- Safe migrations for older DBs (idempotent) ----
+    for ddl in [
+        "ALTER TABLE sensys_agencies ADD COLUMN aliases TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN facility_code TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN notes TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN notes2 TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN address TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN city TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN state TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN zip TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN phone1 TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN phone2 TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN email TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN fax TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN evolv_client INTEGER DEFAULT 0",
+        "ALTER TABLE sensys_agencies ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))",
+        "ALTER TABLE sensys_agencies ADD COLUMN deleted_at TEXT",
+    ]:
+        try:
+            cur.execute(ddl)
+        except sqlite3.Error:
+            # duplicate column name → already exists
+            pass
+
     # User <-> Agency (many-to-many)
     cur.execute(
         """
