@@ -93,14 +93,31 @@ SNF_PDF_RENDER_DELAY_SEC = float(os.getenv("SNF_PDF_RENDER_DELAY_SEC", "0.2"))
 
 SNF_PDF_RENDER_SEM = asyncio.Semaphore(SNF_PDF_RENDER_CONCURRENCY)
 
-async def _render_snf_pdf_throttled(html_doc: str) -> bytes:
+async def _render_snf_pdf_throttled(html_doc: str, *, label: str = "snf-pdf") -> bytes:
     """
     WeasyPrint is CPU/RAM heavy. This function ensures only N renders run at once
     (default N=1) and adds a tiny delay to smooth bursts.
     """
+    wait_t0 = time.perf_counter()
+
+    # Note: we log BEFORE acquire, then after acquire we log how long we waited.
     async with SNF_PDF_RENDER_SEM:
+        waited_ms = int((time.perf_counter() - wait_t0) * 1000)
+        render_t0 = time.perf_counter()
+
+        logger.info(
+            "[SNF-PDF] start label=%s waited_ms=%s concurrency=%s delay_sec=%s",
+            label, waited_ms, SNF_PDF_RENDER_CONCURRENCY, SNF_PDF_RENDER_DELAY_SEC
+        )
+
         # Run the heavy render off the event loop thread
         pdf_bytes = await asyncio.to_thread(lambda: WEASY_HTML(string=html_doc).write_pdf())
+
+        render_ms = int((time.perf_counter() - render_t0) * 1000)
+        logger.info(
+            "[SNF-PDF] done  label=%s render_ms=%s pdf_bytes=%s",
+            label, render_ms, len(pdf_bytes) if pdf_bytes else 0
+        )
 
         if SNF_PDF_RENDER_DELAY_SEC > 0:
             await asyncio.sleep(SNF_PDF_RENDER_DELAY_SEC)
@@ -14925,7 +14942,10 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
         else:
             # CHANGE: throttle WeasyPrint renders so multiple opens don't spike CPU
             html_doc = build_snf_pdf_html(facility_name, for_date, rows, attending)
-            pdf_bytes = await _render_snf_pdf_throttled(html_doc)
+            pdf_bytes = await _render_snf_pdf_throttled(
+                html_doc,
+                label=f"secure-open link_id={link['id']} facility_id={snf_facility_id}"
+            )
             cur.execute(
                 "UPDATE snf_secure_links SET pdf_bytes = ?, pdf_generated_at = datetime('now') WHERE id = ?",
                 (pdf_bytes, link["id"]),
@@ -15090,7 +15110,10 @@ async def admin_snf_email_pdf(
         # CHANGE: throttle WeasyPrint renders so 10–20 sends don't melt the CPU/RAM
         try:
             html_doc = build_snf_pdf_html(facility_name, for_date, rows, attending)
-            pdf_bytes = await _render_snf_pdf_throttled(html_doc)
+            pdf_bytes = await _render_snf_pdf_throttled(
+                html_doc,
+                label=f"email-pdf email_run_id={email_run_id} facility_id={snf_facility_id}"
+            )
             cur.execute(
                 "UPDATE snf_secure_links SET pdf_bytes = ?, pdf_generated_at = datetime('now') WHERE token_hash = ? AND email_run_id = ?",
                 (pdf_bytes, token_hash, email_run_id),
