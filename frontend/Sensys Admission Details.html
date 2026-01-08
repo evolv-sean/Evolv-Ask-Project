@@ -46,7 +46,7 @@
     </div>
 
     <!-- GRID -->
-    <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+    <div style="margin-top:14px;display:grid;grid-template-columns:1fr;gap:14px;">
       <!-- Tasks -->
       <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
@@ -196,6 +196,82 @@
       </div>
     </div>
 
+    <!-- Referrals (full width) -->
+    <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div style="font-size:13px;color:#111827;font-weight:800;">Referrals</div>
+      </div>
+
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <select id="referralAgencySelect"
+          style="flex:1;min-width:320px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+          <option value="">Loading agencies…</option>
+        </select>
+
+        <button id="addReferralBtn"
+          style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+          Add Referral
+        </button>
+      </div>
+
+      <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+        <table style="width:100%;border-collapse:collapse;min-width:900px;">
+          <thead>
+            <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Agency</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Type</th>
+              <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="referralsTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Appointments (full width) -->
+    <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div style="font-size:13px;color:#111827;font-weight:800;">Appointments</div>
+      </div>
+
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <select id="apptCareTeamSelect"
+          style="flex:1;min-width:320px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+          <option value="">Loading care team…</option>
+        </select>
+
+        <input id="apptDatetime" type="datetime-local"
+          style="width:240px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+        <select id="apptStatus"
+          style="width:210px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+          <option>New</option>
+          <option>Attended</option>
+          <option>Missed</option>
+          <option>Rescheduled</option>
+        </select>
+
+        <button id="addApptBtn"
+          style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+          Add Appointment
+        </button>
+      </div>
+
+      <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+        <table style="width:100%;border-collapse:collapse;min-width:1050px;">
+          <thead>
+            <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Date/Time</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Care Team</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Status</th>
+              <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="apptsTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- Care team (full width) -->
     <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
@@ -277,6 +353,7 @@
   let SERVICES = [];
   let CARE_TEAM = [];
   let DETAILS = null;
+  let AGENCIES = [];
 
   function escapeHtml(s) {
     return (s || '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
@@ -345,6 +422,99 @@
           });
           await loadAll();
         } catch(e) { showMsg(e.message); }
+      });
+    });
+  }
+
+  function renderReferralsSelect(){
+    const sel = document.getElementById('referralAgencySelect');
+    if(!sel) return;
+
+    sel.innerHTML = ['<option value="">Select an agency…</option>']
+      .concat((AGENCIES || []).map(a => {
+        const label = (a.agency_name || '') + (a.agency_type ? (' — ' + a.agency_type) : '');
+        return `<option value="${a.id}">${escapeHtml(label)}</option>`;
+      }))
+      .join('');
+  }
+
+  function renderReferrals(){
+    const tb = document.getElementById('referralsTbody');
+    if(!tb) return;
+
+    const rows = (DETAILS && DETAILS.referrals) || [];
+    tb.innerHTML = rows.map(r => {
+      return `
+        <tr style="border-bottom:1px solid #eef0f5;">
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.agency_name || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.agency_type || '')}</td>
+          <td style="padding:10px;text-align:right;">
+            <button data-del-ref="${r.id}"
+              style="padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+              Delete
+            </button>
+          </td>
+        </tr>`;
+    }).join('');
+
+    tb.querySelectorAll('[data-del-ref]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-del-ref');
+        try{
+          showMsg('');
+          await api('/api/sensys/admission-referrals/delete', {
+            method:'POST',
+            body: JSON.stringify({ id: Number(id) })
+          });
+          await loadAll();
+        }catch(e){ showMsg(e.message); }
+      });
+    });
+  }
+
+  function renderAppointmentsSelect(){
+    const sel = document.getElementById('apptCareTeamSelect');
+    if(!sel) return;
+
+    sel.innerHTML = ['<option value="">Select a care team person…</option>']
+      .concat((CARE_TEAM || []).map(c => {
+        const label = (c.name || '') + ' — ' + (c.type || '');
+        return `<option value="${c.id}">${escapeHtml(label)}</option>`;
+      }))
+      .join('');
+  }
+
+  function renderAppointments(){
+    const tb = document.getElementById('apptsTbody');
+    if(!tb) return;
+
+    const rows = (DETAILS && DETAILS.appointments) || [];
+    tb.innerHTML = rows.map(r => {
+      return `
+        <tr style="border-bottom:1px solid #eef0f5;">
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.appt_datetime || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.care_team_name || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.appt_status || '')}</td>
+          <td style="padding:10px;text-align:right;">
+            <button data-del-appt="${r.id}"
+              style="padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+              Delete
+            </button>
+          </td>
+        </tr>`;
+    }).join('');
+
+    tb.querySelectorAll('[data-del-appt]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-del-appt');
+        try{
+          showMsg('');
+          await api('/api/sensys/admission-appointments/delete', {
+            method:'POST',
+            body: JSON.stringify({ id: Number(id) })
+          });
+          await loadAll();
+        }catch(e){ showMsg(e.message); }
       });
     });
   }
@@ -520,21 +690,27 @@
 
   async function loadAll() {
     showMsg('');
-    const [details, services, careTeam] = await Promise.all([
+    const [details, services, careTeam, agencies] = await Promise.all([
       api('/api/sensys/admission-details/' + ADMISSION_ID, { method:'GET' }),
       api('/api/sensys/services', { method:'GET' }),
-      api('/api/sensys/care-team', { method:'GET' })
+      api('/api/sensys/care-team', { method:'GET' }),
+      api('/api/sensys/agencies', { method:'GET' }) // ✅ NEW
     ]);
 
     DETAILS = details;
     SERVICES = (services && services.services) || [];
     CARE_TEAM = (careTeam && careTeam.care_team) || [];
+    AGENCIES = (agencies && agencies.agencies) || []; // ✅ NEW
 
     renderHeader();
     renderTasks();
     renderNotes();
     renderDc();
     renderDcServicesMulti();
+    renderReferralsSelect();   // ✅ NEW
+    renderReferrals();         // ✅ NEW
+    renderAppointmentsSelect();// ✅ NEW
+    renderAppointments();      // ✅ NEW
     renderCareTeamSelect();
     renderCareTeamLinked();
   }
@@ -548,6 +724,51 @@
 
   document.getElementById('backBtn').addEventListener('click', () => {
     window.location.href = '/sensys/snf-sw';
+  });
+
+  document.getElementById('addReferralBtn')?.addEventListener('click', async () => {
+    try{
+      showMsg('');
+      const agencyId = document.getElementById('referralAgencySelect').value;
+      if(!agencyId) throw new Error("Select an agency first.");
+
+      await api('/api/sensys/admission-referrals/upsert', {
+        method:'POST',
+        body: JSON.stringify({
+          admission_id: Number(ADMISSION_ID),
+          agency_id: Number(agencyId)
+        })
+      });
+
+      document.getElementById('referralAgencySelect').value = '';
+      await loadAll();
+    }catch(e){ showMsg(e.message); }
+  });
+
+  document.getElementById('addApptBtn')?.addEventListener('click', async () => {
+    try{
+      showMsg('');
+      const careTeamId = document.getElementById('apptCareTeamSelect').value;
+      const dt = document.getElementById('apptDatetime').value;
+      const st = document.getElementById('apptStatus').value;
+
+      if(!dt) throw new Error("Select an appointment date/time first.");
+
+      await api('/api/sensys/admission-appointments/upsert', {
+        method:'POST',
+        body: JSON.stringify({
+          admission_id: Number(ADMISSION_ID),
+          appt_datetime: dt,
+          care_team_id: careTeamId ? Number(careTeamId) : null,
+          appt_status: st
+        })
+      });
+
+      document.getElementById('apptCareTeamSelect').value = '';
+      document.getElementById('apptDatetime').value = '';
+      document.getElementById('apptStatus').value = 'New';
+      await loadAll();
+    }catch(e){ showMsg(e.message); }
   });
 
   document.getElementById('addTaskBtn').addEventListener('click', async () => {
