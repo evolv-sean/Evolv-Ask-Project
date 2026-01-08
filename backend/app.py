@@ -4114,12 +4114,12 @@ def init_db():
     ensure_column(conn, "snf_admission_facilities", "medrina_snf", "medrina_snf INTEGER DEFAULT 0")
     
     # ✅ ensure new columns exist (safe migration)
-    ensure_column(conn, "sensys_agencies", "aliases", "TEXT")
+    ensure_column(conn, "sensys_agencies", "aliases", "aliases TEXT")
     
     # ✅ ensure new columns exist (safe migration)
-    ensure_column(conn, "sensys_admissions", "mrn", "TEXT")
-    ensure_column(conn, "sensys_admissions", "visit_id", "TEXT")
-    ensure_column(conn, "sensys_admissions", "facility_code", "TEXT")
+    ensure_column(conn, "sensys_admissions", "mrn", "mrn TEXT")
+    ensure_column(conn, "sensys_admissions", "visit_id", "visit_id TEXT")
+    ensure_column(conn, "sensys_admissions", "facility_code", "facility_code TEXT")
 
     # Secure expiring links table (store only token HASH, never the raw token)
     cur.execute(
