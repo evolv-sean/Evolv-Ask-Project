@@ -15443,13 +15443,28 @@ def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request:
             (int(payload.admission_id), int(payload.agency_id)),
         )
 
+    new_id = payload.id
+    if not new_id:
+        new_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
     conn.commit()
-    return {"ok": True}
+    return {"ok": True, "id": int(new_id)}
+
 
 @app.post("/api/sensys/admission-referrals/delete")
 def sensys_admission_referrals_delete(payload: IdOnly, request: Request):
-    _sensys_require_user(request)
+    u = _sensys_require_user(request)
     conn = get_db()
+
+    row = conn.execute(
+        "SELECT admission_id FROM admission_referrals WHERE id = ? AND deleted_at IS NULL",
+        (int(payload.id),),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Referral not found (or already deleted)")
+
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(row["admission_id"]))
+
     conn.execute(
         """
         UPDATE admission_referrals
@@ -15510,13 +15525,27 @@ def sensys_admission_appointments_upsert(payload: AdmissionAppointmentUpsert, re
             ),
         )
 
+    new_id = payload.id
+    if not new_id:
+        new_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
     conn.commit()
-    return {"ok": True}
+    return {"ok": True, "id": int(new_id)}
 
 @app.post("/api/sensys/admission-appointments/delete")
 def sensys_admission_appointments_delete(payload: IdOnly, request: Request):
-    _sensys_require_user(request)
+    u = _sensys_require_user(request)
     conn = get_db()
+
+    row = conn.execute(
+        "SELECT admission_id FROM admission_appointments WHERE id = ? AND deleted_at IS NULL",
+        (int(payload.id),),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Appointment not found (or already deleted)")
+
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(row["admission_id"]))
+
     conn.execute(
         """
         UPDATE admission_appointments
@@ -17523,9 +17552,11 @@ def sensys_admission_details(admission_id: int, request: Request):
             dc_destination, destination_comments, dc_with,
             hh_comments, dme_comments, aid_consult, pcp_freetext,
             coordinate_caregiver, caregiver_name, caregiver_number,
-            apealling_dc, appeal_comments
+            apealling_dc, appeal_comments,
+            updated_at, deleted_at
         FROM sensys_admission_dc_submissions
         WHERE admission_id = ?
+          AND deleted_at IS NULL
         ORDER BY id DESC
         """,
         (int(admission_id),),
@@ -17811,8 +17842,11 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                    caregiver_name = ?,
                    caregiver_number = ?,
                    apealling_dc = ?,
-                   appeal_comments = ?
+                   appeal_comments = ?,
+                   updated_at = datetime('now')
              WHERE id = ?
+               AND admission_id = ?
+               AND deleted_at IS NULL
             """,
             (
                 (payload.dc_date or "").strip(),
@@ -17833,8 +17867,14 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                 int(payload.apealling_dc or 0),
                 (payload.appeal_comments or "").strip(),
                 int(payload.id),
+                int(payload.admission_id),
             ),
         )
+
+        # If the update didn't touch a row, fail loudly so the UI doesn't "think" it saved
+        if conn.total_changes == 0:
+            raise HTTPException(status_code=404, detail="DC submission not found (or was deleted)")
+
     else:
         conn.execute(
             """
