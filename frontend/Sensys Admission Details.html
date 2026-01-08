@@ -763,13 +763,16 @@
 
       console.log('[SENSYS][REFERRAL][SUBMIT]', { admission_id: Number(ADMISSION_ID), agency_id: Number(agencyId) });
 
-      await api(endpoint, {
+      const resp = await api(endpoint, {
         method:'POST',
         body: JSON.stringify({
           admission_id: Number(ADMISSION_ID),
           agency_id: Number(agencyId)
         })
       });
+
+      console.log('[SENSYS][REFERRAL][SAVED]', resp);
+      showMsg(`Referral saved (id ${resp.id}) • verify=${resp.verify_exists} • db=${resp.db_file}`);
 
       document.getElementById('referralAgencySelect').value = '';
       await loadAll();
