@@ -18204,32 +18204,80 @@ def sensys_admission_sms_send(payload: SensysAdmissionSmsSend, request: Request)
         try:
             rc_resp = send_sms_rc(to_phone, text, from_number=from_phone)
             msg_id = (rc_resp.get("id") or "")
-            # Try to capture a meaningful status if RC provides one
+
+            # RingCentral commonly returns "Queued" for accepted messages
             status = (rc_resp.get("messageStatus") or rc_resp.get("status") or "sent") or "sent"
+            error = ""
 
-            ...
-            conn.commit()
+            try:
+                rc_json = json.dumps(rc_resp)[:8000]
+            except Exception:
+                rc_json = ""
 
-            # ✅ RingCentral often returns "Queued" for accepted messages.
-            # Treat these as success states.
-            ok_statuses = {"sent", "queued", "sending", "delivered", "received"}
-            status_norm = (status or "").strip().lower()
+            logger.info(
+                "[SENSYS][SMS][SEND_OK] admission_id=%s to=%s rc_id=%s status=%s",
+                admission_id,
+                to_phone,
+                msg_id,
+                status,
+            )
+        except Exception as e:
+            logger.exception("[SENSYS][SMS][SEND_FAILED] admission_id=%s to=%s", admission_id, to_phone)
+            msg_id = ""
+            status = "error"
+            error = str(e)
+            try:
+                rc_json = json.dumps({"error": str(e)})[:8000]
+            except Exception:
+                rc_json = ""
 
-            if status_norm not in ok_statuses:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"SMS not accepted by provider (status={status})"
-                )
+        cur = conn.execute(
+            """
+            INSERT INTO sensys_sms_log
+              (created_by_user_id, admission_id, direction, to_phone, from_phone, message, rc_message_id, status, error, rc_response_json)
+            VALUES
+              (?, ?, 'outbound', ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(u["user_id"]),
+                admission_id,
+                to_phone,
+                from_phone,
+                text,
+                msg_id,
+                status,
+                error,
+                rc_json,
+            ),
+        )
 
-            return {
-                "ok": True,
-                "id": int(cur.lastrowid),
-                "message_id": msg_id,
-                "provider_status": status
-            }
+        logger.info(
+            "[SENSYS][SMS][DB_WRITE] admission_id=%s sms_log_id=%s status=%s rc_id=%s",
+            admission_id,
+            int(cur.lastrowid),
+            status,
+            msg_id,
+        )
+        conn.commit()
+
+        ok_statuses = {"sent", "queued", "sending", "delivered", "received"}
+        status_norm = (status or "").strip().lower()
+        if status_norm not in ok_statuses:
+            raise HTTPException(
+                status_code=500,
+                detail=f"SMS not accepted by provider (status={status})",
+            )
+
+        return {
+            "ok": True,
+            "id": int(cur.lastrowid),
+            "message_id": msg_id,
+            "provider_status": status,
+        }
 
     finally:
         conn.close()
+
 
 
 @app.get("/api/sensys/services")
