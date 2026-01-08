@@ -85,6 +85,29 @@ STATIC_DIR = BASE_DIR / "static"
 
 SNF_DEFAULT_PIN = (os.getenv("SNF_DEFAULT_PIN") or "").strip()
 
+# -----------------------------
+# SNF PDF render throttling (prevents CPU/RAM spikes when sending 10–20 at once)
+# -----------------------------
+SNF_PDF_RENDER_CONCURRENCY = max(1, int(os.getenv("SNF_PDF_RENDER_CONCURRENCY", "1")))
+SNF_PDF_RENDER_DELAY_SEC = float(os.getenv("SNF_PDF_RENDER_DELAY_SEC", "0.2"))
+
+SNF_PDF_RENDER_SEM = asyncio.Semaphore(SNF_PDF_RENDER_CONCURRENCY)
+
+async def _render_snf_pdf_throttled(html_doc: str) -> bytes:
+    """
+    WeasyPrint is CPU/RAM heavy. This function ensures only N renders run at once
+    (default N=1) and adds a tiny delay to smooth bursts.
+    """
+    async with SNF_PDF_RENDER_SEM:
+        # Run the heavy render off the event loop thread
+        pdf_bytes = await asyncio.to_thread(lambda: WEASY_HTML(string=html_doc).write_pdf())
+
+        if SNF_PDF_RENDER_DELAY_SEC > 0:
+            await asyncio.sleep(SNF_PDF_RENDER_DELAY_SEC)
+
+        return pdf_bytes
+
+
 def log_db_write(action, table, details=None):
     try:
         logging.info(
@@ -4336,6 +4359,10 @@ def init_db():
     ensure_column(conn, "snf_secure_links", "email_run_id", "email_run_id TEXT")
     ensure_column(conn, "snf_secure_links", "sent_to",     "sent_to TEXT")
     ensure_column(conn, "snf_secure_links", "sent_at",     "sent_at TEXT")
+
+    # NEW: cache PDF for the secure link (avoid WeasyPrint on recipient open)
+    ensure_column(conn, "snf_secure_links", "pdf_bytes",        "pdf_bytes BLOB")
+    ensure_column(conn, "snf_secure_links", "pdf_generated_at", "pdf_generated_at TEXT")
 
     
 # -------------------------------------------------------------------
@@ -14398,6 +14425,16 @@ async def snf_secure_link_get(token: str, request: Request):
     conn = get_db()
     try:
         cur = conn.cursor()
+
+        # NEW: clear cached PDFs for expired links (keep row for audit)
+        _now_iso = dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+        cur.execute(
+            "UPDATE snf_secure_links SET pdf_bytes = NULL "
+            "WHERE pdf_bytes IS NOT NULL AND expires_at < ?",
+            (_now_iso,),
+        )
+        conn.commit()
+
         cur.execute(
             """
             SELECT id, snf_facility_id, for_date, expires_at
@@ -14688,9 +14725,19 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
     conn = get_db()
     try:
         cur = conn.cursor()
+
+        # NEW: clear cached PDFs for expired links (keep row for audit)
+        _now_iso = dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+        cur.execute(
+            "UPDATE snf_secure_links SET pdf_bytes = NULL "
+            "WHERE pdf_bytes IS NOT NULL AND expires_at < ?",
+            (_now_iso,),
+        )
+        conn.commit()
+
         cur.execute(
             """
-            SELECT id, snf_facility_id, admission_ids, for_date, expires_at
+            SELECT id, snf_facility_id, admission_ids, for_date, expires_at, pdf_bytes, pdf_generated_at
             FROM snf_secure_links
             WHERE token_hash = ?
             ORDER BY id DESC
@@ -14872,8 +14919,19 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
         facility_name = fac["facility_name"] or "SNF facility"
         attending = fac["attending"] or ""
 
-        html_doc = build_snf_pdf_html(facility_name, for_date, rows, attending)
-        pdf_bytes = WEASY_HTML(string=html_doc).write_pdf()
+        # FAST PATH: reuse cached PDF (no WeasyPrint)
+        if link["pdf_bytes"]:
+            pdf_bytes = link["pdf_bytes"]
+        else:
+            # CHANGE: throttle WeasyPrint renders so multiple opens don't spike CPU
+            html_doc = build_snf_pdf_html(facility_name, for_date, rows, attending)
+            pdf_bytes = await _render_snf_pdf_throttled(html_doc)
+            cur.execute(
+                "UPDATE snf_secure_links SET pdf_bytes = ?, pdf_generated_at = datetime('now') WHERE id = ?",
+                (pdf_bytes, link["id"]),
+            )
+            conn.commit()
+
 
         # mark used_at (audit)
         cur.execute("UPDATE snf_secure_links SET used_at = datetime('now') WHERE id = ?", (link["id"],))
@@ -15021,14 +15079,29 @@ async def admin_snf_email_pdf(
 
         cur.execute(
             """
-            INSERT INTO snf_secure_links (token_hash, snf_facility_id, admission_ids, for_date, expires_at, email_run_id, sent_to)
+            INSERT INTO snf_secure_links (token_hash, snf..._id, admission_ids, for_date, expires_at, email_run_id, sent_to)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (token_hash, snf_facility_id, json.dumps(admission_ids), for_date, expires_at, email_run_id, to_addr),
         )
         conn.commit()
 
+        # NEW: pre-render + cache the PDF NOW (so recipients don't trigger CPU spikes)
+        # CHANGE: throttle WeasyPrint renders so 10–20 sends don't melt the CPU/RAM
+        try:
+            html_doc = build_snf_pdf_html(facility_name, for_date, rows, attending)
+            pdf_bytes = await _render_snf_pdf_throttled(html_doc)
+            cur.execute(
+                "UPDATE snf_secure_links SET pdf_bytes = ?, pdf_generated_at = datetime('now') WHERE token_hash = ? AND email_run_id = ?",
+                (pdf_bytes, token_hash, email_run_id),
+            )
+            conn.commit()
+        except Exception as e:
+            # Don't fail sending the email if PDF caching fails — just log it
+            print("[snf-email-pdf] pre-render cache failed:", repr(e))
+
         secure_url = f"{base_url}/snf/secure/{raw_token}"
+
 
         # ✅ NEW: build the outbound email (HTML + plain text)
         sent_date = dt.date.today().isoformat()  # date the email is sent (today)
