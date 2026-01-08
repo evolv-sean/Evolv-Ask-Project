@@ -374,6 +374,7 @@
         </div>
         <div class="navitem" id="tabServices">Services</div>
         <div class="navitem" id="tabCareTeam">Care Team</div>
+        <div class="navitem" id="tabNotes">Notes</div>
       </div>
 
       <!-- USERS PANEL -->
@@ -576,7 +577,64 @@
           </div>
         </div>
       </div><!-- /panelServices -->
+      <div id="panelNotes" class="panel">
+        <div class="hrow">
+          <div>
+            <div class="htitle">Note Templates</div>
+            <div class="hsub">Create note types + their questions/answer fields used on Admission Details.</div>
+          </div>
+          <div class="hactions">
+            <button class="btn" onclick="openNoteTemplateModal(null)">+ New Template</button>
+          </div>
+        </div>
 
+        <div class="card">
+          <div class="row" style="gap:10px;align-items:center;">
+            <input id="notesListSearch" placeholder="Search templates…" />
+            <div id="notesListMsg" class="msg ok"></div>
+          </div>
+
+          <div style="margin-top:12px;overflow:auto;">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Template</th>
+                  <th>Agency</th>
+                  <th>Active</th>
+                  <th style="text-align:right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="notesTemplatesTbody"></tbody>
+            </table>
+          </div>
+
+          <div style="margin-top:14px;border-top:1px solid #eef0f5;padding-top:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+              <div>
+                <div style="font-weight:900;">Questions / Fields</div>
+                <div style="font-size:12px;color:#667085;">Select a template above to manage its questions.</div>
+              </div>
+              <button class="btn" onclick="openNoteFieldModal(null)" id="btnAddNoteField" disabled>+ Add Question</button>
+            </div>
+
+            <div style="margin-top:10px;overflow:auto;">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Key</th>
+                    <th>Label</th>
+                    <th>Type</th>
+                    <th>Required</th>
+                    <th>Order</th>
+                    <th style="text-align:right;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="notesFieldsTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
       <!-- =========================
            CARE TEAM PANEL
       ========================= -->
@@ -1066,6 +1124,111 @@
     </div>
   </div>
 </div>
+<div id="noteTplModalBackdrop" class="backdrop">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modalHead">
+      <div>
+        <div class="modalTitle">Note Template</div>
+        <div class="modalSub">Create/edit a note type.</div>
+      </div>
+      <button class="x" id="closeNoteTplModal">✕</button>
+    </div>
+
+    <div class="modalBody">
+      <div class="grid2">
+        <div>
+          <label>Template Name</label>
+          <input id="noteTplName" placeholder="e.g., DC Planning Note" />
+        </div>
+        <div>
+          <label>Agency ID (optional)</label>
+          <input id="noteTplAgencyId" placeholder="(blank = global)" />
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top:10px;">
+        <div>
+          <label>Active</label>
+          <select id="noteTplActive">
+            <option value="1">Yes</option>
+            <option value="0">No</option>
+          </select>
+        </div>
+        <div></div>
+      </div>
+
+      <div id="noteTplMsg" class="msg ok" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="modalFoot">
+      <button class="btn2" onclick="closeNoteTemplateModal()">Cancel</button>
+      <button class="btn" onclick="saveNoteTemplate()">Save</button>
+    </div>
+  </div>
+</div>
+<div id="noteFieldModalBackdrop" class="backdrop">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modalHead">
+      <div>
+        <div class="modalTitle">Question / Field</div>
+        <div class="modalSub">Create/edit a question for the selected template.</div>
+      </div>
+      <button class="x" id="closeNoteFieldModal">✕</button>
+    </div>
+
+    <div class="modalBody">
+      <div class="grid2">
+        <div>
+          <label>Field Key</label>
+          <input id="noteFieldKey" placeholder="e.g., dc_barrier" />
+        </div>
+        <div>
+          <label>Field Label</label>
+          <input id="noteFieldLabel" placeholder="e.g., Biggest barrier to DC?" />
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top:10px;">
+        <div>
+          <label>Type</label>
+          <select id="noteFieldType">
+            <option value="text">text</option>
+            <option value="textarea">textarea</option>
+            <option value="number">number</option>
+            <option value="date">date</option>
+            <option value="boolean">boolean</option>
+            <option value="select">select</option>
+          </select>
+        </div>
+        <div>
+          <label>Sort Order</label>
+          <input id="noteFieldOrder" placeholder="0" />
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top:10px;">
+        <div>
+          <label>Required</label>
+          <select id="noteFieldRequired">
+            <option value="0">No</option>
+            <option value="1">Yes</option>
+          </select>
+        </div>
+        <div>
+          <label>Options JSON (select only)</label>
+          <input id="noteFieldOptions" placeholder='["Yes","No","Maybe"]' />
+        </div>
+      </div>
+
+      <div id="noteFieldMsg" class="msg ok" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="modalFoot">
+      <button class="btn2" onclick="closeNoteFieldModal()">Cancel</button>
+      <button class="btn" onclick="saveNoteField()">Save</button>
+    </div>
+  </div>
+</div>
 
 <script>
   const $ = (id) => document.getElementById(id);
@@ -1453,7 +1616,7 @@
   $("agencySearch").addEventListener("input", renderAgencyChecklist);
 
   function showPanel(which){
-    const panels = ["users","agencies","patients","admissions","services","careTeam"];
+    const panels = ["users","agencies","patients","admissions","services","careTeam","notes"];
 
     // nav highlighting
     $("tabUsers").className = "navitem " + (which==="users" ? "on" : "");
@@ -1462,6 +1625,7 @@
     $("tabAdmissions").className = "navitem " + (which==="admissions" ? "on" : "");
     $("tabServices").className = "navitem " + (which==="services" ? "on" : "");
     $("tabCareTeam").className = "navitem " + (which==="careTeam" ? "on" : "");
+    $("tabNotes").className = "navitem " + (which==="notes" ? "on" : "");
 
     // hide all
     $("panelUsers").classList.remove("on");
@@ -1470,6 +1634,7 @@
     $("panelAdmissions").classList.remove("on");
     $("panelServices").classList.remove("on");
     $("panelCareTeam").classList.remove("on");
+    $("panelNotes").classList.remove("on");
 
     if(which==="users"){
       $("panelUsers").classList.add("on");
@@ -1485,9 +1650,12 @@
     }else if(which==="services"){
       $("panelServices").classList.add("on");
       refreshServicesList();
-    }else{
+    }else if(which==="careTeam"){
       $("panelCareTeam").classList.add("on");
       refreshCareTeamList();
+    }else{
+      $("panelNotes").classList.add("on");
+      refreshNoteTemplatesAdmin();
     }
 
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1499,6 +1667,7 @@
   $("tabAdmissions").onclick = () => showPanel("admissions");
   $("tabServices").onclick = () => showPanel("services");
   $("tabCareTeam").onclick = () => showPanel("careTeam");
+  $("tabNotes").onclick = () => showPanel("notes");
 
 
   // --- Agencies page logic ---
@@ -2123,6 +2292,194 @@
     const f = e.dataTransfer.files && e.dataTransfer.files[0];
     if(f) handleBulkFilePicked(f);
   });
+
+  // -----------------------------
+  // Notes (Admin) page logic
+  // -----------------------------
+  let noteTemplatesAdminCache = [];
+  let selectedNoteTemplateId = null;
+
+  function renderNoteTemplatesAdminTable(){
+    const tbody = $("notesTemplatesTbody");
+    tbody.innerHTML = "";
+
+    const q = ($("notesListSearch").value || "").trim().toLowerCase();
+    const items = (noteTemplatesAdminCache || []).filter(t => {
+      const hay = `${t.template_name||""} ${t.agency_id||""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+
+    items.forEach(t => {
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.onclick = () => selectNoteTemplateRow(t);
+
+      tr.innerHTML = `
+        <td><b>${escapeHtml(t.template_name||"")}</b></td>
+        <td>${t.agency_id ? escapeHtml(String(t.agency_id)) : "Global"}</td>
+        <td>${(String(t.active||0)==="1") ? "Yes" : "No"}</td>
+        <td style="text-align:right;">
+          <button class="mini" onclick="event.stopPropagation(); openNoteTemplateModal(t)">Edit</button>
+          <button class="mini danger" onclick="event.stopPropagation(); deleteNoteTemplate(${t.id})">Delete</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function selectNoteTemplateRow(t){
+    selectedNoteTemplateId = Number(t.id);
+    $("btnAddNoteField").disabled = false;
+    renderNoteFieldsAdminTable();
+  }
+
+  function renderNoteFieldsAdminTable(){
+    const tbody = $("notesFieldsTbody");
+    tbody.innerHTML = "";
+
+    const tpl = (noteTemplatesAdminCache || []).find(x => Number(x.id) === Number(selectedNoteTemplateId));
+    const fields = (tpl && tpl.fields) ? tpl.fields : [];
+
+    fields.forEach(f => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(f.field_key||"")}</td>
+        <td>${escapeHtml(f.field_label||"")}</td>
+        <td>${escapeHtml(f.field_type||"")}</td>
+        <td>${(String(f.required||0)==="1") ? "Yes" : "No"}</td>
+        <td>${escapeHtml(String(f.sort_order||0))}</td>
+        <td style="text-align:right;">
+          <button class="mini" onclick='openNoteFieldModal(${JSON.stringify(f)})'>Edit</button>
+          <button class="mini danger" onclick="deleteNoteField(${f.id})">Delete</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function refreshNoteTemplatesAdmin(){
+    setMsg($("notesListMsg"), "Loading…", true);
+    try{
+      const resp = await apiGet("/api/sensys/admin/note-templates");
+      noteTemplatesAdminCache = resp.templates || [];
+      selectedNoteTemplateId = null;
+      $("btnAddNoteField").disabled = true;
+      renderNoteTemplatesAdminTable();
+      $("notesFieldsTbody").innerHTML = "";
+      setMsg($("notesListMsg"), `Loaded ${noteTemplatesAdminCache.length} templates.`, true);
+    }catch(e){
+      setMsg($("notesListMsg"), String(e.message || e), false);
+    }
+  }
+
+  $("notesListSearch").addEventListener("input", renderNoteTemplatesAdminTable);
+
+  // ---- Template modal ----
+  let editingNoteTemplate = null;
+
+  function openNoteTemplateModal(t){
+    editingNoteTemplate = t || null;
+    setMsg($("noteTplMsg"), "", true);
+
+    $("noteTplName").value = (t && t.template_name) ? t.template_name : "";
+    $("noteTplAgencyId").value = (t && t.agency_id) ? String(t.agency_id) : "";
+    $("noteTplActive").value = (t && String(t.active||0)) ? String(t.active||0) : "1";
+
+    $("noteTplModalBackdrop").classList.add("on");
+  }
+  function closeNoteTemplateModal(){
+    $("noteTplModalBackdrop").classList.remove("on");
+  }
+
+  $("noteTplModalBackdrop").addEventListener("click", (e)=>{ if(e.target.id==="noteTplModalBackdrop") closeNoteTemplateModal(); });
+  $("closeNoteTplModal").onclick = closeNoteTemplateModal;
+
+  async function saveNoteTemplate(){
+    setMsg($("noteTplMsg"), "Saving…", true);
+    try{
+      const payload = {
+        id: editingNoteTemplate ? Number(editingNoteTemplate.id) : null,
+        template_name: ($("noteTplName").value || "").trim(),
+        agency_id: ($("noteTplAgencyId").value || "").trim() ? Number(($("noteTplAgencyId").value||"").trim()) : null,
+        active: Number($("noteTplActive").value || "1")
+      };
+      await apiPost("/api/sensys/admin/note-templates/upsert", payload);
+      setMsg($("noteTplMsg"), "Saved.", true);
+      closeNoteTemplateModal();
+      await refreshNoteTemplatesAdmin();
+    }catch(e){
+      setMsg($("noteTplMsg"), String(e.message || e), false);
+    }
+  }
+
+  async function deleteNoteTemplate(id){
+    if(!confirm("Delete this template (and its fields)?")) return;
+    try{
+      await apiPost("/api/sensys/admin/note-templates/delete", { id: Number(id) });
+      await refreshNoteTemplatesAdmin();
+    }catch(e){
+      alert(String(e.message || e));
+    }
+  }
+
+  // ---- Field modal ----
+  let editingNoteField = null;
+
+  function openNoteFieldModal(f){
+    if(!selectedNoteTemplateId){
+      alert("Select a template first.");
+      return;
+    }
+    editingNoteField = f || null;
+    setMsg($("noteFieldMsg"), "", true);
+
+    $("noteFieldKey").value = (f && f.field_key) ? f.field_key : "";
+    $("noteFieldLabel").value = (f && f.field_label) ? f.field_label : "";
+    $("noteFieldType").value = (f && f.field_type) ? String(f.field_type) : "text";
+    $("noteFieldRequired").value = (f && String(f.required||0)) ? String(f.required||0) : "0";
+    $("noteFieldOrder").value = (f && String(f.sort_order||0)) ? String(f.sort_order||0) : "0";
+    $("noteFieldOptions").value = (f && f.options_json) ? String(f.options_json) : "";
+
+    $("noteFieldModalBackdrop").classList.add("on");
+  }
+  function closeNoteFieldModal(){
+    $("noteFieldModalBackdrop").classList.remove("on");
+  }
+
+  $("noteFieldModalBackdrop").addEventListener("click", (e)=>{ if(e.target.id==="noteFieldModalBackdrop") closeNoteFieldModal(); });
+  $("closeNoteFieldModal").onclick = closeNoteFieldModal;
+
+  async function saveNoteField(){
+    setMsg($("noteFieldMsg"), "Saving…", true);
+    try{
+      const payload = {
+        id: editingNoteField ? Number(editingNoteField.id) : null,
+        template_id: Number(selectedNoteTemplateId),
+        field_key: ($("noteFieldKey").value || "").trim(),
+        field_label: ($("noteFieldLabel").value || "").trim(),
+        field_type: ($("noteFieldType").value || "text").trim(),
+        required: Number($("noteFieldRequired").value || "0"),
+        sort_order: Number(($("noteFieldOrder").value || "0").trim() || "0"),
+        options_json: ($("noteFieldOptions").value || "").trim() || null
+      };
+      await apiPost("/api/sensys/admin/note-template-fields/upsert", payload);
+      setMsg($("noteFieldMsg"), "Saved.", true);
+      closeNoteFieldModal();
+      await refreshNoteTemplatesAdmin();
+    }catch(e){
+      setMsg($("noteFieldMsg"), String(e.message || e), false);
+    }
+  }
+
+  async function deleteNoteField(id){
+    if(!confirm("Delete this field?")) return;
+    try{
+      await apiPost("/api/sensys/admin/note-template-fields/delete", { id: Number(id) });
+      await refreshNoteTemplatesAdmin();
+    }catch(e){
+      alert(String(e.message || e));
+    }
+  }
 
   // picking a file no longer uploads immediately
   function handleBulkFilePicked(file){
