@@ -15079,7 +15079,7 @@ async def admin_snf_email_pdf(
 
         cur.execute(
             """
-            INSERT INTO snf_secure_links (token_hash, snf..._id, admission_ids, for_date, expires_at, email_run_id, sent_to)
+            INSERT INTO snf_secure_links (token_hash, snf_facility_id, admission_ids, for_date, expires_at, email_run_id, sent_to)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (token_hash, snf_facility_id, json.dumps(admission_ids), for_date, expires_at, email_run_id, to_addr),
