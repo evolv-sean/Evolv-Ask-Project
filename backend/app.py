@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import math
 import sqlite3
@@ -21,6 +23,7 @@ import gc
 import asyncio
 import shutil
 import subprocess
+
 
 try:
     import pdfplumber
@@ -61,6 +64,8 @@ except Exception:
     HAVE_WEASYPRINT = False
 
 from fastapi import FastAPI, HTTPException, Request, Form, Query, Body, Depends
+import csv
+import io
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -80,6 +85,57 @@ STATIC_DIR = BASE_DIR / "static"
 
 SNF_DEFAULT_PIN = (os.getenv("SNF_DEFAULT_PIN") or "").strip()
 
+# -----------------------------
+# SNF PDF render throttling (prevents CPU/RAM spikes when sending 10–20 at once)
+# -----------------------------
+SNF_PDF_RENDER_CONCURRENCY = max(1, int(os.getenv("SNF_PDF_RENDER_CONCURRENCY", "1")))
+SNF_PDF_RENDER_DELAY_SEC = float(os.getenv("SNF_PDF_RENDER_DELAY_SEC", "0.2"))
+
+SNF_PDF_RENDER_SEM = asyncio.Semaphore(SNF_PDF_RENDER_CONCURRENCY)
+
+async def _render_snf_pdf_throttled(html_doc: str, *, label: str = "snf-pdf") -> bytes:
+    """
+    WeasyPrint is CPU/RAM heavy. This function ensures only N renders run at once
+    (default N=1) and adds a tiny delay to smooth bursts.
+    """
+    wait_t0 = time.perf_counter()
+
+    # Note: we log BEFORE acquire, then after acquire we log how long we waited.
+    async with SNF_PDF_RENDER_SEM:
+        waited_ms = int((time.perf_counter() - wait_t0) * 1000)
+        render_t0 = time.perf_counter()
+
+        logger.info(
+            "[SNF-PDF] start label=%s waited_ms=%s concurrency=%s delay_sec=%s",
+            label, waited_ms, SNF_PDF_RENDER_CONCURRENCY, SNF_PDF_RENDER_DELAY_SEC
+        )
+
+        # Run the heavy render off the event loop thread
+        pdf_bytes = await asyncio.to_thread(lambda: WEASY_HTML(string=html_doc).write_pdf())
+
+        render_ms = int((time.perf_counter() - render_t0) * 1000)
+        logger.info(
+            "[SNF-PDF] done  label=%s render_ms=%s pdf_bytes=%s",
+            label, render_ms, len(pdf_bytes) if pdf_bytes else 0
+        )
+
+        if SNF_PDF_RENDER_DELAY_SEC > 0:
+            await asyncio.sleep(SNF_PDF_RENDER_DELAY_SEC)
+
+        return pdf_bytes
+
+
+def log_db_write(action, table, details=None):
+    try:
+        logging.info(
+            "[DB-WRITE] action=%s table=%s db=%s details=%s",
+            action,
+            table,
+            DB_PATH,
+            details
+        )
+    except Exception as e:
+        logging.error("[DB-WRITE-LOG-ERROR] %s", e)
 
 def require_admin(request: Request):
     """Simple header-based admin guard via ADMIN_TOKEN env var."""
@@ -182,16 +238,23 @@ def normalize_date_to_iso(value: Any) -> Optional[str]:
 
     cleaned = s.replace("-", "/")
 
-    m = re.fullmatch(r"(\d{2})/(\d{2})/(\d{4})", cleaned)
+    # MM/DD/YYYY (allow 1 or 2 digit month/day)
+    m = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", cleaned)
     if m:
-        mm, dd, yyyy = m.group(1), m.group(2), m.group(3)
-        return f"{yyyy}-{mm}-{dd}"
+        mm = int(m.group(1))
+        dd = int(m.group(2))
+        yyyy = int(m.group(3))
+        return f"{yyyy:04d}-{mm:02d}-{dd:02d}"
 
-    m = re.fullmatch(r"(\d{2})/(\d{2})/(\d{2})", cleaned)
+    # MM/DD/YY (allow 1 or 2 digit month/day)
+    m = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{2})", cleaned)
     if m:
-        mm, dd, yy = m.group(1), m.group(2), int(m.group(3))
+        mm = int(m.group(1))
+        dd = int(m.group(2))
+        yy = int(m.group(3))
         yyyy = 2000 + yy if yy <= 69 else 1900 + yy
-        return f"{yyyy:04d}-{mm}-{dd}"
+        return f"{yyyy:04d}-{mm:02d}-{dd:02d}"
+
 
     # If it’s some other format we don’t recognize, don’t destroy it
     return s
@@ -214,25 +277,37 @@ def log_pad_request_debug(request: Request, raw_text: str, payload: dict):
 
 
 # ---------------------------------------------------------------------------
-# DB PATH – wired for Render, but still overrideable via DB_PATH
+# DB PATH – Render-only (no local fallback)
 # ---------------------------------------------------------------------------
 RENDER_DEFAULT_DB = "/opt/render/project/data/evolv.db"
-_env_db = os.getenv("DB_PATH")
-if _env_db:
-    DB_PATH = _env_db
-elif os.path.exists(RENDER_DEFAULT_DB):
-    DB_PATH = RENDER_DEFAULT_DB
-else:
-    # Local/dev fallback if you're running off the uploaded DB
-    DB_PATH = str(BASE_DIR / "evolv(3).db")
+
+# Allow explicit override (mainly for local dev/testing), but NEVER auto-fallback.
+DB_PATH = (os.getenv("DB_PATH") or "").strip() or RENDER_DEFAULT_DB
+
+# Fail hard if the DB file isn't present (prevents silent writes to evolv(3).db)
+if not os.path.exists(DB_PATH):
+    raise RuntimeError(
+        f"[DB] SQLite DB file not found at '{DB_PATH}'. "
+        f"On Render this should exist at '{RENDER_DEFAULT_DB}'. "
+        f"If running locally, set DB_PATH to a valid .db file."
+    )
 
 # HTML files (mirror of your old app.py wiring)
 ASK_HTML = FRONTEND_DIR / "TEST Ask.html"
 ADMIN_HTML = FRONTEND_DIR / "TEST Admin.html"
+SENSYS_ADMIN_HTML = FRONTEND_DIR / "Sensys Admin.html"
 FACILITY_HTML = FRONTEND_DIR / "TEST  Facility_Details.html"  # note double space
 SNF_HTML = FRONTEND_DIR / "TEST SNF_Admissions.html"
 HOSPITAL_DISCHARGE_HTML = FRONTEND_DIR / "Hospital_Discharge.html"
 CENSUS_HTML = FRONTEND_DIR / "Census.html"
+
+# -----------------------------
+# NEW: Sensys quick-login + SNF SW test UI pages
+# -----------------------------
+SENSYS_LOGIN_HTML = FRONTEND_DIR / "Sensys Login.html"
+SENSYS_SNF_SW_HTML = FRONTEND_DIR / "Sensys SNF SW.html"
+SENSYS_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Admission Details.html"
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("evolv")
@@ -2249,6 +2324,696 @@ def init_db():
         """
     )
 
+    # -------------------------------------------------------------------
+    # Sensys 3.0: Users / Roles / Access Control (core "spine")
+    # -------------------------------------------------------------------
+
+    # Users (app users that log in to Sensys)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_users (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            email           TEXT NOT NULL UNIQUE,
+            display_name    TEXT,
+            is_active       INTEGER DEFAULT 1,
+
+            -- NEW (Admin → Users tab)
+            password        TEXT DEFAULT '',
+            cell_phone      TEXT DEFAULT '',
+            account_locked  INTEGER DEFAULT 0,
+
+            created_at      TEXT DEFAULT (datetime('now')),
+            updated_at      TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+
+    # ---- Safe migrations for older DBs (idempotent) ----
+    for ddl in [
+        "ALTER TABLE sensys_users ADD COLUMN password TEXT DEFAULT ''",
+        "ALTER TABLE sensys_users ADD COLUMN cell_phone TEXT DEFAULT ''",
+        "ALTER TABLE sensys_users ADD COLUMN account_locked INTEGER DEFAULT 0",
+    ]:
+        try:
+            cur.execute(ddl)
+        except sqlite3.Error:
+            # duplicate column name → already migrated
+            pass
+
+
+    # Roles (Admin / Care Manager / Viewer / etc.)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_roles (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            role_key    TEXT NOT NULL UNIQUE,   -- e.g. 'admin', 'cm', 'viewer'
+            role_name   TEXT NOT NULL,          -- e.g. 'Admin', 'Care Manager'
+            created_at  TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+
+    # User <-> Role (many-to-many)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_user_roles (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL,
+            role_id     INTEGER NOT NULL,
+            created_at  TEXT DEFAULT (datetime('now')),
+            UNIQUE(user_id, role_id),
+            FOREIGN KEY(user_id) REFERENCES sensys_users(id),
+            FOREIGN KEY(role_id) REFERENCES sensys_roles(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_roles_user ON sensys_user_roles(user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_roles_role ON sensys_user_roles(role_id)")
+
+    # User access to facilities (controls what facility data they can even see)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_user_facilities (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id         INTEGER NOT NULL,
+            facility_name   TEXT NOT NULL,      -- matches your existing facility naming patterns
+            is_active       INTEGER DEFAULT 1,
+            created_at      TEXT DEFAULT (datetime('now')),
+            UNIQUE(user_id, facility_name),
+            FOREIGN KEY(user_id) REFERENCES sensys_users(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_facilities_user ON sensys_user_facilities(user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_facilities_fac ON sensys_user_facilities(facility_name)")
+
+    # -------------------------------------------------------------------
+    # Sensys 3.0: Agencies (for admissions linking + user multi-agency access)
+    # -------------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_agencies (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            agency_name   TEXT NOT NULL,
+            agency_type   TEXT NOT NULL,  -- Hospital, SNF, Home Health, IRF, LTACH, Hospice, Outpatient PT
+            aliases       TEXT DEFAULT '',
+            facility_code TEXT DEFAULT '',
+            notes         TEXT DEFAULT '',
+            notes2        TEXT DEFAULT '',
+
+            address       TEXT DEFAULT '',
+            city          TEXT DEFAULT '',
+            state         TEXT DEFAULT '',
+            zip           TEXT DEFAULT '',
+
+            phone1        TEXT DEFAULT '',
+            phone2        TEXT DEFAULT '',
+            email         TEXT DEFAULT '',
+            fax           TEXT DEFAULT '',
+
+            evolv_client  INTEGER DEFAULT 0,
+
+            created_at    TEXT DEFAULT (datetime('now')),
+            updated_at    TEXT DEFAULT (datetime('now')),
+            deleted_at    TEXT
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_agencies_name ON sensys_agencies(agency_name)")
+
+    # ---- Safe migrations for older DBs (idempotent) ----
+    for ddl in [
+        "ALTER TABLE sensys_agencies ADD COLUMN aliases TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN facility_code TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN notes TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN notes2 TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN address TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN city TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN state TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN zip TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN phone1 TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN phone2 TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN email TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN fax TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN evolv_client INTEGER DEFAULT 0",
+        "ALTER TABLE sensys_agencies ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))",
+        "ALTER TABLE sensys_agencies ADD COLUMN deleted_at TEXT",
+    ]:
+        try:
+            cur.execute(ddl)
+        except sqlite3.Error:
+            # duplicate column name → already exists
+            pass
+
+    # User <-> Agency (many-to-many)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_user_agencies (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL,
+            agency_id  INTEGER NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(user_id, agency_id),
+            FOREIGN KEY(user_id) REFERENCES sensys_users(id),
+            FOREIGN KEY(agency_id) REFERENCES sensys_agencies(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_agencies_user ON sensys_user_agencies(user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_agencies_agency ON sensys_user_agencies(agency_id)")
+
+    # User access to pages/features (drives which UI pages they see)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_user_pages (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL,
+            page_key    TEXT NOT NULL,          -- e.g. 'census', 'snf_admissions', 'hospital_discharges'
+            is_enabled  INTEGER DEFAULT 1,
+            created_at  TEXT DEFAULT (datetime('now')),
+            UNIQUE(user_id, page_key),
+            FOREIGN KEY(user_id) REFERENCES sensys_users(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_pages_user ON sensys_user_pages(user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_pages_page ON sensys_user_pages(page_key)")
+
+    # -------------------------------------------------------------------
+    # NEW: Sensys sessions (simple token auth for test login pages)
+    # -------------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_sessions (
+            token       TEXT PRIMARY KEY,          -- random UUID
+            user_id     INTEGER NOT NULL,
+            created_at  TEXT DEFAULT (datetime('now')),
+            expires_at  TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES sensys_users(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_sessions_user ON sensys_sessions(user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_sessions_exp ON sensys_sessions(expires_at)")
+
+    # -------------------------------------------------------------------
+    # Sensys 3.0: Patients + Admissions (manual + future automation)
+    # -------------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_patients (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            first_name          TEXT,
+            last_name           TEXT,
+            dob                 TEXT,
+            gender              TEXT,
+
+            phone1              TEXT,
+            phone2              TEXT,
+            email               TEXT,
+            email2              TEXT,
+
+            address1            TEXT,
+            address2            TEXT,
+            city                TEXT,
+            state               TEXT,
+            zip                 TEXT,
+
+            insurance_name1     TEXT,
+            insurance_number1   TEXT,
+            insurance_name2     TEXT,
+            insurance_number2   TEXT,
+
+            active              INTEGER DEFAULT 1,
+            notes1              TEXT,
+            notes2              TEXT,
+
+            created_at          TEXT DEFAULT (datetime('now')),
+            updated_at          TEXT DEFAULT (datetime('now')),
+            deleted_at          TEXT,
+
+            source              TEXT DEFAULT 'manual',
+
+            -- Search helpers (you asked for these)
+            firstname_initial   TEXT,
+            lastname_three      TEXT,
+
+            -- ✅ Needed for linking/dedupe logic (safe, optional)
+            patient_key         TEXT,     -- app-generated stable key (e.g., lastname|firstname|dob)
+            external_patient_id TEXT,     -- if you later ingest from an EMR
+            mrn                 TEXT      -- optional
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_patients_name ON sensys_patients(last_name, first_name)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_patients_dob ON sensys_patients(dob)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_patients_active ON sensys_patients(active)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_patients_key ON sensys_patients(patient_key)")
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_admissions (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            patient_id          INTEGER NOT NULL,
+            agency_id           INTEGER NOT NULL,
+            
+            mrn                 TEXT,               
+            visit_id            TEXT,          
+            facility_code       TEXT,      
+
+            admit_date          TEXT,
+            dc_date             TEXT,
+
+            room                TEXT,
+            referring_agency    TEXT,
+            reason              TEXT,
+            latest_pcp          TEXT,
+
+            notes1              TEXT,
+            notes2              TEXT,
+
+            active              INTEGER DEFAULT 1,
+
+            next_location       TEXT,
+            next_agency_id      INTEGER,
+
+            created_at          TEXT DEFAULT (datetime('now')),
+            updated_at          TEXT DEFAULT (datetime('now')),
+
+            -- ✅ audit fields are still useful even without "assigned user"
+            created_by_user_id  INTEGER,
+            updated_by_user_id  INTEGER,
+
+            FOREIGN KEY(patient_id) REFERENCES sensys_patients(id),
+            FOREIGN KEY(agency_id) REFERENCES sensys_agencies(id),
+            FOREIGN KEY(next_agency_id) REFERENCES sensys_agencies(id),
+            FOREIGN KEY(created_by_user_id) REFERENCES sensys_users(id),
+            FOREIGN KEY(updated_by_user_id) REFERENCES sensys_users(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_patient ON sensys_admissions(patient_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_agency ON sensys_admissions(agency_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_active ON sensys_admissions(active)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_dates ON sensys_admissions(admit_date, dc_date)")
+
+    # -------------------------------------------------------------------
+    # Sensys 3.0: Admission-connected “detail” tables
+    # -------------------------------------------------------------------
+
+    # Services (ADMIN TAB)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_services (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT NOT NULL,
+            service_type TEXT NOT NULL,       -- 'dme' | 'hh'
+            dropdown    INTEGER DEFAULT 1,     -- 1/0
+            reminder_id TEXT,
+            deleted_at  TEXT,
+            created_at  TEXT DEFAULT (datetime('now')),
+            updated_at  TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_services_name ON sensys_services(name)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_services_type ON sensys_services(service_type)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_services_deleted ON sensys_services(deleted_at)")
+
+    # Care Team master (ADMIN TAB)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_care_team (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            name          TEXT NOT NULL,
+            type          TEXT NOT NULL,   -- SNF Physician, Hospital Physician, Primary Care, Specialist, Other
+            npi           TEXT,
+            aliases       TEXT,
+
+            address1      TEXT,
+            address2      TEXT,
+            city          TEXT,
+            state         TEXT,
+            zip           TEXT,
+
+            practice_name TEXT,
+            phone1        TEXT,
+            phone2        TEXT,
+            email1        TEXT,
+            email2        TEXT,
+            fax           TEXT,
+
+            active        INTEGER DEFAULT 1,
+            created_at    TEXT DEFAULT (datetime('now')),
+            updated_at    TEXT DEFAULT (datetime('now')),
+            deleted_at    TEXT
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_care_team_name ON sensys_care_team(name)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_care_team_type ON sensys_care_team(type)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_care_team_active ON sensys_care_team(active)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_care_team_deleted ON sensys_care_team(deleted_at)")
+
+    # Admission tasks
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_admission_tasks (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            admission_id     INTEGER NOT NULL,
+            assigned_user_id INTEGER,
+            task_status      TEXT NOT NULL DEFAULT 'New',   -- New, Moved, Pending, Completed
+            task_name        TEXT NOT NULL,
+            task_comments    TEXT,
+            created_at       TEXT DEFAULT (datetime('now')),
+            updated_at       TEXT DEFAULT (datetime('now')),
+            deleted_at       TEXT,
+            FOREIGN KEY(admission_id) REFERENCES sensys_admissions(id),
+            FOREIGN KEY(assigned_user_id) REFERENCES sensys_users(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_tasks_adm ON sensys_admission_tasks(admission_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_tasks_status ON sensys_admission_tasks(task_status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_tasks_deleted ON sensys_admission_tasks(deleted_at)")
+
+    # DC submissions (one admission can have many)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_admission_dc_submissions (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            admission_id          INTEGER NOT NULL,
+            created_at            TEXT DEFAULT (datetime('now')),
+            created_by            INTEGER,                 -- user_id
+
+            dc_date               TEXT,
+            dc_time               TEXT,
+
+            dc_confirmed          INTEGER DEFAULT 0,
+            dc_urgent             INTEGER DEFAULT 0,
+            urgent_comments       TEXT,
+
+            dc_destination        TEXT,   -- Home, ALF, ILF, Hospital, LTC, AMA, Other
+            destination_comments  TEXT,
+
+            dc_with               TEXT,   -- alone, spouse, other family, caregiver
+
+            hh_comments           TEXT,
+            dme_comments          TEXT,
+
+            aid_consult           TEXT,
+            pcp_freetext          TEXT,
+
+            coordinate_caregiver  INTEGER DEFAULT 0,
+            caregiver_name        TEXT,
+            caregiver_number      TEXT,
+
+            apealling_dc          INTEGER DEFAULT 0,
+            appeal_comments       TEXT,
+
+            updated_at            TEXT DEFAULT (datetime('now')),
+            deleted_at            TEXT,
+
+            FOREIGN KEY(admission_id) REFERENCES sensys_admissions(id),
+            FOREIGN KEY(created_by) REFERENCES sensys_users(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_dc_sub_adm ON sensys_admission_dc_submissions(admission_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_dc_sub_deleted ON sensys_admission_dc_submissions(deleted_at)")
+
+    # Join table: each DC submission can have multiple services linked
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_dc_submission_services (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            services_id             INTEGER NOT NULL,
+            admission_dc_submission_id INTEGER NOT NULL,
+            created_at              TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY(services_id) REFERENCES sensys_services(id),
+            FOREIGN KEY(admission_dc_submission_id) REFERENCES sensys_admission_dc_submissions(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_dc_sub_services_sub ON sensys_dc_submission_services(admission_dc_submission_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_dc_sub_services_srv ON sensys_dc_submission_services(services_id)")
+
+    # Admission notes
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_admission_notes (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            admission_id INTEGER NOT NULL,
+
+            -- NOTE TYPE / TEMPLATE KEY (existing behavior)
+            note_name    TEXT NOT NULL,
+
+            -- NEW: common fields
+            note_title   TEXT,
+            status       TEXT NOT NULL DEFAULT 'New',
+            response1    TEXT,
+            response2    TEXT,
+
+            -- LEGACY (keep for backward compatibility while UI transitions)
+            note_comments TEXT,
+
+            created_at   TEXT DEFAULT (datetime('now')),
+            created_by   INTEGER, -- user_id
+            deleted_at   TEXT,
+            updated_at   TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY(admission_id) REFERENCES sensys_admissions(id),
+            FOREIGN KEY(created_by) REFERENCES sensys_users(id)
+        )
+        """
+    )
+
+    # --- SAFE MIGRATION: add new columns if DB already existed without them ---
+    cur.execute("PRAGMA table_info(sensys_admission_notes)")
+    existing_cols = {r[1] for r in cur.fetchall()}
+
+    if "note_title" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN note_title TEXT")
+    if "status" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN status TEXT NOT NULL DEFAULT 'New'")
+    if "response1" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN response1 TEXT")
+    if "response2" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN response2 TEXT")
+
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_adm ON sensys_admission_notes(admission_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_deleted ON sensys_admission_notes(deleted_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_status ON sensys_admission_notes(status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_name ON sensys_admission_notes(note_name)")
+
+    # Join table: admission ↔ care team
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_admission_care_team (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            care_team_id INTEGER NOT NULL,
+            admission_id INTEGER NOT NULL,
+            created_at   TEXT DEFAULT (datetime('now')),
+            updated_at   TEXT DEFAULT (datetime('now')),
+            deleted_at   TEXT,
+            FOREIGN KEY(care_team_id) REFERENCES sensys_care_team(id),
+            FOREIGN KEY(admission_id) REFERENCES sensys_admissions(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ct_adm ON sensys_admission_care_team(admission_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ct_ct ON sensys_admission_care_team(care_team_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ct_deleted ON sensys_admission_care_team(deleted_at)")
+
+    # -----------------------------
+    # Notes: Templates + Fields + User Assignments + Answers
+    # -----------------------------
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sensys_note_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      agency_id INTEGER NULL,                 -- NULL = global, else client-specific by agency
+      template_name TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      deleted_at TEXT
+    )
+    """)
+
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sensys_note_template_fields (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_id INTEGER NOT NULL,
+      field_key TEXT NOT NULL,
+      field_label TEXT NOT NULL,
+      field_type TEXT NOT NULL,               -- text|number|date|boolean|select
+      required INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      options_json TEXT,                      -- JSON array for select options
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      deleted_at TEXT,
+      UNIQUE(template_id, field_key)
+    )
+    """)
+
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sensys_user_note_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      template_id INTEGER NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      deleted_at TEXT,
+      UNIQUE(user_id, template_id)
+    )
+    """)
+
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sensys_admission_note_answers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      note_id INTEGER NOT NULL,
+      field_key TEXT NOT NULL,
+      value_text TEXT,
+      value_num REAL,
+      value_date TEXT,
+      value_bool INTEGER,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      deleted_at TEXT,
+      UNIQUE(note_id, field_key)
+    )
+    """)
+
+    # helpful indexes
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_note_templates_agency ON sensys_note_templates(agency_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_note_fields_template ON sensys_note_template_fields(template_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_note_tpl_user ON sensys_user_note_templates(user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_note_answers_note ON sensys_admission_note_answers(note_id)")
+
+
+    # ------------------------------------------------------------
+    # Admission referrals / appointments (SENSYS-prefixed tables)
+    # Includes a safe startup migration to rename old tables.
+    # ------------------------------------------------------------
+
+    # --- SAFE MIGRATION: rename old tables if they exist and new ones do not ---
+    cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='admission_referrals'")
+    old_ref_exists = bool(cur.fetchone())
+    cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sensys_admission_referrals'")
+    new_ref_exists = bool(cur.fetchone())
+    if old_ref_exists and not new_ref_exists:
+        cur.execute("ALTER TABLE admission_referrals RENAME TO sensys_admission_referrals")
+
+    cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='admission_appointments'")
+    old_appt_exists = bool(cur.fetchone())
+    cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sensys_admission_appointments'")
+    new_appt_exists = bool(cur.fetchone())
+    if old_appt_exists and not new_appt_exists:
+        cur.execute("ALTER TABLE admission_appointments RENAME TO sensys_admission_appointments")
+
+    # If old indexes exist with old names, remove them so we can create consistently named ones
+    cur.execute("DROP INDEX IF EXISTS idx_adm_ref_adm")
+    cur.execute("DROP INDEX IF EXISTS idx_adm_ref_agency")
+    cur.execute("DROP INDEX IF EXISTS idx_adm_ref_deleted")
+
+    cur.execute("DROP INDEX IF EXISTS idx_adm_appt_adm")
+    cur.execute("DROP INDEX IF EXISTS idx_adm_appt_status")
+    cur.execute("DROP INDEX IF EXISTS idx_adm_appt_deleted")
+
+    # ------------------------------------------------------------
+    # Admission referrals
+    # ------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_admission_referrals (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            admission_id INTEGER NOT NULL,
+            agency_id    INTEGER NOT NULL,
+
+            created_at   TEXT DEFAULT (datetime('now')),
+            updated_at   TEXT DEFAULT (datetime('now')),
+            deleted_at   TEXT,
+
+            FOREIGN KEY(admission_id) REFERENCES sensys_admissions(id),
+            FOREIGN KEY(agency_id) REFERENCES sensys_agencies(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ref_adm ON sensys_admission_referrals(admission_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ref_agency ON sensys_admission_referrals(agency_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_ref_deleted ON sensys_admission_referrals(deleted_at)")
+
+    # ------------------------------------------------------------
+    # Admission appointments
+    # ------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_admission_appointments (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            admission_id  INTEGER NOT NULL,
+            appt_datetime TEXT,
+            care_team_id  INTEGER,
+            appt_status   TEXT NOT NULL DEFAULT 'New',  -- New, Attended, Missed, Rescheduled
+
+            created_at    TEXT DEFAULT (datetime('now')),
+            updated_at    TEXT DEFAULT (datetime('now')),
+            deleted_at    TEXT,
+
+            FOREIGN KEY(admission_id) REFERENCES sensys_admissions(id),
+            FOREIGN KEY(care_team_id) REFERENCES sensys_care_team(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_appt_adm ON sensys_admission_appointments(admission_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_appt_status ON sensys_admission_appointments(appt_status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_appt_deleted ON sensys_admission_appointments(deleted_at)")
+
+
+    # ✅ Clean up any duplicate pairs BEFORE adding the unique index
+    # Keep the "best" row per (admission_id, care_team_id):
+    #   - prefer deleted_at IS NULL (active link)
+    #   - otherwise keep the lowest id
+    cur.execute(
+        """
+        WITH ranked AS (
+            SELECT
+                id,
+                ROW_NUMBER() OVER (
+                    PARTITION BY admission_id, care_team_id
+                    ORDER BY
+                        CASE WHEN deleted_at IS NULL THEN 0 ELSE 1 END,
+                        id
+                ) AS rn
+            FROM sensys_admission_care_team
+        )
+        DELETE FROM sensys_admission_care_team
+        WHERE id IN (SELECT id FROM ranked WHERE rn > 1)
+        """
+    )
+
+    # ✅ Now it’s safe to add the unique index
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_sensys_adm_ct_pair ON sensys_admission_care_team(admission_id, care_team_id)"
+    )
+
+
+    # ---- Safe migrations (in case DB already exists later) ----
+    for ddl in [
+        "ALTER TABLE sensys_patients ADD COLUMN patient_key TEXT",
+        "ALTER TABLE sensys_patients ADD COLUMN external_patient_id TEXT",
+        "ALTER TABLE sensys_patients ADD COLUMN mrn TEXT",
+
+        "ALTER TABLE sensys_admissions ADD COLUMN created_by_user_id INTEGER",
+        "ALTER TABLE sensys_admissions ADD COLUMN updated_by_user_id INTEGER",
+    ]:
+        try:
+            cur.execute(ddl)
+        except sqlite3.Error:
+            pass
+
+
     # PAD API run log (one row per API call, even if 0 inserts)
     cur.execute(
         """
@@ -3550,7 +4315,14 @@ def init_db():
 
     # NEW: Medrina SNF flag (0/1)
     ensure_column(conn, "snf_admission_facilities", "medrina_snf", "medrina_snf INTEGER DEFAULT 0")
-
+    
+    # ✅ ensure new columns exist (safe migration)
+    ensure_column(conn, "sensys_agencies", "aliases", "aliases TEXT")
+    
+    # ✅ ensure new columns exist (safe migration)
+    ensure_column(conn, "sensys_admissions", "mrn", "mrn TEXT")
+    ensure_column(conn, "sensys_admissions", "visit_id", "visit_id TEXT")
+    ensure_column(conn, "sensys_admissions", "facility_code", "facility_code TEXT")
 
     # Secure expiring links table (store only token HASH, never the raw token)
     cur.execute(
@@ -3604,6 +4376,10 @@ def init_db():
     ensure_column(conn, "snf_secure_links", "email_run_id", "email_run_id TEXT")
     ensure_column(conn, "snf_secure_links", "sent_to",     "sent_to TEXT")
     ensure_column(conn, "snf_secure_links", "sent_at",     "sent_at TEXT")
+
+    # NEW: cache PDF for the secure link (avoid WeasyPrint on recipient open)
+    ensure_column(conn, "snf_secure_links", "pdf_bytes",        "pdf_bytes BLOB")
+    ensure_column(conn, "snf_secure_links", "pdf_generated_at", "pdf_generated_at TEXT")
 
     
 # -------------------------------------------------------------------
@@ -13666,6 +14442,16 @@ async def snf_secure_link_get(token: str, request: Request):
     conn = get_db()
     try:
         cur = conn.cursor()
+
+        # NEW: clear cached PDFs for expired links (keep row for audit)
+        _now_iso = dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+        cur.execute(
+            "UPDATE snf_secure_links SET pdf_bytes = NULL "
+            "WHERE pdf_bytes IS NOT NULL AND expires_at < ?",
+            (_now_iso,),
+        )
+        conn.commit()
+
         cur.execute(
             """
             SELECT id, snf_facility_id, for_date, expires_at
@@ -13956,9 +14742,19 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
     conn = get_db()
     try:
         cur = conn.cursor()
+
+        # NEW: clear cached PDFs for expired links (keep row for audit)
+        _now_iso = dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+        cur.execute(
+            "UPDATE snf_secure_links SET pdf_bytes = NULL "
+            "WHERE pdf_bytes IS NOT NULL AND expires_at < ?",
+            (_now_iso,),
+        )
+        conn.commit()
+
         cur.execute(
             """
-            SELECT id, snf_facility_id, admission_ids, for_date, expires_at
+            SELECT id, snf_facility_id, admission_ids, for_date, expires_at, pdf_bytes, pdf_generated_at
             FROM snf_secure_links
             WHERE token_hash = ?
             ORDER BY id DESC
@@ -14140,8 +14936,22 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
         facility_name = fac["facility_name"] or "SNF facility"
         attending = fac["attending"] or ""
 
-        html_doc = build_snf_pdf_html(facility_name, for_date, rows, attending)
-        pdf_bytes = WEASY_HTML(string=html_doc).write_pdf()
+        # FAST PATH: reuse cached PDF (no WeasyPrint)
+        if link["pdf_bytes"]:
+            pdf_bytes = link["pdf_bytes"]
+        else:
+            # CHANGE: throttle WeasyPrint renders so multiple opens don't spike CPU
+            html_doc = build_snf_pdf_html(facility_name, for_date, rows, attending)
+            pdf_bytes = await _render_snf_pdf_throttled(
+                html_doc,
+                label=f"secure-open link_id={link['id']} facility_id={snf_facility_id}"
+            )
+            cur.execute(
+                "UPDATE snf_secure_links SET pdf_bytes = ?, pdf_generated_at = datetime('now') WHERE id = ?",
+                (pdf_bytes, link["id"]),
+            )
+            conn.commit()
+
 
         # mark used_at (audit)
         cur.execute("UPDATE snf_secure_links SET used_at = datetime('now') WHERE id = ?", (link["id"],))
@@ -14296,7 +15106,25 @@ async def admin_snf_email_pdf(
         )
         conn.commit()
 
+        # NEW: pre-render + cache the PDF NOW (so recipients don't trigger CPU spikes)
+        # CHANGE: throttle WeasyPrint renders so 10–20 sends don't melt the CPU/RAM
+        try:
+            html_doc = build_snf_pdf_html(facility_name, for_date, rows, attending)
+            pdf_bytes = await _render_snf_pdf_throttled(
+                html_doc,
+                label=f"email-pdf email_run_id={email_run_id} facility_id={snf_facility_id}"
+            )
+            cur.execute(
+                "UPDATE snf_secure_links SET pdf_bytes = ?, pdf_generated_at = datetime('now') WHERE token_hash = ? AND email_run_id = ?",
+                (pdf_bytes, token_hash, email_run_id),
+            )
+            conn.commit()
+        except Exception as e:
+            # Don't fail sending the email if PDF caching fails — just log it
+            print("[snf-email-pdf] pre-render cache failed:", repr(e))
+
         secure_url = f"{base_url}/snf/secure/{raw_token}"
+
 
         # ✅ NEW: build the outbound email (HTML + plain text)
         sent_date = dt.date.today().isoformat()  # date the email is sent (today)
@@ -14561,6 +15389,3311 @@ async def intake_submit(payload: dict = Body(...)):
 
     return {"ok": True, "facility_id": fac_id}
 
+from pydantic import BaseModel
+from typing import Optional, List
+
+# -----------------------------
+# Sensys Admin auth helper
+# -----------------------------
+def _require_admin_token(token: str):
+    if token != os.getenv("ADMIN_TOKEN"):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+# -----------------------------
+# Sensys Admin models
+# -----------------------------
+class SensysUserUpsert(BaseModel):
+    user_id: Optional[int] = None
+    email: str
+    display_name: Optional[str] = ""
+    is_active: int = 1
+
+    # NEW
+    password: Optional[str] = None
+    cell_phone: Optional[str] = ""
+    account_locked: Optional[bool] = False
+
+
+class SensysRoleAssign(BaseModel):
+    user_id: int
+    role_keys: List[str]
+
+
+class SensysFacilityAssign(BaseModel):
+    user_id: int
+    facility_names: List[str]
+
+class SensysAgencyUpsert(BaseModel):
+    id: Optional[int] = None
+    agency_name: str
+    agency_type: str
+    aliases: Optional[str] = None
+    facility_code: Optional[str] = ""
+    notes: Optional[str] = ""
+    notes2: Optional[str] = ""
+
+    address: Optional[str] = ""
+    city: Optional[str] = ""
+    state: Optional[str] = ""
+    zip: Optional[str] = ""
+
+    phone1: Optional[str] = ""
+    phone2: Optional[str] = ""
+    email: Optional[str] = ""
+    fax: Optional[str] = ""
+
+    evolv_client: Optional[bool] = False
+
+
+class SensysUserAgencyAssign(BaseModel):
+    user_id: int
+    agency_ids: List[int]
+
+
+class SensysPatientUpsert(BaseModel):
+    id: Optional[int] = None
+    first_name: Optional[str] = ""
+    last_name: Optional[str] = ""
+    dob: Optional[str] = ""
+    gender: Optional[str] = ""
+
+    phone1: Optional[str] = ""
+    phone2: Optional[str] = ""
+    email: Optional[str] = ""
+    email2: Optional[str] = ""
+
+    address1: Optional[str] = ""
+    address2: Optional[str] = ""
+    city: Optional[str] = ""
+    state: Optional[str] = ""
+    zip: Optional[str] = ""
+
+    insurance_name1: Optional[str] = ""
+    insurance_number1: Optional[str] = ""
+    insurance_name2: Optional[str] = ""
+    insurance_number2: Optional[str] = ""
+
+    active: Optional[int] = 1
+    notes1: Optional[str] = ""
+    notes2: Optional[str] = ""
+
+    source: Optional[str] = "manual"
+    external_patient_id: Optional[str] = ""
+    mrn: Optional[str] = ""
+
+
+class SensysAdmissionUpsert(BaseModel):
+    id: Optional[int] = None
+
+    patient_id: int
+    agency_id: int
+
+    # ✅ NEW: admission identifiers
+    mrn: Optional[str] = ""
+    visit_id: Optional[str] = ""
+    facility_code: Optional[str] = ""
+
+    admit_date: Optional[str] = ""
+    dc_date: Optional[str] = ""
+    room: Optional[str] = ""
+
+    referring_agency: Optional[str] = ""
+    reason: Optional[str] = ""
+    latest_pcp: Optional[str] = ""
+
+    notes1: Optional[str] = ""
+    notes2: Optional[str] = ""
+
+    active: Optional[int] = 1
+
+    next_location: Optional[str] = ""
+    next_agency_id: Optional[int] = None
+
+class SensysLoginIn(BaseModel):
+    email: str
+    password: Optional[str] = None  # ignored for now (testing)
+
+# -----------------------------
+# Sensys Admin: seed roles (safe to call repeatedly)
+# -----------------------------
+def _sensys_seed_roles(conn: sqlite3.Connection):
+    # Adjust these role keys any time; inserts are idempotent
+    roles = [
+        ("admin", "Admin"),
+        ("cm", "Care Manager"),
+
+        ("home_health", "Home Health"),
+        ("provider", "Provider"),
+        ("ccm", "CCM"),
+        ("hospital", "Hospital"),
+        ("snf_sw", "SNF SW"),
+    ]
+    conn.executemany(
+        """
+        INSERT OR IGNORE INTO sensys_roles (role_key, role_name)
+        VALUES (?, ?)
+        """,
+        roles,
+    )
+    
+    # Remove deprecated roles (and any user-role links to them)
+    conn.execute(
+        "DELETE FROM sensys_user_roles WHERE role_id IN (SELECT id FROM sensys_roles WHERE role_key IN ('viewer','liaison'))"
+    )
+    conn.execute("DELETE FROM sensys_roles WHERE role_key IN ('viewer','liaison')")
+
+    conn.commit()
+
+
+# -----------------------------
+# Sensys Admin: list roles
+# -----------------------------
+@app.get("/api/sensys/admin/roles")
+def sensys_admin_roles(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    _sensys_seed_roles(conn)
+
+    rows = conn.execute(
+        "SELECT role_key, role_name FROM sensys_roles ORDER BY role_name"
+    ).fetchall()
+
+    return {"roles": [dict(r) for r in rows]}
+
+@app.get("/api/sensys/agencies")
+def sensys_agencies_list(request: Request):
+    _sensys_require_user(request)
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT id, agency_name, agency_type
+        FROM sensys_agencies
+        WHERE deleted_at IS NULL
+        ORDER BY agency_name COLLATE NOCASE
+        """
+    ).fetchall()
+    return {"ok": True, "agencies": [dict(r) for r in rows]}
+
+# -----------------------------
+# Sensys Admin: list users + roles + facilities
+# -----------------------------
+@app.get("/api/sensys/admin/users")
+def sensys_admin_users(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    _sensys_seed_roles(conn)
+
+    users = conn.execute(
+        """
+        SELECT
+            u.id AS user_id,
+            u.email,
+            u.display_name,
+            u.is_active,
+
+            -- NEW
+            u.password,
+            u.cell_phone,
+            u.account_locked
+        FROM sensys_users u
+        ORDER BY u.email
+        """
+    ).fetchall()
+
+    # roles per user
+    role_rows = conn.execute(
+        """
+        SELECT ur.user_id, r.role_key
+        FROM sensys_user_roles ur
+        JOIN sensys_roles r ON r.id = ur.role_id
+        """
+    ).fetchall()
+
+    roles_by_user = {}
+    for rr in role_rows:
+        roles_by_user.setdefault(rr["user_id"], []).append(rr["role_key"])
+
+    # agencies per user
+    ag_rows = conn.execute(
+        """
+        SELECT ua.user_id, a.id AS agency_id, a.agency_name
+        FROM sensys_user_agencies ua
+        JOIN sensys_agencies a ON a.id = ua.agency_id
+        """
+    ).fetchall()
+
+    agency_ids_by_user = {}
+    agency_names_by_user = {}
+    for r in ag_rows:
+        uid = r["user_id"]
+        agency_ids_by_user.setdefault(uid, []).append(int(r["agency_id"]))
+        agency_names_by_user.setdefault(uid, []).append(r["agency_name"])
+
+
+    out = []
+    for u in users:
+        d = dict(u)
+        d["role_keys"] = sorted(roles_by_user.get(u["user_id"], []))
+
+        # NEW
+        d["agency_ids"] = sorted(agency_ids_by_user.get(u["user_id"], []))
+        d["agency_names"] = sorted(agency_names_by_user.get(u["user_id"], []), key=lambda x: (x or "").lower())
+
+        out.append(d)
+
+
+    return {"users": out}
+
+class AdmissionReferralUpsert(BaseModel):
+    id: Optional[int] = None
+    admission_id: int
+    agency_id: int
+
+@app.post("/api/sensys/admission-referrals/upsert")
+def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
+
+    op = "update" if payload.id else "insert"
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_admission_referrals
+               SET agency_id = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (int(payload.agency_id), int(payload.id)),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_admission_referrals (admission_id, agency_id)
+            VALUES (?, ?)
+            """,
+            (int(payload.admission_id), int(payload.agency_id)),
+        )
+
+    new_id = payload.id
+    if not new_id:
+        new_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+    # ---- WRITE WRAP LOG (db path + verify) ----
+    try:
+        db_row = conn.execute("PRAGMA database_list").fetchone()
+        db_file = (db_row["file"] if db_row and "file" in db_row.keys() else None) or DB_PATH
+
+        conn.commit()
+
+        exists = conn.execute(
+            "SELECT COUNT(1) AS c FROM sensys_admission_referrals WHERE id = ?",
+            (int(new_id),),
+        ).fetchone()["c"]
+
+        logger.info(
+            "[SENSYS][WRITE] table=sensys_admission_referrals op=%s id=%s admission_id=%s agency_id=%s user_id=%s db=%s verify_exists=%s",
+            op,
+            int(new_id),
+            int(payload.admission_id),
+            int(payload.agency_id),
+            int(u["user_id"]),
+            db_file,
+            int(exists),
+        )
+    except Exception:
+        logger.exception(
+            "[SENSYS][WRITE][ERROR] table=admission_referrals op=%s id=%s admission_id=%s db=%s",
+            op,
+            int(new_id),
+            int(payload.admission_id),
+            DB_PATH,
+        )
+        raise
+    # ------------------------------------------
+
+    # return extra debug so UI/logs can prove which DB handled this write
+    return {
+        "ok": True,
+        "id": int(new_id),
+        "op": op,
+        "db_file": db_file,
+        "verify_exists": int(exists),
+    }
+
+
+@app.post("/api/sensys/admission-referrals/delete")
+def sensys_admission_referrals_delete(payload: IdOnly, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    row = conn.execute(
+        "SELECT admission_id FROM sensys_admission_referrals WHERE id = ? AND deleted_at IS NULL",
+        (int(payload.id),),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Referral not found (or already deleted)")
+
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(row["admission_id"]))
+
+    conn.execute(
+        """
+        UPDATE sensys_admission_referrals
+           SET deleted_at = datetime('now'),
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (int(payload.id),),
+    )
+    conn.commit()
+    return {"ok": True}
+
+class AdmissionAppointmentUpsert(BaseModel):
+    id: Optional[int] = None
+    admission_id: int
+    appt_datetime: Optional[str] = ""   # store as ISO string from UI
+    care_team_id: Optional[int] = None
+    appt_status: str = "New"            # New, Attended, Missed, Rescheduled
+
+@app.post("/api/sensys/admission-appointments/upsert")
+def sensys_admission_appointments_upsert(payload: AdmissionAppointmentUpsert, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
+
+    st = (payload.appt_status or "New").strip()
+    if st not in ("New", "Attended", "Missed", "Rescheduled"):
+        raise HTTPException(status_code=400, detail="appt_status invalid")
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_admission_appointments
+               SET appt_datetime = ?,
+                   care_team_id = ?,
+                   appt_status = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (
+                (payload.appt_datetime or "").strip(),
+                int(payload.care_team_id) if payload.care_team_id else None,
+                st,
+                int(payload.id),
+            ),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_admission_appointments (admission_id, appt_datetime, care_team_id, appt_status)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                int(payload.admission_id),
+                (payload.appt_datetime or "").strip(),
+                int(payload.care_team_id) if payload.care_team_id else None,
+                st,
+            ),
+        )
+
+    new_id = payload.id
+    if not new_id:
+        new_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+    conn.commit()
+    return {"ok": True, "id": int(new_id)}
+
+@app.post("/api/sensys/admission-appointments/delete")
+def sensys_admission_appointments_delete(payload: IdOnly, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    row = conn.execute(
+        "SELECT admission_id FROM sensys_admission_appointments WHERE id = ? AND deleted_at IS NULL",
+        (int(payload.id),),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Appointment not found (or already deleted)")
+
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(row["admission_id"]))
+
+    conn.execute(
+        """
+        UPDATE sensys_admission_appointments
+           SET deleted_at = datetime('now'),
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (int(payload.id),),
+    )
+    conn.commit()
+    return {"ok": True}
+
+
+# -----------------------------
+# Sensys Admin: create/update user
+# -----------------------------
+@app.post("/api/sensys/admin/users/upsert")
+def sensys_admin_users_upsert(payload: SensysUserUpsert, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    email = (payload.email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="email is required")
+
+    display_name = (payload.display_name or "").strip()
+
+    # NEW fields
+    cell_phone = (payload.cell_phone or "").strip()
+    account_locked = 1 if bool(payload.account_locked) else 0
+    password = (payload.password or "")
+    password = password.strip() if isinstance(password, str) else ""
+
+    if payload.user_id:
+        # Update password ONLY if the admin typed one (blank means "leave unchanged")
+        if password:
+            conn.execute(
+                """
+                UPDATE sensys_users
+                SET email = ?,
+                    display_name = ?,
+                    is_active = ?,
+                    password = ?,
+                    cell_phone = ?,
+                    account_locked = ?,
+                    updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (email, display_name, int(payload.is_active), password, cell_phone, account_locked, int(payload.user_id)),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE sensys_users
+                SET email = ?,
+                    display_name = ?,
+                    is_active = ?,
+                    cell_phone = ?,
+                    account_locked = ?,
+                    updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (email, display_name, int(payload.is_active), cell_phone, account_locked, int(payload.user_id)),
+            )
+
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_users (email, display_name, is_active, password, cell_phone, account_locked)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (email, display_name, int(payload.is_active), password, cell_phone, account_locked),
+        )
+
+    # Return the user_id so the UI can immediately save roles/agencies
+    conn.commit()
+    return {"ok": True, "user_id": int(payload.user_id) if payload.user_id else int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])}
+
+
+# -----------------------------
+# Sensys Admin: set roles for user (replace)
+# -----------------------------
+@app.post("/api/sensys/admin/users/set-roles")
+def sensys_admin_users_set_roles(payload: SensysRoleAssign, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    _sensys_seed_roles(conn)
+
+    user_id = int(payload.user_id)
+    role_keys = [rk.strip().lower() for rk in payload.role_keys if rk and rk.strip()]
+
+    # clear existing
+    conn.execute("DELETE FROM sensys_user_roles WHERE user_id = ?", (user_id,))
+
+    if role_keys:
+        role_rows = conn.execute(
+            """
+            SELECT id AS role_id, role_key
+            FROM sensys_roles
+            WHERE role_key IN ({})
+            """.format(",".join(["?"] * len(role_keys))),
+            role_keys,
+        ).fetchall()
+
+        role_ids = [r["role_id"] for r in role_rows]
+
+        conn.executemany(
+            """
+            INSERT INTO sensys_user_roles (user_id, role_id)
+            VALUES (?, ?)
+            """,
+            [(user_id, rid) for rid in role_ids],
+        )
+    conn.commit()
+    return {"ok": True}
+
+# -----------------------------
+# Sensys Admin: list agencies
+# -----------------------------
+@app.get("/api/sensys/admin/agencies")
+def sensys_admin_agencies(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    rows = conn.execute(
+        """
+        SELECT
+            id,
+            agency_name,
+            agency_type,
+            facility_code,
+            notes,
+            notes2,
+            address,
+            city,
+            state,
+            zip,
+            phone1,
+            phone2,
+            email,
+            fax,
+            evolv_client,
+            created_at,
+            updated_at
+        FROM sensys_agencies
+        ORDER BY agency_name COLLATE NOCASE
+        """
+    ).fetchall()
+
+    return {"agencies": [dict(r) for r in rows]}
+
+
+# -----------------------------
+# Sensys Admin: upsert agency
+# -----------------------------
+@app.post("/api/sensys/admin/agencies/upsert")
+def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    name = (payload.agency_name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="agency_name is required")
+
+    a_type = (payload.agency_type or "").strip()
+    if not a_type:
+        raise HTTPException(status_code=400, detail="agency_type is required")
+
+    evolv_client = 1 if bool(payload.evolv_client) else 0
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_agencies
+               SET agency_name   = ?,
+                   agency_type   = ?,
+                   facility_code = ?,
+                   notes         = ?,
+                   notes2        = ?,
+                   address       = ?,
+                   city          = ?,
+                   state         = ?,
+                   zip           = ?,
+                   phone1        = ?,
+                   phone2        = ?,
+                   email         = ?,
+                   fax           = ?,
+                   evolv_client  = ?,
+                   updated_at    = datetime('now')
+             WHERE id = ?
+            """,
+            (
+                name,
+                a_type,
+                (payload.facility_code or "").strip(),
+                (payload.notes or "").strip(),
+                (payload.notes2 or "").strip(),
+                (payload.address or "").strip(),
+                (payload.city or "").strip(),
+                (payload.state or "").strip(),
+                (payload.zip or "").strip(),
+                (payload.phone1 or "").strip(),
+                (payload.phone2 or "").strip(),
+                (payload.email or "").strip(),
+                (payload.fax or "").strip(),
+                evolv_client,
+                int(payload.id),
+            ),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_agencies
+                (agency_name, agency_type, facility_code, notes, notes2, address, city, state, zip, phone1, phone2, email, fax, evolv_client)
+            VALUES
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                name,
+                a_type,
+                (payload.facility_code or "").strip(),
+                (payload.notes or "").strip(),
+                (payload.notes2 or "").strip(),
+                (payload.address or "").strip(),
+                (payload.city or "").strip(),
+                (payload.state or "").strip(),
+                (payload.zip or "").strip(),
+                (payload.phone1 or "").strip(),
+                (payload.phone2 or "").strip(),
+                (payload.email or "").strip(),
+                (payload.fax or "").strip(),
+                evolv_client,
+            ),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+# -----------------------------
+# Sensys Admin: list patients
+# -----------------------------
+@app.get("/api/sensys/admin/patients")
+def sensys_admin_patients(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    rows = conn.execute(
+        """
+        SELECT
+            id,
+            first_name, last_name, dob, gender,
+            phone1, phone2, email, email2,
+            address1, address2, city, state, zip,
+            insurance_name1, insurance_number1,
+            insurance_name2, insurance_number2,
+            active, notes1, notes2,
+            created_at, updated_at, deleted_at,
+            source, firstname_initial, lastname_three,
+            patient_key, external_patient_id, mrn
+        FROM sensys_patients
+        WHERE deleted_at IS NULL
+        ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE
+        """
+    ).fetchall()
+
+    return {"patients": [dict(r) for r in rows]}
+
+
+def _patient_key(first_name: str, last_name: str, dob: str) -> str:
+    fn = (first_name or "").strip().lower()
+    ln = (last_name or "").strip().lower()
+    d = (dob or "").strip().lower()
+    return f"{ln}|{fn}|{d}"
+
+
+# -----------------------------
+# Patient fuzzy-match helpers (DOB anchor + close name)
+# -----------------------------
+_SUFFIXES = {"jr", "sr", "ii", "iii", "iv"}
+_NICKNAMES = {
+    "bob": {"robert"},
+    "bobby": {"robert"},
+    "rob": {"robert"},
+    "bill": {"william"},
+    "billy": {"william"},
+    "will": {"william"},
+    "kate": {"katherine", "kathryn", "catherine"},
+    "kathy": {"katherine", "kathryn", "catherine"},
+    "liz": {"elizabeth"},
+    "beth": {"elizabeth"},
+    "jim": {"james"},
+    "jimmy": {"james"},
+    "mike": {"michael"},
+    "tony": {"anthony"},
+    "dave": {"david"},
+    "steve": {"steven", "stephen"},
+}
+
+def _norm_name(s: str) -> str:
+    s = (s or "").strip().lower()
+    # keep letters/numbers/spaces; remove punctuation
+    out = []
+    for ch in s:
+        if ch.isalnum() or ch.isspace():
+            out.append(ch)
+        # else drop punctuation like . , ' -
+    s = "".join(out)
+    # collapse spaces
+    s = " ".join(s.split())
+    # drop suffix tokens
+    toks = [t for t in s.split() if t not in _SUFFIXES]
+    return " ".join(toks).strip()
+
+def _first_token(s: str) -> str:
+    s = _norm_name(s)
+    return s.split()[0] if s else ""
+
+def _last_token(s: str) -> str:
+    s = _norm_name(s)
+    return s.split()[-1] if s else ""
+
+def _nick_equiv(a: str, b: str) -> bool:
+    a = _first_token(a)
+    b = _first_token(b)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    return (b in _NICKNAMES.get(a, set())) or (a in _NICKNAMES.get(b, set()))
+
+def _levenshtein(a: str, b: str, max_dist: int = 2) -> int:
+    """
+    Small Levenshtein with early-exit when distance > max_dist.
+    """
+    a = a or ""
+    b = b or ""
+    if a == b:
+        return 0
+    if abs(len(a) - len(b)) > max_dist:
+        return max_dist + 1
+
+    # DP rows
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        cur = [i]
+        row_min = cur[0]
+        for j, cb in enumerate(b, start=1):
+            ins = cur[j - 1] + 1
+            dele = prev[j] + 1
+            sub = prev[j - 1] + (0 if ca == cb else 1)
+            v = ins if ins < dele else dele
+            if sub < v:
+                v = sub
+            cur.append(v)
+            if v < row_min:
+                row_min = v
+        if row_min > max_dist:
+            return max_dist + 1
+        prev = cur
+    return prev[-1]
+
+def _score_last_name(in_ln: str, db_ln: str) -> int:
+    a = _last_token(in_ln)
+    b = _last_token(db_ln)
+    if not a or not b:
+        return 0
+    if a == b:
+        return 100
+    if a[:4] and b.startswith(a[:4]) or b[:4] and a.startswith(b[:4]):
+        # strong prefix similarity
+        return 88
+    d = _levenshtein(a, b, max_dist=2)
+    if d == 1:
+        return 90
+    if d == 2:
+        return 80
+    return 0
+
+def _score_first_name(in_fn: str, db_fn: str) -> int:
+    a = _first_token(in_fn)
+    b = _first_token(db_fn)
+    if not a or not b:
+        return 0
+    if a == b:
+        return 100
+    if _nick_equiv(a, b):
+        return 95
+    if a[:3] and b.startswith(a[:3]) or b[:3] and a.startswith(b[:3]):
+        return 82
+    d = _levenshtein(a, b, max_dist=2)
+    if d == 1:
+        return 86
+    if d == 2:
+        return 76
+    return 0
+
+def _create_patient_from_admission_row(conn, r: dict) -> int:
+    first = (r.get("patient_first_name", "") or "").strip()
+    last = (r.get("patient_last_name", "") or "").strip()
+    dob_raw = (r.get("patient_dob", "") or "").strip()
+    dob = (normalize_date_to_iso(dob_raw) or "").strip()
+
+    if not (first and last and dob):
+        raise ValueError("patient_id OR (patient_first_name + patient_last_name + patient_dob) is required")
+
+    external_patient_id = (r.get("patient_external_patient_id", "") or "").strip()
+    mrn = (r.get("patient_mrn", "") or "").strip()
+
+    firstname_initial = (first[:1].upper() if first else "")
+    lastname_three = ((last[:3].upper()) if last else "")
+    pkey = _patient_key(first, last, dob)
+
+    conn.execute(
+        """
+        INSERT INTO sensys_patients
+            (first_name, last_name, dob,
+             active, source,
+             firstname_initial, lastname_three, patient_key,
+             external_patient_id, mrn)
+        VALUES
+            (?, ?, ?,
+             1, 'bulk_admissions',
+             ?, ?, ?,
+             ?, ?)
+        """,
+        (first, last, dob, firstname_initial, lastname_three, pkey, external_patient_id, mrn),
+    )
+    return int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+
+def _find_or_create_patient_for_admission_row(conn, r: dict, cache: dict | None = None) -> int:
+    """
+    Finds/creates patient_id for admissions bulk.
+    If ambiguous match on DOB+fuzzy-name -> CREATE NEW (per user request).
+    """
+    cache = cache or {}
+
+    # 1) explicit patient_id
+    explicit_id = _to_int(r.get("patient_id"))
+    if explicit_id:
+        return int(explicit_id)
+
+    # normalize inputs
+    dob_raw = (r.get("patient_dob", "") or "").strip()
+    dob = (normalize_date_to_iso(dob_raw) or "").strip()
+    first_in = (r.get("patient_first_name", "") or "").strip()
+    last_in = (r.get("patient_last_name", "") or "").strip()
+    ext_in = (r.get("patient_external_patient_id", "") or "").strip()
+    mrn_in = (r.get("patient_mrn", "") or "").strip()
+
+    # cache key (prevents duplicates in same CSV)
+    ck = None
+    if ext_in:
+        ck = f"ext|{ext_in}"
+    elif mrn_in:
+        ck = f"mrn|{mrn_in}"
+    elif dob and first_in and last_in:
+        ck = f"dobname|{dob.strip()}|{_first_token(first_in)}|{_last_token(last_in)}"
+    if ck and ck in cache:
+        return cache[ck]
+
+    # 2) external_patient_id
+    if ext_in:
+        row = conn.execute(
+            "SELECT id FROM sensys_patients WHERE external_patient_id = ? AND deleted_at IS NULL",
+            (ext_in,),
+        ).fetchone()
+        if row:
+            pid = int(row["id"])
+            if ck:
+                cache[ck] = pid
+            return pid
+
+    # 3) mrn
+    if mrn_in:
+        row = conn.execute(
+            "SELECT id FROM sensys_patients WHERE mrn = ? AND deleted_at IS NULL",
+            (mrn_in,),
+        ).fetchone()
+        if row:
+            pid = int(row["id"])
+            if ck:
+                cache[ck] = pid
+            return pid
+
+    # 4) DOB + fuzzy name
+    if dob:
+        candidates = conn.execute(
+            """
+            SELECT id, first_name, last_name
+              FROM sensys_patients
+             WHERE dob = ?
+               AND deleted_at IS NULL
+            """,
+            (dob,),
+        ).fetchall()
+
+        scored = []
+        for c in candidates:
+            ln_score = _score_last_name(last_in, c["last_name"])
+            fn_score = _score_first_name(first_in, c["first_name"])
+
+            # require decent last+first to even consider
+            if ln_score >= 80 and fn_score >= 76:
+                total = int(round(ln_score * 0.6 + fn_score * 0.4))
+                scored.append((total, int(c["id"])))
+
+        if scored:
+            scored.sort(reverse=True)  # highest first
+            best_total, best_id = scored[0]
+
+            # ambiguous if another candidate is too close
+            ambiguous = any((best_total - t) <= 4 for (t, _) in scored[1:])
+
+            if (best_total >= 86) and (not ambiguous):
+                if ck:
+                    cache[ck] = best_id
+                return best_id
+
+            # ambiguous or not strong enough -> CREATE NEW (your rule)
+            pid = _create_patient_from_admission_row(conn, r)
+            if ck:
+                cache[ck] = pid
+            return pid
+
+    # 5) no match path -> create (requires first+last+dob)
+    pid = _create_patient_from_admission_row(conn, r)
+    if ck:
+        cache[ck] = pid
+    return pid
+
+
+# -----------------------------
+# Sensys Admin: upsert patient
+# -----------------------------
+@app.post("/api/sensys/admin/patients/upsert")
+def sensys_admin_patients_upsert(payload: SensysPatientUpsert, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    first = (payload.first_name or "").strip()
+    last = (payload.last_name or "").strip()
+    dob_raw = (payload.dob or "").strip()
+    dob = (normalize_date_to_iso(dob_raw) or "").strip()
+
+    firstname_initial = (first[:1].upper() if first else "")
+    lastname_three = ((last[:3].upper()) if last else "")
+
+    pkey = _patient_key(first, last, dob)
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_patients
+               SET first_name = ?,
+                   last_name = ?,
+                   dob = ?,
+                   gender = ?,
+                   phone1 = ?,
+                   phone2 = ?,
+                   email = ?,
+                   email2 = ?,
+                   address1 = ?,
+                   address2 = ?,
+                   city = ?,
+                   state = ?,
+                   zip = ?,
+                   insurance_name1 = ?,
+                   insurance_number1 = ?,
+                   insurance_name2 = ?,
+                   insurance_number2 = ?,
+                   active = ?,
+                   notes1 = ?,
+                   notes2 = ?,
+                   source = ?,
+                   firstname_initial = ?,
+                   lastname_three = ?,
+                   patient_key = ?,
+                   external_patient_id = ?,
+                   mrn = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (
+                first, last, dob, (payload.gender or "").strip(),
+                (payload.phone1 or "").strip(),
+                (payload.phone2 or "").strip(),
+                (payload.email or "").strip(),
+                (payload.email2 or "").strip(),
+                (payload.address1 or "").strip(),
+                (payload.address2 or "").strip(),
+                (payload.city or "").strip(),
+                (payload.state or "").strip(),
+                (payload.zip or "").strip(),
+                (payload.insurance_name1 or "").strip(),
+                (payload.insurance_number1 or "").strip(),
+                (payload.insurance_name2 or "").strip(),
+                (payload.insurance_number2 or "").strip(),
+                int(payload.active or 0),
+                (payload.notes1 or "").strip(),
+                (payload.notes2 or "").strip(),
+                (payload.source or "manual").strip() or "manual",
+                firstname_initial,
+                lastname_three,
+                pkey,
+                (payload.external_patient_id or "").strip(),
+                (payload.mrn or "").strip(),
+                int(payload.id),
+            ),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_patients
+                (first_name, last_name, dob, gender,
+                 phone1, phone2, email, email2,
+                 address1, address2, city, state, zip,
+                 insurance_name1, insurance_number1, insurance_name2, insurance_number2,
+                 active, notes1, notes2,
+                 source, firstname_initial, lastname_three, patient_key, external_patient_id, mrn)
+            VALUES
+                (?, ?, ?, ?,
+                 ?, ?, ?, ?,
+                 ?, ?, ?, ?, ?,
+                 ?, ?, ?, ?,
+                 ?, ?, ?,
+                 ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                first, last, dob, (payload.gender or "").strip(),
+                (payload.phone1 or "").strip(),
+                (payload.phone2 or "").strip(),
+                (payload.email or "").strip(),
+                (payload.email2 or "").strip(),
+                (payload.address1 or "").strip(),
+                (payload.address2 or "").strip(),
+                (payload.city or "").strip(),
+                (payload.state or "").strip(),
+                (payload.zip or "").strip(),
+                (payload.insurance_name1 or "").strip(),
+                (payload.insurance_number1 or "").strip(),
+                (payload.insurance_name2 or "").strip(),
+                (payload.insurance_number2 or "").strip(),
+                int(payload.active or 1),
+                (payload.notes1 or "").strip(),
+                (payload.notes2 or "").strip(),
+                (payload.source or "manual").strip() or "manual",
+                firstname_initial,
+                lastname_three,
+                pkey,
+                (payload.external_patient_id or "").strip(),
+                (payload.mrn or "").strip(),
+            ),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+
+# -----------------------------
+# Sensys Admin: list admissions (with joins for easy admin view)
+# -----------------------------
+@app.get("/api/sensys/admin/admissions")
+def sensys_admin_admissions(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    rows = conn.execute(
+        """
+        SELECT
+            a.id,
+            a.patient_id,
+            (p.last_name || ', ' || p.first_name) AS patient_name,
+            p.dob AS patient_dob,
+
+            a.agency_id,
+            ag.agency_name AS agency_name,
+
+            -- ✅ NEW
+            a.mrn,
+            a.visit_id,
+            a.facility_code,
+
+            a.admit_date,
+            a.dc_date,
+            a.room,
+            a.referring_agency,
+            a.reason,
+            a.latest_pcp,
+            a.notes1,
+            a.notes2,
+            a.active,
+            a.next_location,
+            a.next_agency_id,
+            nag.agency_name AS next_agency_name,
+
+            a.created_at,
+            a.updated_at
+        FROM sensys_admissions a
+        JOIN sensys_patients p ON p.id = a.patient_id
+        JOIN sensys_agencies ag ON ag.id = a.agency_id
+        LEFT JOIN sensys_agencies nag ON nag.id = a.next_agency_id
+        ORDER BY
+            COALESCE(a.admit_date, '') DESC,
+            a.id DESC
+        """
+    ).fetchall()
+
+    return {"admissions": [dict(r) for r in rows]}
+
+
+# -----------------------------
+# Sensys Admin: upsert admission
+# -----------------------------
+@app.post("/api/sensys/admin/admissions/upsert")
+def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_admissions
+               SET patient_id = ?,
+                   agency_id = ?,
+
+                   -- ✅ NEW
+                   mrn = ?,
+                   visit_id = ?,
+                   facility_code = ?,
+
+                   admit_date = ?,
+                   dc_date = ?,
+                   room = ?,
+                   referring_agency = ?,
+                   reason = ?,
+                   latest_pcp = ?,
+                   notes1 = ?,
+                   notes2 = ?,
+                   active = ?,
+                   next_location = ?,
+                   next_agency_id = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (
+                int(payload.patient_id),
+                int(payload.agency_id),
+
+                # ✅ NEW
+                (payload.mrn or "").strip(),
+                (payload.visit_id or "").strip(),
+                (payload.facility_code or "").strip(),
+
+                (payload.admit_date or "").strip(),
+                (payload.dc_date or "").strip(),
+                (payload.room or "").strip(),
+                (payload.referring_agency or "").strip(),
+                (payload.reason or "").strip(),
+                (payload.latest_pcp or "").strip(),
+                (payload.notes1 or "").strip(),
+                (payload.notes2 or "").strip(),
+                int(payload.active or 0),
+                (payload.next_location or "").strip(),
+                int(payload.next_agency_id) if payload.next_agency_id else None,
+                int(payload.id),
+            ),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_admissions
+                (patient_id, agency_id,
+                 mrn, visit_id, facility_code,
+                 admit_date, dc_date, room,
+                 referring_agency, reason, latest_pcp,
+                 notes1, notes2, active,
+                 next_location, next_agency_id)
+            VALUES
+                (?, ?, ?, ?, ?,
+                 ?, ?, ?,
+                 ?, ?, ?,
+                 ?, ?)
+            """,
+            (
+                int(payload.patient_id),
+                int(payload.agency_id),
+
+                # ✅ NEW
+                (payload.mrn or "").strip(),
+                (payload.visit_id or "").strip(),
+                (payload.facility_code or "").strip(),
+
+                (payload.admit_date or "").strip(),
+                (payload.dc_date or "").strip(),
+                (payload.room or "").strip(),
+                (payload.referring_agency or "").strip(),
+                (payload.reason or "").strip(),
+                (payload.latest_pcp or "").strip(),
+                (payload.notes1 or "").strip(),
+                (payload.notes2 or "").strip(),
+                int(payload.active or 1),
+                (payload.next_location or "").strip(),
+                int(payload.next_agency_id) if payload.next_agency_id else None,
+            ),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+# -----------------------------
+# Sensys Admin: Services (list / upsert / bulk)
+# -----------------------------
+from pydantic import BaseModel
+from typing import Optional
+
+class SensysServiceUpsert(BaseModel):
+    id: Optional[int] = None
+    name: str
+    service_type: str            # dme | hh
+    dropdown: int = 1            # 1/0
+    reminder_id: Optional[str] = None
+
+@app.get("/api/sensys/admin/services")
+def sensys_admin_services(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT id, name, service_type, dropdown, reminder_id, deleted_at, created_at, updated_at
+        FROM sensys_services
+        WHERE deleted_at IS NULL
+        ORDER BY service_type COLLATE NOCASE, name COLLATE NOCASE
+        """
+    ).fetchall()
+    return {"services": [dict(r) for r in rows]}
+
+@app.post("/api/sensys/admin/services/upsert")
+def sensys_admin_services_upsert(payload: SensysServiceUpsert, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+
+    st = (payload.service_type or "").strip().lower()
+    if st not in ("dme", "hh"):
+        raise HTTPException(status_code=400, detail="service_type must be 'dme' or 'hh'")
+
+    dropdown = 1 if int(payload.dropdown or 0) == 1 else 0
+    reminder_id = (payload.reminder_id or "").strip() or None
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_services
+               SET name = ?,
+                   service_type = ?,
+                   dropdown = ?,
+                   reminder_id = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (name, st, dropdown, reminder_id, int(payload.id)),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_services (name, service_type, dropdown, reminder_id)
+            VALUES (?, ?, ?, ?)
+            """,
+            (name, st, dropdown, reminder_id),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+@app.post("/api/sensys/admin/services/bulk")
+async def sensys_admin_services_bulk(token: str, file: UploadFile = File(...)):
+    _require_admin_token(token)
+    conn = get_db()
+
+    raw = await file.read()
+    rows = _csv_to_rows(raw)
+
+    inserted = 0
+    updated = 0
+    errors = []
+
+    for idx, r in enumerate(rows, start=2):
+        try:
+            sid = _to_int(r.get("id"))
+            name = (r.get("name", "") or "").strip()
+            if not name:
+                raise ValueError("name is required")
+
+            st = (r.get("service_type", "") or "").strip().lower()
+            if st not in ("dme", "hh"):
+                raise ValueError("service_type must be 'dme' or 'hh'")
+
+            dropdown = _to_bool_int(r.get("dropdown"), 1)
+            reminder_id = (r.get("reminder_id", "") or "").strip() or None
+
+            if sid:
+                conn.execute(
+                    """
+                    UPDATE sensys_services
+                       SET name = ?,
+                           service_type = ?,
+                           dropdown = ?,
+                           reminder_id = ?,
+                           updated_at = datetime('now')
+                     WHERE id = ?
+                    """,
+                    (name, st, int(dropdown), reminder_id, int(sid)),
+                )
+                updated += 1
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO sensys_services (name, service_type, dropdown, reminder_id)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (name, st, int(dropdown), reminder_id),
+                )
+                inserted += 1
+
+        except Exception as e:
+            errors.append({"row": idx, "error": str(e)})
+
+    conn.commit()
+    return {"ok": True, "inserted": inserted, "updated": updated, "error_count": len(errors), "errors": errors[:50]}
+
+
+# -----------------------------
+# Sensys Admin: Care Team (list / upsert / bulk)
+# -----------------------------
+class SensysCareTeamUpsert(BaseModel):
+    id: Optional[int] = None
+    name: str
+    type: str
+    npi: Optional[str] = None
+    aliases: Optional[str] = None
+    address1: Optional[str] = None
+    address2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip: Optional[str] = None
+    practice_name: Optional[str] = None
+    phone1: Optional[str] = None
+    phone2: Optional[str] = None
+    email1: Optional[str] = None
+    email2: Optional[str] = None
+    fax: Optional[str] = None
+    active: int = 1
+
+@app.get("/api/sensys/admin/care-team")
+def sensys_admin_care_team(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT
+            id, name, type, npi, aliases,
+            address1, address2, city, state, zip,
+            practice_name, phone1, phone2, email1, email2, fax,
+            active, created_at, updated_at, deleted_at
+        FROM sensys_care_team
+        WHERE deleted_at IS NULL
+        ORDER BY active DESC, type COLLATE NOCASE, name COLLATE NOCASE
+        """
+    ).fetchall()
+    return {"care_team": [dict(r) for r in rows]}
+
+@app.post("/api/sensys/admin/care-team/upsert")
+def sensys_admin_care_team_upsert(payload: SensysCareTeamUpsert, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+
+    ctype = (payload.type or "").strip()
+    if not ctype:
+        raise HTTPException(status_code=400, detail="type is required")
+
+    active = 1 if int(payload.active or 0) == 1 else 0
+
+    vals = (
+        name,
+        ctype,
+        (payload.npi or "").strip(),
+        (payload.aliases or "").strip(),
+        (payload.address1 or "").strip(),
+        (payload.address2 or "").strip(),
+        (payload.city or "").strip(),
+        (payload.state or "").strip(),
+        (payload.zip or "").strip(),
+        (payload.practice_name or "").strip(),
+        (payload.phone1 or "").strip(),
+        (payload.phone2 or "").strip(),
+        (payload.email1 or "").strip(),
+        (payload.email2 or "").strip(),
+        (payload.fax or "").strip(),
+        int(active),
+    )
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_care_team
+               SET name = ?,
+                   type = ?,
+                   npi = ?,
+                   aliases = ?,
+                   address1 = ?,
+                   address2 = ?,
+                   city = ?,
+                   state = ?,
+                   zip = ?,
+                   practice_name = ?,
+                   phone1 = ?,
+                   phone2 = ?,
+                   email1 = ?,
+                   email2 = ?,
+                   fax = ?,
+                   active = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            vals + (int(payload.id),),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_care_team
+                (name, type, npi, aliases,
+                 address1, address2, city, state, zip,
+                 practice_name, phone1, phone2, email1, email2, fax,
+                 active)
+            VALUES
+                (?, ?, ?, ?,
+                 ?, ?, ?, ?, ?,
+                 ?, ?, ?, ?, ?, ?,
+                 ?)
+            """,
+            vals,
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+@app.post("/api/sensys/admin/care-team/bulk")
+async def sensys_admin_care_team_bulk(token: str, file: UploadFile = File(...)):
+    _require_admin_token(token)
+    conn = get_db()
+
+    raw = await file.read()
+    rows = _csv_to_rows(raw)
+
+    inserted = 0
+    updated = 0
+    errors = []
+
+    for idx, r in enumerate(rows, start=2):
+        try:
+            cid = _to_int(r.get("id"))
+            name = (r.get("name", "") or "").strip()
+            ctype = (r.get("type", "") or "").strip()
+            if not name:
+                raise ValueError("name is required")
+            if not ctype:
+                raise ValueError("type is required")
+
+            active = _to_bool_int(r.get("active"), 1)
+
+            vals = (
+                name, ctype,
+                (r.get("npi", "") or "").strip(),
+                (r.get("aliases", "") or "").strip(),
+                (r.get("address1", "") or "").strip(),
+                (r.get("address2", "") or "").strip(),
+                (r.get("city", "") or "").strip(),
+                (r.get("state", "") or "").strip(),
+                (r.get("zip", "") or "").strip(),
+                (r.get("practice_name", "") or "").strip(),
+                (r.get("phone1", "") or "").strip(),
+                (r.get("phone2", "") or "").strip(),
+                (r.get("email1", "") or "").strip(),
+                (r.get("email2", "") or "").strip(),
+                (r.get("fax", "") or "").strip(),
+                int(active),
+            )
+
+            if cid:
+                conn.execute(
+                    """
+                    UPDATE sensys_care_team
+                       SET name = ?,
+                           type = ?,
+                           npi = ?,
+                           aliases = ?,
+                           address1 = ?,
+                           address2 = ?,
+                           city = ?,
+                           state = ?,
+                           zip = ?,
+                           practice_name = ?,
+                           phone1 = ?,
+                           phone2 = ?,
+                           email1 = ?,
+                           email2 = ?,
+                           fax = ?,
+                           active = ?,
+                           updated_at = datetime('now')
+                     WHERE id = ?
+                    """,
+                    vals + (int(cid),),
+                )
+                updated += 1
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO sensys_care_team
+                        (name, type, npi, aliases,
+                         address1, address2, city, state, zip,
+                         practice_name, phone1, phone2, email1, email2, fax,
+                         active)
+                    VALUES
+                        (?, ?, ?, ?,
+                         ?, ?, ?, ?, ?,
+                         ?, ?, ?, ?, ?, ?,
+                         ?)
+                    """,
+                    vals,
+                )
+                inserted += 1
+
+        except Exception as e:
+            errors.append({"row": idx, "error": str(e)})
+
+    conn.commit()
+    return {"ok": True, "inserted": inserted, "updated": updated, "error_count": len(errors), "errors": errors[:50]}
+
+# -----------------------------
+# Sensys Admin: Note Templates (list / upsert / delete)
+# -----------------------------
+class SensysNoteTemplateUpsert(BaseModel):
+    id: Optional[int] = None
+    agency_id: Optional[int] = None   # NULL = global template
+    template_name: str
+    active: int = 1
+
+class SensysNoteTemplateDelete(BaseModel):
+    id: int
+
+@app.get("/api/sensys/admin/note-templates")
+def sensys_admin_note_templates(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    templates = conn.execute(
+        """
+        SELECT
+            t.id, t.agency_id, t.template_name, t.active, t.created_at, t.updated_at
+        FROM sensys_note_templates t
+        WHERE t.deleted_at IS NULL
+        ORDER BY
+            CASE WHEN t.agency_id IS NULL THEN 0 ELSE 1 END,
+            t.template_name COLLATE NOCASE
+        """
+    ).fetchall()
+    tpl_list = [dict(r) for r in templates]
+
+    if not tpl_list:
+        return {"ok": True, "templates": []}
+
+    tpl_ids = [int(t["id"]) for t in tpl_list]
+    fields = conn.execute(
+        f"""
+        SELECT
+            id, template_id, field_key, field_label, field_type,
+            required, sort_order, options_json, created_at, updated_at
+        FROM sensys_note_template_fields
+        WHERE deleted_at IS NULL
+          AND template_id IN ({",".join(["?"] * len(tpl_ids))})
+        ORDER BY template_id, sort_order ASC, id ASC
+        """,
+        tuple(tpl_ids),
+    ).fetchall()
+
+    by_tpl = {}
+    for f in fields:
+        d = dict(f)
+        by_tpl.setdefault(int(d["template_id"]), []).append(d)
+
+    for t in tpl_list:
+        t["fields"] = by_tpl.get(int(t["id"]), [])
+
+    return {"ok": True, "templates": tpl_list}
+
+@app.post("/api/sensys/admin/note-templates/upsert")
+def sensys_admin_note_templates_upsert(payload: SensysNoteTemplateUpsert, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    name = (payload.template_name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="template_name is required")
+
+    active = 1 if int(payload.active or 0) == 1 else 0
+    agency_id = int(payload.agency_id) if payload.agency_id else None
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_note_templates
+               SET agency_id = ?,
+                   template_name = ?,
+                   active = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (agency_id, name, active, int(payload.id)),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_note_templates (agency_id, template_name, active)
+            VALUES (?, ?, ?)
+            """,
+            (agency_id, name, active),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+@app.post("/api/sensys/admin/note-templates/delete")
+def sensys_admin_note_templates_delete(payload: SensysNoteTemplateDelete, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    conn.execute(
+        "UPDATE sensys_note_templates SET deleted_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+        (int(payload.id),),
+    )
+    conn.execute(
+        "UPDATE sensys_note_template_fields SET deleted_at = datetime('now'), updated_at = datetime('now') WHERE template_id = ?",
+        (int(payload.id),),
+    )
+    conn.commit()
+    return {"ok": True}
+
+
+# -----------------------------
+# Sensys Admin: Note Template Fields (questions) (upsert / delete)
+# -----------------------------
+class SensysNoteTemplateFieldUpsert(BaseModel):
+    id: Optional[int] = None
+    template_id: int
+    field_key: str
+    field_label: str
+    field_type: str              # text|textarea|number|date|boolean|select
+    required: int = 0
+    sort_order: int = 0
+    options_json: Optional[str] = None   # JSON array string for select options
+
+class SensysNoteTemplateFieldDelete(BaseModel):
+    id: int
+
+@app.post("/api/sensys/admin/note-template-fields/upsert")
+def sensys_admin_note_template_fields_upsert(payload: SensysNoteTemplateFieldUpsert, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    template_id = int(payload.template_id)
+    field_key = (payload.field_key or "").strip()
+    field_label = (payload.field_label or "").strip()
+    field_type = (payload.field_type or "").strip().lower()
+
+    if not template_id:
+        raise HTTPException(status_code=400, detail="template_id is required")
+    if not field_key:
+        raise HTTPException(status_code=400, detail="field_key is required")
+    if not field_label:
+        raise HTTPException(status_code=400, detail="field_label is required")
+
+    if field_type not in ("text", "textarea", "number", "int", "float", "date", "boolean", "checkbox", "select"):
+        raise HTTPException(status_code=400, detail="field_type invalid")
+
+    required = 1 if int(payload.required or 0) == 1 else 0
+    sort_order = int(payload.sort_order or 0)
+
+    options_json = (payload.options_json or "").strip() or None
+    if field_type == "select":
+        # must be valid JSON array string if provided
+        if not options_json:
+            options_json = "[]"
+        try:
+            obj = json.loads(options_json)
+            if not isinstance(obj, list):
+                raise ValueError("options_json must be a JSON array")
+        except Exception:
+            raise HTTPException(status_code=400, detail="options_json must be a valid JSON array string")
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_note_template_fields
+               SET template_id = ?,
+                   field_key = ?,
+                   field_label = ?,
+                   field_type = ?,
+                   required = ?,
+                   sort_order = ?,
+                   options_json = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (template_id, field_key, field_label, field_type, required, sort_order, options_json, int(payload.id)),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_note_template_fields
+                (template_id, field_key, field_label, field_type, required, sort_order, options_json)
+            VALUES
+                (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (template_id, field_key, field_label, field_type, required, sort_order, options_json),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+@app.post("/api/sensys/admin/note-template-fields/delete")
+def sensys_admin_note_template_fields_delete(payload: SensysNoteTemplateFieldDelete, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    conn.execute(
+        "UPDATE sensys_note_template_fields SET deleted_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+        (int(payload.id),),
+    )
+    conn.commit()
+    return {"ok": True}
+
+# =========================================================
+# Sensys Admin: BULK UPLOAD (CSV) — users/agencies/patients/admissions
+# =========================================================
+
+def _csv_to_rows(file_bytes: bytes) -> list[dict]:
+    """
+    Accepts UTF-8 CSV with headers.
+    Returns list of dict rows, trimming whitespace.
+    """
+    text = file_bytes.decode("utf-8-sig", errors="replace")
+    f = io.StringIO(text)
+    reader = csv.DictReader(f)
+    out = []
+    for r in reader:
+        if not r:
+            continue
+        clean = { (k or "").strip(): (v or "").strip() for k, v in r.items() }
+        # skip totally empty lines
+        if any(v for v in clean.values()):
+            out.append(clean)
+    return out
+
+
+def _to_int(v: str, default=None):
+    v = (v or "").strip()
+    if v == "":
+        return default
+    try:
+        return int(v)
+    except Exception:
+        return default
+
+
+def _to_bool_int(v: str, default=0):
+    s = (v or "").strip().lower()
+    if s in ("1", "true", "yes", "y", "t"):
+        return 1
+    if s in ("0", "false", "no", "n", "f"):
+        return 0
+    return default
+
+
+def _split_list(v: str) -> list[str]:
+    """
+    Accepts: "a,b,c" or "a|b|c"
+    """
+    s = (v or "").strip()
+    if not s:
+        return []
+    sep = "|" if "|" in s else ","
+    return [x.strip() for x in s.split(sep) if x.strip()]
+
+
+# -----------------------------
+# BULK: Users
+# -----------------------------
+@app.post("/api/sensys/admin/users/bulk")
+async def sensys_admin_users_bulk(token: str, file: UploadFile = File(...)):
+    _require_admin_token(token)
+    conn = get_db()
+    _sensys_seed_roles(conn)
+
+    raw = await file.read()
+    rows = _csv_to_rows(raw)
+
+    inserted = 0
+    updated = 0
+    errors = []
+
+    for idx, r in enumerate(rows, start=2):  # row 1 is header
+        try:
+            email = (r.get("email", "") or "").strip().lower()
+            if not email:
+                raise ValueError("email is required")
+
+            user_id = _to_int(r.get("user_id") or r.get("id"))
+
+            display_name = (r.get("display_name", "") or "").strip()
+            is_active = _to_int(r.get("is_active"), 1)
+            password = (r.get("password", "") or "").strip()
+            cell_phone = (r.get("cell_phone", "") or "").strip()
+            account_locked = _to_bool_int(r.get("account_locked"), 0)
+
+            if user_id:
+                # update (password only if provided)
+                if password:
+                    conn.execute(
+                        """
+                        UPDATE sensys_users
+                           SET email = ?,
+                               display_name = ?,
+                               is_active = ?,
+                               password = ?,
+                               cell_phone = ?,
+                               account_locked = ?,
+                               updated_at = datetime('now')
+                         WHERE id = ?
+                        """,
+                        (email, display_name, int(is_active), password, cell_phone, int(account_locked), int(user_id)),
+                    )
+                else:
+                    conn.execute(
+                        """
+                        UPDATE sensys_users
+                           SET email = ?,
+                               display_name = ?,
+                               is_active = ?,
+                               cell_phone = ?,
+                               account_locked = ?,
+                               updated_at = datetime('now')
+                         WHERE id = ?
+                        """,
+                        (email, display_name, int(is_active), cell_phone, int(account_locked), int(user_id)),
+                    )
+                updated += 1
+                saved_user_id = int(user_id)
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO sensys_users (email, display_name, is_active, password, cell_phone, account_locked)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (email, display_name, int(is_active), password, cell_phone, int(account_locked)),
+                )
+                saved_user_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+                inserted += 1
+
+            # Optional: role_keys column (comma or | separated)
+            role_keys = [x.lower() for x in _split_list(r.get("role_keys", ""))]
+            if role_keys:
+                conn.execute("DELETE FROM sensys_user_roles WHERE user_id = ?", (saved_user_id,))
+                role_rows = conn.execute(
+                    "SELECT id AS role_id, role_key FROM sensys_roles WHERE role_key IN ({})".format(
+                        ",".join(["?"] * len(role_keys))
+                    ),
+                    role_keys,
+                ).fetchall()
+                role_ids = [rr["role_id"] for rr in role_rows]
+                conn.executemany(
+                    "INSERT INTO sensys_user_roles (user_id, role_id) VALUES (?, ?)",
+                    [(saved_user_id, rid) for rid in role_ids],
+                )
+
+            # Optional: agency_ids column (comma or | separated)
+            agency_ids = [_to_int(x) for x in _split_list(r.get("agency_ids", ""))]
+            agency_ids = [x for x in agency_ids if x]
+            if agency_ids:
+                conn.execute("DELETE FROM sensys_user_agencies WHERE user_id = ?", (saved_user_id,))
+                conn.executemany(
+                    "INSERT OR IGNORE INTO sensys_user_agencies (user_id, agency_id) VALUES (?, ?)",
+                    [(saved_user_id, aid) for aid in agency_ids],
+                )
+
+        except Exception as e:
+            errors.append({"row": idx, "error": str(e)})
+
+    conn.commit()
+    return {"ok": True, "inserted": inserted, "updated": updated, "error_count": len(errors), "errors": errors[:50]}
+
+
+# -----------------------------
+# BULK: Agencies
+# -----------------------------
+@app.post("/api/sensys/admin/agencies/bulk")
+async def sensys_admin_agencies_bulk(token: str, file: UploadFile = File(...)):
+    _require_admin_token(token)
+    conn = get_db()
+
+    raw = await file.read()
+    rows = _csv_to_rows(raw)
+
+    inserted = 0
+    updated = 0
+    errors = []
+
+    for idx, r in enumerate(rows, start=2):
+        try:
+            agency_id = _to_int(r.get("id"))
+            name = (r.get("agency_name", "") or "").strip()
+            a_type = (r.get("agency_type", "") or "").strip()
+            if not name:
+                raise ValueError("agency_name is required")
+            if not a_type:
+                raise ValueError("agency_type is required")
+
+            evolv_client = _to_bool_int(r.get("evolv_client"), 0)
+
+            vals = (
+                name,
+                a_type,
+                (r.get("facility_code", "") or "").strip(),
+                (r.get("notes", "") or "").strip(),
+                (r.get("notes2", "") or "").strip(),
+                (r.get("address", "") or "").strip(),
+                (r.get("city", "") or "").strip(),
+                (r.get("state", "") or "").strip(),
+                (r.get("zip", "") or "").strip(),
+                (r.get("phone1", "") or "").strip(),
+                (r.get("phone2", "") or "").strip(),
+                (r.get("email", "") or "").strip(),
+                (r.get("fax", "") or "").strip(),
+                int(evolv_client),
+            )
+
+            if agency_id:
+                # ✅ If ID provided, UPDATE if it exists; otherwise INSERT (so CSVs with new IDs work)
+                cur = conn.execute(
+                    """
+                    UPDATE sensys_agencies
+                       SET agency_name   = ?,
+                           agency_type   = ?,
+                           facility_code = ?,
+                           notes         = ?,
+                           notes2        = ?,
+                           address       = ?,
+                           city          = ?,
+                           state         = ?,
+                           zip           = ?,
+                           phone1        = ?,
+                           phone2        = ?,
+                           email         = ?,
+                           fax           = ?,
+                           evolv_client  = ?,
+                           updated_at    = datetime('now')
+                     WHERE id = ?
+                    """,
+                    vals + (int(agency_id),),
+                )
+
+                if cur.rowcount and cur.rowcount > 0:
+                    updated += 1
+                else:
+                    # INSERT with explicit id (SQLite allows this)
+                    conn.execute(
+                        """
+                        INSERT INTO sensys_agencies
+                            (id, agency_name, agency_type, facility_code, notes, notes2, address, city, state, zip, phone1, phone2, email, fax, evolv_client)
+                        VALUES
+                            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (int(agency_id),) + vals,
+                    )
+                    inserted += 1
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO sensys_agencies
+                        (agency_name, agency_type, facility_code, notes, notes2, address, city, state, zip, phone1, phone2, email, fax, evolv_client)
+                    VALUES
+                        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    vals,
+                )
+                inserted += 1
+
+        except Exception as e:
+            errors.append({"row": idx, "error": str(e)})
+
+    conn.commit()
+    return {"ok": True, "inserted": inserted, "updated": updated, "error_count": len(errors), "errors": errors[:50]}
+
+
+# -----------------------------
+# BULK: Patients
+# -----------------------------
+@app.post("/api/sensys/admin/patients/bulk")
+async def sensys_admin_patients_bulk(token: str, file: UploadFile = File(...)):
+    _require_admin_token(token)
+    conn = get_db()
+
+    raw = await file.read()
+    rows = _csv_to_rows(raw)
+
+    inserted = 0
+    updated = 0
+    errors = []
+
+    for idx, r in enumerate(rows, start=2):
+        try:
+            pid = _to_int(r.get("id"))
+            first = (r.get("first_name", "") or "").strip()
+            last = (r.get("last_name", "") or "").strip()
+            dob_raw = (r.get("dob", "") or "").strip()
+            dob = (normalize_date_to_iso(dob_raw) or "").strip()
+
+            firstname_initial = (first[:1].upper() if first else "")
+            lastname_three = ((last[:3].upper()) if last else "")
+            pkey = _patient_key(first, last, dob)
+
+            active = _to_int(r.get("active"), 1)
+
+            vals = (
+                first,
+                last,
+                dob,
+                (r.get("gender", "") or "").strip(),
+                (r.get("phone1", "") or "").strip(),
+                (r.get("phone2", "") or "").strip(),
+                (r.get("email", "") or "").strip(),
+                (r.get("email2", "") or "").strip(),
+                (r.get("address1", "") or "").strip(),
+                (r.get("address2", "") or "").strip(),
+                (r.get("city", "") or "").strip(),
+                (r.get("state", "") or "").strip(),
+                (r.get("zip", "") or "").strip(),
+                (r.get("insurance_name1", "") or "").strip(),
+                (r.get("insurance_number1", "") or "").strip(),
+                (r.get("insurance_name2", "") or "").strip(),
+                (r.get("insurance_number2", "") or "").strip(),
+                int(active),
+                (r.get("notes1", "") or "").strip(),
+                (r.get("notes2", "") or "").strip(),
+                ((r.get("source", "") or "manual").strip() or "manual"),
+                firstname_initial,
+                lastname_three,
+                pkey,
+                (r.get("external_patient_id", "") or "").strip(),
+                (r.get("mrn", "") or "").strip(),
+            )
+
+            if pid:
+                conn.execute(
+                    """
+                    UPDATE sensys_patients
+                       SET first_name = ?,
+                           last_name = ?,
+                           dob = ?,
+                           gender = ?,
+                           phone1 = ?,
+                           phone2 = ?,
+                           email = ?,
+                           email2 = ?,
+                           address1 = ?,
+                           address2 = ?,
+                           city = ?,
+                           state = ?,
+                           zip = ?,
+                           insurance_name1 = ?,
+                           insurance_number1 = ?,
+                           insurance_name2 = ?,
+                           insurance_number2 = ?,
+                           active = ?,
+                           notes1 = ?,
+                           notes2 = ?,
+                           source = ?,
+                           firstname_initial = ?,
+                           lastname_three = ?,
+                           patient_key = ?,
+                           external_patient_id = ?,
+                           mrn = ?,
+                           updated_at = datetime('now')
+                     WHERE id = ?
+                    """,
+                    vals + (int(pid),),
+                )
+                updated += 1
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO sensys_patients
+                        (first_name,last_name,dob,gender,phone1,phone2,email,email2,
+                         address1,address2,city,state,zip,
+                         insurance_name1,insurance_number1,insurance_name2,insurance_number2,
+                         active,notes1,notes2,source,firstname_initial,lastname_three,patient_key,external_patient_id,mrn)
+                    VALUES
+                        (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    vals,
+                )
+                inserted += 1
+
+        except Exception as e:
+            errors.append({"row": idx, "error": str(e)})
+
+    conn.commit()
+    return {"ok": True, "inserted": inserted, "updated": updated, "error_count": len(errors), "errors": errors[:50]}
+
+
+# -----------------------------
+# BULK: Admissions
+# -----------------------------
+@app.post("/api/sensys/admin/admissions/bulk")
+async def sensys_admin_admissions_bulk(token: str, file: UploadFile = File(...)):
+    _require_admin_token(token)
+    conn = get_db()
+
+    raw = await file.read()
+    rows = _csv_to_rows(raw)
+
+    inserted = 0
+    updated = 0
+    errors = []
+
+    for idx, r in enumerate(rows, start=2):
+        try:
+            aid = _to_int(r.get("id"))
+
+            # cache prevents creating duplicates within the same CSV upload
+            if "patient_cache" not in locals():
+                patient_cache = {}
+
+            patient_id = _find_or_create_patient_for_admission_row(conn, r, patient_cache)
+
+            agency_id = _to_int(r.get("agency_id"))
+            if not agency_id:
+                raise ValueError("agency_id is required")
+
+            active = _to_int(r.get("active"), 1)
+
+            vals = (
+                int(patient_id),
+                int(agency_id),
+
+                # ✅ NEW
+                (r.get("mrn", "") or "").strip(),
+                (r.get("visit_id", "") or "").strip(),
+                (r.get("facility_code", "") or "").strip(),
+
+                (r.get("admit_date", "") or "").strip(),
+                (r.get("dc_date", "") or "").strip(),
+                (r.get("room", "") or "").strip(),
+                (r.get("referring_agency", "") or "").strip(),
+                (r.get("reason", "") or "").strip(),
+                (r.get("latest_pcp", "") or "").strip(),
+                (r.get("notes1", "") or "").strip(),
+                (r.get("notes2", "") or "").strip(),
+                int(active),
+                (r.get("next_location", "") or "").strip(),
+                _to_int(r.get("next_agency_id"), None),
+            )
+
+            if aid:
+                conn.execute(
+                    """
+                    UPDATE sensys_admissions
+                        SET patient_id = ?,
+                            agency_id = ?,
+
+                            -- ✅ NEW
+                            mrn = ?,
+                            visit_id = ?,
+                            facility_code = ?,
+
+                            admit_date = ?,
+                            dc_date = ?,
+                           room = ?,
+                           referring_agency = ?,
+                           reason = ?,
+                           latest_pcp = ?,
+                           notes1 = ?,
+                           notes2 = ?,
+                           active = ?,
+                           next_location = ?,
+                           next_agency_id = ?,
+                           updated_at = datetime('now')
+                     WHERE id = ?
+                    """,
+                    vals + (int(aid),),
+                )
+                updated += 1
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO sensys_admissions
+                        (patient_id, agency_id,
+                         mrn, visit_id, facility_code,
+                         admit_date, dc_date, room,
+                         referring_agency, reason, latest_pcp,
+                         notes1, notes2, active,
+                         next_location, next_agency_id)
+                    VALUES
+                        (?, ?, ?, ?, ?,
+                         ?, ?, ?,
+                         ?, ?, ?,
+                         ?, ?)
+                    """,
+                    vals,
+                )
+                inserted += 1
+
+        except Exception as e:
+            errors.append({"row": idx, "error": str(e)})
+
+    conn.commit()
+    return {"ok": True, "inserted": inserted, "updated": updated, "error_count": len(errors), "errors": errors[:50]}
+
+
+# -----------------------------
+# Sensys Admin: set agencies for user (replace)
+# -----------------------------
+@app.post("/api/sensys/admin/users/set-agencies")
+def sensys_admin_users_set_agencies(payload: SensysUserAgencyAssign, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    user_id = int(payload.user_id)
+    agency_ids = [int(x) for x in (payload.agency_ids or [])]
+
+    # clear existing
+    conn.execute("DELETE FROM sensys_user_agencies WHERE user_id = ?", (user_id,))
+
+    if agency_ids:
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO sensys_user_agencies (user_id, agency_id)
+            VALUES (?, ?)
+            """,
+            [(user_id, aid) for aid in agency_ids],
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+# -----------------------------
+# Sensys Admin: set facilities for user (replace)
+# -----------------------------
+@app.post("/api/sensys/admin/users/set-facilities")
+def sensys_admin_users_set_facilities(payload: SensysFacilityAssign, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    user_id = int(payload.user_id)
+    facility_ids = sorted({int(x) for x in payload.facility_ids if str(x).strip()})
+
+    conn.execute("DELETE FROM sensys_user_facilities WHERE user_id = ?", (user_id,))
+
+    if facility_ids:
+        conn.executemany(
+            """
+            INSERT INTO sensys_user_facilities (user_id, facility_id)
+            VALUES (?, ?)
+            """,
+            [(user_id, fid) for fid in facility_ids],
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+# =========================================================
+# Sensys simple auth (email-only login for testing)
+# =========================================================
+from uuid import uuid4
+
+def _sensys_create_session(conn: sqlite3.Connection, user_id: int, ttl_hours: int = 24) -> str:
+    token = str(uuid4())
+    conn.execute(
+        """
+        INSERT INTO sensys_sessions (token, user_id, expires_at)
+        VALUES (?, ?, datetime('now', ?))
+        """,
+        (token, int(user_id), f"+{int(ttl_hours)} hours"),
+    )
+    conn.commit()
+    return token
+
+def _sensys_get_user_by_token(conn: sqlite3.Connection, token: str) -> Optional[dict]:
+    token = (token or "").strip()
+    if not token:
+        return None
+
+    row = conn.execute(
+        """
+        SELECT u.id AS user_id, u.email, u.display_name, u.is_active, u.account_locked
+        FROM sensys_sessions s
+        JOIN sensys_users u ON u.id = s.user_id
+        WHERE s.token = ?
+          AND s.expires_at > datetime('now')
+        """,
+        (token,),
+    ).fetchone()
+
+    return dict(row) if row else None
+
+def _sensys_token_from_request(request: Request) -> str:
+    # Authorization: Bearer <token>
+    auth = request.headers.get("authorization") or request.headers.get("Authorization") or ""
+    if auth.lower().startswith("bearer "):
+        return auth.split(" ", 1)[1].strip()
+    # fallback: query param token= (optional)
+    return (request.query_params.get("token") or "").strip()
+
+def _sensys_require_user(request: Request) -> dict:
+    conn = get_db()
+    token = _sensys_token_from_request(request)
+
+    # Helpful context for Render logs
+    path = str(getattr(request.url, "path", "") or "")
+    ip = request.client.host if request.client else None
+
+    if not (token or "").strip():
+        logger.warning("[SENSYS][AUTH][MISSING_TOKEN] path=%s ip=%s", path, ip)
+        raise HTTPException(status_code=401, detail="Unauthorized (missing token)")
+
+    u = _sensys_get_user_by_token(conn, token)
+    if not u:
+        logger.warning("[SENSYS][AUTH][INVALID_OR_EXPIRED_TOKEN] path=%s ip=%s", path, ip)
+        raise HTTPException(status_code=401, detail="Unauthorized (invalid or expired token)")
+
+    if int(u.get("is_active") or 0) != 1:
+        logger.warning("[SENSYS][AUTH][USER_INACTIVE] user_id=%s path=%s ip=%s", u.get("user_id"), path, ip)
+        raise HTTPException(status_code=403, detail="User inactive")
+
+    if int(u.get("account_locked") or 0) == 1:
+        logger.warning("[SENSYS][AUTH][ACCOUNT_LOCKED] user_id=%s path=%s ip=%s", u.get("user_id"), path, ip)
+        raise HTTPException(status_code=403, detail="Account locked")
+
+    # attach role keys
+    roles = conn.execute(
+        """
+        SELECT r.role_key
+        FROM sensys_user_roles ur
+        JOIN sensys_roles r ON r.id = ur.role_id
+        WHERE ur.user_id = ?
+        """,
+        (int(u["user_id"]),),
+    ).fetchall()
+    u["role_keys"] = sorted([r["role_key"] for r in roles])
+
+    return u
+
+
+@app.post("/api/sensys/login")
+def sensys_login(payload: SensysLoginIn):
+    """
+    Email-only login for testing.
+    - Password is ignored for now.
+    - Returns a token used as Authorization: Bearer <token>
+    """
+    conn = get_db()
+    _sensys_seed_roles(conn)
+
+    email = (payload.email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="email is required")
+
+    user = conn.execute(
+        """
+        SELECT id AS user_id, email, display_name, is_active, account_locked
+        FROM sensys_users
+        WHERE lower(email) = lower(?)
+        """,
+        (email,),
+    ).fetchone()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid login")
+
+    user_id = int(user["user_id"])
+
+    # Roles
+    roles = conn.execute(
+        """
+        SELECT r.role_key
+        FROM sensys_user_roles ur
+        JOIN sensys_roles r ON r.id = ur.role_id
+        WHERE ur.user_id = ?
+        """,
+        (user_id,),
+    ).fetchall()
+    role_keys = sorted([r["role_key"] for r in roles])
+
+    # Decide which page to open based on role
+    # (first page requested: SNF SW)
+    redirect_url = "/sensys/login"
+    if "snf_sw" in role_keys:
+        redirect_url = "/sensys/snf-sw"
+    elif "admin" in role_keys:
+        redirect_url = "/admin/sensys"
+
+    token = _sensys_create_session(conn, user_id=user_id, ttl_hours=24)
+
+    return {
+        "ok": True,
+        "token": token,
+        "user": {
+            "user_id": user_id,
+            "email": user["email"],
+            "display_name": user["display_name"],
+            "role_keys": role_keys,
+        },
+        "redirect_url": redirect_url,
+    }
+
+
+@app.get("/api/sensys/me")
+def sensys_me(request: Request):
+    u = _sensys_require_user(request)
+    return {"ok": True, "user": u}
+
+
+@app.get("/api/sensys/my-admissions")
+def sensys_my_admissions(request: Request):
+    """
+    Returns admissions linked to the logged-in user via:
+      sensys_user_agencies.user_id -> sensys_admissions.agency_id
+    """
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    rows = conn.execute(
+        """
+        SELECT
+            a.id,
+            a.patient_id,
+            (p.last_name || ', ' || p.first_name) AS patient_name,
+            p.dob AS patient_dob,
+
+            a.agency_id,
+            ag.agency_name AS agency_name,
+
+            a.admit_date,
+            a.dc_date,
+            a.room,
+            a.reason,
+            a.latest_pcp,
+            a.active,
+            a.updated_at
+        FROM sensys_user_agencies ua
+        JOIN sensys_admissions a ON a.agency_id = ua.agency_id
+        JOIN sensys_patients p ON p.id = a.patient_id
+        JOIN sensys_agencies ag ON ag.id = a.agency_id
+        WHERE ua.user_id = ?
+        ORDER BY
+            COALESCE(a.admit_date, '') DESC,
+            a.id DESC
+        """,
+        (int(u["user_id"]),),
+    ).fetchall()
+
+    return {"ok": True, "admissions": [dict(r) for r in rows]}
+
+# -----------------------------
+# Sensys: Admission Details APIs (tasks / notes / dc submissions / services / care team)
+# -----------------------------
+from pydantic import BaseModel
+from typing import Optional, List
+
+def _sensys_assert_admission_access(conn, user_id: int, admission_id: int):
+    ok = conn.execute(
+        """
+        SELECT 1
+        FROM sensys_user_agencies ua
+        JOIN sensys_admissions a ON a.agency_id = ua.agency_id
+        WHERE ua.user_id = ?
+          AND a.id = ?
+        """,
+        (int(user_id), int(admission_id)),
+    ).fetchone()
+
+    if not ok:
+        logger.warning(
+            "[SENSYS][ACCESS][FORBIDDEN_ADMISSION] user_id=%s admission_id=%s",
+            int(user_id),
+            int(admission_id),
+        )
+        raise HTTPException(status_code=403, detail="Forbidden: admission not linked to your agencies")
+
+@app.get("/api/sensys/services")
+def sensys_services(request: Request):
+    _sensys_require_user(request)
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT id, name, service_type, dropdown, reminder_id, deleted_at, created_at, updated_at
+        FROM sensys_services
+        WHERE deleted_at IS NULL
+        ORDER BY service_type COLLATE NOCASE, name COLLATE NOCASE
+        """
+    ).fetchall()
+    return {"ok": True, "services": [dict(r) for r in rows]}
+
+@app.get("/api/sensys/care-team")
+def sensys_care_team(request: Request):
+    _sensys_require_user(request)
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT
+            id, name, type, npi, aliases,
+            address1, address2, city, state, zip,
+            practice_name, phone1, phone2, email1, email2, fax,
+            active, created_at, updated_at, deleted_at
+        FROM sensys_care_team
+        WHERE deleted_at IS NULL
+        ORDER BY active DESC, type COLLATE NOCASE, name COLLATE NOCASE
+        """
+    ).fetchall()
+    return {"ok": True, "care_team": [dict(r) for r in rows]}
+
+
+# ✅ Sensys (User): Services list (needed by Admission Details page)
+@app.get("/api/sensys/services")
+def sensys_services(request: Request):
+    _sensys_require_user(request)
+    conn = get_db()
+
+    rows = conn.execute(
+        """
+        SELECT
+            id, name, service_type, dropdown, reminder_id, deleted_at, created_at, updated_at
+        FROM sensys_services
+        WHERE deleted_at IS NULL
+        ORDER BY service_type COLLATE NOCASE, name COLLATE NOCASE
+        """
+    ).fetchall()
+
+    return {"ok": True, "services": [dict(r) for r in rows]}
+
+# ✅ Sensys (User): Note templates + fields (needed by Admission Details page)
+@app.get("/api/sensys/note-templates")
+def sensys_note_templates(request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    # agencies the user has access to
+    ag_rows = conn.execute(
+        "SELECT agency_id FROM sensys_user_agencies WHERE user_id = ?",
+        (int(u["user_id"]),),
+    ).fetchall()
+    agency_ids = [int(r["agency_id"]) for r in ag_rows]
+
+    # templates user can see:
+    # - global (agency_id IS NULL)
+    # - OR templates for their agencies
+    where = "t.deleted_at IS NULL AND t.active = 1 AND (t.agency_id IS NULL"
+    params = []
+    if agency_ids:
+        where += " OR t.agency_id IN (" + ",".join(["?"] * len(agency_ids)) + ")"
+        params.extend(agency_ids)
+    where += ")"
+
+    templates = conn.execute(
+        f"""
+        SELECT
+            t.id, t.agency_id, t.template_name, t.active, t.created_at, t.updated_at
+        FROM sensys_note_templates t
+        WHERE {where}
+        ORDER BY
+            CASE WHEN t.agency_id IS NULL THEN 0 ELSE 1 END,
+            t.template_name COLLATE NOCASE
+        """,
+        tuple(params),
+    ).fetchall()
+
+    tpl_list = [dict(r) for r in templates]
+    if not tpl_list:
+        return {"ok": True, "templates": []}
+
+    tpl_ids = [int(t["id"]) for t in tpl_list]
+    fields = conn.execute(
+        f"""
+        SELECT
+            id, template_id, field_key, field_label, field_type,
+            required, sort_order, options_json, created_at, updated_at
+        FROM sensys_note_template_fields
+        WHERE deleted_at IS NULL
+          AND template_id IN ({",".join(["?"] * len(tpl_ids))})
+        ORDER BY template_id, sort_order ASC, id ASC
+        """,
+        tuple(tpl_ids),
+    ).fetchall()
+
+    fields_by_tpl = {}
+    for f in fields:
+        d = dict(f)
+        fields_by_tpl.setdefault(int(d["template_id"]), []).append(d)
+
+    for t in tpl_list:
+        t["fields"] = fields_by_tpl.get(int(t["id"]), [])
+
+    return {"ok": True, "templates": tpl_list}
+
+@app.get("/api/sensys/admission-details/{admission_id}")
+def sensys_admission_details(admission_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+
+    admission = conn.execute(
+        """
+        SELECT
+            a.id,
+            a.patient_id,
+            (p.last_name || ', ' || p.first_name) AS patient_name,
+            p.dob AS patient_dob,
+
+            a.agency_id,
+            ag.agency_name AS agency_name,
+
+            a.admit_date,
+            a.dc_date,
+            a.room,
+            a.reason,
+            a.latest_pcp,
+            a.active,
+            a.updated_at
+        FROM sensys_admissions a
+        JOIN sensys_patients p ON p.id = a.patient_id
+        LEFT JOIN sensys_agencies ag ON ag.id = a.agency_id
+        WHERE a.id = ?
+        """,
+        (int(admission_id),),
+    ).fetchone()
+
+    if not admission:
+        raise HTTPException(status_code=404, detail="Admission not found")
+
+    tasks = conn.execute(
+        """
+        SELECT
+            id, admission_id, assigned_user_id, task_status,
+            task_name, task_comments, created_at, updated_at, deleted_at
+        FROM sensys_admission_tasks
+        WHERE admission_id = ?
+          AND deleted_at IS NULL
+        ORDER BY id DESC
+        """,
+        (int(admission_id),),
+    ).fetchall()
+
+    notes = conn.execute(
+        """
+        SELECT
+            n.id, n.admission_id,
+            n.note_name,
+            n.note_title,
+            n.status,
+            n.response1,
+            n.response2,
+
+            -- keep legacy field available for now
+            n.note_comments,
+
+            n.created_at, n.created_by, n.deleted_at, n.updated_at,
+            u.display_name AS created_by_name
+        FROM sensys_admission_notes n
+        LEFT JOIN sensys_users u ON u.id = n.created_by
+        WHERE n.admission_id = ?
+          AND n.deleted_at IS NULL
+        ORDER BY n.id DESC
+        """,
+        (int(admission_id),),
+    ).fetchall()
+
+    dc = conn.execute(
+        """
+        SELECT
+            id, admission_id, created_at, created_by,
+            dc_date, dc_time, dc_confirmed, dc_urgent, urgent_comments,
+            dc_destination, destination_comments, dc_with,
+            hh_comments, dme_comments, aid_consult, pcp_freetext,
+            coordinate_caregiver, caregiver_name, caregiver_number,
+            apealling_dc, appeal_comments,
+            updated_at, deleted_at
+        FROM sensys_admission_dc_submissions
+        WHERE admission_id = ?
+          AND deleted_at IS NULL
+        ORDER BY id DESC
+        """,
+        (int(admission_id),),
+    ).fetchall()
+
+    dc_ids = [int(r["id"]) for r in dc]
+    services_by_dc = {}
+    if dc_ids:
+        qmarks = ",".join(["?"] * len(dc_ids))
+        svc_rows = conn.execute(
+            f"""
+            SELECT id, services_id, admission_dc_submission_id, created_at
+            FROM sensys_dc_submission_services
+            WHERE admission_dc_submission_id IN ({qmarks})
+            """,
+            tuple(dc_ids),
+        ).fetchall()
+        for r in svc_rows:
+            sid = int(r["admission_dc_submission_id"])
+            services_by_dc.setdefault(sid, []).append(dict(r))
+
+    dc_out = []
+    for r in dc:
+        d = dict(r)
+        d["services"] = services_by_dc.get(int(r["id"]), [])
+        dc_out.append(d)
+
+    care_team_links = conn.execute(
+        """
+        SELECT
+            act.id AS link_id,
+            ct.id AS care_team_id,
+            ct.name, ct.type, ct.phone1, ct.phone2, ct.email1, ct.email2
+        FROM sensys_admission_care_team act
+        JOIN sensys_care_team ct ON ct.id = act.care_team_id
+        WHERE act.admission_id = ?
+          AND act.deleted_at IS NULL
+          AND ct.deleted_at IS NULL
+        ORDER BY ct.type COLLATE NOCASE, ct.name COLLATE NOCASE
+        """,
+        (int(admission_id),),
+    ).fetchall()
+
+    referrals = conn.execute(
+        """
+        SELECT
+            ar.id,
+            ar.agency_id,
+            ag.agency_name,
+            ag.agency_type,
+            ar.created_at,
+            ar.updated_at
+        FROM sensys_admission_referrals ar
+        JOIN sensys_agencies ag ON ag.id = ar.agency_id
+        WHERE ar.admission_id = ?
+          AND ar.deleted_at IS NULL
+        ORDER BY ag.agency_name COLLATE NOCASE
+        """,
+        (int(admission_id),),
+    ).fetchall()
+
+    appointments = conn.execute(
+        """
+        SELECT
+            aa.id,
+            aa.appt_datetime,
+            aa.care_team_id,
+            ct.name AS care_team_name,
+            ct.type AS care_team_type,
+            aa.appt_status,
+            aa.created_at,
+            aa.updated_at
+        FROM sensys_admission_appointments aa
+        LEFT JOIN sensys_care_team ct ON ct.id = aa.care_team_id
+        WHERE aa.admission_id = ?
+          AND aa.deleted_at IS NULL
+        ORDER BY COALESCE(aa.appt_datetime, '') DESC, aa.id DESC
+        """,
+        (int(admission_id),),
+    ).fetchall()
+
+    return {
+        "ok": True,
+        "admission": dict(admission),
+        "tasks": [dict(r) for r in tasks],
+        "notes": [dict(r) for r in notes],
+        "dc_submissions": dc_out,
+        "care_team": [dict(r) for r in care_team_links],
+
+        # ✅ NEW
+        "referrals": [dict(r) for r in referrals],
+        "appointments": [dict(r) for r in appointments],
+    }
+
+
+class AdmissionTaskUpsert(BaseModel):
+    id: Optional[int] = None
+    admission_id: int
+    assigned_user_id: Optional[int] = None
+    task_status: str = "New"
+    task_name: str
+    task_comments: Optional[str] = ""
+
+@app.get("/api/sensys/debug/db-state")
+def sensys_debug_db_state(request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    # which physical DB file is this process using?
+    db_row = conn.execute("PRAGMA database_list").fetchone()
+    db_file = (db_row["file"] if db_row and "file" in db_row.keys() else None) or DB_PATH
+
+    # basic counts to compare with your downloaded DB
+    ref_total = conn.execute("SELECT COUNT(1) AS c FROM sensys_admission_referrals").fetchone()["c"]
+    ref_active = conn.execute(
+        "SELECT COUNT(1) AS c FROM sensys_admission_referrals WHERE deleted_at IS NULL"
+    ).fetchone()["c"]
+
+    ref_by_adm = conn.execute(
+        """
+        SELECT admission_id,
+               COUNT(1) AS total,
+               SUM(CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END) AS active
+        FROM sensys_admission_referrals
+        GROUP BY admission_id
+        ORDER BY admission_id
+        """
+    ).fetchall()
+
+    logger.info(
+        "[SENSYS][DEBUG][DB_STATE] user_id=%s db=%s ref_total=%s ref_active=%s",
+        int(u["user_id"]),
+        db_file,
+        int(ref_total),
+        int(ref_active),
+    )
+
+    return {
+        "ok": True,
+        "db_file": db_file,
+        "referrals": {
+            "total": int(ref_total),
+            "active": int(ref_active),
+            "by_admission": [dict(r) for r in ref_by_adm],
+        },
+    }
+
+
+@app.post("/api/sensys/admission-tasks/upsert")
+def sensys_admission_tasks_upsert(payload: AdmissionTaskUpsert, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
+
+    if not (payload.task_name or "").strip():
+        raise HTTPException(status_code=400, detail="task_name is required")
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_admission_tasks
+               SET assigned_user_id = ?,
+                   task_status = ?,
+                   task_name = ?,
+                   task_comments = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (
+                int(payload.assigned_user_id) if payload.assigned_user_id else None,
+                (payload.task_status or "New").strip(),
+                (payload.task_name or "").strip(),
+                (payload.task_comments or "").strip(),
+                int(payload.id),
+            ),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_admission_tasks
+                (admission_id, assigned_user_id, task_status, task_name, task_comments)
+            VALUES
+                (?, ?, ?, ?, ?)
+            """,
+            (
+                int(payload.admission_id),
+                int(payload.assigned_user_id) if payload.assigned_user_id else None,
+                (payload.task_status or "New").strip(),
+                (payload.task_name or "").strip(),
+                (payload.task_comments or "").strip(),
+            ),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+class IdOnly(BaseModel):
+    id: int
+
+@app.post("/api/sensys/admission-tasks/delete")
+def sensys_admission_tasks_delete(payload: IdOnly, request: Request):
+    _sensys_require_user(request)
+    conn = get_db()
+    conn.execute(
+        """
+        UPDATE sensys_admission_tasks
+           SET deleted_at = datetime('now'),
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (int(payload.id),),
+    )
+    conn.commit()
+    return {"ok": True}
+
+class AdmissionNoteUpsert(BaseModel):
+    id: Optional[int] = None
+    admission_id: int
+
+    # Note type/template key (keep required)
+    note_name: str
+
+    # NEW fields
+    note_title: Optional[str] = ""
+    status: Optional[str] = "New"
+    response1: Optional[str] = ""
+    response2: Optional[str] = ""
+
+    # LEGACY (keep so older UI still works)
+    note_comments: Optional[str] = ""
+
+@app.post("/api/sensys/admission-notes/upsert")
+def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
+
+    if not (payload.note_name or "").strip():
+        raise HTTPException(status_code=400, detail="note_name is required")
+
+    # Back-compat: if older UI only sends note_comments, treat it like response1
+    effective_response1 = (payload.response1 or "").strip()
+    if not effective_response1 and (payload.note_comments or "").strip():
+        effective_response1 = (payload.note_comments or "").strip()
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_admission_notes
+               SET note_name = ?,
+                   note_title = ?,
+                   status = ?,
+                   response1 = ?,
+                   response2 = ?,
+                   note_comments = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (
+                (payload.note_name or "").strip(),
+                (payload.note_title or "").strip(),
+                (payload.status or "New").strip(),
+                effective_response1,
+                (payload.response2 or "").strip(),
+                (payload.note_comments or "").strip(),
+                int(payload.id),
+            ),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_admission_notes
+                (admission_id, note_name, note_title, status, response1, response2, note_comments, created_by)
+            VALUES
+                (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(payload.admission_id),
+                (payload.note_name or "").strip(),
+                (payload.note_title or "").strip(),
+                (payload.status or "New").strip(),
+                effective_response1,
+                (payload.response2 or "").strip(),
+                (payload.note_comments or "").strip(),
+                int(u["user_id"]),
+            ),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+
+@app.post("/api/sensys/admission-notes/delete")
+def sensys_admission_notes_delete(payload: IdOnly, request: Request):
+    _sensys_require_user(request)
+    conn = get_db()
+    conn.execute(
+        """
+        UPDATE sensys_admission_notes
+           SET deleted_at = datetime('now'),
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (int(payload.id),),
+    )
+    conn.commit()
+    return {"ok": True}
+
+class DcSubmissionUpsert(BaseModel):
+    id: Optional[int] = None
+    admission_id: int
+
+    dc_date: Optional[str] = ""
+    dc_time: Optional[str] = ""
+    dc_confirmed: int = 0
+    dc_urgent: int = 0
+    urgent_comments: Optional[str] = ""
+
+    dc_destination: Optional[str] = "Home"
+    destination_comments: Optional[str] = ""
+    dc_with: Optional[str] = "alone"
+
+    hh_comments: Optional[str] = ""
+    dme_comments: Optional[str] = ""
+    aid_consult: Optional[str] = ""
+    pcp_freetext: Optional[str] = ""
+    coordinate_caregiver: int = 0
+    caregiver_name: Optional[str] = ""
+    caregiver_number: Optional[str] = ""
+    apealling_dc: int = 0
+    appeal_comments: Optional[str] = ""
+
+@app.post("/api/sensys/admission-dc-submissions/upsert")
+def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_admission_dc_submissions
+               SET dc_date = ?,
+                   dc_time = ?,
+                   dc_confirmed = ?,
+                   dc_urgent = ?,
+                   urgent_comments = ?,
+                   dc_destination = ?,
+                   destination_comments = ?,
+                   dc_with = ?,
+                   hh_comments = ?,
+                   dme_comments = ?,
+                   aid_consult = ?,
+                   pcp_freetext = ?,
+                   coordinate_caregiver = ?,
+                   caregiver_name = ?,
+                   caregiver_number = ?,
+                   apealling_dc = ?,
+                   appeal_comments = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+               AND admission_id = ?
+               AND deleted_at IS NULL
+            """,
+            (
+                (payload.dc_date or "").strip(),
+                (payload.dc_time or "").strip(),
+                int(payload.dc_confirmed or 0),
+                int(payload.dc_urgent or 0),
+                (payload.urgent_comments or "").strip(),
+                (payload.dc_destination or "").strip(),
+                (payload.destination_comments or "").strip(),
+                (payload.dc_with or "").strip(),
+                (payload.hh_comments or "").strip(),
+                (payload.dme_comments or "").strip(),
+                (payload.aid_consult or "").strip(),
+                (payload.pcp_freetext or "").strip(),
+                int(payload.coordinate_caregiver or 0),
+                (payload.caregiver_name or "").strip(),
+                (payload.caregiver_number or "").strip(),
+                int(payload.apealling_dc or 0),
+                (payload.appeal_comments or "").strip(),
+                int(payload.id),
+                int(payload.admission_id),
+            ),
+        )
+
+        # If the update didn't touch a row, fail loudly so the UI doesn't "think" it saved
+        if conn.total_changes == 0:
+            raise HTTPException(status_code=404, detail="DC submission not found (or was deleted)")
+
+    else:
+        conn.execute(
+            """
+            INSERT INTO sensys_admission_dc_submissions
+                (admission_id, created_by,
+                 dc_date, dc_time, dc_confirmed, dc_urgent, urgent_comments,
+                 dc_destination, destination_comments, dc_with,
+                 hh_comments, dme_comments, aid_consult, pcp_freetext,
+                 coordinate_caregiver, caregiver_name, caregiver_number,
+                 apealling_dc, appeal_comments)
+            VALUES
+                (?, ?,
+                 ?, ?, ?, ?, ?,
+                 ?, ?, ?,
+                 ?, ?, ?, ?,
+                 ?, ?, ?,
+                 ?, ?)
+            """,
+            (
+                int(payload.admission_id),
+                int(u["user_id"]),
+                (payload.dc_date or "").strip(),
+                (payload.dc_time or "").strip(),
+                int(payload.dc_confirmed or 0),
+                int(payload.dc_urgent or 0),
+                (payload.urgent_comments or "").strip(),
+                (payload.dc_destination or "").strip(),
+                (payload.destination_comments or "").strip(),
+                (payload.dc_with or "").strip(),
+                (payload.hh_comments or "").strip(),
+                (payload.dme_comments or "").strip(),
+                (payload.aid_consult or "").strip(),
+                (payload.pcp_freetext or "").strip(),
+                int(payload.coordinate_caregiver or 0),
+                (payload.caregiver_name or "").strip(),
+                (payload.caregiver_number or "").strip(),
+                int(payload.apealling_dc or 0),
+                (payload.appeal_comments or "").strip(),
+            ),
+        )
+
+    new_id = payload.id
+    if not new_id:
+        new_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+    # ---- WRITE WRAP LOG (db path + verify) ----
+    try:
+        db_row = conn.execute("PRAGMA database_list").fetchone()
+        db_file = (db_row["file"] if db_row and "file" in db_row.keys() else None) or DB_PATH
+
+        conn.commit()
+
+        exists = conn.execute(
+            "SELECT COUNT(1) AS c FROM sensys_admission_dc_submissions WHERE id = ?",
+            (int(new_id),),
+        ).fetchone()["c"]
+
+        logger.info(
+            "[SENSYS][WRITE] table=sensys_admission_dc_submissions op=%s id=%s admission_id=%s user_id=%s db=%s verify_exists=%s",
+            ("update" if payload.id else "insert"),
+            int(new_id),
+            int(payload.admission_id),
+            int(u["user_id"]),
+            db_file,
+            int(exists),
+        )
+    except Exception:
+        logger.exception(
+            "[SENSYS][WRITE][ERROR] table=sensys_admission_dc_submissions op=%s id=%s admission_id=%s db=%s",
+            ("update" if payload.id else "insert"),
+            int(new_id),
+            int(payload.admission_id),
+            DB_PATH,
+        )
+        raise
+    # ------------------------------------------
+
+    return {"ok": True, "id": int(new_id)}
+
+
+@app.post("/api/sensys/admission-dc-submissions/delete")
+def sensys_admission_dc_submissions_delete(payload: IdOnly, request: Request):
+    _sensys_require_user(request)
+    conn = get_db()
+    conn.execute("DELETE FROM sensys_dc_submission_services WHERE admission_dc_submission_id = ?", (int(payload.id),))
+    conn.execute("DELETE FROM sensys_admission_dc_submissions WHERE id = ?", (int(payload.id),))
+    conn.commit()
+    return {"ok": True}
+
+class DcSubmissionServicesSet(BaseModel):
+    admission_dc_submission_id: int
+    services_ids: List[int] = []
+
+@app.post("/api/sensys/dc-submission-services/set")
+def sensys_dc_submission_services_set(payload: DcSubmissionServicesSet, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    row = conn.execute(
+        "SELECT admission_id FROM sensys_admission_dc_submissions WHERE id = ?",
+        (int(payload.admission_dc_submission_id),),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="DC submission not found")
+
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(row["admission_id"]))
+
+    conn.execute(
+        "DELETE FROM sensys_dc_submission_services WHERE admission_dc_submission_id = ?",
+        (int(payload.admission_dc_submission_id),),
+    )
+    for sid in payload.services_ids or []:
+        conn.execute(
+            """
+            INSERT INTO sensys_dc_submission_services (services_id, admission_dc_submission_id)
+            VALUES (?, ?)
+            """,
+            (int(sid), int(payload.admission_dc_submission_id)),
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+class AdmissionCareTeamLink(BaseModel):
+    admission_id: int
+    care_team_id: int
+
+@app.post("/api/sensys/admission-care-team/link")
+def sensys_admission_care_team_link(payload: AdmissionCareTeamLink, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
+
+    conn.execute(
+        """
+        INSERT INTO sensys_admission_care_team (care_team_id, admission_id, deleted_at, updated_at)
+        VALUES (?, ?, NULL, datetime('now'))
+        ON CONFLICT(admission_id, care_team_id)
+        DO UPDATE SET
+            deleted_at = NULL,
+            updated_at = datetime('now')
+        """,
+        (int(payload.care_team_id), int(payload.admission_id)),
+    )
+    conn.commit()
+
+    # ✅ Verify it actually exists (prevents "UI looks linked but DB isn't" confusion)
+    row = conn.execute(
+        """
+        SELECT id
+        FROM sensys_admission_care_team
+        WHERE admission_id = ?
+          AND care_team_id = ?
+          AND deleted_at IS NULL
+        """,
+        (int(payload.admission_id), int(payload.care_team_id)),
+    ).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=500, detail="Care team link did not persist to the database.")
+
+    return {"ok": True, "link_id": int(row["id"])}
+
+
+@app.post("/api/sensys/admission-care-team/unlink")
+def sensys_admission_care_team_unlink(payload: IdOnly, request: Request):
+    _sensys_require_user(request)
+    conn = get_db()
+    conn.execute(
+        """
+        UPDATE sensys_admission_care_team
+           SET deleted_at = datetime('now'),
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (int(payload.id),),
+    )
+    conn.commit()
+    return {"ok": True}
 
 # ---------------------------------------------------------------------------
 # HTML routes & health check
@@ -14618,6 +18751,25 @@ async def ask_page():
 async def admin_ui():
     return HTMLResponse(content=read_html(ADMIN_HTML))
 
+@app.get("/admin/sensys", response_class=HTMLResponse)
+async def sensys_admin_ui():
+    return HTMLResponse(content=read_html(SENSYS_ADMIN_HTML))
+
+# -----------------------------
+# NEW: Sensys test login + SNF SW page
+# -----------------------------
+@app.get("/sensys/login", response_class=HTMLResponse)
+async def sensys_login_ui():
+    return HTMLResponse(content=read_html(SENSYS_LOGIN_HTML))
+
+@app.get("/sensys/snf-sw", response_class=HTMLResponse)
+async def sensys_snf_sw_ui():
+    return HTMLResponse(content=read_html(SENSYS_SNF_SW_HTML))
+
+@app.get("/sensys/admission-details", response_class=HTMLResponse)
+async def sensys_admission_details_ui():
+    return HTMLResponse(content=read_html(SENSYS_ADMISSION_DETAILS_HTML))
+
 
 @app.get("/snf-admissions", response_class=HTMLResponse)
 async def snf_admissions_ui():
@@ -14638,6 +18790,11 @@ def hospital_discharges_page():
 async def facility_ui():
     return HTMLResponse(content=read_html(FACILITY_HTML))
 
+
+@app.get("/")
+async def root():
+    # Helps Render (and bots) confirm the service is alive
+    return {"ok": True}
 
 @app.get("/health")
 async def health():
@@ -14664,21 +18821,42 @@ async def favicon():
 @app.get("/admin/download-db")
 async def download_db(token: str):
     """
-    Download the SQLite DB used by this app.
+    Download a consistent snapshot of the SQLite DB used by this app.
     Usage: GET /admin/download-db?token=YOUR_ADMIN_TOKEN
     """
     # Security: require your admin token
     if token != os.getenv("ADMIN_TOKEN"):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    # Use the same DB file the app uses everywhere else
     db_path = Path(DB_PATH)
-
     if not db_path.exists():
         raise HTTPException(status_code=500, detail=f"DB not found at {db_path}")
 
+    # Create a WAL-safe snapshot so the download matches the active DB state
+    snap_path = Path("/tmp") / f"evolv_snapshot_{int(time.time())}.db"
+
+    try:
+        src = sqlite3.connect(str(db_path), check_same_thread=False, timeout=30)
+        try:
+            # Ensure WAL content is checkpointed into the snapshot
+            try:
+                src.execute("PRAGMA wal_checkpoint(FULL);")
+            except Exception:
+                pass
+
+            dst = sqlite3.connect(str(snap_path), check_same_thread=False, timeout=30)
+            try:
+                src.backup(dst)
+            finally:
+                dst.close()
+        finally:
+            src.close()
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Snapshot failed: {e}")
+
     return FileResponse(
-        path=str(db_path),
+        path=str(snap_path),
         filename="evolv.db",
         media_type="application/octet-stream",
     )
