@@ -480,49 +480,111 @@ _rc_token_cache = {"token": None, "exp": 0}
 
 def _rc_get_access_token():
     now = time.time()
+
+    # Cache hit
     if _rc_token_cache["token"] and now < _rc_token_cache["exp"] - 60:
+        logger.info(
+            "[RC][TOKEN][CACHE_HIT] exp_in_sec=%s server=%s",
+            int(_rc_token_cache["exp"] - now),
+            RC_SERVER_URL,
+        )
         return _rc_token_cache["token"]
 
-    if not (RC_CLIENT_ID and RC_CLIENT_SECRET and RC_JWT):
-        raise RuntimeError("RingCentral credentials not configured")
+    # Config sanity
+    if not (RC_SERVER_URL and RC_CLIENT_ID and RC_CLIENT_SECRET and RC_JWT):
+        logger.error(
+            "[RC][TOKEN][CONFIG_MISSING] server_set=%s client_id_set=%s client_secret_set=%s jwt_set=%s",
+            bool(RC_SERVER_URL),
+            bool(RC_CLIENT_ID),
+            bool(RC_CLIENT_SECRET),
+            bool(RC_JWT),
+        )
+        raise Exception("RingCentral token failed: missing RC_SERVER_URL/RC_CLIENT_ID/RC_CLIENT_SECRET/RC_JWT")
 
-    resp = requests.post(
-        f"{RC_SERVER_URL}/restapi/oauth/token",
-        data={
-            "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-            "assertion": RC_JWT,
-        },
-        auth=(RC_CLIENT_ID, RC_CLIENT_SECRET),
-        timeout=20,
-    )
-    resp.raise_for_status()
+    logger.info("[RC][TOKEN][REQUEST] server=%s", RC_SERVER_URL)
+
+    try:
+        resp = requests.post(
+            f"{RC_SERVER_URL}/restapi/oauth/token",
+            data={
+                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                "assertion": RC_JWT,
+            },
+            auth=(RC_CLIENT_ID, RC_CLIENT_SECRET),
+            timeout=20,
+        )
+    except Exception:
+        logger.exception("[RC][TOKEN][NETWORK_ERROR] server=%s", RC_SERVER_URL)
+        raise
+
+    if not resp.ok:
+        # Keep this short — enough to debug, not a huge payload
+        body_snip = (resp.text or "")[:500]
+        logger.error("[RC][TOKEN][HTTP_ERROR] status=%s body=%s", resp.status_code, body_snip)
+        resp.raise_for_status()
+
     data = resp.json()
-
     _rc_token_cache["token"] = data["access_token"]
     _rc_token_cache["exp"] = now + int(data.get("expires_in", 3600))
-    return _rc_token_cache["token"]
 
+    logger.info(
+        "[RC][TOKEN][OK] expires_in=%s server=%s",
+        int(data.get("expires_in", 3600)),
+        RC_SERVER_URL,
+    )
+
+    return _rc_token_cache["token"]
 
 def send_sms_rc(to_number: str, text: str, from_number: str | None = None):
     token = _rc_get_access_token()
 
+    from_used = (from_number or RC_FROM_NUMBER or "").strip()
+    to_used = (to_number or "").strip()
+
+    # Log metadata only (avoid PHI in Render logs)
+    logger.info(
+        "[RC][SMS][REQUEST] from=%s to=%s text_len=%s server=%s",
+        from_used,
+        to_used,
+        len(text or ""),
+        RC_SERVER_URL,
+    )
+
     payload = {
-        "from": {"phoneNumber": from_number or RC_FROM_NUMBER},
-        "to": [{"phoneNumber": to_number}],
+        "from": {"phoneNumber": from_used},
+        "to": [{"phoneNumber": to_used}],
         "text": text,
     }
 
-    r = requests.post(
-        f"{RC_SERVER_URL}/restapi/v1.0/account/~/extension/~/sms",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        },
-        json=payload,
-        timeout=20,
+    try:
+        r = requests.post(
+            f"{RC_SERVER_URL}/restapi/v1.0/account/~/extension/~/sms",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=20,
+        )
+    except Exception:
+        logger.exception("[RC][SMS][NETWORK_ERROR] to=%s", to_used)
+        raise
+
+    if not r.ok:
+        body_snip = (r.text or "")[:1200]
+        logger.error("[RC][SMS][HTTP_ERROR] status=%s body=%s", r.status_code, body_snip)
+        r.raise_for_status()
+
+    data = r.json()
+
+    # RingCentral usually returns an id; status fields can vary by account/product
+    logger.info(
+        "[RC][SMS][OK] rc_id=%s keys=%s",
+        (data.get("id") or ""),
+        ",".join(sorted(list(data.keys()))[:25]),
     )
-    r.raise_for_status()
-    return r.json()
+
+    return data
 
 
 def _split_name(full: str) -> tuple[str, str]:
@@ -2371,6 +2433,7 @@ def init_db():
             rc_message_id TEXT,
             status TEXT,
             error TEXT,
+            rc_response_json TEXT
 
             FOREIGN KEY(admission_id) REFERENCES sensys_admissions(id)
         )
@@ -2386,6 +2449,10 @@ def init_db():
             cur.execute(ddl)
         except sqlite3.Error:
             pass
+    try:
+        cur.execute("ALTER TABLE sensys_sms_log ADD COLUMN rc_response_json TEXT")
+    except sqlite3.Error:
+        pass
 
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_sms_log_adm ON sensys_sms_log(admission_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_sms_log_created ON sensys_sms_log(created_at)")
@@ -18116,23 +18183,50 @@ def sensys_admission_sms_send(payload: SensysAdmissionSmsSend, request: Request)
     try:
         _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
 
+        logger.info(
+            "[SENSYS][SMS][SEND_START] user_id=%s admission_id=%s to=%s from=%s text_len=%s",
+            int(u["user_id"]),
+            admission_id,
+            to_phone,
+            from_phone,
+            len(text or ""),
+        )
+
+        rc_resp = None
+        rc_json = ""
         try:
             rc_resp = send_sms_rc(to_phone, text, from_number=from_phone)
-            msg_id = rc_resp.get("id") or ""
-            status = "sent"
+            msg_id = (rc_resp.get("id") or "")
+            # Try to capture a meaningful status if RC provides one
+            status = (rc_resp.get("messageStatus") or rc_resp.get("status") or "sent")
             error = ""
+            try:
+                rc_json = json.dumps(rc_resp)[:8000]
+            except Exception:
+                rc_json = ""
+            logger.info(
+                "[SENSYS][SMS][SEND_OK] admission_id=%s to=%s rc_id=%s status=%s",
+                admission_id,
+                to_phone,
+                msg_id,
+                status,
+            )
         except Exception as e:
             logger.exception("[SENSYS][SMS][SEND_FAILED] admission_id=%s to=%s", admission_id, to_phone)
             msg_id = ""
             status = "error"
             error = str(e)
+            try:
+                rc_json = json.dumps({"error": str(e)})[:8000]
+            except Exception:
+                rc_json = ""
 
         cur = conn.execute(
             """
             INSERT INTO sensys_sms_log
-              (created_by_user_id, admission_id, direction, to_phone, from_phone, message, rc_message_id, status, error)
+              (created_by_user_id, admission_id, direction, to_phone, from_phone, message, rc_message_id, status, error, rc_response_json)
             VALUES
-              (?, ?, 'outbound', ?, ?, ?, ?, ?, ?)
+              (?, ?, 'outbound', ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 int(u["user_id"]),
@@ -18143,7 +18237,15 @@ def sensys_admission_sms_send(payload: SensysAdmissionSmsSend, request: Request)
                 msg_id,
                 status,
                 error,
+                rc_json,
             ),
+        )
+        logger.info(
+            "[SENSYS][SMS][DB_WRITE] admission_id=%s sms_log_id=%s status=%s rc_id=%s",
+            admission_id,
+            int(cur.lastrowid),
+            status,
+            msg_id,
         )
         conn.commit()
 
