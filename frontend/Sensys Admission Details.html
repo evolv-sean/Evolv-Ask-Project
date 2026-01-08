@@ -95,16 +95,49 @@
           <div style="font-size:13px;color:#111827;font-weight:800;">Notes</div>
         </div>
 
-        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
-          <input id="noteName" placeholder="Note name"
-            style="width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
-          <input id="noteComments" placeholder="Note comments"
-            style="flex:1;min-width:320px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+
+          <!-- NEW: Note template/type -->
+          <select id="noteTemplateSelect"
+            style="width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+            <option value="">Select note type…</option>
+          </select>
+
+          <!-- Keep legacy note_name (optional) -->
+          <input id="noteName" placeholder="Note name (optional / legacy)"
+            style="width:240px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+          <!-- NEW: Common fields -->
+          <input id="noteTitle" placeholder="Note title"
+            style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+          <select id="noteStatus"
+            style="width:170px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+            <option value="New">New</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Completed">Completed</option>
+          </select>
+
+          <input id="noteResponse1" placeholder="Response 1"
+            style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+          <input id="noteResponse2" placeholder="Response 2"
+            style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
           <button id="addNoteBtn"
             style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
             Add
           </button>
         </div>
+
+        <!-- Optional legacy comments (keep for now) -->
+        <div style="margin-top:8px;">
+          <input id="noteComments" placeholder="Legacy comments (optional)"
+            style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+        </div>
+
+        <!-- NEW: dynamic template fields render here -->
+        <div id="noteDynamicFields" style="margin-top:10px;"></div>
 
         <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
           <table style="width:100%;border-collapse:collapse;min-width:760px;">
@@ -378,10 +411,104 @@
   let CARE_TEAM = [];
   let DETAILS = null;
   let AGENCIES = [];
+  let NOTE_TEMPLATES = []; // ✅ NEW
 
   function escapeHtml(s) {
     return (s || '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
   }
+
+  function renderNoteTemplatesSelect(){
+    const sel = document.getElementById('noteTemplateSelect');
+    if(!sel) return;
+
+    sel.innerHTML = ['<option value="">Select note type…</option>']
+      .concat((NOTE_TEMPLATES || []).map(t => {
+        const name = t.template_name || t.name || '';
+        return `<option value="${t.id}">${escapeHtml(name)}</option>`;
+      }))
+      .join('');
+  }
+
+  function renderDynamicNoteFieldsForSelectedTemplate(){
+    const tplId = document.getElementById('noteTemplateSelect')?.value;
+    const wrap = document.getElementById('noteDynamicFields');
+    if(!wrap) return;
+
+    wrap.innerHTML = '';
+    if(!tplId) return;
+
+    const tpl = (NOTE_TEMPLATES || []).find(x => String(x.id) === String(tplId));
+    const fields = (tpl && tpl.fields) ? tpl.fields : [];
+
+    wrap.innerHTML = fields
+      .slice()
+      .sort((a,b)=> (a.sort_order||0)-(b.sort_order||0))
+      .map(f => {
+        const key = f.field_key || '';
+        const label = f.field_label || key;
+        const type = (f.field_type || 'text').toLowerCase();
+
+        // checkbox
+        if(type === 'boolean' || type === 'checkbox'){
+          return `
+            <label style="display:flex;gap:10px;align-items:center;margin-top:10px;font-size:12px;color:#475467;">
+              <input type="checkbox" data-note-field-key="${escapeHtml(key)}" />
+              <span style="font-weight:800;color:#111827;">${escapeHtml(label)}</span>
+            </label>`;
+        }
+
+        // date
+        if(type === 'date'){
+          return `
+            <div style="margin-top:10px;">
+              <div style="font-size:12px;color:#475467;font-weight:800;margin-bottom:6px;">${escapeHtml(label)}</div>
+              <input type="date" data-note-field-key="${escapeHtml(key)}"
+                style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+            </div>`;
+        }
+
+        // number
+        if(type === 'number' || type === 'int' || type === 'float'){
+          return `
+            <div style="margin-top:10px;">
+              <div style="font-size:12px;color:#475467;font-weight:800;margin-bottom:6px;">${escapeHtml(label)}</div>
+              <input type="number" data-note-field-key="${escapeHtml(key)}"
+                style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+            </div>`;
+        }
+
+        // select
+        if(type === 'select'){
+          let opts = [];
+          try { opts = JSON.parse(f.options_json || '[]'); } catch(e) { opts = []; }
+          const optionsHtml = ['<option value="">Select…</option>']
+            .concat((opts||[]).map(o => `<option value="${escapeHtml(String(o))}">${escapeHtml(String(o))}</option>`))
+            .join('');
+
+          return `
+            <div style="margin-top:10px;">
+              <div style="font-size:12px;color:#475467;font-weight:800;margin-bottom:6px;">${escapeHtml(label)}</div>
+              <select data-note-field-key="${escapeHtml(key)}"
+                style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+                ${optionsHtml}
+              </select>
+            </div>`;
+        }
+
+        // default text
+        return `
+          <div style="margin-top:10px;">
+            <div style="font-size:12px;color:#475467;font-weight:800;margin-bottom:6px;">${escapeHtml(label)}</div>
+            <input type="text" data-note-field-key="${escapeHtml(key)}"
+              style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+          </div>`;
+      })
+      .join('');
+  }
+
+  // hook change event once
+  document.getElementById('noteTemplateSelect')?.addEventListener('change', renderDynamicNoteFieldsForSelectedTemplate);
+
 
   function renderTasks() {
     const tb = document.getElementById('tasksTbody');
@@ -423,9 +550,18 @@
     tb.innerHTML = rows.map(r => {
       return `
         <tr style="border-bottom:1px solid #eef0f5;">
-          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.note_name || '')}</td>
-          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.note_comments || '')}</td>
-          <td style="padding:10px;font-size:12px;color:#667085;">${escapeHtml(r.created_at || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">
+            ${escapeHtml(r.note_name || '')}${r.note_title ? (' • ' + escapeHtml(r.note_title)) : ''}
+          </td>
+          <td style="padding:10px;font-size:13px;color:#111827;">
+            <div style="font-size:12px;color:#475467;"><b>Status:</b> ${escapeHtml(r.status || '')}</div>
+            <div style="margin-top:6px;"><b>R1:</b> ${escapeHtml(r.response1 || '')}</div>
+            <div style="margin-top:4px;"><b>R2:</b> ${escapeHtml(r.response2 || '')}</div>
+            ${r.note_comments ? (`<div style="margin-top:6px;color:#667085;">${escapeHtml(r.note_comments || '')}</div>`) : ''}
+          </td>
+          <td style="padding:10px;font-size:12px;color:#667085;">
+            ${escapeHtml(r.created_at || '')}${r.created_by_name ? (' • ' + escapeHtml(r.created_by_name)) : ''}
+          </td>
           <td style="padding:10px;text-align:right;">
             <button data-del-note="${r.id}"
               style="padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
@@ -714,17 +850,22 @@
 
   async function loadAll() {
     showMsg('');
-    const [details, services, careTeam, agencies] = await Promise.all([
+    const [details, services, careTeam, agencies, noteTemplates] = await Promise.all([
       api('/api/sensys/admission-details/' + ADMISSION_ID, { method:'GET' }),
       api('/api/sensys/services', { method:'GET' }),
       api('/api/sensys/care-team', { method:'GET' }),
-      api('/api/sensys/agencies', { method:'GET' }) // ✅ NEW
+      api('/api/sensys/agencies', { method:'GET' }),
+      api('/api/sensys/note-templates', { method:'GET' }) // ✅ NEW
     ]);
 
     DETAILS = details;
     SERVICES = (services && services.services) || [];
     CARE_TEAM = (careTeam && careTeam.care_team) || [];
     AGENCIES = (agencies && agencies.agencies) || []; // ✅ NEW
+    
+    NOTE_TEMPLATES = (noteTemplates && noteTemplates.templates) || [];
+    renderNoteTemplatesSelect();
+    renderDynamicNoteFieldsForSelectedTemplate();
 
     renderHeader();
     renderTasks();
@@ -830,14 +971,55 @@
   document.getElementById('addNoteBtn').addEventListener('click', async () => {
     try {
       showMsg('');
+
+      const tplIdRaw = document.getElementById('noteTemplateSelect').value;
+      const template_id = tplIdRaw ? Number(tplIdRaw) : null;
+
+      // collect dynamic template answers
+      const answers = {};
+      document.querySelectorAll('[data-note-field-key]').forEach(el => {
+        const k = el.getAttribute('data-note-field-key');
+        if (!k) return;
+
+        if (el.type === 'checkbox') {
+          answers[k] = el.checked ? 1 : 0;
+        } else {
+          answers[k] = (el.value ?? '').toString().trim();
+        }
+      });
+
       const payload = {
         admission_id: Number(ADMISSION_ID),
-        note_name: document.getElementById('noteName').value.trim(),
-        note_comments: document.getElementById('noteComments').value.trim()
+
+        // template + common fast fields
+        note_template_id: template_id,
+        note_name: document.getElementById('noteName').value.trim(),          // keep for now (legacy label)
+        note_title: document.getElementById('noteTitle').value.trim(),
+        status: document.getElementById('noteStatus').value,
+        response1: document.getElementById('noteResponse1').value.trim(),
+        response2: document.getElementById('noteResponse2').value.trim(),
+
+        // keep legacy free text too (optional)
+        note_comments: document.getElementById('noteComments').value.trim(),
+
+        // template answers
+        answers: answers
       };
+
       await api('/api/sensys/admission-notes/upsert', { method:'POST', body: JSON.stringify(payload) });
+
+      // clear
       document.getElementById('noteName').value = '';
+      document.getElementById('noteTitle').value = '';
+      document.getElementById('noteStatus').value = 'New';
+      document.getElementById('noteResponse1').value = '';
+      document.getElementById('noteResponse2').value = '';
       document.getElementById('noteComments').value = '';
+      document.getElementById('noteTemplateSelect').value = '';
+
+      // clear dynamic fields
+      document.getElementById('noteDynamicFields').innerHTML = '';
+
       await loadAll();
     } catch(e) { showMsg(e.message); }
   });
