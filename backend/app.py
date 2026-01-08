@@ -3006,7 +3006,9 @@ def init_db():
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
       deleted_at TEXT,
-      UNIQUE(template_id, field_key)
+
+      UNIQUE(template_id, field_key),
+      FOREIGN KEY(template_id) REFERENCES sensys_note_templates(id)
     )
     """)
 
@@ -3017,7 +3019,10 @@ def init_db():
       template_id INTEGER NOT NULL,
       created_at TEXT DEFAULT (datetime('now')),
       deleted_at TEXT,
-      UNIQUE(user_id, template_id)
+
+      UNIQUE(user_id, template_id),
+      FOREIGN KEY(user_id) REFERENCES sensys_users(id),
+      FOREIGN KEY(template_id) REFERENCES sensys_note_templates(id)
     )
     """)
 
@@ -3033,7 +3038,9 @@ def init_db():
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
       deleted_at TEXT,
-      UNIQUE(note_id, field_key)
+
+      UNIQUE(note_id, field_key),
+      FOREIGN KEY(note_id) REFERENCES sensys_admission_notes(id)
     )
     """)
 
