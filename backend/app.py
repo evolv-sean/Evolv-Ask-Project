@@ -18205,61 +18205,29 @@ def sensys_admission_sms_send(payload: SensysAdmissionSmsSend, request: Request)
             rc_resp = send_sms_rc(to_phone, text, from_number=from_phone)
             msg_id = (rc_resp.get("id") or "")
             # Try to capture a meaningful status if RC provides one
-            status = (rc_resp.get("messageStatus") or rc_resp.get("status") or "sent")
-            error = ""
-            try:
-                rc_json = json.dumps(rc_resp)[:8000]
-            except Exception:
-                rc_json = ""
-            logger.info(
-                "[SENSYS][SMS][SEND_OK] admission_id=%s to=%s rc_id=%s status=%s",
-                admission_id,
-                to_phone,
-                msg_id,
-                status,
-            )
-        except Exception as e:
-            logger.exception("[SENSYS][SMS][SEND_FAILED] admission_id=%s to=%s", admission_id, to_phone)
-            msg_id = ""
-            status = "error"
-            error = str(e)
-            try:
-                rc_json = json.dumps({"error": str(e)})[:8000]
-            except Exception:
-                rc_json = ""
+            status = (rc_resp.get("messageStatus") or rc_resp.get("status") or "sent") or "sent"
 
-        cur = conn.execute(
-            """
-            INSERT INTO sensys_sms_log
-              (created_by_user_id, admission_id, direction, to_phone, from_phone, message, rc_message_id, status, error, rc_response_json)
-            VALUES
-              (?, ?, 'outbound', ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                int(u["user_id"]),
-                admission_id,
-                to_phone,
-                from_phone,
-                text,
-                msg_id,
-                status,
-                error,
-                rc_json,
-            ),
-        )
-        logger.info(
-            "[SENSYS][SMS][DB_WRITE] admission_id=%s sms_log_id=%s status=%s rc_id=%s",
-            admission_id,
-            int(cur.lastrowid),
-            status,
-            msg_id,
-        )
-        conn.commit()
+            ...
+            conn.commit()
 
-        if status != "sent":
-            raise HTTPException(status_code=500, detail="SMS failed to send")
+            # ✅ RingCentral often returns "Queued" for accepted messages.
+            # Treat these as success states.
+            ok_statuses = {"sent", "queued", "sending", "delivered", "received"}
+            status_norm = (status or "").strip().lower()
 
-        return {"ok": True, "id": int(cur.lastrowid), "message_id": msg_id}
+            if status_norm not in ok_statuses:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"SMS not accepted by provider (status={status})"
+                )
+
+            return {
+                "ok": True,
+                "id": int(cur.lastrowid),
+                "message_id": msg_id,
+                "provider_status": status
+            }
+
     finally:
         conn.close()
 
