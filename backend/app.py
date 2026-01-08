@@ -17677,6 +17677,69 @@ def sensys_services(request: Request):
 
     return {"ok": True, "services": [dict(r) for r in rows]}
 
+# ✅ Sensys (User): Note templates + fields (needed by Admission Details page)
+@app.get("/api/sensys/note-templates")
+def sensys_note_templates(request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    # agencies the user has access to
+    ag_rows = conn.execute(
+        "SELECT agency_id FROM sensys_user_agencies WHERE user_id = ?",
+        (int(u["user_id"]),),
+    ).fetchall()
+    agency_ids = [int(r["agency_id"]) for r in ag_rows]
+
+    # templates user can see:
+    # - global (agency_id IS NULL)
+    # - OR templates for their agencies
+    where = "t.deleted_at IS NULL AND t.active = 1 AND (t.agency_id IS NULL"
+    params = []
+    if agency_ids:
+        where += " OR t.agency_id IN (" + ",".join(["?"] * len(agency_ids)) + ")"
+        params.extend(agency_ids)
+    where += ")"
+
+    templates = conn.execute(
+        f"""
+        SELECT
+            t.id, t.agency_id, t.template_name, t.active, t.created_at, t.updated_at
+        FROM sensys_note_templates t
+        WHERE {where}
+        ORDER BY
+            CASE WHEN t.agency_id IS NULL THEN 0 ELSE 1 END,
+            t.template_name COLLATE NOCASE
+        """,
+        tuple(params),
+    ).fetchall()
+
+    tpl_list = [dict(r) for r in templates]
+    if not tpl_list:
+        return {"ok": True, "templates": []}
+
+    tpl_ids = [int(t["id"]) for t in tpl_list]
+    fields = conn.execute(
+        f"""
+        SELECT
+            id, template_id, field_key, field_label, field_type,
+            required, sort_order, options_json, created_at, updated_at
+        FROM sensys_note_template_fields
+        WHERE deleted_at IS NULL
+          AND template_id IN ({",".join(["?"] * len(tpl_ids))})
+        ORDER BY template_id, sort_order ASC, id ASC
+        """,
+        tuple(tpl_ids),
+    ).fetchall()
+
+    fields_by_tpl = {}
+    for f in fields:
+        d = dict(f)
+        fields_by_tpl.setdefault(int(d["template_id"]), []).append(d)
+
+    for t in tpl_list:
+        t["fields"] = fields_by_tpl.get(int(t["id"]), [])
+
+    return {"ok": True, "templates": tpl_list}
 
 @app.get("/api/sensys/admission-details/{admission_id}")
 def sensys_admission_details(admission_id: int, request: Request):
@@ -17704,7 +17767,7 @@ def sensys_admission_details(admission_id: int, request: Request):
             a.updated_at
         FROM sensys_admissions a
         JOIN sensys_patients p ON p.id = a.patient_id
-        JOIN sensys_agencies ag ON ag.id = a.agency_id
+        LEFT JOIN sensys_agencies ag ON ag.id = a.agency_id
         WHERE a.id = ?
         """,
         (int(admission_id),),
