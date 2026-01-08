@@ -1124,17 +1124,18 @@
     </div>
   </div>
 </div>
-<div id="noteTplModalBackdrop" class="backdrop">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modalHead">
+<div id="noteTplModalBackdrop" class="modal-backdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="noteTplModalTitle">
+    <div class="modal-hd">
       <div>
-        <div class="modalTitle">Note Template</div>
-        <div class="modalSub">Create/edit a note type.</div>
+        <h3 class="modal-title" id="noteTplModalTitle">Note Template</h3>
+        <div class="modal-sub">Create/edit a note type.</div>
       </div>
-      <button class="x" id="closeNoteTplModal">✕</button>
+      <button class="xbtn" id="closeNoteTplModal" aria-label="Close">✕</button>
     </div>
 
-    <div class="modalBody">
+    <div class="modal-body">
+      <!-- (keep your existing body contents exactly as-is) -->
       <div class="grid2">
         <div>
           <label>Template Name</label>
@@ -1158,25 +1159,26 @@
       </div>
 
       <div id="noteTplMsg" class="msg ok" style="margin-top:10px;"></div>
-    </div>
 
-    <div class="modalFoot">
-      <button class="btn2" onclick="closeNoteTemplateModal()">Cancel</button>
-      <button class="btn" onclick="saveNoteTemplate()">Save</button>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;">
+        <button class="btn2" onclick="closeNoteTemplateModal()">Cancel</button>
+        <button class="btn" onclick="saveNoteTemplate()">Save</button>
+      </div>
     </div>
   </div>
 </div>
-<div id="noteFieldModalBackdrop" class="backdrop">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modalHead">
+<div id="noteFieldModalBackdrop" class="modal-backdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="noteFieldModalTitle">
+    <div class="modal-hd">
       <div>
-        <div class="modalTitle">Question / Field</div>
-        <div class="modalSub">Create/edit a question for the selected template.</div>
+        <h3 class="modal-title" id="noteFieldModalTitle">Question / Field</h3>
+        <div class="modal-sub">Create/edit a question for the selected template.</div>
       </div>
-      <button class="x" id="closeNoteFieldModal">✕</button>
+      <button class="xbtn" id="closeNoteFieldModal" aria-label="Close">✕</button>
     </div>
 
-    <div class="modalBody">
+    <div class="modal-body">
+      <!-- (keep your existing body contents exactly as-is) -->
       <div class="grid2">
         <div>
           <label>Field Key</label>
@@ -1221,11 +1223,11 @@
       </div>
 
       <div id="noteFieldMsg" class="msg ok" style="margin-top:10px;"></div>
-    </div>
 
-    <div class="modalFoot">
-      <button class="btn2" onclick="closeNoteFieldModal()">Cancel</button>
-      <button class="btn" onclick="saveNoteField()">Save</button>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;">
+        <button class="btn2" onclick="closeNoteFieldModal()">Cancel</button>
+        <button class="btn" onclick="saveNoteField()">Save</button>
+      </div>
     </div>
   </div>
 </div>
