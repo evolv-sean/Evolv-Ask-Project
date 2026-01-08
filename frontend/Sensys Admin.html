@@ -1863,11 +1863,26 @@
       filename: "sensys_patients_template.csv",
       headers: ["id","first_name","last_name","dob","gender","phone1","phone2","email","email2","address1","address2","city","state","zip","insurance_name1","insurance_number1","insurance_name2","insurance_number2","active","notes1","notes2","source","external_patient_id","mrn"]
     },
+
     admissions: {
       label: "Admissions",
       endpoint: "/api/sensys/admin/admissions/bulk",
       filename: "sensys_admissions_template.csv",
-      headers: ["id","patient_id","agency_id","admit_date","dc_date","room","referring_agency","reason","latest_pcp","notes1","notes2","active","next_location","next_agency_id"]
+      headers: [
+        "id",
+
+        // allow either patient_id OR patient demographics for auto-match/create
+        "patient_id",
+        "patient_first_name",
+        "patient_last_name",
+        "patient_dob",
+        "patient_mrn",
+        "patient_external_patient_id",
+
+        "agency_id",
+        "admit_date","dc_date","room","referring_agency","reason","latest_pcp",
+        "notes1","notes2","active","next_location","next_agency_id"
+      ]
     },
 
     // ✅ ADD
