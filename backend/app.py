@@ -2433,7 +2433,7 @@ def init_db():
             rc_message_id TEXT,
             status TEXT,
             error TEXT,
-            rc_response_json TEXT
+            rc_response_json TEXT,
 
             FOREIGN KEY(admission_id) REFERENCES sensys_admissions(id)
         )
