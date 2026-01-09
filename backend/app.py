@@ -630,6 +630,47 @@ async def sensys_pdf_upload(
         "sha256": sha.hexdigest(),
     }
 
+from fastapi.responses import FileResponse
+
+@app.get("/api/sensys/pdfs/{pdf_id}/download")
+def sensys_pdf_download(pdf_id: int, request: Request):
+    u = _sensys_require_user(request)
+
+    conn = get_db()
+    try:
+        # ✅ cleanup expired files to conserve disk
+        _sensys_pdf_cleanup_expired(conn)
+
+        row = conn.execute(
+            """
+            SELECT id, admission_id, original_filename, stored_filename, content_type, expires_at
+            FROM sensys_pdf_files
+            WHERE id = ?
+            """,
+            (int(pdf_id),),
+        ).fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="PDF not found")
+
+        admission_id = row["admission_id"]
+        if not admission_id:
+            raise HTTPException(status_code=404, detail="PDF not linked to an admission")
+
+        _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+
+        path = PDF_STORAGE_DIR / row["stored_filename"]
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="PDF file missing on disk")
+
+        filename = (row["original_filename"] or f"pdf_{pdf_id}.pdf").strip() or f"pdf_{pdf_id}.pdf"
+        return FileResponse(
+            str(path),
+            media_type=row["content_type"] or "application/pdf",
+            filename=filename,
+        )
+    finally:
+        conn.close()
 
 @app.get("/api/sensys/pdfs/{pdf_id}")
 def sensys_pdf_download(pdf_id: int, token: str):
@@ -1916,6 +1957,34 @@ def render_ingest_log(event: str, **fields):
         # Never break ingest due to logging
         print("[INGEST]", event, fields)
 
+def _sensys_pdf_cleanup_expired(conn: sqlite3.Connection) -> int:
+    """
+    Opportunistic cleanup: deletes expired PDFs from disk + removes rows.
+    Runs during list/upload/download so you don't need a background worker.
+    """
+    rows = conn.execute(
+        """
+        SELECT id, stored_filename
+        FROM sensys_pdf_files
+        WHERE expires_at IS NOT NULL
+          AND expires_at <= datetime('now')
+        """
+    ).fetchall()
+
+    deleted = 0
+    for r in rows:
+        try:
+            (PDF_STORAGE_DIR / r["stored_filename"]).unlink(missing_ok=True)
+        except Exception:
+            pass
+
+        conn.execute("DELETE FROM sensys_pdf_files WHERE id = ?", (int(r["id"]),))
+        deleted += 1
+
+    if deleted:
+        conn.commit()
+    return deleted
+
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
@@ -2651,24 +2720,37 @@ def init_db():
     
     # -------------------------------------------------------------------
     # Stored PDFs (metadata only — actual PDF is saved to PDF_STORAGE_DIR)
-    # -------------------------------------------------------------------
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS sensys_pdf_files (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
-            admission_id       INTEGER,                 -- optional linkage
+            admission_id       INTEGER,                 -- linkage to admission
             doc_type           TEXT DEFAULT 'pdf',
             original_filename  TEXT,
             stored_filename    TEXT NOT NULL,
             sha256             TEXT,
             size_bytes         INTEGER DEFAULT 0,
             content_type       TEXT DEFAULT 'application/pdf',
-            created_at         TEXT DEFAULT (datetime('now'))
+            created_at         TEXT DEFAULT (datetime('now')),
+
+            -- ✅ NEW: optional retention window (48h, etc.)
+            expires_at         TEXT
         )
         """
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_pdf_admission ON sensys_pdf_files(admission_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_pdf_sha256 ON sensys_pdf_files(sha256)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_pdf_expires ON sensys_pdf_files(expires_at)")
+
+    # ---- Safe migrations for older DBs (idempotent) ----
+    for ddl in [
+        "ALTER TABLE sensys_pdf_files ADD COLUMN expires_at TEXT",
+    ]:
+        try:
+            cur.execute(ddl)
+        except sqlite3.Error:
+            pass
+
 
     # -------------------------------------------------------------------
     # Sensys 3.0: Users / Roles / Access Control (core "spine")
@@ -18339,6 +18421,147 @@ class SensysAdmissionSmsSend(BaseModel):
     text: str
     from_phone: Optional[str] = None  # optional override (rare)
 
+
+@app.get("/api/sensys/admissions/{admission_id}/pdfs")
+def sensys_admission_pdfs_list(admission_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    try:
+        _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+
+        # ✅ cleanup expired files to conserve disk
+        _sensys_pdf_cleanup_expired(conn)
+
+        rows = conn.execute(
+            """
+            SELECT
+                id, admission_id, doc_type, original_filename,
+                stored_filename, sha256, size_bytes, content_type,
+                created_at, expires_at
+            FROM sensys_pdf_files
+            WHERE admission_id = ?
+            ORDER BY datetime(created_at) DESC, id DESC
+            """,
+            (int(admission_id),),
+        ).fetchall()
+
+        return {"ok": True, "pdfs": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+@app.post("/api/sensys/admissions/{admission_id}/pdfs/upload")
+async def sensys_admission_pdf_upload(
+    admission_id: int,
+    request: Request,
+    doc_type: str = Form("pdf"),
+    retention_hours: str = Form("0"),
+    file: UploadFile = File(...),
+):
+    u = _sensys_require_user(request)
+
+    if not file or not (file.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Please upload a .pdf file")
+
+    # parse retention
+    try:
+        rh = int(str(retention_hours or "0").strip() or "0")
+    except Exception:
+        rh = 0
+    if rh < 0:
+        rh = 0
+
+    conn = get_db()
+    try:
+        _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+
+        # ✅ cleanup expired files to conserve disk
+        _sensys_pdf_cleanup_expired(conn)
+
+        stored_name = f"{uuid.uuid4().hex}.pdf"
+        out_path = PDF_STORAGE_DIR / stored_name
+
+        MAX_UPLOAD_BYTES = 75 * 1024 * 1024
+        CHUNK_SIZE = 256 * 1024
+        total = 0
+        sha = hashlib.sha256()
+
+        with open(out_path, "wb") as out_fp:
+            while True:
+                chunk = await file.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_UPLOAD_BYTES:
+                    try:
+                        out_fp.close()
+                    except Exception:
+                        pass
+                    try:
+                        out_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    raise HTTPException(status_code=413, detail="PDF too large. Please split/re-export.")
+                sha.update(chunk)
+                out_fp.write(chunk)
+
+                if total % (4 * 1024 * 1024) < CHUNK_SIZE:
+                    await asyncio.sleep(0)
+
+        try:
+            await file.close()
+        except Exception:
+            pass
+
+        expires_sql = None
+        expires_param = None
+        if rh > 0:
+            expires_sql = "datetime('now', ?)"
+            expires_param = f"+{rh} hours"
+
+        if rh > 0:
+            cur = conn.execute(
+                """
+                INSERT INTO sensys_pdf_files
+                    (admission_id, doc_type, original_filename, stored_filename, sha256, size_bytes, content_type, expires_at)
+                VALUES
+                    (?, ?, ?, ?, ?, ?, ?, datetime('now', ?))
+                """,
+                (
+                    int(admission_id),
+                    (doc_type or "pdf").strip(),
+                    (file.filename or "").strip(),
+                    stored_name,
+                    sha.hexdigest(),
+                    int(total),
+                    "application/pdf",
+                    expires_param,
+                ),
+            )
+        else:
+            cur = conn.execute(
+                """
+                INSERT INTO sensys_pdf_files
+                    (admission_id, doc_type, original_filename, stored_filename, sha256, size_bytes, content_type, expires_at)
+                VALUES
+                    (?, ?, ?, ?, ?, ?, ?, NULL)
+                """,
+                (
+                    int(admission_id),
+                    (doc_type or "pdf").strip(),
+                    (file.filename or "").strip(),
+                    stored_name,
+                    sha.hexdigest(),
+                    int(total),
+                    "application/pdf",
+                ),
+            )
+
+        pdf_id = int(cur.lastrowid)
+        conn.commit()
+
+        return {"ok": True, "pdf_id": pdf_id}
+    finally:
+        conn.close()
 
 @app.get("/api/sensys/admission-sms/{admission_id}")
 def sensys_admission_sms_list(admission_id: int, request: Request):
