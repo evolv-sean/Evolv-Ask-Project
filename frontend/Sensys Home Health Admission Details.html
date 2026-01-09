@@ -1,0 +1,259 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sensys — Home Health Admission Details</title>
+</head>
+
+<body style="margin:0;font-family:Arial,Helvetica,sans-serif;background:#f6f7fb;">
+  <div style="max-width:1100px;margin:0 auto;padding:18px;">
+
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+      <div>
+        <div style="font-size:18px;font-weight:800;">Admission Details</div>
+        <div id="subhead" style="font-size:12px;color:#667085;margin-top:4px;"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button id="backBtn"
+          style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+          ← Back
+        </button>
+        <button id="logoutBtn"
+          style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+          Log out
+        </button>
+      </div>
+    </div>
+
+    <div id="msg" style="margin-top:10px;font-size:12px;color:#b42318;display:none;"></div>
+
+    <!-- Patient header -->
+    <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
+        <div>
+          <div id="patientName" style="font-size:16px;font-weight:800;color:#111827;">—</div>
+          <div id="metaLine" style="margin-top:4px;font-size:12px;color:#667085;">—</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <div style="font-size:12px;color:#475467;">Admission ID: <span id="admissionIdTag" style="font-weight:800;color:#111827;"></span></div>
+          <button id="refreshBtn"
+            style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">
+            Refresh
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- GRID -->
+    <div style="margin-top:14px;display:grid;grid-template-columns:1fr;gap:14px;">
+
+      <!-- PDF card -->
+      <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <div style="font-size:13px;color:#111827;font-weight:800;">PDFs</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select id="docType"
+              style="padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+              <option value="pdf">PDF</option>
+              <option value="face_sheet">Face Sheet</option>
+              <option value="insurance">Insurance</option>
+              <option value="orders">Orders</option>
+            </select>
+            <input id="pdfFile" type="file" accept="application/pdf"
+              style="font-size:12px;">
+            <button id="uploadBtn"
+              style="padding:10px 12px;border:1px solid #d0d5dd;border-radius:10px;background:#fff;cursor:pointer;font-size:13px;font-weight:700;">
+              Upload
+            </button>
+          </div>
+        </div>
+
+        <div id="pdfList" style="margin-top:10px;font-size:13px;color:#111827;"></div>
+      </div>
+
+      <!-- Care Team card -->
+      <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+        <div style="font-size:13px;color:#111827;font-weight:800;">Care Team</div>
+        <div id="careTeamList" style="margin-top:10px;"></div>
+      </div>
+
+    </div>
+
+  </div>
+
+<script>
+  function showMsg(s){
+    const el = document.getElementById('msg');
+    if(!s){ el.style.display='none'; el.textContent=''; return; }
+    el.style.display='block';
+    el.textContent = String(s);
+  }
+
+  function esc(s){
+    return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  function getToken(){
+    return localStorage.getItem('sensys_token') || '';
+  }
+
+  async function apiGet(url){
+    const tok = getToken();
+    const resp = await fetch(url, { headers: { 'Authorization': 'Bearer ' + tok } });
+    if(!resp.ok){
+      const t = await resp.text().catch(()=> '');
+      throw new Error(t || ('Request failed: ' + resp.status));
+    }
+    return await resp.json();
+  }
+
+  async function apiUploadPdf(admissionId){
+    const tok = getToken();
+    const f = document.getElementById('pdfFile').files[0];
+    if(!f) throw new Error('Please choose a PDF file first.');
+
+    const docType = document.getElementById('docType').value || 'pdf';
+
+    const form = new FormData();
+    form.append('doc_type', docType);
+    form.append('retention_hours', '0');
+    form.append('file', f);
+
+    const resp = await fetch(`/api/sensys/admissions/${encodeURIComponent(admissionId)}/pdfs/upload`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + tok },
+      body: form
+    });
+
+    if(!resp.ok){
+      const t = await resp.text().catch(()=> '');
+      throw new Error(t || ('Upload failed: ' + resp.status));
+    }
+    return await resp.json();
+  }
+
+  function getAdmissionId(){
+    const p = new URLSearchParams(window.location.search);
+    const id = p.get('admission_id');
+    return id ? Number(id) : null;
+  }
+
+  function renderCareTeam(items){
+    const wrap = document.getElementById('careTeamList');
+    if(!items || !items.length){
+      wrap.innerHTML = `<div style="font-size:12px;color:#667085;">No care team linked.</div>`;
+      return;
+    }
+
+    wrap.innerHTML = items.map(ct => {
+      const meta = [ct.type, ct.phone1, ct.email1].filter(Boolean).join(' • ');
+      return `
+        <div style="padding:10px;border:1px solid #eef0f6;border-radius:12px;margin-bottom:8px;">
+          <div style="font-weight:800;color:#111827;">${esc(ct.name || '')}</div>
+          <div style="margin-top:4px;font-size:12px;color:#667085;">${esc(meta || '')}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderPdfs(items, admissionId){
+    const wrap = document.getElementById('pdfList');
+    if(!items || !items.length){
+      wrap.innerHTML = `<div style="font-size:12px;color:#667085;">No PDFs uploaded for this admission.</div>`;
+      return;
+    }
+
+    wrap.innerHTML = items.map(p => {
+      const label = `${p.doc_type || 'pdf'} • ${p.original_filename || p.stored_filename || ''}`;
+      return `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border:1px solid #eef0f6;border-radius:12px;margin-bottom:8px;">
+          <div>
+            <div style="font-weight:800;color:#111827;font-size:13px;">${esc(label)}</div>
+            <div style="margin-top:4px;font-size:12px;color:#667085;">${esc(p.created_at || '')}</div>
+          </div>
+          <a href="/api/sensys/pdfs/${encodeURIComponent(p.id)}/download"
+             style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;text-decoration:none;color:#111827;"
+             onclick="return attachTokenToDownload(event, this);">
+             Download
+          </a>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // Add token to download link via query param (Authorization headers don't work on normal <a> clicks)
+  function attachTokenToDownload(evt, a){
+    try{
+      const tok = getToken();
+      const url = new URL(a.href, window.location.origin);
+      url.searchParams.set('token', tok);
+      a.href = url.toString();
+      return true;
+    }catch(e){
+      return true;
+    }
+  }
+
+  async function load(){
+    const admissionId = getAdmissionId();
+    if(!admissionId){
+      showMsg('Missing admission_id in the URL.');
+      return;
+    }
+
+    try{
+      showMsg('');
+
+      const me = await apiGet('/api/sensys/me');
+      const u = (me && me.user) || {};
+      document.getElementById('subhead').textContent =
+        `${u.display_name || u.email || ''} • Roles: ${(u.role_keys||[]).join(', ')}`;
+
+      document.getElementById('admissionIdTag').textContent = String(admissionId);
+
+      const details = await apiGet(`/api/sensys/admission-details/${encodeURIComponent(admissionId)}`);
+      const a = (details && details.admission) || {};
+
+      document.getElementById('patientName').textContent = a.patient_name || '—';
+      document.getElementById('metaLine').textContent =
+        `DOB: ${a.patient_dob || '—'} • Admit: ${a.admit_date || '—'} • DC: ${a.dc_date || '—'} • Room: ${a.room || '—'}`;
+
+      renderCareTeam((details && details.care_team) || []);
+
+      const pdfs = await apiGet(`/api/sensys/admissions/${encodeURIComponent(admissionId)}/pdfs`);
+      renderPdfs((pdfs && pdfs.pdfs) || [], admissionId);
+
+    }catch(e){
+      showMsg(e.message || String(e));
+    }
+  }
+
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('sensys_token');
+    window.location.href = '/sensys/login';
+  });
+
+  document.getElementById('backBtn').addEventListener('click', () => {
+    window.location.href = '/sensys/home-health';
+  });
+
+  document.getElementById('refreshBtn').addEventListener('click', load);
+
+  document.getElementById('uploadBtn').addEventListener('click', async () => {
+    const admissionId = getAdmissionId();
+    if(!admissionId) return;
+    try{
+      showMsg('');
+      await apiUploadPdf(admissionId);
+      await load();
+      document.getElementById('pdfFile').value = '';
+    }catch(e){
+      showMsg(e.message || String(e));
+    }
+  });
+
+  load();
+</script>
+</body>
+</html>
