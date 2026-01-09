@@ -19519,11 +19519,15 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                 (payload.urgent_comments or "").strip(),
                 (payload.dc_destination or "").strip(),
                 (payload.destination_comments or "").strip(),
+
+                # dc_with
                 (payload.dc_with or "").strip(),
-                (payload.hh_comments or "").strip(),
-                (payload.dc_with or "").strip(),
+
+                # hh_agency_id, hh_preferred
                 (int(payload.hh_agency_id) if payload.hh_agency_id else None),
                 int(payload.hh_preferred or 0),
+
+                # the rest
                 (payload.hh_comments or "").strip(),
                 (payload.dme_comments or "").strip(),
                 (payload.aid_consult or "").strip(),
@@ -19533,6 +19537,8 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                 (payload.caregiver_number or "").strip(),
                 int(payload.apealling_dc or 0),
                 (payload.appeal_comments or "").strip(),
+
+                # WHERE
                 int(payload.id),
                 int(payload.admission_id),
             ),
@@ -19565,25 +19571,29 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
             (
                 int(payload.admission_id),
                 int(u["user_id"]),
+
                 (payload.dc_date or "").strip(),
                 (payload.dc_time or "").strip(),
                 int(payload.dc_confirmed or 0),
                 int(payload.dc_urgent or 0),
                 (payload.urgent_comments or "").strip(),
+
                 (payload.dc_destination or "").strip(),
                 (payload.destination_comments or "").strip(),
                 (payload.dc_with or "").strip(),
-                (payload.hh_comments or "").strip(),
-                (payload.dc_with or "").strip(),
+
                 (int(payload.hh_agency_id) if payload.hh_agency_id else None),
                 int(payload.hh_preferred or 0),
+
                 (payload.hh_comments or "").strip(),
                 (payload.dme_comments or "").strip(),
                 (payload.aid_consult or "").strip(),
                 (payload.pcp_freetext or "").strip(),
+
                 int(payload.coordinate_caregiver or 0),
                 (payload.caregiver_name or "").strip(),
                 (payload.caregiver_number or "").strip(),
+
                 int(payload.apealling_dc or 0),
                 (payload.appeal_comments or "").strip(),
             ),
