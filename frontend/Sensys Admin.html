@@ -1445,7 +1445,7 @@
 
   let agenciesCache = [];
   let selectedAgencyId = null;
-
+  
   let selectedPreferredProviderIds = new Set();
 
   function renderAgencyChecklist(){
@@ -1493,65 +1493,63 @@
     });
   }
 
+  function renderPreferredProvidersChecklist(){
+    const wrap = $("preferredProvidersChecklist");
+    if(!wrap) return;
 
-function renderPreferredProvidersChecklist(){
-  const wrap = $("preferredProvidersChecklist");
-  if(!wrap) return;
+    const q = ($("preferredProviderSearch").value || "").trim().toLowerCase();
+    wrap.innerHTML = "";
 
-  const q = ($("preferredProviderSearch").value || "").trim().toLowerCase();
-  wrap.innerHTML = "";
+    const items = (agenciesMaster || [])
+      .filter(a => String(a.agency_type || "").toLowerCase() === "home health")
+      .filter(a => !selectedAgencyId || Number(a.id) !== Number(selectedAgencyId))
+      .filter(a => {
+        const hay = `${a.agency_name || ""} ${a.city || ""} ${a.state || ""}`.toLowerCase();
+        return !q || hay.includes(q);
+      })
+      .sort((a,b) => String(a.agency_name||"").localeCompare(String(b.agency_name||""), undefined, { sensitivity:"base" }));
 
-  const items = (agenciesMaster || [])
-    .filter(a => String(a.agency_type || "").toLowerCase() === "home health")
-    .filter(a => !selectedAgencyId || Number(a.id) !== Number(selectedAgencyId))
-    .filter(a => {
-      const hay = `${a.agency_name || ""} ${a.city || ""} ${a.state || ""}`.toLowerCase();
-      return !q || hay.includes(q);
-    })
-    .sort((a,b) => String(a.agency_name||"").localeCompare(String(b.agency_name||""), undefined, { sensitivity:"base" }));
+    items.forEach(a => {
+      const row = document.createElement("div");
+      row.className = "checkrow";
 
-  items.forEach(a => {
-    const row = document.createElement("div");
-    row.className = "checkrow";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = selectedPreferredProviderIds.has(a.id);
+      cb.onchange = () => {
+        if(cb.checked) selectedPreferredProviderIds.add(a.id);
+        else selectedPreferredProviderIds.delete(a.id);
+      };
 
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.checked = selectedPreferredProviderIds.has(a.id);
-    cb.onchange = () => {
-      if(cb.checked) selectedPreferredProviderIds.add(a.id);
-      else selectedPreferredProviderIds.delete(a.id);
-    };
+      const label = document.createElement("div");
+      const locRaw =
+        (a.city || a.state)
+          ? (String(a.city || "") + (a.city && a.state ? ", " : "") + String(a.state || ""))
+          : "";
 
-    const label = document.createElement("div");
-    const locRaw =
-      (a.city || a.state)
-        ? (String(a.city || "") + (a.city && a.state ? ", " : "") + String(a.state || ""))
-        : "";
+      label.innerHTML = `
+        <b>${escapeHtml(a.agency_name || "")}</b>
+        <span class="agmeta"> — ${escapeHtml(locRaw)}</span>
+      `;
 
-    label.innerHTML = `
-      <b>${escapeHtml(a.agency_name || "")}</b>
-      <span class="agmeta"> — ${escapeHtml(locRaw)}</span>
-    `;
-
-    row.appendChild(cb);
-    row.appendChild(label);
-    wrap.appendChild(row);
-  });
-}
-
-async function loadPreferredProvidersForAgency(agencyId){
-  selectedPreferredProviderIds = new Set();
-  try{
-    if(!agencyId) { renderPreferredProvidersChecklist(); return; }
-    const resp = await apiGet(`/api/sensys/admin/agencies/${agencyId}/preferred-providers`);
-    const ids = (resp && resp.provider_ids) || [];
-    selectedPreferredProviderIds = new Set(ids.map(x => Number(x)));
-  }catch(e){
-    // non-fatal; still show empty
-    selectedPreferredProviderIds = new Set();
+      row.appendChild(cb);
+      row.appendChild(label);
+      wrap.appendChild(row);
+    });
   }
-  renderPreferredProvidersChecklist();
-}
+
+  async function loadPreferredProvidersForAgency(agencyId){
+    selectedPreferredProviderIds = new Set();
+    try{
+      if(!agencyId) { renderPreferredProvidersChecklist(); return; }
+      const resp = await apiGet(`/api/sensys/admin/agencies/${agencyId}/preferred-providers`);
+      const ids = (resp && resp.provider_ids) || [];
+      selectedPreferredProviderIds = new Set(ids.map(x => Number(x)));
+    }catch(e){
+      selectedPreferredProviderIds = new Set();
+    }
+    renderPreferredProvidersChecklist();
+  }
 
   function renderRolesPills(){
     const wrap = $("roles");
@@ -1835,7 +1833,7 @@ async function loadPreferredProvidersForAgency(agencyId){
     });
   }
 
-  async function selectAgency(a){
+  function selectAgency(a){
     selectedAgencyId = a.id;
     $("selAgencyId").textContent = String(a.id);
 
@@ -1856,10 +1854,9 @@ async function loadPreferredProvidersForAgency(agencyId){
     $("evolv_client").value = String(a.evolv_client ? 1 : 0);
 
     setMsg($("agencyEditMsg"), "", true);
-
+    
     await loadPreferredProvidersForAgency(selectedAgencyId);
-
-    // NEW: open modal
+    
     openAgencyModal();
   }
 
@@ -1932,13 +1929,14 @@ async function loadPreferredProvidersForAgency(agencyId){
         notes: ($("notes").value || "").trim(),
         notes2: ($("notes2").value || "").trim(),
         evolv_client: $("evolv_client").value === "1",
-
-        // NEW
         preferred_provider_ids: Array.from(selectedPreferredProviderIds)
       };
 
       const resp = await apiPost("/api/sensys/admin/agencies/upsert", payload);
-      if(resp && resp.id){ selectedAgencyId = Number(resp.id); $("selAgencyId").textContent = String(selectedAgencyId); }
+      if(resp && resp.id){
+        selectedAgencyId = Number(resp.id);
+        $("selAgencyId").textContent = String(selectedAgencyId);
+      }
       setMsg($("agencyEditMsg"), "Agency saved.", true);
       await refreshAgenciesList();
     }catch(e){
