@@ -19732,6 +19732,8 @@ def sensys_dc_note_render(dc_submission_id: int, request: Request):
         "hh_agency_name": hh_agency_name,
 
         # booleans for {{#if ...}}
+        "has_destination": True if destination else False,
+        "has_with": True if dc_with else False,
         "has_hh": True if hh_svcs else False,
         "has_dme": True if dme_svcs else False,
         "has_hh_agency": True if hh_agency_name else False,
