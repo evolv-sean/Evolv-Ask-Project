@@ -17608,7 +17608,10 @@ def sensys_admin_dc_note_templates(token: str):
 
 
 @app.post("/api/sensys/admin/dc-note-templates/upsert")
-def sensys_admin_dc_note_templates_upsert(payload: DcNoteTemplateUpsert, token: str):
+def sensys_admin_dc_note_templates_upsert(
+    payload: DcNoteTemplateUpsert = Body(...),
+    token: str = Query(...)
+):
     _require_admin_token(token)
     conn = get_db()
 
@@ -17657,7 +17660,10 @@ def sensys_admin_dc_note_templates_upsert(payload: DcNoteTemplateUpsert, token: 
 
 
 @app.post("/api/sensys/admin/dc-note-templates/delete")
-def sensys_admin_dc_note_templates_delete(payload: SensysNoteTemplateDelete, token: str):
+def sensys_admin_dc_note_templates_delete(
+    payload: DcNoteTemplateDelete = Body(...),
+    token: str = Query(...)
+):
     _require_admin_token(token)
     conn = get_db()
     conn.execute(
