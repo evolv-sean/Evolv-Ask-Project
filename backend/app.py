@@ -16278,25 +16278,25 @@ def sensys_admission_referrals_delete(payload: IdOnly, request: Request):
         (int(payload.id),),
     )
 
-# Determine agency_id (needed for preferred providers join table)
-agency_id = int(payload.id) if payload.id else conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    # Determine agency_id (needed for preferred providers join table)
+    agency_id = int(payload.id) if payload.id else conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
 
-# Preferred Providers (optional)
-# If UI sends preferred_provider_ids, we treat it as authoritative and replace the set.
-if payload.preferred_provider_ids is not None:
-    conn.execute("DELETE FROM sensys_agency_preferred_providers WHERE agency_id = ?", (int(agency_id),))
-    pp_ids = [int(x) for x in (payload.preferred_provider_ids or []) if int(x) > 0 and int(x) != int(agency_id)]
-    if pp_ids:
-        conn.executemany(
-            '''
-            INSERT OR IGNORE INTO sensys_agency_preferred_providers (agency_id, provider_agency_id)
-            VALUES (?, ?)
-            ''',
-            [(int(agency_id), int(pid)) for pid in pp_ids],
-        )
+    # Preferred Providers (optional)
+    # If UI sends preferred_provider_ids, we treat it as authoritative and replace the set.
+    if payload.preferred_provider_ids is not None:
+        conn.execute("DELETE FROM sensys_agency_preferred_providers WHERE agency_id = ?", (int(agency_id),))
+        pp_ids = [int(x) for x in (payload.preferred_provider_ids or []) if int(x) > 0 and int(x) != int(agency_id)]
+        if pp_ids:
+            conn.executemany(
+                '''
+                INSERT OR IGNORE INTO sensys_agency_preferred_providers (agency_id, provider_agency_id)
+                VALUES (?, ?)
+                ''',
+                [(int(agency_id), int(pid)) for pid in pp_ids],
+            )
 
-conn.commit()
-return {"ok": True, "id": int(agency_id)}
+    conn.commit()
+    return {"ok": True, "id": int(agency_id)}
 
 class AdmissionAppointmentUpsert(BaseModel):
     id: Optional[int] = None
