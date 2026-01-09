@@ -307,7 +307,8 @@ CENSUS_HTML = FRONTEND_DIR / "Census.html"
 SENSYS_LOGIN_HTML = FRONTEND_DIR / "Sensys Login.html"
 SENSYS_SNF_SW_HTML = FRONTEND_DIR / "Sensys SNF SW.html"
 SENSYS_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Admission Details.html"
-
+SENSYS_HOME_HEALTH_HTML = FRONTEND_DIR / "Sensys Home Health.html"
+SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Home Health Admission Details.html"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("evolv")
@@ -18555,6 +18556,8 @@ def sensys_login(payload: SensysLoginIn):
     redirect_url = "/sensys/login"
     if "snf_sw" in role_keys:
         redirect_url = "/sensys/snf-sw"
+    elif "home_health" in role_keys:
+        redirect_url = "/sensys/home-health"
     elif "admin" in role_keys:
         redirect_url = "/admin/sensys"
 
@@ -18582,12 +18585,71 @@ def sensys_me(request: Request):
 @app.get("/api/sensys/my-admissions")
 def sensys_my_admissions(request: Request):
     """
-    Returns admissions linked to the logged-in user via:
+    Returns admissions linked to the logged-in user.
+
+    Default:
       sensys_user_agencies.user_id -> sensys_admissions.agency_id
+
+    Home Health role:
+      sensys_user_agencies (their linked agencies)
+        -> sensys_admission_referrals.agency_id
+        -> sensys_admission_referrals.admission_id
+        -> sensys_admissions.id
     """
     u = _sensys_require_user(request)
     conn = get_db()
 
+    role_keys = u.get("role_keys") or []
+    user_id = int(u["user_id"])
+
+    # ✅ Home Health: show admissions where THIS user's agencies appear as a referral agency
+    if "home_health" in role_keys:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT
+                a.id,
+                a.patient_id,
+                (p.last_name || ', ' || p.first_name) AS patient_name,
+                p.dob AS patient_dob,
+
+                -- admission's main agency (still useful context)
+                a.agency_id,
+                ag.agency_name AS agency_name,
+
+                -- the agency that caused the HH user to see this admission
+                ar.agency_id AS referral_agency_id,
+                rag.agency_name AS referral_agency_name,
+
+                a.admit_date,
+                a.dc_date,
+                a.room,
+                a.reason,
+                a.latest_pcp,
+                a.active,
+                a.updated_at
+            FROM sensys_user_agencies ua
+            JOIN sensys_admission_referrals ar
+                 ON ar.agency_id = ua.agency_id
+                AND ar.deleted_at IS NULL
+            JOIN sensys_admissions a
+                 ON a.id = ar.admission_id
+            JOIN sensys_patients p
+                 ON p.id = a.patient_id
+            LEFT JOIN sensys_agencies ag
+                 ON ag.id = a.agency_id
+            LEFT JOIN sensys_agencies rag
+                 ON rag.id = ar.agency_id
+            WHERE ua.user_id = ?
+            ORDER BY
+                COALESCE(a.admit_date, '') DESC,
+                a.id DESC
+            """,
+            (user_id,),
+        ).fetchall()
+
+        return {"ok": True, "admissions": [dict(r) for r in rows]}
+
+    # Default (everyone else): admissions linked by admission.agency_id
     rows = conn.execute(
         """
         SELECT
@@ -18615,10 +18677,11 @@ def sensys_my_admissions(request: Request):
             COALESCE(a.admit_date, '') DESC,
             a.id DESC
         """,
-        (int(u["user_id"]),),
+        (user_id,),
     ).fetchall()
 
     return {"ok": True, "admissions": [dict(r) for r in rows]}
+
 
 # -----------------------------
 # Sensys: Admission Details APIs (tasks / notes / dc submissions / services / care team)
@@ -18627,15 +18690,35 @@ from pydantic import BaseModel
 from typing import Optional, List
 
 def _sensys_assert_admission_access(conn, user_id: int, admission_id: int):
+    """
+    Access is allowed if:
+      A) admission is linked by admission.agency_id ∈ user's agencies
+      OR
+      B) admission has a referral row where referral.agency_id ∈ user's agencies (Home Health use-case)
+    """
     ok = conn.execute(
         """
         SELECT 1
-        FROM sensys_user_agencies ua
-        JOIN sensys_admissions a ON a.agency_id = ua.agency_id
-        WHERE ua.user_id = ?
-          AND a.id = ?
+        WHERE
+            EXISTS (
+                SELECT 1
+                FROM sensys_user_agencies ua
+                JOIN sensys_admissions a ON a.agency_id = ua.agency_id
+                WHERE ua.user_id = ?
+                  AND a.id = ?
+            )
+            OR
+            EXISTS (
+                SELECT 1
+                FROM sensys_user_agencies ua
+                JOIN sensys_admission_referrals ar
+                     ON ar.agency_id = ua.agency_id
+                    AND ar.deleted_at IS NULL
+                WHERE ua.user_id = ?
+                  AND ar.admission_id = ?
+            )
         """,
-        (int(user_id), int(admission_id)),
+        (int(user_id), int(admission_id), int(user_id), int(admission_id)),
     ).fetchone()
 
     if not ok:
@@ -18645,6 +18728,7 @@ def _sensys_assert_admission_access(conn, user_id: int, admission_id: int):
             int(admission_id),
         )
         raise HTTPException(status_code=403, detail="Forbidden: admission not linked to your agencies")
+
 
 class SensysAdmissionSmsSend(BaseModel):
     admission_id: int
@@ -20097,6 +20181,15 @@ async def sensys_snf_sw_ui():
 @app.get("/sensys/admission-details", response_class=HTMLResponse)
 async def sensys_admission_details_ui():
     return HTMLResponse(content=read_html(SENSYS_ADMISSION_DETAILS_HTML))
+
+# ✅ NEW: Home Health admissions list + trimmed details page
+@app.get("/sensys/home-health", response_class=HTMLResponse)
+async def sensys_home_health_ui():
+    return HTMLResponse(content=read_html(SENSYS_HOME_HEALTH_HTML))
+
+@app.get("/sensys/home-health/admission-details", response_class=HTMLResponse)
+async def sensys_home_health_admission_details_ui():
+    return HTMLResponse(content=read_html(SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML))
 
 
 @app.get("/snf-admissions", response_class=HTMLResponse)
