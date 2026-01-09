@@ -17592,6 +17592,13 @@ class SensysNoteTemplateUpsert(BaseModel):
 class SensysNoteTemplateDelete(BaseModel):
     id: int
     
+class DcNoteTemplateUpsert(BaseModel):
+    id: Optional[int] = None
+    template_name: str
+    agency_id: Optional[int] = None  # NULL = global default
+    active: int = 1
+    template_body: str
+    
 @app.get("/api/sensys/admin/dc-note-templates")
 def sensys_admin_dc_note_templates(token: str):
     _require_admin_token(token)
@@ -19607,12 +19614,6 @@ def sensys_admission_notes_delete(payload: IdOnly, request: Request):
     conn.commit()
     return {"ok": True}
 
-class DcNoteTemplateUpsert(BaseModel):
-    id: Optional[int] = None
-    template_name: str
-    agency_id: Optional[int] = None  # NULL = global default
-    active: int = 1
-    template_body: str
 
 class DcSubmissionUpsert(BaseModel):
     id: Optional[int] = None
