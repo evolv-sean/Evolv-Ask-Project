@@ -1833,7 +1833,7 @@
     });
   }
 
-  function selectAgency(a){
+  async function selectAgency(a){
     selectedAgencyId = a.id;
     $("selAgencyId").textContent = String(a.id);
 
@@ -1854,9 +1854,9 @@
     $("evolv_client").value = String(a.evolv_client ? 1 : 0);
 
     setMsg($("agencyEditMsg"), "", true);
-    
+
     await loadPreferredProvidersForAgency(selectedAgencyId);
-    
+
     openAgencyModal();
   }
 
