@@ -2790,6 +2790,24 @@ def init_db():
             # duplicate column name → already migrated
             pass
 
+    # -----------------------------
+    # DC Discharge Note Templates
+    # -----------------------------
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sensys_dc_note_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_name TEXT NOT NULL,
+      agency_id INTEGER NULL,                 -- NULL = global default; otherwise facility-specific
+      active INTEGER DEFAULT 1,
+
+      template_body TEXT NOT NULL,            -- supports {{var}} and {{#if var}}...{{/if}}
+
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      deleted_at TEXT NULL
+    )
+    """)
+
 
     # Roles (Admin / Care Manager / Viewer / etc.)
     cur.execute(
@@ -6287,6 +6305,45 @@ def load_dictionary_maps(conn: sqlite3.Connection) -> Dict[str, Dict[str, Any]]:
         "synonym": synonym_map,
         "facility_aliases": facility_aliases,
     }
+
+import re
+
+def _sensys_render_dc_note_template(template_body: str, ctx: dict) -> str:
+    """
+    Supported:
+      - {{var}} substitution
+      - {{#if var}} ... {{/if}} blocks (removed if var is falsy/empty)
+    """
+    if not template_body:
+        return ""
+
+    out = template_body
+
+    # 1) conditionals
+    # non-greedy match for blocks
+    pattern = re.compile(r"\{\{#if\s+([a-zA-Z0-9_]+)\s*\}\}(.*?)\{\{\/if\}\}", re.DOTALL)
+    while True:
+        m = pattern.search(out)
+        if not m:
+            break
+        key = m.group(1)
+        body = m.group(2)
+        keep = ctx.get(key)
+        out = out[:m.start()] + (body if keep else "") + out[m.end():]
+
+    # 2) substitutions
+    def repl(m):
+        key = m.group(1)
+        val = ctx.get(key)
+        return "" if val is None else str(val)
+
+    out = re.sub(r"\{\{([a-zA-Z0-9_]+)\}\}", repl, out)
+
+    # 3) normalize spacing
+    out = re.sub(r"[ \t]+\n", "\n", out)
+    out = re.sub(r"\n{3,}", "\n\n", out).strip()
+
+    return out
 
 
 
@@ -17534,6 +17591,86 @@ class SensysNoteTemplateUpsert(BaseModel):
 
 class SensysNoteTemplateDelete(BaseModel):
     id: int
+    
+@app.get("/api/sensys/admin/dc-note-templates")
+def sensys_admin_dc_note_templates(request: Request):
+    _sensys_require_admin(request)
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT id, template_name, agency_id, active, template_body, created_at, updated_at
+        FROM sensys_dc_note_templates
+        WHERE deleted_at IS NULL
+        ORDER BY COALESCE(agency_id, 0) ASC, template_name ASC
+        """
+    ).fetchall()
+    return {"templates": [dict(r) for r in rows]}
+
+
+@app.post("/api/sensys/admin/dc-note-templates/upsert")
+def sensys_admin_dc_note_templates_upsert(payload: DcNoteTemplateUpsert, request: Request):
+    _sensys_require_admin(request)
+    conn = get_db()
+
+    if not (payload.template_name or "").strip():
+        raise HTTPException(status_code=400, detail="template_name is required")
+    if not (payload.template_body or "").strip():
+        raise HTTPException(status_code=400, detail="template_body is required")
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_dc_note_templates
+               SET template_name = ?,
+                   agency_id = ?,
+                   active = ?,
+                   template_body = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+               AND deleted_at IS NULL
+            """,
+            (
+                payload.template_name.strip(),
+                payload.agency_id,
+                int(payload.active or 0),
+                payload.template_body,
+                int(payload.id),
+            ),
+        )
+        conn.commit()
+        return {"ok": True, "id": int(payload.id)}
+    else:
+        cur = conn.execute(
+            """
+            INSERT INTO sensys_dc_note_templates (template_name, agency_id, active, template_body)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                payload.template_name.strip(),
+                payload.agency_id,
+                int(payload.active or 0),
+                payload.template_body,
+            ),
+        )
+        conn.commit()
+        return {"ok": True, "id": int(cur.lastrowid)}
+
+
+@app.post("/api/sensys/admin/dc-note-templates/delete")
+def sensys_admin_dc_note_templates_delete(payload: IdOnly, request: Request):
+    _sensys_require_admin(request)
+    conn = get_db()
+    conn.execute(
+        """
+        UPDATE sensys_dc_note_templates
+           SET deleted_at = datetime('now'),
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (int(payload.id),),
+    )
+    conn.commit()
+    return {"ok": True}
 
 @app.get("/api/sensys/admin/note-templates")
 def sensys_admin_note_templates(token: str):
@@ -19451,6 +19588,13 @@ def sensys_admission_notes_delete(payload: IdOnly, request: Request):
     conn.commit()
     return {"ok": True}
 
+class DcNoteTemplateUpsert(BaseModel):
+    id: Optional[int] = None
+    template_name: str
+    agency_id: Optional[int] = None  # NULL = global default
+    active: int = 1
+    template_body: str
+
 class DcSubmissionUpsert(BaseModel):
     id: Optional[int] = None
     admission_id: int
@@ -19476,6 +19620,126 @@ class DcSubmissionUpsert(BaseModel):
     caregiver_number: Optional[str] = ""
     apealling_dc: int = 0
     appeal_comments: Optional[str] = ""
+
+@app.get("/api/sensys/dc-note/render")
+def sensys_dc_note_render(dc_submission_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    dc = conn.execute(
+        """
+        SELECT dcs.*,
+               a.agency_id AS admission_agency_id,
+               a.admission_id AS admission_pk,          -- may not exist; keep safe if your schema differs
+               a.patient_id,
+               a.admit_date,
+               a.dc_date AS admission_dc_date
+        FROM sensys_admission_dc_submissions dcs
+        JOIN sensys_admissions a ON a.id = dcs.admission_id
+        WHERE dcs.id = ?
+        """,
+        (int(dc_submission_id),),
+    ).fetchone()
+
+    if not dc:
+        raise HTTPException(status_code=404, detail="DC submission not found")
+
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(dc["admission_id"]))
+
+    # patient name
+    p = conn.execute(
+        "SELECT first_name, last_name, dob FROM sensys_patients WHERE id = ?",
+        (int(dc["patient_id"]),),
+    ).fetchone()
+
+    patient_name = ""
+    if p:
+        patient_name = f"{(p['first_name'] or '').strip()} {(p['last_name'] or '').strip()}".strip()
+
+    # HH agency name
+    hh_agency_name = ""
+    if dc["hh_agency_id"]:
+        arow = conn.execute(
+            "SELECT agency_name FROM sensys_agencies WHERE id = ?",
+            (int(dc["hh_agency_id"]),),
+        ).fetchone()
+        if arow:
+            hh_agency_name = (arow["agency_name"] or "").strip()
+
+    # services selected for this DC submission
+    svc_rows = conn.execute(
+        """
+        SELECT s.id, s.name, s.service_type
+        FROM sensys_dc_submission_services j
+        JOIN sensys_services s ON s.id = j.services_id
+        WHERE j.admission_dc_submission_id = ?
+        """,
+        (int(dc_submission_id),),
+    ).fetchall()
+
+    hh_svcs = []
+    dme_svcs = []
+    for r in svc_rows:
+        st = (r["service_type"] or "").strip().lower()
+        nm = (r["name"] or "").strip()
+        if not nm:
+            continue
+        if st in ("hh", "home health", "homehealth"):
+            hh_svcs.append(nm)
+        elif st in ("dme", "durable medical equipment"):
+            dme_svcs.append(nm)
+
+    # choose template: facility-specific first, else global
+    tpl = conn.execute(
+        """
+        SELECT *
+        FROM sensys_dc_note_templates
+        WHERE deleted_at IS NULL
+          AND active = 1
+          AND (agency_id = ? OR agency_id IS NULL)
+        ORDER BY CASE WHEN agency_id IS NULL THEN 1 ELSE 0 END, updated_at DESC
+        LIMIT 1
+        """,
+        (dc["admission_agency_id"],),
+    ).fetchone()
+
+    if not tpl:
+        raise HTTPException(status_code=400, detail="No active DC note template found (create one in Admin → Notes).")
+
+    # build context for the template
+    discharge_date = (dc["dc_date"] or "").strip() or (dc["admission_dc_date"] or "").strip()
+    destination = (dc["dc_destination"] or "").strip()
+    dc_with = (dc["dc_with"] or "").strip()
+
+    ctx = {
+        "patient_name": patient_name,
+        "discharge_date": discharge_date,
+        "destination": destination,
+        "dc_with": dc_with,
+        "hh_agency_name": hh_agency_name,
+
+        # booleans for {{#if ...}}
+        "has_hh": True if hh_svcs else False,
+        "has_dme": True if dme_svcs else False,
+        "has_hh_agency": True if hh_agency_name else False,
+
+        # pre-joined strings to keep templates simple
+        "hh_services": ", ".join(hh_svcs),
+        "dme_services": ", ".join(dme_svcs),
+
+        # keep your Evolv phone centralized
+        "evolv_phone": "1-800-868-0506",
+    }
+
+    rendered = _sensys_render_dc_note_template(tpl["template_body"], ctx)
+
+    return {
+        "ok": True,
+        "template_id": int(tpl["id"]),
+        "template_name": tpl["template_name"],
+        "note_text": rendered,
+        "ctx": ctx,  # helpful for debugging; remove later if you want
+    }
 
 @app.post("/api/sensys/admission-dc-submissions/upsert")
 def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request: Request):
