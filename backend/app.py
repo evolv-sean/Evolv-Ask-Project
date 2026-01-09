@@ -18483,6 +18483,19 @@ def _sensys_require_user(request: Request) -> dict:
 
     return u
 
+def _sensys_require_admin(request: Request) -> dict:
+    """
+    Require a valid Sensys session token AND that the user has the 'admin' role.
+    Used by /api/sensys/admin/* endpoints that are called from the Admin HTML.
+    """
+    u = _sensys_require_user(request)
+    role_keys = u.get("role_keys") or []
+    if "admin" not in role_keys:
+        path = str(getattr(request.url, "path", "") or "")
+        ip = request.client.host if request.client else None
+        logger.warning("[SENSYS][AUTH][NOT_ADMIN] user_id=%s path=%s ip=%s", u.get("user_id"), path, ip)
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return u
 
 @app.post("/api/sensys/login")
 def sensys_login(payload: SensysLoginIn):
