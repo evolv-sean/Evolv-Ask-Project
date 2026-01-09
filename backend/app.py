@@ -2913,23 +2913,23 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_agencies_user ON sensys_user_agencies(user_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_agencies_agency ON sensys_user_agencies(agency_id)")
 
-# Agency -> Preferred Providers (Agency-to-Agency many-to-many)
-# Used to show an admission facility's preferred Home Health agencies at top of dropdown.
-cur.execute(
-    '''
-    CREATE TABLE IF NOT EXISTS sensys_agency_preferred_providers (
-        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-        agency_id           INTEGER NOT NULL,   -- the "client" facility (usually Hospital/SNF)
-        provider_agency_id  INTEGER NOT NULL,   -- the preferred provider (usually Home Health)
-        created_at          TEXT DEFAULT (datetime('now')),
-        UNIQUE(agency_id, provider_agency_id),
-        FOREIGN KEY(agency_id) REFERENCES sensys_agencies(id),
-        FOREIGN KEY(provider_agency_id) REFERENCES sensys_agencies(id)
+    # Agency -> Preferred Providers (Agency-to-Agency many-to-many)
+    # Used to show an admission facility's preferred Home Health agencies at top of dropdown.
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_agency_preferred_providers (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            agency_id           INTEGER NOT NULL,
+            provider_agency_id  INTEGER NOT NULL,
+            created_at          TEXT DEFAULT (datetime('now')),
+            UNIQUE(agency_id, provider_agency_id),
+            FOREIGN KEY(agency_id) REFERENCES sensys_agencies(id),
+            FOREIGN KEY(provider_agency_id) REFERENCES sensys_agencies(id)
+        )
+        """
     )
-    '''
-)
-cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_agency_pref_agency ON sensys_agency_preferred_providers(agency_id)")
-cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_agency_pref_provider ON sensys_agency_preferred_providers(provider_agency_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_agency_pref_agency ON sensys_agency_preferred_providers(agency_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_agency_pref_provider ON sensys_agency_preferred_providers(provider_agency_id)")
 
 
     # User access to pages/features (drives which UI pages they see)
