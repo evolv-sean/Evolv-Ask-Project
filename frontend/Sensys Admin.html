@@ -667,6 +667,40 @@
                   <div id="notesListMsg" class="toast"></div>
                 </div>
               </div>
+              <!-- DC NOTE TEMPLATES CARD (Discharge Planning generator) -->
+              <div class="card notes-card" style="margin-top:14px;">
+                <div class="hd">
+                  <div>
+                    <h2 style="margin:0;font-size:14px;color:var(--navy)">DC Discharge Note Templates</h2>
+                    <div class="hint">Templates used to generate Social Service DC notes from DC Submissions + selected services.</div>
+                  </div>
+                  <div style="display:flex;gap:8px;align-items:center">
+                    <button class="btn primary" onclick="openDcNoteTemplateModal(null)">+ New DC Template</button>
+                  </div>
+                </div>
+
+                <div class="body">
+                  <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+                    <input class="input" id="dcNotesListSearch" placeholder="Search DC note templates." />
+                  </div>
+
+                  <div class="table-wrap" style="max-height:260px;overflow:auto;">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Template</th>
+                          <th>Agency</th>
+                          <th>Active</th>
+                          <th style="text-align:right;">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody id="dcNotesTemplatesTbody"></tbody>
+                    </table>
+                  </div>
+
+                  <div id="dcNotesListMsg" class="toast"></div>
+                </div>
+              </div>
 
               <!-- QUESTIONS CARD -->
               <div class="card notes-card notes-questions-grow">
@@ -813,6 +847,59 @@
       </div>
 
       <div id="editMsg" class="toast"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ✅ DC Note Template modal -->
+<div id="dcNoteTplModalBackdrop" class="modal-backdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dcNoteTplModalTitle">
+    <div class="modal-hd">
+      <div>
+        <h3 class="modal-title" id="dcNoteTplModalTitle">DC Note Template</h3>
+        <div class="modal-sub">Uses {{var}} and {{#if var}}...{{/if}} blocks.</div>
+      </div>
+      <button class="xbtn" id="closeDcNoteTplModal" aria-label="Close">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="grid2">
+        <div>
+          <label>Template Name</label>
+          <input id="dcNoteTplName" placeholder="e.g. Social Service DC Note" />
+        </div>
+        <div>
+          <label>Agency ID (optional)</label>
+          <input id="dcNoteTplAgencyId" placeholder="(blank = global)" />
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top:10px;">
+        <div>
+          <label>Active</label>
+          <select id="dcNoteTplActive">
+            <option value="1">Yes</option>
+            <option value="0">No</option>
+          </select>
+        </div>
+        <div></div>
+      </div>
+
+      <div style="margin-top:10px;">
+        <label>Template Body</label>
+        <textarea id="dcNoteTplBody" style="width:100%;min-height:260px;"></textarea>
+        <div class="hint" style="margin-top:8px;">
+          Variables: {{discharge_date}}, {{destination}}, {{dc_with}}, {{hh_services}}, {{hh_agency_name}}, {{dme_services}}, {{evolv_phone}}.
+          <br/>Conditionals: {{#if has_hh}}...{{/if}}, {{#if has_hh_agency}}...{{/if}}, {{#if has_dme}}...{{/if}}.
+        </div>
+      </div>
+
+      <div id="dcNoteTplMsg" class="msg ok" style="margin-top:10px;"></div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;">
+        <button class="btn2" onclick="closeDcNoteTemplateModal()">Cancel</button>
+        <button class="btn" onclick="saveDcNoteTemplate()">Save</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1795,6 +1882,7 @@
     }else{
       $("panelNotes").classList.add("on");
       refreshNoteTemplatesAdmin();
+      refreshDcNoteTemplatesAdmin();
     }
 
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2503,6 +2591,99 @@
       `;
       tbody.appendChild(tr);
     });
+  }
+
+  // -----------------------------
+  // DC Note Templates (Admin)
+  // -----------------------------
+  let dcNoteTemplatesCache = [];
+  let editingDcNoteTemplate = null;
+
+  function renderDcNoteTemplatesAdminTable(){
+    const tbody = $("dcNotesTemplatesTbody");
+    if(!tbody) return;
+    tbody.innerHTML = "";
+
+    const q = ($("dcNotesListSearch").value || "").trim().toLowerCase();
+    const items = (dcNoteTemplatesCache || []).filter(t => {
+      const hay = `${t.template_name||""} ${t.agency_id||""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+
+    items.forEach(t => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><b>${escapeHtml(t.template_name||"")}</b></td>
+        <td>${t.agency_id ? escapeHtml(String(t.agency_id)) : "Global"}</td>
+        <td>${String(t.active||0)==="1" ? "Yes" : "No"}</td>
+        <td style="text-align:right;">
+          <button class="mini" onclick='openDcNoteTemplateModal(${JSON.stringify(t)})'>Edit</button>
+          <button class="mini danger" onclick="deleteDcNoteTemplate(${t.id})">Delete</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function refreshDcNoteTemplatesAdmin(){
+    setMsg($("dcNotesListMsg"), "Loading…", true);
+    try{
+      const resp = await apiGet("/api/sensys/admin/dc-note-templates");
+      dcNoteTemplatesCache = resp.templates || [];
+      renderDcNoteTemplatesAdminTable();
+      setMsg($("dcNotesListMsg"), `Loaded ${dcNoteTemplatesCache.length} DC templates.`, true);
+    }catch(e){
+      setMsg($("dcNotesListMsg"), String(e.message || e), false);
+    }
+  }
+
+  $("dcNotesListSearch") && $("dcNotesListSearch").addEventListener("input", renderDcNoteTemplatesAdminTable);
+
+  function openDcNoteTemplateModal(t){
+    editingDcNoteTemplate = t || null;
+    setMsg($("dcNoteTplMsg"), "", true);
+
+    $("dcNoteTplName").value = (t && t.template_name) ? t.template_name : "";
+    $("dcNoteTplAgencyId").value = (t && t.agency_id) ? String(t.agency_id) : "";
+    $("dcNoteTplActive").value = (t && String(t.active||0)) ? String(t.active||0) : "1";
+    $("dcNoteTplBody").value = (t && t.template_body) ? t.template_body : "";
+
+    $("dcNoteTplModalBackdrop").classList.add("on");
+  }
+  function closeDcNoteTemplateModal(){
+    $("dcNoteTplModalBackdrop").classList.remove("on");
+  }
+
+  $("dcNoteTplModalBackdrop") && $("dcNoteTplModalBackdrop").addEventListener("click", (e)=>{ if(e.target.id==="dcNoteTplModalBackdrop") closeDcNoteTemplateModal(); });
+  $("closeDcNoteTplModal") && ($("closeDcNoteTplModal").onclick = closeDcNoteTemplateModal);
+
+  async function saveDcNoteTemplate(){
+    setMsg($("dcNoteTplMsg"), "Saving…", true);
+    try{
+      const payload = {
+        id: editingDcNoteTemplate ? Number(editingDcNoteTemplate.id) : null,
+        template_name: ($("dcNoteTplName").value || "").trim(),
+        agency_id: ($("dcNoteTplAgencyId").value || "").trim() ? Number(($("dcNoteTplAgencyId").value||"").trim()) : null,
+        active: Number($("dcNoteTplActive").value || "1"),
+        template_body: ($("dcNoteTplBody").value || "")
+      };
+      await apiPost("/api/sensys/admin/dc-note-templates/upsert", payload);
+      setMsg($("dcNoteTplMsg"), "Saved.", true);
+      closeDcNoteTemplateModal();
+      await refreshDcNoteTemplatesAdmin();
+    }catch(e){
+      setMsg($("dcNoteTplMsg"), String(e.message || e), false);
+    }
+  }
+
+  async function deleteDcNoteTemplate(id){
+    if(!confirm("Delete this DC template?")) return;
+    try{
+      await apiPost("/api/sensys/admin/dc-note-templates/delete", { id: Number(id) });
+      await refreshDcNoteTemplatesAdmin();
+    }catch(e){
+      alert(String(e.message || e));
+    }
   }
 
   async function refreshNoteTemplatesAdmin(){
