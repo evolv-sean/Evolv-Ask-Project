@@ -535,11 +535,32 @@ def _rc_get_access_token():
 
     return _rc_token_cache["token"]
 
+def _normalize_e164(num: str) -> str:
+    """
+    Normalize US numbers into E.164.
+    - If already starts with '+', keep as-is (after stripping spaces).
+    - If 10 digits, assume US and prefix +1
+    - If 11 digits starting with 1, prefix +
+    """
+    raw = (num or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("+"):
+        return raw
+
+    digits = re.sub(r"\D+", "", raw)
+    if len(digits) == 10:
+        return "+1" + digits
+    if len(digits) == 11 and digits.startswith("1"):
+        return "+" + digits
+    # fallback: return original raw so we can see it in logs
+    return raw
+
 def send_sms_rc(to_number: str, text: str, from_number: str | None = None):
     token = _rc_get_access_token()
 
-    from_used = (from_number or RC_FROM_NUMBER or "").strip()
-    to_used = (to_number or "").strip()
+    from_used = _normalize_e164((from_number or RC_FROM_NUMBER or "").strip())
+    to_used = _normalize_e164((to_number or "").strip())
 
     # Log metadata only (avoid PHI in Render logs)
     logger.info(
@@ -577,15 +598,41 @@ def send_sms_rc(to_number: str, text: str, from_number: str | None = None):
 
     data = r.json()
 
-    # RingCentral usually returns an id; status fields can vary by account/product
     logger.info(
-        "[RC][SMS][OK] rc_id=%s keys=%s",
+        "[RC][SMS][OK] rc_id=%s status=%s errorCode=%s",
         (data.get("id") or ""),
-        ",".join(sorted(list(data.keys()))[:25]),
+        (data.get("messageStatus") or data.get("status") or ""),
+        (data.get("errorCode") or ""),
     )
 
     return data
 
+def rc_get_message_status(message_id: str) -> dict:
+    """
+    Fetch message details from RingCentral message-store so we can see
+    final delivery status / error codes after initial 'Queued'.
+    """
+    token = _rc_get_access_token()
+    mid = (message_id or "").strip()
+    if not mid:
+        raise Exception("Missing message_id")
+
+    try:
+        r = requests.get(
+            f"{RC_SERVER_URL}/restapi/v1.0/account/~/extension/~/message-store/{mid}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=20,
+        )
+    except Exception:
+        logger.exception("[RC][MSG][NETWORK_ERROR] id=%s", mid)
+        raise
+
+    if not r.ok:
+        body_snip = (r.text or "")[:1200]
+        logger.error("[RC][MSG][HTTP_ERROR] status=%s body=%s", r.status_code, body_snip)
+        r.raise_for_status()
+
+    return r.json()
 
 def _split_name(full: str) -> tuple[str, str]:
     full = _safe(full)
@@ -18278,6 +18325,167 @@ def sensys_admission_sms_send(payload: SensysAdmissionSmsSend, request: Request)
     finally:
         conn.close()
 
+
+@app.post("/api/sensys/admission-sms/refresh-status/{sms_log_id}")
+def sensys_admission_sms_refresh_status(sms_log_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    try:
+        row = conn.execute(
+            """
+            SELECT id, admission_id, rc_message_id, status
+            FROM sensys_sms_log
+            WHERE id = ?
+            """,
+            (int(sms_log_id),),
+        ).fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="SMS log row not found")
+
+        admission_id = int(row["admission_id"] or 0)
+        _sensys_assert_admission_access(conn, int(u["user_id"]), admission_id)
+
+        rc_id = (row["rc_message_id"] or "").strip()
+        if not rc_id:
+            raise HTTPException(status_code=400, detail="No rc_message_id on this SMS row")
+
+        rc = rc_get_message_status(rc_id)
+
+        new_status = (rc.get("messageStatus") or rc.get("status") or row["status"] or "").strip()
+        error_code = (rc.get("errorCode") or "").strip()
+
+        # keep response small
+        try:
+            rc_json = json.dumps(rc)[:8000]
+        except Exception:
+            rc_json = ""
+
+        conn.execute(
+            """
+            UPDATE sensys_sms_log
+               SET status = ?,
+                   error = CASE WHEN ? != '' THEN ? ELSE error END,
+                   rc_response_json = COALESCE(NULLIF(?, ''), rc_response_json)
+             WHERE id = ?
+            """,
+            (new_status, error_code, error_code, rc_json, int(sms_log_id)),
+        )
+        conn.commit()
+
+        logger.info(
+            "[SENSYS][SMS][REFRESH_STATUS] sms_log_id=%s rc_id=%s status=%s errorCode=%s",
+            int(sms_log_id),
+            rc_id,
+            new_status,
+            error_code,
+        )
+
+        return {"ok": True, "sms_log_id": int(sms_log_id), "provider_status": new_status, "errorCode": error_code}
+    finally:
+        conn.close()
+
+
+# -----------------------------
+# ✅ NEW: light “refresh recent statuses” endpoint
+# -----------------------------
+class SensysSmsRefreshRecent(BaseModel):
+    max_age_minutes: int = 120   # only look at recent rows
+    max_rows: int = 10           # hard cap to protect RC + Render
+
+
+@app.post("/api/sensys/admission-sms/refresh-recent/{admission_id}")
+def sensys_admission_sms_refresh_recent(admission_id: int, payload: SensysSmsRefreshRecent, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    try:
+        admission_id = int(admission_id)
+        _sensys_assert_admission_access(conn, int(u["user_id"]), admission_id)
+
+        max_age = int(payload.max_age_minutes or 120)
+        if max_age < 1:
+            max_age = 1
+        if max_age > 24 * 60:
+            max_age = 24 * 60  # cap at 24h
+
+        max_rows = int(payload.max_rows or 10)
+        if max_rows < 1:
+            max_rows = 1
+        if max_rows > 25:
+            max_rows = 25  # cap
+
+        # “final” statuses: don’t keep polling these
+        # (keep this simple; adjust as you learn RC behaviors)
+        final_statuses = {"delivered", "failed", "undelivered", "received", "canceled", "cancelled", "error"}
+        # “in-flight” statuses we *will* poll
+        inflight_statuses = {"queued", "sending", "sent"}
+
+        rows = conn.execute(
+            f"""
+            SELECT id, rc_message_id, status
+            FROM sensys_sms_log
+            WHERE admission_id = ?
+              AND COALESCE(NULLIF(rc_message_id, ''), '') != ''
+              AND datetime(created_at) >= datetime('now', ?)
+            ORDER BY datetime(created_at) DESC, id DESC
+            LIMIT {max_rows}
+            """,
+            (admission_id, f"-{max_age} minutes"),
+        ).fetchall()
+
+        checked = 0
+        updated = 0
+        errors = 0
+
+        for r in rows:
+            checked += 1
+            sms_log_id = int(r["id"])
+            rc_id = (r["rc_message_id"] or "").strip()
+            cur_status = (r["status"] or "").strip().lower()
+
+            # skip final statuses
+            if cur_status in final_statuses:
+                continue
+
+            # if status is unknown/blank, we still allow checking (but prioritize inflight)
+            if cur_status and (cur_status not in inflight_statuses):
+                continue
+
+            try:
+                rc = rc_get_message_status(rc_id)
+                new_status = (rc.get("messageStatus") or rc.get("status") or r["status"] or "").strip()
+                error_code = (rc.get("errorCode") or "").strip()
+
+                try:
+                    rc_json = json.dumps(rc)[:8000]
+                except Exception:
+                    rc_json = ""
+
+                conn.execute(
+                    """
+                    UPDATE sensys_sms_log
+                       SET status = ?,
+                           error = CASE WHEN ? != '' THEN ? ELSE error END,
+                           rc_response_json = COALESCE(NULLIF(?, ''), rc_response_json)
+                     WHERE id = ?
+                    """,
+                    (new_status, error_code, error_code, rc_json, sms_log_id),
+                )
+                updated += 1
+            except Exception:
+                errors += 1
+                logger.exception("[SENSYS][SMS][REFRESH_RECENT_ERR] admission_id=%s sms_log_id=%s rc_id=%s", admission_id, sms_log_id, rc_id)
+
+        conn.commit()
+
+        logger.info(
+            "[SENSYS][SMS][REFRESH_RECENT] admission_id=%s checked=%s updated=%s errors=%s max_age_min=%s max_rows=%s",
+            admission_id, checked, updated, errors, max_age, max_rows
+        )
+
+        return {"ok": True, "admission_id": admission_id, "checked": checked, "updated": updated, "errors": errors}
+    finally:
+        conn.close()
 
 
 @app.get("/api/sensys/services")
