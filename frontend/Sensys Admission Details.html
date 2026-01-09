@@ -349,6 +349,44 @@
         </table>
       </div>
     </div>
+    <!-- PDFs (uploaded docs) -->
+    <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div style="font-size:13px;color:#111827;font-weight:800;">PDFs</div>
+      </div>
+
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <input id="pdfDocType" placeholder="Doc type (e.g., SNF, Insurance, Orders)"
+          style="flex:1;min-width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+        <input id="pdfRetentionHours" type="number" min="0" placeholder="Retention hrs (0 = keep)"
+          style="width:190px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+        <input id="pdfFile" type="file" accept="application/pdf"
+          style="flex:1;min-width:260px;box-sizing:border-box;padding:8px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;" />
+
+        <button id="uploadPdfBtn"
+          style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+          Upload PDF
+        </button>
+      </div>
+
+      <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+        <table style="width:100%;border-collapse:collapse;min-width:1050px;">
+          <thead>
+            <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">File</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Type</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Size</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Created</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Expires</th>
+              <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="pdfsTbody"></tbody>
+        </table>
+      </div>
+    </div>
 
     <!-- Care team (full width) -->
     <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
@@ -450,6 +488,45 @@
     return await res.json();
   }
 
+  async function apiForm(path, formData, opts){
+    const t = token();
+    if(!t){
+      console.error('[SENSYS][API_FORM][ERROR] Missing token for request:', path);
+      showMsg("Missing token. Please log in again.");
+      throw new Error("Missing token. Please log in again.");
+    }
+
+    let res;
+    try{
+      res = await fetch(path, {
+        method: 'POST',
+        body: formData,
+        ...(opts || {}),
+        headers: {
+          'Authorization': 'Bearer ' + t,
+          ...((opts && opts.headers) || {})
+        }
+      });
+    }catch(err){
+      console.error('[SENSYS][API_FORM][NETWORK_ERROR]', path, err);
+      showMsg("Network error calling " + path + ". Check connection / server logs.");
+      throw err;
+    }
+
+    if(!res.ok){
+      let msg = 'Request failed (' + res.status + ')';
+      try{
+        const j = await res.json();
+        if(j && j.detail) msg = j.detail;
+      }catch(e){}
+      console.error('[SENSYS][API_FORM][HTTP_ERROR]', path, res.status, msg);
+      showMsg(msg + " (Endpoint: " + path + ")");
+      throw new Error(msg);
+    }
+
+    return await res.json();
+  }
+
 
   let ADMISSION_ID = null;
   let SERVICES = [];
@@ -458,6 +535,7 @@
   let AGENCIES = [];
   let NOTE_TEMPLATES = []; // ✅ NEW
   let SMS_LOG = [];
+  let PDFS = [];
 
   // ✅ NEW: SMS auto refresh controls (lightweight)
   let SMS_AUTO_REFRESH_MS = 60000; // 60s (change to 120000 for 2 min if you want even lighter)
@@ -794,6 +872,40 @@
     });
   }
 
+  function prettyBytes(n){
+    const x = Number(n || 0);
+    if(!x) return '0 B';
+    const units = ['B','KB','MB','GB'];
+    let v = x, i = 0;
+    while(v >= 1024 && i < units.length-1){ v /= 1024; i++; }
+    return (v.toFixed(i===0?0:1) + ' ' + units[i]);
+  }
+
+  function renderPdfs(){
+    const tb = document.getElementById('pdfsTbody');
+    if(!tb) return;
+
+    const rows = (PDFS || []);
+    tb.innerHTML = rows.map(r => {
+      const name = r.original_filename || ('PDF #' + r.id);
+      const dl = `/api/sensys/pdfs/${r.id}/download?token=${encodeURIComponent(token())}`;
+      return `
+        <tr style="border-bottom:1px solid #eef0f5;">
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(name)}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.doc_type || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(prettyBytes(r.size_bytes))}</td>
+          <td style="padding:10px;font-size:12px;color:#667085;">${escapeHtml(r.created_at || '')}</td>
+          <td style="padding:10px;font-size:12px;color:#667085;">${escapeHtml(r.expires_at || '—')}</td>
+          <td style="padding:10px;text-align:right;">
+            <a href="${dl}" target="_blank"
+               style="display:inline-block;padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;text-decoration:none;color:#111827;">
+              Download
+            </a>
+          </td>
+        </tr>`;
+    }).join('');
+  }
+
   function serviceNameById(id) {
     const s = SERVICES.find(x => Number(x.id) === Number(id));
     return s ? (s.name + ' (' + s.service_type + ')') : ('#' + id);
@@ -965,13 +1077,14 @@
 
   async function loadAll() {
     showMsg('');
-    const [details, services, careTeam, agencies, noteTemplates, smsLogs] = await Promise.all([
+    const [details, services, careTeam, agencies, noteTemplates, smsLogs, pdfsResp] = await Promise.all([
       api('/api/sensys/admission-details/' + ADMISSION_ID, { method:'GET' }),
       api('/api/sensys/services', { method:'GET' }),
       api('/api/sensys/care-team', { method:'GET' }),
       api('/api/sensys/agencies', { method:'GET' }),
       api('/api/sensys/note-templates', { method:'GET' }),
-      api('/api/sensys/admission-sms/' + ADMISSION_ID, { method:'GET' })
+      api('/api/sensys/admission-sms/' + ADMISSION_ID, { method:'GET' }),
+      api('/api/sensys/admissions/' + ADMISSION_ID + '/pdfs', { method:'GET' })
     ]);
 
     DETAILS = details;
@@ -983,16 +1096,19 @@
     renderNoteTemplatesSelect();
     renderDynamicNoteFieldsForSelectedTemplate();
     SMS_LOG = (smsLogs && smsLogs.sms) || [];
+    PDFS = (pdfsResp && pdfsResp.pdfs) || [];
+
     renderHeader();
     renderTasks();
     renderNotes();
     renderSms();
     renderDc();
     renderDcServicesMulti();
-    renderReferralsSelect();   // ✅ NEW
-    renderReferrals();         // ✅ NEW
-    renderAppointmentsSelect();// ✅ NEW
-    renderAppointments();      // ✅ NEW
+    renderReferralsSelect();
+    renderReferrals();
+    renderAppointmentsSelect();
+    renderAppointments();
+    renderPdfs();              // ✅ NEW
     renderCareTeamSelect();
     renderCareTeamLinked();
 
@@ -1038,6 +1154,33 @@
   });
 
   document.getElementById('refreshBtn').addEventListener('click', () => loadAll().catch(e => showMsg(e.message)));
+
+  document.getElementById('uploadPdfBtn')?.addEventListener('click', async () => {
+    try{
+      showMsg('');
+
+      if(!ADMISSION_ID) throw new Error("PDF not uploaded: missing ADMISSION_ID.");
+
+      const f = document.getElementById('pdfFile').files[0];
+      if(!f) throw new Error("Select a PDF file first.");
+
+      const docType = (document.getElementById('pdfDocType').value || 'pdf').trim();
+      const retention = (document.getElementById('pdfRetentionHours').value || '').trim();
+
+      const fd = new FormData();
+      fd.append('doc_type', docType);
+      fd.append('retention_hours', retention ? retention : '0');
+      fd.append('file', f);
+
+      const resp = await apiForm('/api/sensys/admissions/' + ADMISSION_ID + '/pdfs/upload', fd);
+
+      showMsg(`PDF uploaded • pdf_id=${resp.pdf_id}`); 
+      document.getElementById('pdfFile').value = '';
+      await loadAll();
+    }catch(e){
+      showMsg(e.message || 'PDF upload failed.');
+    }
+  });
 
   // ✅ NEW: manual SMS-only refresh (does NOT reload whole page)
   document.getElementById('smsRefreshBtn')?.addEventListener('click', async () => {
