@@ -2916,21 +2916,20 @@ def init_db():
     # Agency -> Preferred Providers (Agency-to-Agency many-to-many)
     # Used to show an admission facility's preferred Home Health agencies at top of dropdown.
     cur.execute(
-        """
+        '''
         CREATE TABLE IF NOT EXISTS sensys_agency_preferred_providers (
             id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-            agency_id           INTEGER NOT NULL,
-            provider_agency_id  INTEGER NOT NULL,
+            agency_id           INTEGER NOT NULL,   -- the "client" facility (usually Hospital/SNF)
+            provider_agency_id  INTEGER NOT NULL,   -- the preferred provider (usually Home Health)
             created_at          TEXT DEFAULT (datetime('now')),
             UNIQUE(agency_id, provider_agency_id),
             FOREIGN KEY(agency_id) REFERENCES sensys_agencies(id),
             FOREIGN KEY(provider_agency_id) REFERENCES sensys_agencies(id)
         )
-        """
+        '''
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_agency_pref_agency ON sensys_agency_preferred_providers(agency_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_agency_pref_provider ON sensys_agency_preferred_providers(provider_agency_id)")
-
 
     # User access to pages/features (drives which UI pages they see)
     cur.execute(
@@ -3198,16 +3197,15 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_dc_sub_adm ON sensys_admission_dc_submissions(admission_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_dc_sub_deleted ON sensys_admission_dc_submissions(deleted_at)")
 
-# ---- Safe migrations for older DBs (idempotent) ----
-for ddl in [
-    "ALTER TABLE sensys_admission_dc_submissions ADD COLUMN hh_agency_id INTEGER",
-    "ALTER TABLE sensys_admission_dc_submissions ADD COLUMN hh_preferred INTEGER DEFAULT 0",
-]:
-    try:
-        cur.execute(ddl)
-    except sqlite3.Error:
-        pass
-
+    # ---- Safe migrations for older DBs (idempotent) ----
+    for ddl in [
+        "ALTER TABLE sensys_admission_dc_submissions ADD COLUMN hh_agency_id INTEGER",
+        "ALTER TABLE sensys_admission_dc_submissions ADD COLUMN hh_preferred INTEGER DEFAULT 0",
+    ]:
+        try:
+            cur.execute(ddl)
+        except sqlite3.Error:
+            pass
 
     # Join table: each DC submission can have multiple services linked
     cur.execute(
@@ -15971,10 +15969,7 @@ class SensysAgencyUpsert(BaseModel):
     fax: Optional[str] = ""
 
     evolv_client: Optional[bool] = False
-
-    # NEW (Preferred Providers for this agency)
     preferred_provider_ids: Optional[List[int]] = []
-
 
 class SensysUserAgencyAssign(BaseModel):
     user_id: int
@@ -16277,26 +16272,8 @@ def sensys_admission_referrals_delete(payload: IdOnly, request: Request):
         """,
         (int(payload.id),),
     )
-
-    # Determine agency_id (needed for preferred providers join table)
-    agency_id = int(payload.id) if payload.id else conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
-
-    # Preferred Providers (optional)
-    # If UI sends preferred_provider_ids, we treat it as authoritative and replace the set.
-    if payload.preferred_provider_ids is not None:
-        conn.execute("DELETE FROM sensys_agency_preferred_providers WHERE agency_id = ?", (int(agency_id),))
-        pp_ids = [int(x) for x in (payload.preferred_provider_ids or []) if int(x) > 0 and int(x) != int(agency_id)]
-        if pp_ids:
-            conn.executemany(
-                '''
-                INSERT OR IGNORE INTO sensys_agency_preferred_providers (agency_id, provider_agency_id)
-                VALUES (?, ?)
-                ''',
-                [(int(agency_id), int(pid)) for pid in pp_ids],
-            )
-
     conn.commit()
-    return {"ok": True, "id": int(agency_id)}
+    return {"ok": True}
 
 class AdmissionAppointmentUpsert(BaseModel):
     id: Optional[int] = None
@@ -16516,9 +16493,7 @@ def sensys_admin_agencies(token: str):
         """
     ).fetchall()
 
-
     return {"agencies": [dict(r) for r in rows]}
-
 
 # -----------------------------
 # Sensys Admin: agency preferred providers
@@ -16537,7 +16512,6 @@ def sensys_admin_agency_preferred_providers(agency_id: int, token: str):
         (int(agency_id),),
     ).fetchall()
     return {"ok": True, "provider_ids": [int(r["provider_agency_id"]) for r in rows]}
-
 
 # -----------------------------
 # Sensys Admin: upsert agency
@@ -16622,9 +16596,26 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
             ),
         )
 
-    conn.commit()
-    return {"ok": True}
+    # Determine agency_id (needed for preferred providers join table)
+    agency_id = int(payload.id) if payload.id else conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
 
+    # Preferred Providers (optional)
+    # If UI sends preferred_provider_ids, we treat it as authoritative and replace the set.
+    if payload.preferred_provider_ids is not None:
+        conn.execute("DELETE FROM sensys_agency_preferred_providers WHERE agency_id = ?", (int(agency_id),))
+        pp_ids = [int(x) for x in (payload.preferred_provider_ids or []) if int(x) > 0 and int(x) != int(agency_id)]
+        if pp_ids:
+            conn.executemany(
+                '''
+                INSERT OR IGNORE INTO sensys_agency_preferred_providers (agency_id, provider_agency_id)
+                VALUES (?, ?)
+                ''',
+                [(int(agency_id), int(pid)) for pid in pp_ids],
+            )
+
+    conn.commit()
+    return {"ok": True, "id": int(agency_id)}
+    
 # -----------------------------
 # Sensys Admin: list patients
 # -----------------------------
@@ -17012,7 +17003,6 @@ def sensys_admin_patients_upsert(payload: SensysPatientUpsert, token: str):
                  ?, ?, ?, ?, ?,
                  ?, ?, ?, ?,
                  ?, ?, ?,
-                 ?, ?,
                  ?, ?, ?, ?, ?, ?)
             """,
             (
@@ -19219,23 +19209,22 @@ def sensys_admission_details(admission_id: int, request: Request):
         (int(admission_id),),
     ).fetchall()
 
-
-preferred_provider_ids = []
-try:
-    if admission and admission["agency_id"]:
-        rows = conn.execute(
-            """
-            SELECT provider_agency_id
-            FROM sensys_agency_preferred_providers
-            WHERE agency_id = ?
-            ORDER BY provider_agency_id
-            """,
-            (int(admission["agency_id"]),),
-        ).fetchall()
-        preferred_provider_ids = [int(r["provider_agency_id"]) for r in rows]
-except Exception:
     preferred_provider_ids = []
-
+    try:
+        if admission and admission["agency_id"]:
+            rows = conn.execute(
+                """
+                SELECT provider_agency_id
+                FROM sensys_agency_preferred_providers
+                WHERE agency_id = ?
+                ORDER BY provider_agency_id
+                """,
+                (int(admission["agency_id"]),),
+            ).fetchall()
+            preferred_provider_ids = [int(r["provider_agency_id"]) for r in rows]
+    except Exception:
+        preferred_provider_ids = []
+        
     return {
         "ok": True,
         "admission": dict(admission),
@@ -19243,11 +19232,7 @@ except Exception:
         "notes": [dict(r) for r in notes],
         "dc_submissions": dc_out,
         "care_team": [dict(r) for r in care_team_links],
-
-        # NEW
         "preferred_provider_ids": preferred_provider_ids,
-
-        # ✅ NEW
         "referrals": [dict(r) for r in referrals],
         "appointments": [dict(r) for r in appointments],
     }
@@ -19479,8 +19464,6 @@ class DcSubmissionUpsert(BaseModel):
     dc_destination: Optional[str] = "Home"
     destination_comments: Optional[str] = ""
     dc_with: Optional[str] = "alone"
-
-    # NEW
     hh_agency_id: Optional[int] = None
     hh_preferred: int = 0
 
@@ -19537,6 +19520,8 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                 (payload.dc_destination or "").strip(),
                 (payload.destination_comments or "").strip(),
                 (payload.dc_with or "").strip(),
+                (payload.hh_comments or "").strip(),
+                (payload.dc_with or "").strip(),
                 (int(payload.hh_agency_id) if payload.hh_agency_id else None),
                 int(payload.hh_preferred or 0),
                 (payload.hh_comments or "").strip(),
@@ -19572,6 +19557,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                 (?, ?,
                  ?, ?, ?, ?, ?,
                  ?, ?, ?,
+                 ?, ?,
                  ?, ?, ?, ?,
                  ?, ?, ?,
                  ?, ?)
@@ -19586,6 +19572,8 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                 (payload.urgent_comments or "").strip(),
                 (payload.dc_destination or "").strip(),
                 (payload.destination_comments or "").strip(),
+                (payload.dc_with or "").strip(),
+                (payload.hh_comments or "").strip(),
                 (payload.dc_with or "").strip(),
                 (int(payload.hh_agency_id) if payload.hh_agency_id else None),
                 int(payload.hh_preferred or 0),
