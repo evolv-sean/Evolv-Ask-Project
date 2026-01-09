@@ -1084,7 +1084,7 @@
       api('/api/sensys/agencies', { method:'GET' }),
       api('/api/sensys/note-templates', { method:'GET' }),
       api('/api/sensys/admission-sms/' + ADMISSION_ID, { method:'GET' }),
-      api('/api/sensys/admissions/' + ADMISSION_ID + '/pdfs', { method:'GET' })
+      api('/api/sensys/admissions/' + ADMISSION_ID + '/pdfs', { method:'GET' }).catch(() => ({ pdfs: [] }))
     ]);
 
     DETAILS = details;
@@ -1145,9 +1145,6 @@
       document.getElementById('smsText').value = '';
       await loadAll();
 
-
-      document.getElementById('smsText').value = '';
-      await loadAll();
     }catch(e){
       showMsg(e.message || 'SMS not sent.');
     }
