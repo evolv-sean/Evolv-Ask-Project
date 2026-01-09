@@ -156,7 +156,19 @@
       <!-- SMS -->
       <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-          <div style="font-size:13px;color:#111827;font-weight:800;">SMS</div>
+          <div>
+            <div style="font-size:13px;color:#111827;font-weight:800;">SMS</div>
+            <div id="smsAutoRefreshMeta" style="margin-top:2px;font-size:12px;color:#667085;">
+              Auto-refresh: On • Last checked: —
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button id="smsRefreshBtn"
+              style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+              Refresh SMS
+            </button>
+          </div>
         </div>
 
         <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
@@ -446,6 +458,58 @@
   let AGENCIES = [];
   let NOTE_TEMPLATES = []; // ✅ NEW
   let SMS_LOG = [];
+
+  // ✅ NEW: SMS auto refresh controls (lightweight)
+  let SMS_AUTO_REFRESH_MS = 60000; // 60s (change to 120000 for 2 min if you want even lighter)
+  let SMS_POLL_TIMER = null;
+  let SMS_LAST_CHECKED_AT = null;
+
+  function setSmsMeta(){
+    const el = document.getElementById('smsAutoRefreshMeta');
+    if(!el) return;
+    const ts = SMS_LAST_CHECKED_AT ? SMS_LAST_CHECKED_AT : '—';
+    el.textContent = `Auto-refresh: On • Last checked: ${ts}`;
+  }
+
+  async function loadSmsOnly(opts){
+    const refreshStatuses = !!(opts && opts.refreshStatuses);
+
+    if(refreshStatuses){
+      // ✅ call the light backend refresh (recent + capped)
+      await api('/api/sensys/admission-sms/refresh-recent/' + ADMISSION_ID, {
+        method:'POST',
+        body: JSON.stringify({ max_age_minutes: 120, max_rows: 10 })
+      });
+    }
+
+    const smsLogs = await api('/api/sensys/admission-sms/' + ADMISSION_ID, { method:'GET' });
+    SMS_LOG = (smsLogs && smsLogs.sms) || [];
+    renderSms();
+
+    SMS_LAST_CHECKED_AT = new Date().toLocaleTimeString();
+    setSmsMeta();
+  }
+
+  function stopSmsAutoRefresh(){
+    if(SMS_POLL_TIMER){
+      clearInterval(SMS_POLL_TIMER);
+      SMS_POLL_TIMER = null;
+    }
+  }
+
+  function startSmsAutoRefresh(){
+    stopSmsAutoRefresh();
+
+    // do an immediate lightweight refresh once
+    loadSmsOnly({ refreshStatuses:true }).catch(e => console.error('[SENSYS][SMS][AUTO_REFRESH_ERR]', e));
+
+    SMS_POLL_TIMER = setInterval(() => {
+      // skip if tab hidden
+      if(document.hidden) return;
+      loadSmsOnly({ refreshStatuses:true }).catch(e => console.error('[SENSYS][SMS][AUTO_REFRESH_ERR]', e));
+    }, SMS_AUTO_REFRESH_MS);
+  }
+
 
   function escapeHtml(s) {
     return (s || '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
@@ -931,7 +995,12 @@
     renderAppointments();      // ✅ NEW
     renderCareTeamSelect();
     renderCareTeamLinked();
-  }
+
+    // ✅ NEW: start the lightweight SMS polling after initial data load
+    setSmsMeta();
+    startSmsAutoRefresh();
+    }
+
 
   document.getElementById('sendSmsBtn')?.addEventListener('click', async () => {
     try{
@@ -969,6 +1038,26 @@
   });
 
   document.getElementById('refreshBtn').addEventListener('click', () => loadAll().catch(e => showMsg(e.message)));
+
+  // ✅ NEW: manual SMS-only refresh (does NOT reload whole page)
+  document.getElementById('smsRefreshBtn')?.addEventListener('click', async () => {
+    try {
+      showMsg('');
+      await loadSmsOnly({ refreshStatuses:true });
+    } catch(e) {
+      showMsg(e.message || 'SMS refresh failed.');
+    }
+  });
+
+  // ✅ NEW: auto polling start + visibility pause
+  document.addEventListener('visibilitychange', () => {
+    if(document.hidden){
+      stopSmsAutoRefresh();
+    } else {
+      startSmsAutoRefresh();
+    }
+  });
+
 
   document.getElementById('logoutBtn').addEventListener('click', () => {
     localStorage.removeItem('sensys_token');
