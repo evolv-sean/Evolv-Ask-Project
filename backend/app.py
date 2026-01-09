@@ -17593,8 +17593,8 @@ class SensysNoteTemplateDelete(BaseModel):
     id: int
     
 @app.get("/api/sensys/admin/dc-note-templates")
-def sensys_admin_dc_note_templates(request: Request):
-    _sensys_require_admin(request)
+def sensys_admin_dc_note_templates(token: str):
+    _require_admin_token(token)
     conn = get_db()
     rows = conn.execute(
         """
@@ -17608,8 +17608,8 @@ def sensys_admin_dc_note_templates(request: Request):
 
 
 @app.post("/api/sensys/admin/dc-note-templates/upsert")
-def sensys_admin_dc_note_templates_upsert(payload: DcNoteTemplateUpsert, request: Request):
-    _sensys_require_admin(request)
+def sensys_admin_dc_note_templates_upsert(payload: DcNoteTemplateUpsert, token: str):
+    _require_admin_token(token)
     conn = get_db()
 
     if not (payload.template_name or "").strip():
@@ -17657,8 +17657,8 @@ def sensys_admin_dc_note_templates_upsert(payload: DcNoteTemplateUpsert, request
 
 
 @app.post("/api/sensys/admin/dc-note-templates/delete")
-def sensys_admin_dc_note_templates_delete(payload: IdOnly, request: Request):
-    _sensys_require_admin(request)
+def sensys_admin_dc_note_templates_delete(payload: SensysNoteTemplateDelete, token: str):
+    _require_admin_token(token)
     conn = get_db()
     conn.execute(
         """
