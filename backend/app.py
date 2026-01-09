@@ -2738,19 +2738,21 @@ def init_db():
         )
         """
     )
+
+    # ---- Safe migration FIRST: ensure expires_at exists on older DBs ----
+    try:
+        cur.execute("PRAGMA table_info(sensys_pdf_files)")
+        existing_cols = {r[1] for r in cur.fetchall()}
+        if "expires_at" not in existing_cols:
+            cur.execute("ALTER TABLE sensys_pdf_files ADD COLUMN expires_at TEXT")
+    except sqlite3.Error:
+        # Never block startup for a best-effort migration
+        pass
+
+    # Indexes (safe after migration)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_pdf_admission ON sensys_pdf_files(admission_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_pdf_sha256 ON sensys_pdf_files(sha256)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_pdf_expires ON sensys_pdf_files(expires_at)")
-
-    # ---- Safe migrations for older DBs (idempotent) ----
-    for ddl in [
-        "ALTER TABLE sensys_pdf_files ADD COLUMN expires_at TEXT",
-    ]:
-        try:
-            cur.execute(ddl)
-        except sqlite3.Error:
-            pass
-
 
     # -------------------------------------------------------------------
     # Sensys 3.0: Users / Roles / Access Control (core "spine")
