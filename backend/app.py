@@ -365,8 +365,15 @@ def _perf_log(job_id: str, filename: str, step: str, t0: float | None = None) ->
 CENSUS_UPLOAD_TMP = Path(
     os.getenv("CENSUS_UPLOAD_TMP", os.path.join(tempfile.gettempdir(), "evolv_census_uploads"))
 )
-
 CENSUS_UPLOAD_TMP.mkdir(parents=True, exist_ok=True)
+
+# ---------------------------------------------------------------------------
+# PDF STORAGE (persistent) — store files on Render disk, store metadata in SQLite
+# ---------------------------------------------------------------------------
+PDF_STORAGE_DIR = Path(
+    os.getenv("PDF_STORAGE_DIR", "/opt/render/project/data/pdfs")
+)
+PDF_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 
@@ -534,6 +541,126 @@ def _rc_get_access_token():
     )
 
     return _rc_token_cache["token"]
+
+def _require_admin_token_qs(token: str):
+    """Simple querystring admin guard (matches /admin/download-db style)."""
+    if token != os.getenv("ADMIN_TOKEN"):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+@app.post("/api/sensys/pdfs/upload")
+async def sensys_pdf_upload(
+    token: str,
+    admission_id: int = Form(0),              # optional
+    doc_type: str = Form("pdf"),
+    file: UploadFile = File(...),
+):
+    _require_admin_token_qs(token)
+
+    if not file or not (file.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Please upload a .pdf file")
+
+    # Generate stored filename
+    stored_name = f"{uuid.uuid4().hex}.pdf"
+    out_path = PDF_STORAGE_DIR / stored_name
+
+    # Stream to disk (avoid loading full PDF into RAM)
+    MAX_UPLOAD_BYTES = 75 * 1024 * 1024
+    CHUNK_SIZE = 256 * 1024
+    total = 0
+    sha = hashlib.sha256()
+
+    with open(out_path, "wb") as out_fp:
+        while True:
+            chunk = await file.read(CHUNK_SIZE)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_UPLOAD_BYTES:
+                try:
+                    out_fp.close()
+                except Exception:
+                    pass
+                try:
+                    out_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                raise HTTPException(status_code=413, detail="PDF too large. Please split/re-export.")
+
+            sha.update(chunk)
+            out_fp.write(chunk)
+
+            # yield occasionally
+            if total % (4 * 1024 * 1024) < CHUNK_SIZE:
+                await asyncio.sleep(0)
+
+    try:
+        await file.close()
+    except Exception:
+        pass
+
+    # Insert metadata
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO sensys_pdf_files
+            (admission_id, doc_type, original_filename, stored_filename, sha256, size_bytes, content_type)
+        VALUES
+            (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            int(admission_id) if int(admission_id or 0) > 0 else None,
+            (doc_type or "pdf").strip(),
+            (file.filename or "").strip(),
+            stored_name,
+            sha.hexdigest(),
+            int(total),
+            "application/pdf",
+        ),
+    )
+    pdf_id = int(cur.lastrowid)
+    conn.commit()
+
+    return {
+        "ok": True,
+        "pdf_id": pdf_id,
+        "stored_filename": stored_name,
+        "size_bytes": total,
+        "sha256": sha.hexdigest(),
+    }
+
+
+@app.get("/api/sensys/pdfs/{pdf_id}")
+def sensys_pdf_download(pdf_id: int, token: str):
+    _require_admin_token_qs(token)
+
+    conn = get_db()
+    cur = conn.cursor()
+    row = cur.execute(
+        """
+        SELECT id, original_filename, stored_filename, content_type
+        FROM sensys_pdf_files
+        WHERE id = ?
+        """,
+        (int(pdf_id),),
+    ).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="PDF not found")
+
+    stored = row["stored_filename"]
+    out_path = PDF_STORAGE_DIR / stored
+    if not out_path.exists():
+        raise HTTPException(status_code=404, detail="PDF file missing on disk")
+
+    download_name = (row["original_filename"] or f"{pdf_id}.pdf").strip() or f"{pdf_id}.pdf"
+    return FileResponse(
+        path=str(out_path),
+        filename=download_name,
+        media_type=(row["content_type"] or "application/pdf"),
+    )
+
 
 def _normalize_e164(num: str) -> str:
     """
@@ -2521,6 +2648,27 @@ def init_db():
         )
         """
     )
+    
+    # -------------------------------------------------------------------
+    # Stored PDFs (metadata only — actual PDF is saved to PDF_STORAGE_DIR)
+    # -------------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_pdf_files (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            admission_id       INTEGER,                 -- optional linkage
+            doc_type           TEXT DEFAULT 'pdf',
+            original_filename  TEXT,
+            stored_filename    TEXT NOT NULL,
+            sha256             TEXT,
+            size_bytes         INTEGER DEFAULT 0,
+            content_type       TEXT DEFAULT 'application/pdf',
+            created_at         TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_pdf_admission ON sensys_pdf_files(admission_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_pdf_sha256 ON sensys_pdf_files(sha256)")
 
     # -------------------------------------------------------------------
     # Sensys 3.0: Users / Roles / Access Control (core "spine")
