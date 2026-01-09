@@ -19650,7 +19650,7 @@ def sensys_dc_note_render(dc_submission_id: int, request: Request):
         """
         SELECT dcs.*,
                a.agency_id AS admission_agency_id,
-               a.admission_id AS admission_pk,          -- may not exist; keep safe if your schema differs
+               a.id AS admission_pk,
                a.patient_id,
                a.admit_date,
                a.dc_date AS admission_dc_date
@@ -19660,7 +19660,6 @@ def sensys_dc_note_render(dc_submission_id: int, request: Request):
         """,
         (int(dc_submission_id),),
     ).fetchone()
-
     if not dc:
         raise HTTPException(status_code=404, detail="DC submission not found")
 
