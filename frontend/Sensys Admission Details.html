@@ -427,6 +427,31 @@
     </div>
 
   </div>
+<!-- Generated DC Note modal -->
+<div id="dcNoteModalBackdrop" style="position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;padding:16px;z-index:9999;">
+  <div style="width:min(900px,96vw);background:#fff;border-radius:16px;border:1px solid #e6e8ef;box-shadow:0 18px 60px rgba(0,0,0,.25);overflow:hidden;">
+    <div style="padding:14px 16px;border-bottom:1px solid #eef0f5;background:#f9fafb;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+      <div>
+        <div style="font-size:14px;font-weight:900;color:#111827;">Generated Social Service DC Note</div>
+        <div id="dcNoteModalMeta" style="margin-top:2px;font-size:12px;color:#667085;">—</div>
+      </div>
+      <button id="dcNoteCloseBtn" style="width:40px;height:40px;border-radius:12px;border:1px solid #d0d5dd;background:#fff;cursor:pointer;font-weight:900;">✕</button>
+    </div>
+
+    <div style="padding:14px 16px;">
+      <textarea id="dcNoteTextArea" style="width:100%;min-height:280px;border:1px solid #d0d5dd;border-radius:12px;padding:12px;font-size:13px;line-height:1.45;outline:none;"></textarea>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;">
+        <button id="dcNoteCopyBtn" style="padding:10px 12px;border:1px solid #d0d5dd;background:#fff;border-radius:12px;cursor:pointer;font-size:12px;font-weight:800;">
+          Copy
+        </button>
+        <button id="dcNoteCloseBtn2" style="padding:10px 12px;border:0;background:#111827;color:#fff;border-radius:12px;cursor:pointer;font-size:12px;font-weight:900;">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
   function qs(name) {
@@ -915,6 +940,29 @@
     return s ? (s.name + ' (' + s.service_type + ')') : ('#' + id);
   }
 
+  function openDcNoteModal(meta, text){
+    const bd = document.getElementById("dcNoteModalBackdrop");
+    document.getElementById("dcNoteModalMeta").textContent = meta || "—";
+    document.getElementById("dcNoteTextArea").value = text || "";
+    bd.style.display = "flex";
+  }
+  function closeDcNoteModal(){
+    document.getElementById("dcNoteModalBackdrop").style.display = "none";
+  }
+
+  document.getElementById("dcNoteCloseBtn").addEventListener("click", closeDcNoteModal);
+  document.getElementById("dcNoteCloseBtn2").addEventListener("click", closeDcNoteModal);
+  document.getElementById("dcNoteModalBackdrop").addEventListener("click", (e)=>{ if(e.target.id==="dcNoteModalBackdrop") closeDcNoteModal(); });
+
+  document.getElementById("dcNoteCopyBtn").addEventListener("click", async ()=>{
+    try{
+      await navigator.clipboard.writeText(document.getElementById("dcNoteTextArea").value || "");
+      showMsg("Copied note to clipboard.");
+    }catch(e){
+      showMsg("Copy failed: " + String(e.message||e));
+    }
+  });
+
   function renderDc() {
     const tb = document.getElementById('dcTbody');
     const rows = (DETAILS && DETAILS.dc_submissions) || [];
@@ -952,6 +1000,10 @@
             </div>
           </td>
           <td style="padding:10px;text-align:right;">
+            <button data-gen-dc-note="${r.id}"
+              style="padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;margin-right:6px;">
+              Generate SW Note
+            </button>
             <button data-del-dc="${r.id}"
               style="padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
               Delete
@@ -970,6 +1022,18 @@
             body: JSON.stringify({ id: Number(id) })
           });
           await loadAll();
+        } catch(e) { showMsg(e.message); }
+      });
+    });
+
+    tb.querySelectorAll('[data-gen-dc-note]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-gen-dc-note');
+        try {
+          showMsg('');
+          const resp = await api(`/api/sensys/dc-note/render?dc_submission_id=${encodeURIComponent(id)}`);
+          const meta = (resp && resp.template_name) ? (`Template: ${resp.template_name} • DC Submission #${id}`) : (`DC Submission #${id}`);
+          openDcNoteModal(meta, (resp && resp.note_text) ? resp.note_text : '');
         } catch(e) { showMsg(e.message); }
       });
     });
