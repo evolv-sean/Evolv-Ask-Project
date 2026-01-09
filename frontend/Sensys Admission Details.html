@@ -244,6 +244,11 @@
           <option>caregiver</option>
         </select>
 
+        <!-- NEW: Home Health agency (preferred providers starred + top) -->
+        <select id="hhAgencySelect"
+          style="min-width:260px;max-width:320px;height:42px;padding:8px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+        </select>
+
         <select id="dcServicesMulti" multiple
           style="min-width:260px;max-width:320px;height:42px;padding:8px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
         </select>
@@ -934,6 +939,7 @@
             ${escapeHtml(r.dc_destination || '')}
             <div style="font-size:12px;color:#667085;margin-top:2px;">
               ${escapeHtml(r.destination_comments || '')}
+              ${(r.hh_agency_id ? ('<div style="margin-top:4px;">HH: ' + escapeHtml(agencyNameById(r.hh_agency_id)) + '</div>') : '')}
             </div>
           </td>
           <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(urgent)}</td>
@@ -1016,6 +1022,31 @@
       .join('');
   }
 
+
+function agencyNameById(id){
+  const a = (AGENCIES || []).find(x => Number(x.id) === Number(id));
+  return a ? (a.agency_name || '') : '';
+}
+
+function renderHhAgencySelect(){
+  const sel = document.getElementById("hhAgencySelect");
+  if(!sel) return;
+
+  const preferred = new Set(((DETAILS && DETAILS.preferred_provider_ids) || []).map(x => Number(x)));
+  const hh = (AGENCIES || []).filter(a => String(a.agency_type || "").toLowerCase() === "home health");
+
+  const byName = (a,b) => String(a.agency_name||"").localeCompare(String(b.agency_name||""), undefined, { sensitivity:"base" });
+
+  const preferredList = hh.filter(a => preferred.has(Number(a.id))).sort(byName);
+  const otherList = hh.filter(a => !preferred.has(Number(a.id))).sort(byName);
+
+  const opts = ['<option value="">Home Health agency (optional)…</option>']
+    .concat(preferredList.map(a => `<option value="${a.id}">★ ${escapeHtml(a.agency_name || "")}</option>`))
+    .concat(otherList.map(a => `<option value="${a.id}">${escapeHtml(a.agency_name || "")}</option>`));
+
+  sel.innerHTML = opts.join('');
+}
+
   function renderDcServicesMulti(){
     const el = document.getElementById("dcServicesMulti");
     const opts = ['']
@@ -1091,6 +1122,7 @@
     SERVICES = (services && services.services) || [];
     CARE_TEAM = (careTeam && careTeam.care_team) || [];
     AGENCIES = (agencies && agencies.agencies) || []; // ✅ NEW
+    renderHhAgencySelect();
     
     NOTE_TEMPLATES = (noteTemplates && noteTemplates.templates) || [];
     renderNoteTemplatesSelect();
@@ -1270,13 +1302,25 @@
   document.getElementById('addTaskBtn').addEventListener('click', async () => {
     try {
       showMsg('');
-      const payload = {
-        admission_id: Number(ADMISSION_ID),
-        assigned_user_id: document.getElementById('taskAssignedUser').value.trim() || null,
-        task_status: document.getElementById('taskStatus').value,
-        task_name: document.getElementById('taskName').value.trim(),
-        task_comments: document.getElementById('taskComments').value.trim()
-      };
+const preferred = new Set(((DETAILS && DETAILS.preferred_provider_ids) || []).map(x => Number(x)));
+const hhAgencyIdRaw = document.getElementById('hhAgencySelect').value;
+const hhAgencyId = hhAgencyIdRaw ? Number(hhAgencyIdRaw) : null;
+
+const payload = {
+  admission_id: Number(ADMISSION_ID),
+  dc_date: document.getElementById('dcDate').value.trim(),
+  dc_time: document.getElementById('dcTime').value.trim(),
+  dc_confirmed: document.getElementById('dcConfirmed').checked ? 1 : 0,
+  dc_urgent: document.getElementById('dcUrgent').checked ? 1 : 0,
+  urgent_comments: document.getElementById('urgentComments').value.trim(),
+  dc_destination: document.getElementById('dcDestination').value,
+  destination_comments: document.getElementById('destinationComments').value.trim(),
+  dc_with: document.getElementById('dcWith').value,
+
+  // NEW
+  hh_agency_id: hhAgencyId,
+  hh_preferred: (hhAgencyId && preferred.has(hhAgencyId)) ? 1 : 0
+};
       await api('/api/sensys/admission-tasks/upsert', { method:'POST', body: JSON.stringify(payload) });
       document.getElementById('taskName').value = '';
       document.getElementById('taskComments').value = '';
@@ -1383,6 +1427,7 @@
       document.getElementById('dcUrgent').checked = false;
       document.getElementById('urgentComments').value = '';
       document.getElementById('destinationComments').value = '';
+      document.getElementById('hhAgencySelect').value = '';
       document.getElementById('dcServicesMulti').selectedIndex = -1; // ✅ clear selection
 
       await loadAll();
