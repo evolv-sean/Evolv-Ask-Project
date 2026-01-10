@@ -3192,6 +3192,14 @@ def init_db():
             hh_agency_id          INTEGER,                 -- sensys_agencies.id (Home Health)
             hh_preferred          INTEGER DEFAULT 0,       -- 1 if selected from admission facility preferred list
 
+            hh_carecompare_ccn    TEXT,
+            hh_carecompare_name   TEXT,
+            hh_carecompare_dba    TEXT,
+            hh_carecompare_city   TEXT,
+            hh_carecompare_state  TEXT,
+            hh_carecompare_zip    TEXT,
+            hh_carecompare_county TEXT,
+
             hh_comments           TEXT,
             dme_comments          TEXT,
 
@@ -3225,6 +3233,13 @@ def init_db():
             cur.execute(ddl)
         except sqlite3.Error:
             pass
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_ccn", "TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_name", "TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_dba", "TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_city", "TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_state", "TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_zip", "TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_county", "TEXT")
 
     # Join table: each DC submission can have multiple services linked
     cur.execute(
@@ -19367,7 +19382,14 @@ def sensys_admission_details(admission_id: int, request: Request):
             id, admission_id, created_at, created_by,
             dc_date, dc_time, dc_confirmed, dc_urgent, urgent_comments,
             dc_destination, destination_comments, dc_with,
-            hh_agency_id, hh_preferred,
+            hh_agency_id, hh_preferred,    
+            hh_carecompare_ccn,
+            hh_carecompare_name,
+            hh_carecompare_dba,
+            hh_carecompare_city,
+            hh_carecompare_state,
+            hh_carecompare_zip,
+            hh_carecompare_county,                  
             hh_comments, dme_comments, aid_consult, pcp_freetext,
             coordinate_caregiver, caregiver_name, caregiver_number,
             apealling_dc, appeal_comments,
@@ -19715,6 +19737,14 @@ class DcSubmissionUpsert(BaseModel):
     hh_agency_id: Optional[int] = None
     hh_preferred: int = 0
 
+    hh_carecompare_ccn: Optional[str] = ""
+    hh_carecompare_name: Optional[str] = ""
+    hh_carecompare_dba: Optional[str] = ""
+    hh_carecompare_city: Optional[str] = ""
+    hh_carecompare_state: Optional[str] = ""
+    hh_carecompare_zip: Optional[str] = ""
+    hh_carecompare_county: Optional[str] = ""
+
     hh_comments: Optional[str] = ""
     dme_comments: Optional[str] = ""
     aid_consult: Optional[str] = ""
@@ -19852,6 +19882,18 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
     conn = get_db()
     _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
 
+    # If user picked a Care Compare agency, hh_agency_id should be NULL and we store carecompare fields.
+    # If user picked an internal agency, we clear the carecompare fields.
+    using_carecompare = (payload.hh_agency_id is None) and bool((payload.hh_carecompare_name or "").strip() or (payload.hh_carecompare_ccn or "").strip())
+
+    cc_ccn = (payload.hh_carecompare_ccn or "").strip() if using_carecompare else ""
+    cc_name = (payload.hh_carecompare_name or "").strip() if using_carecompare else ""
+    cc_dba = (payload.hh_carecompare_dba or "").strip() if using_carecompare else ""
+    cc_city = (payload.hh_carecompare_city or "").strip() if using_carecompare else ""
+    cc_state = (payload.hh_carecompare_state or "").strip() if using_carecompare else ""
+    cc_zip = (payload.hh_carecompare_zip or "").strip() if using_carecompare else ""
+    cc_county = (payload.hh_carecompare_county or "").strip() if using_carecompare else ""
+
     if payload.id:
         conn.execute(
             """
@@ -19864,8 +19906,18 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                    dc_destination = ?,
                    destination_comments = ?,
                    dc_with = ?,
+
                    hh_agency_id = ?,
                    hh_preferred = ?,
+
+                   hh_carecompare_ccn = ?,
+                   hh_carecompare_name = ?,
+                   hh_carecompare_dba = ?,
+                   hh_carecompare_city = ?,
+                   hh_carecompare_state = ?,
+                   hh_carecompare_zip = ?,
+                   hh_carecompare_county = ?,
+
                    hh_comments = ?,
                    dme_comments = ?,
                    aid_consult = ?,
@@ -19888,15 +19940,19 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                 (payload.urgent_comments or "").strip(),
                 (payload.dc_destination or "").strip(),
                 (payload.destination_comments or "").strip(),
-
-                # dc_with
                 (payload.dc_with or "").strip(),
 
-                # hh_agency_id, hh_preferred
                 (int(payload.hh_agency_id) if payload.hh_agency_id else None),
                 int(payload.hh_preferred or 0),
 
-                # the rest
+                cc_ccn,
+                cc_name,
+                cc_dba,
+                cc_city,
+                cc_state,
+                cc_zip,
+                cc_county,
+
                 (payload.hh_comments or "").strip(),
                 (payload.dme_comments or "").strip(),
                 (payload.aid_consult or "").strip(),
@@ -19907,104 +19963,76 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                 int(payload.apealling_dc or 0),
                 (payload.appeal_comments or "").strip(),
 
-                # WHERE
                 int(payload.id),
                 int(payload.admission_id),
             ),
         )
-
-        # If the update didn't touch a row, fail loudly so the UI doesn't "think" it saved
-        if conn.total_changes == 0:
-            raise HTTPException(status_code=404, detail="DC submission not found (or was deleted)")
-
-    else:
-        conn.execute(
-            """
-            INSERT INTO sensys_admission_dc_submissions
-                (admission_id, created_by,
-                 dc_date, dc_time, dc_confirmed, dc_urgent, urgent_comments,
-                 dc_destination, destination_comments, dc_with,
-                 hh_agency_id, hh_preferred,
-                 hh_comments, dme_comments, aid_consult, pcp_freetext,
-                 coordinate_caregiver, caregiver_name, caregiver_number,
-                 apealling_dc, appeal_comments)
-            VALUES
-                (?, ?,
-                 ?, ?, ?, ?, ?,
-                 ?, ?, ?,
-                 ?, ?,
-                 ?, ?, ?, ?,
-                 ?, ?, ?,
-                 ?, ?)
-            """,
-            (
-                int(payload.admission_id),
-                int(u["user_id"]),
-
-                (payload.dc_date or "").strip(),
-                (payload.dc_time or "").strip(),
-                int(payload.dc_confirmed or 0),
-                int(payload.dc_urgent or 0),
-                (payload.urgent_comments or "").strip(),
-
-                (payload.dc_destination or "").strip(),
-                (payload.destination_comments or "").strip(),
-                (payload.dc_with or "").strip(),
-
-                (int(payload.hh_agency_id) if payload.hh_agency_id else None),
-                int(payload.hh_preferred or 0),
-
-                (payload.hh_comments or "").strip(),
-                (payload.dme_comments or "").strip(),
-                (payload.aid_consult or "").strip(),
-                (payload.pcp_freetext or "").strip(),
-
-                int(payload.coordinate_caregiver or 0),
-                (payload.caregiver_name or "").strip(),
-                (payload.caregiver_number or "").strip(),
-
-                int(payload.apealling_dc or 0),
-                (payload.appeal_comments or "").strip(),
-            ),
-        )
-
-    new_id = payload.id
-    if not new_id:
-        new_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
-
-    # ---- WRITE WRAP LOG (db path + verify) ----
-    try:
-        db_row = conn.execute("PRAGMA database_list").fetchone()
-        db_file = (db_row["file"] if db_row and "file" in db_row.keys() else None) or DB_PATH
-
         conn.commit()
+        return {"ok": True, "id": int(payload.id)}
 
-        exists = conn.execute(
-            "SELECT COUNT(1) AS c FROM sensys_admission_dc_submissions WHERE id = ?",
-            (int(new_id),),
-        ).fetchone()["c"]
-
-        logger.info(
-            "[SENSYS][WRITE] table=sensys_admission_dc_submissions op=%s id=%s admission_id=%s user_id=%s db=%s verify_exists=%s",
-            ("update" if payload.id else "insert"),
-            int(new_id),
+    cur = conn.execute(
+        """
+        INSERT INTO sensys_admission_dc_submissions (
+            admission_id, created_by,
+            dc_date, dc_time, dc_confirmed, dc_urgent, urgent_comments,
+            dc_destination, destination_comments, dc_with,
+            hh_agency_id, hh_preferred,
+            hh_carecompare_ccn, hh_carecompare_name, hh_carecompare_dba,
+            hh_carecompare_city, hh_carecompare_state, hh_carecompare_zip, hh_carecompare_county,
+            hh_comments, dme_comments, aid_consult, pcp_freetext,
+            coordinate_caregiver, caregiver_name, caregiver_number,
+            apealling_dc, appeal_comments
+        ) VALUES (
+            ?, ?,
+            ?, ?, ?, ?, ?,
+            ?, ?, ?,
+            ?, ?,
+            ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?,
+            ?, ?
+        )
+        """,
+        (
             int(payload.admission_id),
             int(u["user_id"]),
-            db_file,
-            int(exists),
-        )
-    except Exception:
-        logger.exception(
-            "[SENSYS][WRITE][ERROR] table=sensys_admission_dc_submissions op=%s id=%s admission_id=%s db=%s",
-            ("update" if payload.id else "insert"),
-            int(new_id),
-            int(payload.admission_id),
-            DB_PATH,
-        )
-        raise
-    # ------------------------------------------
 
-    return {"ok": True, "id": int(new_id)}
+            (payload.dc_date or "").strip(),
+            (payload.dc_time or "").strip(),
+            int(payload.dc_confirmed or 0),
+            int(payload.dc_urgent or 0),
+            (payload.urgent_comments or "").strip(),
+
+            (payload.dc_destination or "").strip(),
+            (payload.destination_comments or "").strip(),
+            (payload.dc_with or "").strip(),
+
+            (int(payload.hh_agency_id) if payload.hh_agency_id else None),
+            int(payload.hh_preferred or 0),
+
+            cc_ccn,
+            cc_name,
+            cc_dba,
+            cc_city,
+            cc_state,
+            cc_zip,
+            cc_county,
+
+            (payload.hh_comments or "").strip(),
+            (payload.dme_comments or "").strip(),
+            (payload.aid_consult or "").strip(),
+            (payload.pcp_freetext or "").strip(),
+
+            int(payload.coordinate_caregiver or 0),
+            (payload.caregiver_name or "").strip(),
+            (payload.caregiver_number or "").strip(),
+            int(payload.apealling_dc or 0),
+            (payload.appeal_comments or "").strip(),
+        ),
+    )
+    conn.commit()
+    return {"ok": True, "id": int(cur.lastrowid)}
 
 
 @app.post("/api/sensys/admission-dc-submissions/delete")
@@ -20106,6 +20134,159 @@ def sensys_admission_care_team_unlink(payload: IdOnly, request: Request):
     )
     conn.commit()
     return {"ok": True}
+
+# =========================================================
+# Care Compare (CMS Provider Data Catalog) - Home Health
+# =========================================================
+
+_CMS_HHA_DATASET_ID = "6jpm-sxkc"  # Home Health Care Agencies dataset id on Provider Data Catalog 
+_CMS_HHA_SCHEMA_CACHE = {"cols": None, "ts": 0}
+
+def _cms_hha_get_cols() -> dict:
+    """
+    Fetch schema once and cache. Returns a dict of 'normalized_name' -> actual_column_name.
+    We use this to find columns like provider name / DBA / city / county / zip / state / CCN
+    without hardcoding exact column names.
+    """
+    now = dt.datetime.utcnow().timestamp()
+    if _CMS_HHA_SCHEMA_CACHE["cols"] and (now - _CMS_HHA_SCHEMA_CACHE["ts"] < 6 * 3600):
+        return _CMS_HHA_SCHEMA_CACHE["cols"]
+
+    url = f"https://data.cms.gov/provider-data/api/1/datastore/query/{_CMS_HHA_DATASET_ID}/0"
+    # schema=true makes the response include schema metadata 
+    r = requests.get(url, params={"limit": 1, "offset": 0, "schema": "true", "count": "false", "keys": "true"}, timeout=20)
+    r.raise_for_status()
+    data = r.json() or {}
+
+    schema = data.get("schema")
+    fields = None
+
+    # DKAN schema can be either { "fields":[...] } or { "<resourceId>": { "fields":[...] } }
+    if isinstance(schema, dict) and isinstance(schema.get("fields"), list):
+        fields = schema.get("fields")
+    elif isinstance(schema, dict) and len(schema.keys()) == 1:
+        one = next(iter(schema.values()))
+        if isinstance(one, dict) and isinstance(one.get("fields"), list):
+            fields = one.get("fields")
+
+    cols = {}
+    for f in (fields or []):
+        nm = (f.get("name") or "").strip()
+        if not nm:
+            continue
+        cols[nm.lower()] = nm
+
+    _CMS_HHA_SCHEMA_CACHE["cols"] = cols
+    _CMS_HHA_SCHEMA_CACHE["ts"] = now
+    return cols
+
+
+def _pick_col(cols: dict, needles: list[str]) -> str | None:
+    """Pick the first column whose name contains ANY of the provided substrings."""
+    if not cols:
+        return None
+    for n in needles:
+        n = (n or "").lower()
+        for c in cols.keys():
+            if n in c:
+                return cols[c]
+    return None
+
+
+@app.get("/api/sensys/care-compare/hha-search")
+def sensys_care_compare_hha_search(
+    request: Request,
+    q: str = Query("", description="Agency/provider name (matches Provider Name OR DBA when available)"),
+    county: str = Query("", description="County"),
+    city: str = Query("", description="City"),
+    state: str = Query("", description="State (2-letter preferred)"),
+    zip: str = Query("", description="ZIP"),
+    ccn: str = Query("", description="CMS Certification Number / CCN"),
+    limit: int = Query(25, ge=1, le=100),
+):
+    """
+    Queries CMS Provider Data Catalog 'Home Health Care Agencies' dataset via datastore query.
+    Uses datasetId/index query endpoint (index=0). 
+    """
+    _ = _sensys_require_user(request)  # auth gate (token in query/header like your other APIs)
+
+    cols = _cms_hha_get_cols()
+
+    col_provider = _pick_col(cols, ["provider name", "provider_name", "name"])
+    col_dba = _pick_col(cols, ["dba", "doing business", "doing_business"])
+    col_city = _pick_col(cols, ["city"])
+    col_state = _pick_col(cols, ["state"])
+    col_zip = _pick_col(cols, ["zip"])
+    col_county = _pick_col(cols, ["county"])
+    col_ccn = _pick_col(cols, ["ccn", "certification", "provider number", "provider_number"])
+
+    col_addr = _pick_col(cols, ["address", "street"])
+    col_phone = _pick_col(cols, ["phone"])
+
+    conditions = []
+
+    # Name search: Provider Name OR DBA (if DBA column exists)
+    qv = (q or "").strip()
+    if qv and col_provider:
+        if col_dba:
+            conditions.append(
+                {
+                    "groupOperator": "or",
+                    "conditions": [
+                        {"property": col_provider, "operator": "contains", "value": qv},
+                        {"property": col_dba, "operator": "contains", "value": qv},
+                    ],
+                }
+            )
+        else:
+            conditions.append({"property": col_provider, "operator": "contains", "value": qv})
+
+    def _add_contains(val: str, col: str | None):
+        vv = (val or "").strip()
+        if vv and col:
+            conditions.append({"property": col, "operator": "contains", "value": vv})
+
+    def _add_equals(val: str, col: str | None):
+        vv = (val or "").strip()
+        if vv and col:
+            conditions.append({"property": col, "operator": "=", "value": vv})
+
+    _add_contains(county, col_county)
+    _add_contains(city, col_city)
+
+    # state is usually exact match
+    _add_equals(state.upper(), col_state)
+
+    # zip + ccn can be contains (people paste partials)
+    _add_contains(zip, col_zip)
+    _add_contains(ccn, col_ccn)
+
+    # Properties to return (keep payload small)
+    props = []
+    for c in [col_provider, col_dba, col_ccn, col_addr, col_city, col_state, col_zip, col_county, col_phone]:
+        if c and c not in props:
+            props.append(c)
+
+    url = f"https://data.cms.gov/provider-data/api/1/datastore/query/{_CMS_HHA_DATASET_ID}/0"
+    payload = {
+        "limit": int(limit),
+        "offset": 0,
+        "count": False,
+        "conditions": conditions,
+    }
+    if props:
+        payload["results"] = {"properties": props}
+
+    r = requests.post(url, json=payload, timeout=25)
+    r.raise_for_status()
+    data = r.json() or {}
+
+    out = []
+    for row in (data.get("results") or []):
+        # keep original keys too, but also normalize a few common ones for UI convenience
+        out.append(row)
+
+    return {"results": out, "columns": {"provider": col_provider, "dba": col_dba, "ccn": col_ccn}}
 
 # ---------------------------------------------------------------------------
 # HTML routes & health check
