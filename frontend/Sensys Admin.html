@@ -407,6 +407,7 @@
 
         <div class="navitem on" id="tabUsers">Users</div>
         <div class="navitem" id="tabAgencies">Agencies</div>
+        <div class="navitem" id="tabProviderLibrary">Provider Library</div>
         <div class="navitem" id="tabPatients">Patients</div>
         <div class="navitem" id="tabAdmissions">Admissions</div>
 
@@ -499,7 +500,43 @@
             <div id="agencyListMsg" class="toast"></div>
           </div>
         </div>
-      </div><!-- /panelAgencies -->     
+      </div><!-- /panelAgencies -->  
+      <!-- =========================
+           PROVIDER LIBRARY PANEL
+      ========================= -->
+      <div class="panel" id="panelProviderLibrary">
+        <div class="content">
+          <div class="hd" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+            <div>
+              <h2 style="margin:0">Provider Library</h2>
+              <div class="hint">Search CMS Home Health providers stored in Sensys. Copy the CCN into an Agency to link records.</div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
+              <div id="plMeta" style="font-size:12px;color:#667085;">—</div>
+              <button class="btn" id="plSyncBtn" style="font-weight:900;">Sync Now</button>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px;">
+            <input class="input" id="plQ" placeholder="Search by provider name, DBA, or CCN…" style="width:min(520px,100%);" />
+            <button class="btn" id="plSearchBtn" style="font-weight:900;">Search</button>
+          </div>
+
+          <div style="margin-top:12px;border:1px solid #eef0f5;border-radius:14px;overflow:hidden;">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead style="background:#f9fafb;">
+                <tr>
+                  <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Provider</th>
+                  <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">CCN</th>
+                  <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Location</th>
+                  <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Phone/Fax</th>
+                </tr>
+              </thead>
+              <tbody id="plTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>      
       <!-- =========================
            PATIENTS PANEL
       ========================= -->
@@ -944,6 +981,10 @@
       <div class="label">Facility Code</div>
       <input class="input" id="facility_code" placeholder="Optional code" />
 
+      <div style="height:10px"></div>
+
+      <div class="label">Care Compare CCN (Home Health)</div>
+      <input class="input" id="carecompare_ccn" placeholder="Example: 109999" />
 
       <div style="height:10px"></div>
 
@@ -1847,6 +1888,7 @@
     // nav highlighting
     $("tabUsers").className = "navitem " + (which==="users" ? "on" : "");
     $("tabAgencies").className = "navitem " + (which==="agencies" ? "on" : "");
+    $("tabProviderLibrary").className = "navitem " + (which==="providerLibrary" ? "on" : "");
     $("tabPatients").className = "navitem " + (which==="patients" ? "on" : "");
     $("tabAdmissions").className = "navitem " + (which==="admissions" ? "on" : "");
     $("tabServices").className = "navitem " + (which==="services" ? "on" : "");
@@ -1856,6 +1898,7 @@
     // hide all
     $("panelUsers").classList.remove("on");
     $("panelAgencies").classList.remove("on");
+    $("panelProviderLibrary").style.display = (which==="providerLibrary" ? "block" : "none");
     $("panelPatients").classList.remove("on");
     $("panelAdmissions").classList.remove("on");
     $("panelServices").classList.remove("on");
@@ -1890,6 +1933,7 @@
 
   $("tabUsers").onclick = () => showPanel("users");
   $("tabAgencies").onclick = () => showPanel("agencies");
+  $("tabProviderLibrary").onclick = () => showPanel("providerLibrary");
   $("tabPatients").onclick = () => showPanel("patients");
   $("tabAdmissions").onclick = () => showPanel("admissions");
   $("tabServices").onclick = () => showPanel("services");
@@ -1929,6 +1973,7 @@
     $("agency_type").value = a.agency_type || "Hospital";
     $("aliases").value = a.aliases || ""; // ✅ NEW
     $("facility_code").value = a.facility_code || "";
+    $("carecompare_ccn").value = (a.carecompare_ccn || "");
     $("address").value = a.address || "";
     $("city").value = a.city || "";
     $("state").value = a.state || "";
@@ -1972,8 +2017,9 @@
     $("selAgencyId").textContent = "—";
     $("agency_name").value = "";
     $("agency_type").value = "Hospital";
-    $("aliases").value = ""; // ✅ NEW
+    $("aliases").value = ""; 
     $("facility_code").value = "";
+    $("carecompare_ccn").value = "";
     $("address").value = "";
     $("city").value = "";
     $("state").value = "";
@@ -2006,6 +2052,7 @@
         agency_type: ($("agency_type").value || "").trim(),
         aliases: ($("aliases").value || "").trim(), // ✅ NEW
         facility_code: ($("facility_code").value || "").trim(),
+        carecompare_ccn: ($("carecompare_ccn").value || "").trim(),
         address: ($("address").value || "").trim(),
         city: ($("city").value || "").trim(),
         state: ($("state").value || "").trim(),
@@ -2809,6 +2856,78 @@
       alert(String(e.message || e));
     }
   }
+
+  async function loadProviderLibraryMeta(){
+    try{
+      const meta = await apiGet("/api/sensys/admin/provider-library/meta");
+      if(meta){
+        const last = meta.last_sync_at ? meta.last_sync_at : "Never";
+        const rows = Number(meta.last_row_count || 0);
+        const err = meta.last_error ? ` • Last error: ${meta.last_error}` : "";
+        $("plMeta").textContent = `Last sync: ${last} • Rows: ${rows}${err}`;
+      }
+    }catch(e){
+      $("plMeta").textContent = "Meta failed to load";
+    }
+  }
+
+  async function runProviderLibrarySearch(){
+    const q = ($("plQ").value || "").trim();
+    const tb = $("plTbody");
+    tb.innerHTML = "";
+    if(!q){
+      tb.innerHTML = `<tr><td colspan="4" style="padding:12px;color:#667085;font-size:12px;">Enter a search term</td></tr>`;
+      return;
+    }
+
+    const resp = await apiGet(`/api/sensys/admin/provider-library/hha-search?q=${encodeURIComponent(q)}&limit=200`);
+    const rows = (resp && resp.results) ? resp.results : [];
+    if(!rows.length){
+      tb.innerHTML = `<tr><td colspan="4" style="padding:12px;color:#667085;font-size:12px;">No results</td></tr>`;
+      return;
+    }
+
+    tb.innerHTML = rows.map(r => {
+      const provider = (r.dba ? `${r.dba} (DBA)` : (r.provider_name || "—"));
+      const loc = [r.city, r.state, r.zip].filter(Boolean).join(", ");
+      const phonefax = [r.phone ? `📞 ${r.phone}` : "", r.fax ? `📠 ${r.fax}` : ""].filter(Boolean).join("  ");
+      return `
+        <tr style="border-top:1px solid #eef0f4;">
+          <td style="padding:10px;font-size:12px;color:#111827;font-weight:800;">${escapeHtml(provider)}</td>
+          <td style="padding:10px;font-size:12px;color:#475467;">${escapeHtml(r.ccn || "")}</td>
+          <td style="padding:10px;font-size:12px;color:#475467;">${escapeHtml(loc)}</td>
+          <td style="padding:10px;font-size:12px;color:#475467;">${escapeHtml(phonefax)}</td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  $("plSearchBtn").onclick = runProviderLibrarySearch;
+  $("plQ").addEventListener("keydown", (e)=>{ if(e.key==="Enter") runProviderLibrarySearch(); });
+
+  $("plSyncBtn").onclick = async () => {
+    $("plSyncBtn").disabled = true;
+    $("plSyncBtn").textContent = "Syncing…";
+    try{
+      const resp = await apiPost("/api/sensys/admin/provider-library/sync", {});
+      await loadProviderLibraryMeta();
+      alert(resp && resp.ok ? `Sync complete. Upserted: ${resp.upserted || 0}` : `Sync failed: ${(resp && resp.error) ? resp.error : "Unknown error"}`);
+    }catch(e){
+      alert("Sync failed: " + String(e.message || e));
+    }finally{
+      $("plSyncBtn").disabled = false;
+      $("plSyncBtn").textContent = "Sync Now";
+    }
+  };
+
+  // Load meta when panel opens (lightweight)
+  const _origShowPanel = showPanel;
+  showPanel = (which) => {
+    _origShowPanel(which);
+    if(which==="providerLibrary"){
+      loadProviderLibraryMeta();
+    }
+  };
 
   // picking a file no longer uploads immediately
   function handleBulkFilePicked(file){
