@@ -2911,7 +2911,17 @@
     try{
       const resp = await apiPost("/api/sensys/admin/provider-library/sync", {});
       await loadProviderLibraryMeta();
-      alert(resp && resp.ok ? `Sync complete. Upserted: ${resp.upserted || 0}` : `Sync failed: ${(resp && resp.error) ? resp.error : "Unknown error"}`);
+      if(resp && resp.ok){
+        const msg =
+          `Sync complete.\n` +
+          `Upserted: ${resp.upserted || 0}\n` +
+          `Fetched: ${resp.fetched || 0}\n` +
+          `Skipped (no CCN): ${resp.skipped_no_ccn || 0}\n` +
+          `Debug: ${resp.debug ? JSON.stringify(resp.debug) : "—"}`;
+        alert(msg);
+      }else{
+        alert(`Sync failed: ${(resp && resp.error) ? resp.error : "Unknown error"}`);
+      }
     }catch(e){
       alert("Sync failed: " + String(e.message || e));
     }finally{
