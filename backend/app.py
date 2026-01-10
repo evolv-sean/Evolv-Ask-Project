@@ -20348,12 +20348,61 @@ def sensys_care_compare_hha_search(
         data = r2.json() or {}
 
 
-    out = []
+    # -----------------------------
+    # ✅ ENFORCE FILTERS LOCALLY
+    # (CMS sometimes ignores conditions and returns the same default first page)
+    # -----------------------------
+    def _norm(s: str) -> str:
+        return (s or "").strip().casefold()
+
+    def _row_val(row: dict, key: str | None, fallbacks: list[str]) -> str:
+        if key and key in row:
+            return str(row.get(key) or "")
+        for fb in fallbacks:
+            if fb in row:
+                return str(row.get(fb) or "")
+        return ""
+
+    qn = _norm(q_merged)
+    county_n = _norm(county)
+    city_n = _norm(city)
+    state_n = _norm((state or "").upper())
+    zip_n = _norm(zip)
+    ccn_n = _norm(ccn)
+
+    filtered = []
     for row in (data.get("results") or []):
-        out.append(row)
+        provider_v = _row_val(row, col_provider, ["provider_name", "provider", "name"])
+        dba_v      = _row_val(row, col_dba,      ["dba", "doing_business_as_name"])
+        county_v   = _row_val(row, col_county,   ["county", "county_name"])
+        city_v     = _row_val(row, col_city,     ["city", "provider_city", "city_name"])
+        state_v    = _row_val(row, col_state,    ["state", "provider_state", "state_name"])
+        zip_v      = _row_val(row, col_zip,      ["zip", "zip_code", "provider_zip_code"])
+        ccn_v      = _row_val(row, col_ccn,      ["ccn", "provider_number"])
+
+        # q matches provider OR dba
+        if qn:
+            if qn not in _norm(provider_v) and qn not in _norm(dba_v):
+                continue
+
+        if county_n and county_n not in _norm(county_v):
+            continue
+        if city_n and city_n not in _norm(city_v):
+            continue
+        if state_n and state_n != _norm(state_v):
+            continue
+        if zip_n and zip_n not in _norm(zip_v):
+            continue
+        if ccn_n and ccn_n not in _norm(ccn_v):
+            continue
+
+        filtered.append(row)
+
+    # Keep the response small + predictable (respect limit)
+    filtered = filtered[: int(limit)]
 
     return {
-        "results": out,
+        "results": filtered,
         "columns": {"provider": col_provider, "dba": col_dba, "ccn": col_ccn, "phone": col_phone, "fax": col_fax},
 
         # helpful debug so we can confirm searches are truly changing
@@ -20365,6 +20414,7 @@ def sensys_care_compare_hha_search(
             "zip": zip,
             "ccn": ccn,
             "conditions_count": len(conditions),
+            "server_filtered_count": len(filtered),
         }
     }
 
