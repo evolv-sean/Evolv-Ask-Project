@@ -20196,7 +20196,14 @@ def _pick_col(cols: dict, needles: list[str]) -> str | None:
 @app.get("/api/sensys/care-compare/hha-search")
 def sensys_care_compare_hha_search(
     request: Request,
+
+    # Primary name param (what we want the UI to use)
     q: str = Query("", description="Agency/provider name (matches Provider Name OR DBA when available)"),
+
+    # ✅ Back-compat / UI-compat aliases (so if the UI sends ?name=Activa it still works)
+    name: str = Query("", alias="name", description="Alias for q"),
+    agency_name: str = Query("", alias="agency_name", description="Alias for q"),
+
     county: str = Query("", description="County"),
     city: str = Query("", description="City"),
     state: str = Query("", description="State (2-letter preferred)"),
@@ -20206,7 +20213,7 @@ def sensys_care_compare_hha_search(
 ):
     """
     Queries CMS Provider Data Catalog 'Home Health Care Agencies' dataset via datastore query.
-    Uses datasetId/index query endpoint (index=0). 
+    Uses datasetId/index query endpoint (index=0).
     """
     _ = _sensys_require_user(request)  # auth gate (token in query/header like your other APIs)
 
@@ -20224,11 +20231,29 @@ def sensys_care_compare_hha_search(
     col_phone = _pick_col(cols, ["phone"])
     col_fax = _pick_col(cols, ["fax"])
 
+    # ✅ Unify name inputs (q OR name OR agency_name)
+    q_merged = (q or "").strip() or (name or "").strip() or (agency_name or "").strip()
+
+    # ✅ Guard: if user didn’t enter ANY filters, return empty instead of random agencies
+    any_filter = any([
+        bool(q_merged),
+        bool((county or "").strip()),
+        bool((city or "").strip()),
+        bool((state or "").strip()),
+        bool((zip or "").strip()),
+        bool((ccn or "").strip()),
+    ])
+    if not any_filter:
+        return {
+            "results": [],
+            "note": "Enter at least one search field.",
+            "columns": {"provider": col_provider, "dba": col_dba, "ccn": col_ccn, "phone": col_phone, "fax": col_fax},
+        }
 
     conditions = []
 
     # Name search: Provider Name OR DBA (if DBA column exists)
-    qv = (q or "").strip()
+    qv = (q_merged or "").strip()
     if qv and col_provider:
         if col_dba:
             conditions.append(
@@ -20257,7 +20282,7 @@ def sensys_care_compare_hha_search(
     _add_contains(city, col_city)
 
     # state is usually exact match
-    _add_equals(state.upper(), col_state)
+    _add_equals((state or "").strip().upper(), col_state)
 
     # zip + ccn can be contains (people paste partials)
     _add_contains(zip, col_zip)
@@ -20285,10 +20310,13 @@ def sensys_care_compare_hha_search(
 
     out = []
     for row in (data.get("results") or []):
-        # keep original keys too, but also normalize a few common ones for UI convenience
         out.append(row)
 
-    return {"results": out, "columns": {"provider": col_provider, "dba": col_dba, "ccn": col_ccn, "phone": col_phone, "fax": col_fax}}
+    return {
+        "results": out,
+        "columns": {"provider": col_provider, "dba": col_dba, "ccn": col_ccn, "phone": col_phone, "fax": col_fax},
+    }
+
 
 # ---------------------------------------------------------------------------
 # HTML routes & health check
