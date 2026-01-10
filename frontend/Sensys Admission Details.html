@@ -1096,7 +1096,7 @@
     // ✅ “latest search wins”
     const mySeq = ++CC_SEARCH_SEQ;
 
-    setCcStatus("Searching Care Compare…", true);
+    setCcStatus("Searching Provider Library…", true);
 
     let resp;
     try{
@@ -1115,12 +1115,7 @@
     if(mySeq !== CC_SEARCH_SEQ) return;
 
     const results = (resp && resp.results) ? resp.results : [];
-    const cols = (resp && resp.columns) ? resp.columns : {};
-    const providerCol = cols.provider || null;
-    const dbaCol = cols.dba || null;
-    const ccnCol = cols.ccn || null;
-    const phoneCol = cols.phone || null;
-    const faxCol = cols.fax || null;
+    const note = (resp && resp.note) ? String(resp.note) : "";
 
     if(!results.length){
       if(tbody){
@@ -1133,59 +1128,73 @@
     setCcStatus(`Loaded ${results.length} result${results.length===1?"":"s"} • Scroll to view`, false);
 
     results.forEach((row) => {
-      const name = providerCol ? (row[providerCol] || "") : (row["provider_name"] || row["provider"] || row["name"] || "");
-      const dba = dbaCol ? (row[dbaCol] || "") : (row["dba"] || row["doing_business_as_name"] || "");
-      const ccnV = ccnCol ? (row[ccnCol] || "") : (row["ccn"] || row["provider_number"] || "");
+      const name = String(row.provider_name || "").trim();
+      const dba = String(row.dba || "").trim();
+      const ccnV = String(row.ccn || "").trim();
+      const cityV = String(row.city || "").trim();
+      const stateV = String(row.state || "").trim();
+      const zipV = String(row.zip || "").trim();
+      const countyV = String(row.county || "").trim();
 
-      const cityV = row["city"] || row["provider_city"] || row["city_name"] || row["provider_city_name"] || "";
-      const stateV = row["state"] || row["provider_state"] || row["state_name"] || "";
-      const zipV = row["zip"] || row["zip_code"] || row["provider_zip_code"] || "";
-      const countyV = row["county"] || row["county_name"] || "";
+      // provider library contact
+      const phoneV = String(row.phone || "").trim();
+      const faxV = String(row.fax || "").trim();
 
-      const phoneV =
-        (phoneCol ? (row[phoneCol] || "") : "") ||
-        row["phone"] || row["phone_number"] || row["provider_phone"] || row["telephone_number"] || "";
+      // if this provider is already linked to an internal agency, use that
+      const matchedAgencyId = row.matched_agency_id ? Number(row.matched_agency_id) : null;
+      const matchedAgencyName = String(row.matched_agency_name || "").trim();
+      const matchedAgencyFax = String(row.matched_agency_fax || "").trim();
+      const matchedAgencyPhone = String(row.matched_agency_phone || "").trim();
 
-      const faxV =
-        (faxCol ? (row[faxCol] || "") : "") ||
-        row["fax"] || row["fax_number"] || row["provider_fax"] || "";
-
-      const displayName = dba
-        ? `${name}<div style="font-size:11px;color:#667085;margin-top:2px;">DBA: ${dba}</div>`
-        : `${name}`;
+      const displayName = dba ? `${dba} (DBA)` : name;
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td style="padding:10px;border-top:1px solid #eef0f4;font-size:12px;color:#111827;">
-          ${displayName}
-        </td>
-        <td style="padding:10px;border-top:1px solid #eef0f4;font-size:12px;color:#475467;">
-          ${[cityV, stateV, zipV].filter(Boolean).join(", ")}
-          ${countyV ? `<div style="font-size:11px;color:#667085;margin-top:2px;">${countyV} County</div>` : ""}
-          ${(phoneV || faxV) ? `<div style="font-size:11px;color:#111827;margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;">
-              ${phoneV ? `<span>📞 ${phoneV}</span>` : ``}
-              ${faxV ? `<span>📠 ${faxV}</span>` : ``}
+        <td style="padding:10px;border-top:1px solid #eef0f4;">
+          <div style="font-weight:900;color:#111827;font-size:12px;">
+            ${escapeHtml(displayName || "—")}
+            ${matchedAgencyId ? `<span style="margin-left:8px;font-size:11px;font-weight:900;padding:3px 8px;border-radius:999px;border:1px solid #b7ebc6;background:#ecfdf3;color:#027a48;">Saved Agency</span>` : ``}
+          </div>
+          <div style="font-size:11px;color:#667085;margin-top:2px;">
+            ${escapeHtml([cityV,stateV,zipV].filter(Boolean).join(", "))}${countyV ? ` • ${escapeHtml(countyV)} County` : ``}
+          </div>
+
+          ${(phoneV || faxV || matchedAgencyPhone || matchedAgencyFax) ? `
+            <div style="font-size:11px;color:#111827;margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;">
+              ${(matchedAgencyPhone || phoneV) ? `<span>📞 ${escapeHtml(matchedAgencyPhone || phoneV)}</span>` : ``}
+              ${(matchedAgencyFax || faxV) ? `<span>📠 ${escapeHtml(matchedAgencyFax || faxV)}</span>` : ``}
             </div>` : ``}
         </td>
-        <td style="padding:10px;border-top:1px solid #eef0f4;font-size:12px;color:#475467;">${ccnV || "—"}</td>
+
+        <td style="padding:10px;border-top:1px solid #eef0f4;font-size:12px;color:#475467;">${escapeHtml(ccnV || "—")}</td>
+
         <td style="padding:10px;border-top:1px solid #eef0f4;text-align:right;">
           <button style="padding:8px 10px;border-radius:10px;border:1px solid #0d3b66;background:#fff;color:#0d3b66;cursor:pointer;font-size:12px;font-weight:900;">
-            Select
+            ${matchedAgencyId ? "Select Saved" : "Select"}
           </button>
         </td>
       `;
 
       tr.querySelector("button").onclick = () => {
+        // If linked to an internal agency, select that agency id
+        if(matchedAgencyId){
+          const sel = document.getElementById("hhAgencySelect");
+          sel.value = String(matchedAgencyId);
+          closeCareCompareModal();
+          return;
+        }
+
+        // Otherwise, keep legacy Care Compare selection behavior
         CARE_COMPARE_SELECTED = {
-          name: String(name || "").trim(),
-          dba: String(dba || "").trim(),
-          ccn: String(ccnV || "").trim(),
-          city: String(cityV || "").trim(),
-          state: String(stateV || "").trim(),
-          zip: String(zipV || "").trim(),
-          county: String(countyV || "").trim(),
-          phone: String(phoneV || "").trim(),
-          fax: String(faxV || "").trim(),
+          name: name,
+          dba: dba,
+          ccn: ccnV,
+          city: cityV,
+          state: stateV,
+          zip: zipV,
+          county: countyV,
+          phone: phoneV,
+          fax: faxV,
         };
 
         const sel = document.getElementById("hhAgencySelect");
