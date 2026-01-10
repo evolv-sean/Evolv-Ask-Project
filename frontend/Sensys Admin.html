@@ -1472,6 +1472,18 @@
     }
   };
 
+  function $safe(id){
+    return document.getElementById(id);
+  }
+  function onClickSafe(id, fn){
+    const el = $safe(id);
+    if(!el){
+      console.warn("Missing element id:", id);
+      return;
+    }
+    el.onclick = fn;
+  }
+
   function openCareTeamModal(row){
     $("ct_id").value = row ? String(row.id || "") : "";
     $("selCareTeamId").textContent = row && row.id ? String(row.id) : "—";
@@ -1883,8 +1895,6 @@
   $("preferredProviderSearch").addEventListener("input", renderPreferredProvidersChecklist);
 
   function showPanel(which){
-    const panels = ["users","agencies","patients","admissions","services","careTeam","notes"];
-
     // nav highlighting
     $("tabUsers").className = "navitem " + (which==="users" ? "on" : "");
     $("tabAgencies").className = "navitem " + (which==="agencies" ? "on" : "");
@@ -1895,10 +1905,10 @@
     $("tabCareTeam").className = "navitem " + (which==="careTeam" ? "on" : "");
     $("tabNotes").className = "navitem " + (which==="notes" ? "on" : "");
 
-    // hide all
+    // hide all panels
     $("panelUsers").classList.remove("on");
     $("panelAgencies").classList.remove("on");
-    $("panelProviderLibrary").style.display = (which==="providerLibrary" ? "block" : "none");
+    $("panelProviderLibrary").classList.remove("on");
     $("panelPatients").classList.remove("on");
     $("panelAdmissions").classList.remove("on");
     $("panelServices").classList.remove("on");
@@ -1910,6 +1920,10 @@
     }else if(which==="agencies"){
       $("panelAgencies").classList.add("on");
       refreshAgenciesList();
+    }else if(which==="providerLibrary"){
+      $("panelProviderLibrary").classList.add("on");
+      loadProviderLibraryMeta();
+      runProviderLibrarySearch(); // will load first 200 when blank
     }else if(which==="patients"){
       $("panelPatients").classList.add("on");
       refreshPatientsList();
@@ -1931,14 +1945,14 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  $("tabUsers").onclick = () => showPanel("users");
-  $("tabAgencies").onclick = () => showPanel("agencies");
-  $("tabProviderLibrary").onclick = () => showPanel("providerLibrary");
-  $("tabPatients").onclick = () => showPanel("patients");
-  $("tabAdmissions").onclick = () => showPanel("admissions");
-  $("tabServices").onclick = () => showPanel("services");
-  $("tabCareTeam").onclick = () => showPanel("careTeam");
-  $("tabNotes").onclick = () => showPanel("notes");
+  onClickSafe("tabUsers", () => showPanel("users"));
+  onClickSafe("tabAgencies", () => showPanel("agencies"));
+  onClickSafe("tabProviderLibrary", () => showPanel("providerLibrary"));
+  onClickSafe("tabPatients", () => showPanel("patients"));
+  onClickSafe("tabAdmissions", () => showPanel("admissions"));
+  onClickSafe("tabServices", () => showPanel("services"));
+  onClickSafe("tabCareTeam", () => showPanel("careTeam"));
+  onClickSafe("tabNotes", () => showPanel("notes"));
 
 
   // --- Agencies page logic ---
@@ -2929,15 +2943,6 @@
       $("plSyncBtn").textContent = "Sync Now";
     }
   };
-
-  showPanel = (which) => {
-    _origShowPanel(which);
-    if(which==="providerLibrary"){
-      loadProviderLibraryMeta();
-      runProviderLibrarySearch(); // ✅ will browse first 200 when blank
-    }
-  };
-
 
   // picking a file no longer uploads immediately
   function handleBulkFilePicked(file){
