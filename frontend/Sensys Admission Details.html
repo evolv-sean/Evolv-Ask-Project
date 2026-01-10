@@ -1538,7 +1538,7 @@
 
   async function loadAll() {
     showMsg('');
-    const [details, services, careTeam, agencies, noteTemplates, smsLogs, pdfsResp] = await Promise.all([
+    const [details, services, careTeam, agencies, noteTemplates, smsLogs, faxResp, pdfsResp] = await Promise.all([
       api('/api/sensys/admission-details/' + ADMISSION_ID, { method:'GET' }),
       api('/api/sensys/services', { method:'GET' }),
       api('/api/sensys/care-team', { method:'GET' }),
@@ -1559,7 +1559,7 @@
     renderNoteTemplatesSelect();
     renderDynamicNoteFieldsForSelectedTemplate();
     SMS_LOG = (smsLogs && smsLogs.sms) || [];
-    FAX_LOG = (faxLogs && faxLogs.fax) || [];
+    FAX_LOG = (faxResp && faxResp.fax) || [];
     PDFS = (pdfsResp && pdfsResp.pdfs) || [];
 
     renderHeader();
