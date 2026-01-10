@@ -20362,8 +20362,18 @@ def _provider_library_sync_now() -> dict:
         offset = 0
         total_upserted = 0
 
+        # ✅ Diagnostics
+        total_fetched = 0
+        skipped_no_ccn = 0
+        first_page_debug = None
+
         # Clear errors at start
-        _provider_meta_set(conn, last_sync_at=meta.get("last_sync_at",""), last_row_count=meta.get("last_row_count",0), last_error="")
+        _provider_meta_set(
+            conn,
+            last_sync_at=meta.get("last_sync_at",""),
+            last_row_count=meta.get("last_row_count",0),
+            last_error=""
+        )
 
         while True:
             payload = {
@@ -20378,14 +20388,41 @@ def _provider_library_sync_now() -> dict:
                 payload["properties"] = props  # keep as real array
 
             data = _cms_datastore_query_with_fallback(url, payload, timeout=60)
+
+            # ✅ Capture response shape once (helps confirm CMS is actually returning results)
+            if first_page_debug is None:
+                try:
+                    first_page_debug = {
+                        "top_level_keys": sorted(list((data or {}).keys()))[:30],
+                        "col_ccn": col_ccn,
+                        "col_provider": col_provider,
+                        "col_dba": col_dba,
+                        "props_sent": props,
+                    }
+                except Exception:
+                    first_page_debug = {"note": "failed to build first_page_debug"}
+
             rows = data.get("results") or []
+            if not isinstance(rows, list):
+                # If CMS returns an unexpected shape, record it and stop.
+                _provider_meta_set(
+                    conn,
+                    last_sync_at=meta.get("last_sync_at",""),
+                    last_row_count=0,
+                    last_error=f"CMS results not a list. type={type(rows).__name__}. debug={first_page_debug}",
+                )
+                break
+
             if not rows:
                 break
+
+            total_fetched += len(rows)
 
             # Upsert page
             for row in rows:
                 ccn = str(row.get(col_ccn) or row.get("ccn") or row.get("provider_number") or "").strip()
                 if not ccn:
+                    skipped_no_ccn += 1
                     continue
 
                 provider_name = str(row.get(col_provider) or "").strip()
@@ -20422,10 +20459,27 @@ def _provider_library_sync_now() -> dict:
             conn.commit()
             offset += limit
 
+        # ✅ If we fetched rows but upserted 0, store a “why” message in meta
+        if total_fetched > 0 and total_upserted == 0:
+            _provider_meta_set(
+                conn,
+                last_sync_at=meta.get("last_sync_at",""),
+                last_row_count=0,
+                last_error=f"Fetched {total_fetched} CMS rows but upserted 0. skipped_no_ccn={skipped_no_ccn}. debug={first_page_debug}",
+            )
+
+
         now_iso = dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
         _provider_meta_set(conn, last_sync_at=now_iso, last_row_count=total_upserted, last_error="")
 
-        return {"ok": True, "upserted": total_upserted, "last_sync_at": now_iso}
+        return {
+            "ok": True,
+            "upserted": total_upserted,
+            "last_sync_at": now_iso,
+            "fetched": total_fetched,
+            "skipped_no_ccn": skipped_no_ccn,
+            "debug": first_page_debug,
+        }
 
     except Exception as e:
         try:
@@ -20471,23 +20525,34 @@ def sensys_admin_provider_library_hha_search(
     _require_admin_token(token)
     conn = get_db()
     qq = (q or "").strip()
+
+    # ✅ If no search text, still return a default list so the Admin table isn't empty
     if not qq:
-        return {"results": []}
+        rows = conn.execute(
+            """
+            SELECT ccn, provider_name, dba, city, state, zip, county, phone, fax
+              FROM sensys_provider_library_hha
+             ORDER BY provider_name ASC
+             LIMIT ?
+            """,
+            (int(limit),),
+        ).fetchall()
+        return {"results": [dict(r) for r in rows]}
 
-    rows = conn.execute(
-        """
-        SELECT ccn, provider_name, dba, city, state, zip, county, phone, fax
-          FROM sensys_provider_library_hha
-         WHERE LOWER(provider_name) LIKE ?
-            OR LOWER(dba) LIKE ?
-            OR ccn LIKE ?
-         ORDER BY provider_name ASC
-         LIMIT ?
-        """,
-        (f"%{qq.casefold()}%", f"%{qq.casefold()}%", f"%{qq}%", int(limit)),
-    ).fetchall()
+        rows = conn.execute(
+            """
+            SELECT ccn, provider_name, dba, city, state, zip, county, phone, fax
+              FROM sensys_provider_library_hha
+             WHERE LOWER(provider_name) LIKE ?
+                OR LOWER(dba) LIKE ?
+                OR ccn LIKE ?
+             ORDER BY provider_name ASC
+             LIMIT ?
+            """,
+            (f"%{qq.casefold()}%", f"%{qq.casefold()}%", f"%{qq}%", int(limit)),
+        ).fetchall()
 
-    return {"results": [dict(r) for r in rows]}
+        return {"results": [dict(r) for r in rows]}
 
 
 # -------------------------------
