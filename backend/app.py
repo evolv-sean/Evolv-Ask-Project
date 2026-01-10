@@ -20309,10 +20309,44 @@ def sensys_care_compare_hha_search(
     if props:
         payload["properties"] = props
 
+    # ---------------------------------------------------------
+    # IMPORTANT: CMS DKAN sometimes ignores POST JSON conditions.
+    # If the response doesn't echo our conditions in "query",
+    # retry using GET params (which CMS reliably honors).
+    # ---------------------------------------------------------
     r = requests.post(url, json=payload, timeout=25)
-
     r.raise_for_status()
     data = r.json() or {}
+
+    # If CMS ignored conditions, it often returns the same default first page,
+    # and the response "query" won't include our conditions.
+    resp_query = data.get("query") or {}
+    echoed_conditions = resp_query.get("conditions")
+
+    if conditions and not echoed_conditions:
+        # Fallback to GET with query params
+        params = {
+            "limit": int(limit),
+            "offset": 0,
+            "count": "false",
+            "results": "true",
+            "schema": "false",
+            "keys": "true",
+        }
+        if props:
+            # DKAN accepts properties in query string too
+            # (repeat params: properties=a&properties=b...)
+            # requests supports list values for repeated params
+            params["properties"] = props
+
+        # Some DKAN deployments accept `conditions` as JSON in query string
+        # (array of condition objects / groups).
+        params["conditions"] = json.dumps(conditions)
+
+        r2 = requests.get(url, params=params, timeout=25)
+        r2.raise_for_status()
+        data = r2.json() or {}
+
 
     out = []
     for row in (data.get("results") or []):
@@ -20321,7 +20355,19 @@ def sensys_care_compare_hha_search(
     return {
         "results": out,
         "columns": {"provider": col_provider, "dba": col_dba, "ccn": col_ccn, "phone": col_phone, "fax": col_fax},
+
+        # helpful debug so we can confirm searches are truly changing
+        "applied": {
+            "q": q_merged,
+            "county": county,
+            "city": city,
+            "state": (state or "").strip().upper(),
+            "zip": zip,
+            "ccn": ccn,
+            "conditions_count": len(conditions),
+        }
     }
+
 
 
 # ---------------------------------------------------------------------------
