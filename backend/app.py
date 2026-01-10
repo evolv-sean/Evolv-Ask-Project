@@ -20194,6 +20194,45 @@ def sensys_admission_care_team_unlink(payload: IdOnly, request: Request):
 _CMS_HHA_DATASET_ID = "6jpm-sxkc"  # Home Health Care Agencies dataset id on Provider Data Catalog 
 _CMS_HHA_SCHEMA_CACHE = {"cols": None, "ts": 0}
 
+def _cms_datastore_query_with_fallback(url: str, payload: dict, *, timeout: int = 60) -> dict:
+    """
+    CMS DKAN datastore endpoints support BOTH POST (JSON body) and GET (querystring).
+    We prefer POST (keeps booleans/arrays typed), but some deployments/edges return 400.
+    If POST fails with 400, fallback to GET with safe query param coercion.
+    """
+    headers = {"User-Agent": "sensys/1.0"}
+
+    # 1) Try POST first (preferred)
+    try:
+        r = requests.post(url, json=payload, headers=headers, timeout=timeout)
+        r.raise_for_status()
+        return r.json() or {}
+    except requests.HTTPError as e:
+        resp = getattr(e, "response", None)
+        status = getattr(resp, "status_code", None)
+
+        # Only fallback on 400 (Bad Request). Otherwise re-raise.
+        if status != 400:
+            raise
+
+        # 2) Fallback to GET (querystring)
+        params = {}
+        for k, v in (payload or {}).items():
+            if isinstance(v, bool):
+                params[k] = "true" if v else "false"
+            elif isinstance(v, (list, tuple)):
+                # CMS GET expects comma-separated strings for arrays (ex: properties=a,b,c)
+                params[k] = ",".join([str(x) for x in v if x is not None and str(x).strip() != ""])
+            elif v is None:
+                continue
+            else:
+                params[k] = str(v)
+
+        r2 = requests.get(url, params=params, headers=headers, timeout=timeout)
+        r2.raise_for_status()
+        return r2.json() or {}
+
+
 def _cms_hha_get_cols() -> dict:
     """
     Fetch schema once and cache. Returns a dict of 'normalized_name' -> actual_column_name.
@@ -20215,9 +20254,7 @@ def _cms_hha_get_cols() -> dict:
         "results": False,   # we only need schema here
         "keys": True,
     }
-    r = requests.post(url, json=payload, timeout=20)
-    r.raise_for_status()
-    data = r.json() or {}
+    data = _cms_datastore_query_with_fallback(url, payload, timeout=20)
 
     schema = data.get("schema")
     fields = None
@@ -20340,9 +20377,7 @@ def _provider_library_sync_now() -> dict:
             if props:
                 payload["properties"] = props  # keep as real array
 
-            r = requests.post(url, json=payload, timeout=60)
-            r.raise_for_status()
-            data = r.json() or {}
+            data = _cms_datastore_query_with_fallback(url, payload, timeout=60)
             rows = data.get("results") or []
             if not rows:
                 break
