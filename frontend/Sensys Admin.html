@@ -517,23 +517,37 @@
             </div>
           </div>
 
+          <!-- Subtabs (libraries) -->
+          <div id="plSubtabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"></div>
+
+          <!-- Search row -->
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px;">
             <input class="input" id="plQ" placeholder="Search by provider name, DBA, or CCN…" style="width:min(520px,100%);" />
             <button class="btn" id="plSearchBtn" style="font-weight:900;">Search</button>
+
+            <!-- Pagination controls -->
+            <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+              <div id="plPageInfo" style="font-size:12px;color:#667085;">—</div>
+              <button class="btn" id="plPrevBtn" style="padding:8px 10px;">Prev</button>
+              <button class="btn" id="plNextBtn" style="padding:8px 10px;">Next</button>
+            </div>
           </div>
 
+          <!-- Scrollable table (capped height) -->
           <div style="margin-top:12px;border:1px solid #eef0f5;border-radius:14px;overflow:hidden;">
-            <table style="width:100%;border-collapse:collapse;">
-              <thead style="background:#f9fafb;">
-                <tr>
-                  <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Provider</th>
-                  <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">CCN</th>
-                  <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Location</th>
-                  <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Phone/Fax</th>
-                </tr>
-              </thead>
-              <tbody id="plTbody"></tbody>
-            </table>
+            <div style="max-height:420px;overflow:auto;">
+              <table style="width:100%;border-collapse:collapse;">
+                <thead style="background:#f9fafb;position:sticky;top:0;z-index:2;">
+                  <tr>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Provider</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">CCN</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Location</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Phone/Fax</th>
+                  </tr>
+                </thead>
+                <tbody id="plTbody"></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>      
@@ -2885,18 +2899,97 @@
     }
   }
 
-  async function runProviderLibrarySearch(){
+  // -----------------------------
+  // Provider Library UI state
+  // -----------------------------
+  let plLibraryKey = "hha";      // future: hospice, snf, etc
+  let plOffset = 0;
+  let plLimit = 100;
+  let plHasMore = false;
+
+  function renderProviderLibrarySubtabs(){
+    const wrap = $("plSubtabs");
+    if(!wrap) return;
+
+    const tabs = [
+      { key:"hha", label:"Home Health" },
+      { key:"hospice", label:"Hospice (soon)", disabled:true },
+      { key:"snf", label:"SNF (soon)", disabled:true },
+    ];
+
+    wrap.innerHTML = "";
+    tabs.forEach(t => {
+      const pill = document.createElement("span");
+      pill.className = "tag " + (plLibraryKey === t.key ? "on" : "");
+      pill.style.cursor = t.disabled ? "not-allowed" : "pointer";
+      pill.style.opacity = t.disabled ? "0.55" : "1";
+      pill.textContent = t.label;
+
+      pill.onclick = () => {
+        if(t.disabled) return;
+        plLibraryKey = t.key;
+        plOffset = 0;
+        $("plQ").value = "";
+        renderProviderLibrarySubtabs();
+        runProviderLibrarySearch({ resetPage:true });
+      };
+
+      wrap.appendChild(pill);
+    });
+  }
+
+  function updateProviderLibraryPager(){
+    const info = $("plPageInfo");
+    const prev = $("plPrevBtn");
+    const next = $("plNextBtn");
+    if(!info || !prev || !next) return;
+
+    const pageNum = Math.floor(plOffset / plLimit) + 1;
+    info.textContent = `Page ${pageNum}`;
+
+    prev.disabled = plOffset <= 0;
+    next.disabled = !plHasMore;
+  }
+
+  $("plPrevBtn").onclick = () => {
+    plOffset = Math.max(0, plOffset - plLimit);
+    runProviderLibrarySearch({ resetPage:false });
+  };
+
+  $("plNextBtn").onclick = () => {
+    if(!plHasMore) return;
+    plOffset = plOffset + plLimit;
+    runProviderLibrarySearch({ resetPage:false });
+  };
+
+  async function runProviderLibrarySearch(opts){
+    const resetPage = (opts && opts.resetPage) ? true : false;
+    if(resetPage) plOffset = 0;
+
     const q = ($("plQ").value || "").trim();
     const tb = $("plTbody");
     tb.innerHTML = `<tr><td colspan="4" style="padding:12px;color:#667085;font-size:12px;">Loading…</td></tr>`;
 
-    // ✅ Always call the API. If q is blank, backend returns a default “top” list.
-    const url = `/api/sensys/admin/provider-library/hha-search?q=${encodeURIComponent(q)}&limit=200`;
+    // Only HHA is wired today
+    let endpoint = "/api/sensys/admin/provider-library/hha-search";
+    if(plLibraryKey !== "hha"){
+      tb.innerHTML = `<tr><td colspan="4" style="padding:12px;color:#667085;font-size:12px;">This library is coming soon.</td></tr>`;
+      plHasMore = false;
+      updateProviderLibraryPager();
+      return;
+    }
+
+    const url =
+      `${endpoint}?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(plLimit)}&offset=${encodeURIComponent(plOffset)}`;
+
     const resp = await apiGet(url);
 
     const rows = (resp && resp.results) ? resp.results : [];
+    plHasMore = !!(resp && resp.has_more);
+
     if(!rows.length){
       tb.innerHTML = `<tr><td colspan="4" style="padding:12px;color:#667085;font-size:12px;">No results</td></tr>`;
+      updateProviderLibraryPager();
       return;
     }
 
@@ -2913,7 +3006,14 @@
         </tr>
       `;
     }).join("");
+
+    updateProviderLibraryPager();
   }
+
+  // init
+  renderProviderLibrarySubtabs();
+  updateProviderLibraryPager();
+
 
 
   $("plSearchBtn").onclick = runProviderLibrarySearch;
