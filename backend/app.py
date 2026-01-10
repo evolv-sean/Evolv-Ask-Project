@@ -3233,13 +3233,13 @@ def init_db():
             cur.execute(ddl)
         except sqlite3.Error:
             pass
-    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_ccn", "TEXT")
-    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_name", "TEXT")
-    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_dba", "TEXT")
-    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_city", "TEXT")
-    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_state", "TEXT")
-    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_zip", "TEXT")
-    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_county", "TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_ccn",    "hh_carecompare_ccn TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_name",   "hh_carecompare_name TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_dba",    "hh_carecompare_dba TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_city",   "hh_carecompare_city TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_state",  "hh_carecompare_state TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_zip",    "hh_carecompare_zip TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_county", "hh_carecompare_county TEXT")
 
     # Join table: each DC submission can have multiple services linked
     cur.execute(
@@ -20222,6 +20222,8 @@ def sensys_care_compare_hha_search(
 
     col_addr = _pick_col(cols, ["address", "street"])
     col_phone = _pick_col(cols, ["phone"])
+    col_fax = _pick_col(cols, ["fax"])
+
 
     conditions = []
 
@@ -20263,7 +20265,7 @@ def sensys_care_compare_hha_search(
 
     # Properties to return (keep payload small)
     props = []
-    for c in [col_provider, col_dba, col_ccn, col_addr, col_city, col_state, col_zip, col_county, col_phone]:
+    for c in [col_provider, col_dba, col_ccn, col_addr, col_city, col_state, col_zip, col_county, col_phone, col_fax]:
         if c and c not in props:
             props.append(c)
 
@@ -20286,7 +20288,7 @@ def sensys_care_compare_hha_search(
         # keep original keys too, but also normalize a few common ones for UI convenience
         out.append(row)
 
-    return {"results": out, "columns": {"provider": col_provider, "dba": col_dba, "ccn": col_ccn}}
+    return {"results": out, "columns": {"provider": col_provider, "dba": col_dba, "ccn": col_ccn, "phone": col_phone, "fax": col_fax}}
 
 # ---------------------------------------------------------------------------
 # HTML routes & health check
