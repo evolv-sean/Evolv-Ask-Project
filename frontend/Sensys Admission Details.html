@@ -199,6 +199,53 @@
         </div>
       </div>
     </div>
+    <!-- E-Fax -->
+    <div style="margin-top:12px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div style="font-size:13px;color:#111827;font-weight:800;">E-Fax</div>
+
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button id="faxRefreshBtn"
+            style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+            Refresh Fax
+          </button>
+        </div>
+      </div>
+
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <input id="faxToNumber" placeholder="To fax (E.164 preferred, e.g. +15551234567)"
+          style="width:280px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+        <select id="faxPdfSelect"
+          style="flex:1;min-width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+          <option value="">Select PDF to fax…</option>
+        </select>
+
+        <button id="sendFaxBtn"
+          style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+          Send Fax
+        </button>
+      </div>
+
+      <div style="margin-top:8px;">
+        <input id="faxCoverText" placeholder="Cover page text (optional)"
+          style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+      </div>
+
+      <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+        <table style="width:100%;border-collapse:collapse;min-width:760px;">
+          <thead>
+            <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">To</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">PDF</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Created</th>
+              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Status</th>
+            </tr>
+          </thead>
+          <tbody id="faxTbody"></tbody>
+        </table>
+      </div>
+    </div>
 
     <!-- DC submissions (full width) -->
     <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
@@ -631,6 +678,7 @@
   let AGENCIES = [];
   let NOTE_TEMPLATES = []; // ✅ NEW
   let SMS_LOG = [];
+  let FAX_LOG = [];
   let PDFS = [];
 
   // ✅ NEW: SMS auto refresh controls (lightweight)
@@ -867,6 +915,36 @@
       <tr style="border-bottom:1px solid #eef0f5;">
         <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.to_phone || '')}</td>
         <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.message || '')}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.created_at || '')}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">
+          ${escapeHtml(r.status || '')}${r.error ? (' • ' + escapeHtml(r.error)) : ''}
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function renderFaxPdfSelect(){
+    const sel = document.getElementById('faxPdfSelect');
+    if(!sel) return;
+
+    const opts = ['<option value="">Select PDF to fax…</option>']
+      .concat((PDFS || []).map(p => {
+        const label = (p.original_filename || ('pdf_id=' + p.id)) + (p.doc_type ? (' • ' + p.doc_type) : '');
+        return `<option value="${p.id}">${escapeHtml(label)}</option>`;
+      }));
+
+    sel.innerHTML = opts.join('');
+  }
+
+  function renderFax(){
+    const tb = document.getElementById('faxTbody');
+    if(!tb) return;
+
+    const rows = (FAX_LOG || []);
+    tb.innerHTML = rows.map(r => `
+      <tr style="border-bottom:1px solid #eef0f5;">
+        <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.to_fax || '')}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(String(r.pdf_id || ''))}</td>
         <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.created_at || '')}</td>
         <td style="padding:10px;font-size:13px;color:#111827;">
           ${escapeHtml(r.status || '')}${r.error ? (' • ' + escapeHtml(r.error)) : ''}
@@ -1467,6 +1545,7 @@
       api('/api/sensys/agencies', { method:'GET' }),
       api('/api/sensys/note-templates', { method:'GET' }),
       api('/api/sensys/admission-sms/' + ADMISSION_ID, { method:'GET' }),
+      api('/api/sensys/admission-fax/' + ADMISSION_ID, { method:'GET' }).catch(() => ({ fax: [] })),
       api('/api/sensys/admissions/' + ADMISSION_ID + '/pdfs', { method:'GET' }).catch(() => ({ pdfs: [] }))
     ]);
 
@@ -1480,12 +1559,14 @@
     renderNoteTemplatesSelect();
     renderDynamicNoteFieldsForSelectedTemplate();
     SMS_LOG = (smsLogs && smsLogs.sms) || [];
+    FAX_LOG = (faxLogs && faxLogs.fax) || [];
     PDFS = (pdfsResp && pdfsResp.pdfs) || [];
 
     renderHeader();
     renderTasks();
     renderNotes();
     renderSms();
+    renderFax();       // ✅ NEW
     renderDc();
     renderDcServicesMulti();
     renderReferralsSelect();
@@ -1493,6 +1574,7 @@
     renderAppointmentsSelect();
     renderAppointments();
     renderPdfs();              // ✅ NEW
+    renderFaxPdfSelect(); // ✅ NEW (keeps fax dropdown in sync)
     renderCareTeamSelect();
     renderCareTeamLinked();
 
@@ -1531,6 +1613,44 @@
 
     }catch(e){
       showMsg(e.message || 'SMS not sent.');
+    }
+  });
+
+  document.getElementById('sendFaxBtn')?.addEventListener('click', async () => {
+    try{
+      showMsg('');
+      if(!ADMISSION_ID) throw new Error("Fax not sent: missing ADMISSION_ID.");
+
+      const to_fax = document.getElementById('faxToNumber').value.trim();
+      const pdf_id = Number(document.getElementById('faxPdfSelect').value || 0);
+      const cover_text = document.getElementById('faxCoverText').value.trim();
+
+      if(!to_fax) throw new Error("Fax not sent: missing To fax.");
+      if(!pdf_id) throw new Error("Fax not sent: select a PDF.");
+
+      const resp = await api('/api/sensys/admission-fax/send', {
+        method:'POST',
+        body: JSON.stringify({
+          admission_id: Number(ADMISSION_ID),
+          to_fax,
+          pdf_id,
+          cover_text
+        })
+      });
+
+      showMsg(`Fax submitted • fax_log_id=${resp.id} • rc_fax_id=${resp.fax_id}`);
+      await loadAll();
+    }catch(e){
+      showMsg(e.message || 'Fax not sent.');
+    }
+  });
+
+  document.getElementById('faxRefreshBtn')?.addEventListener('click', async () => {
+    try{
+      showMsg('');
+      await loadAll();
+    }catch(e){
+      showMsg(e.message || 'Fax refresh failed.');
     }
   });
 
