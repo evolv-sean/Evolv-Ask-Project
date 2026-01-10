@@ -776,6 +776,74 @@ def send_sms_rc(to_number: str, text: str, from_number: str | None = None):
 
     return data
 
+def send_fax_rc(
+    to_number: str,
+    pdf_path: str,
+    cover_text: str = "",
+    from_number: str | None = None,
+    fax_resolution: str = "High",
+):
+    """
+    RingCentral Fax API: multipart form-data with:
+      - a JSON 'body' part describing recipients + cover/resolution
+      - a file part (PDF)
+    Docs: Fax uses multipart payloads. :contentReference[oaicite:3]{index=3}
+    """
+    token = _rc_get_access_token()
+
+    from_used = _normalize_e164((from_number or RC_FROM_NUMBER or "").strip())
+    to_used = _normalize_e164((to_number or "").strip())
+
+    if not to_used:
+        raise Exception("Missing to fax number")
+    if not from_used:
+        raise Exception("RC_FROM_NUMBER is not configured")
+    if not pdf_path:
+        raise Exception("Missing pdf_path")
+
+    logger.info("[RC][FAX][REQUEST] from=%s to=%s pdf=%s server=%s", from_used, to_used, pdf_path, RC_SERVER_URL)
+
+    body_obj = {
+        "to": [{"phoneNumber": to_used}],
+        "faxResolution": (fax_resolution or "High"),
+    }
+    if cover_text:
+        body_obj["coverPageText"] = cover_text
+
+    files = {
+        # 'body' is a JSON part
+        "body": (None, json.dumps(body_obj), "application/json"),
+        # attachment part
+        "attachment": (os.path.basename(pdf_path), open(pdf_path, "rb"), "application/pdf"),
+    }
+
+    try:
+        r = requests.post(
+            f"{RC_SERVER_URL}/restapi/v1.0/account/~/extension/~/fax",
+            headers={"Authorization": f"Bearer {token}"},
+            files=files,
+            timeout=60,
+        )
+    finally:
+        try:
+            files["attachment"][1].close()
+        except Exception:
+            pass
+
+    if not r.ok:
+        body_snip = (r.text or "")[:1200]
+        logger.error("[RC][FAX][HTTP_ERROR] status=%s body=%s", r.status_code, body_snip)
+        r.raise_for_status()
+
+    data = r.json()
+    logger.info(
+        "[RC][FAX][OK] rc_id=%s status=%s",
+        (data.get("id") or ""),
+        (data.get("messageStatus") or data.get("status") or ""),
+    )
+    return data
+
+
 def rc_get_message_status(message_id: str) -> dict:
     """
     Fetch message details from RingCentral message-store so we can see
@@ -2707,6 +2775,51 @@ def init_db():
     except sqlite3.Error:
         # Will fail with 'duplicate column name' once it already exists – that's fine.
         pass
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_fax_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT DEFAULT (datetime('now')),
+            created_by_user_id INTEGER,
+
+            admission_id INTEGER,
+            direction TEXT DEFAULT 'outbound',
+
+            to_fax TEXT NOT NULL,
+            from_fax TEXT,
+            cover_text TEXT,
+
+            -- link to stored PDF
+            pdf_id INTEGER,
+
+            -- RingCentral identifiers/status
+            rc_fax_id TEXT,
+            status TEXT,
+            error TEXT,
+            rc_response_json TEXT,
+
+            FOREIGN KEY(admission_id) REFERENCES sensys_admissions(id),
+            FOREIGN KEY(pdf_id) REFERENCES sensys_pdf_files(id)
+        )
+        """
+    )
+
+    # ✅ SAFE MIGRATIONS for sensys_fax_log (older DBs / future proof)
+    for ddl in [
+        "ALTER TABLE sensys_fax_log ADD COLUMN admission_id INTEGER",
+        "ALTER TABLE sensys_fax_log ADD COLUMN direction TEXT DEFAULT 'outbound'",
+        "ALTER TABLE sensys_fax_log ADD COLUMN cover_text TEXT",
+        "ALTER TABLE sensys_fax_log ADD COLUMN pdf_id INTEGER",
+        "ALTER TABLE sensys_fax_log ADD COLUMN rc_response_json TEXT",
+    ]:
+        try:
+            cur.execute(ddl)
+        except sqlite3.Error:
+            pass
+
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_fax_log_adm ON sensys_fax_log(admission_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_fax_log_created ON sensys_fax_log(created_at)")
 
 
     # AI settings (editable later via Admin)
@@ -18804,6 +18917,15 @@ class SensysAdmissionSmsSend(BaseModel):
     from_phone: Optional[str] = None  # optional override (rare)
 
 
+class SensysAdmissionFaxSend(BaseModel):
+    admission_id: int
+    to_fax: str
+    pdf_id: int
+    cover_text: Optional[str] = None
+    from_fax: Optional[str] = None  # optional override (rare)
+    fax_resolution: Optional[str] = "High"  # RingCentral supports "High"/"Low"
+
+
 @app.get("/api/sensys/admissions/{admission_id}/pdfs")
 def sensys_admission_pdfs_list(admission_id: int, request: Request):
     u = _sensys_require_user(request)
@@ -18969,6 +19091,189 @@ def sensys_admission_sms_list(admission_id: int, request: Request):
     finally:
         conn.close()
 
+@app.get("/api/sensys/admission-fax/{admission_id}")
+def sensys_admission_fax_list(admission_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    try:
+        _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+
+        rows = conn.execute(
+            """
+            SELECT
+                id, created_at, created_by_user_id, admission_id, direction,
+                to_fax, from_fax, cover_text, pdf_id,
+                rc_fax_id, status, error
+            FROM sensys_fax_log
+            WHERE admission_id = ?
+            ORDER BY datetime(created_at) DESC, id DESC
+            LIMIT 100
+            """,
+            (int(admission_id),),
+        ).fetchall()
+
+        return {"ok": True, "fax": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+
+@app.post("/api/sensys/admission-fax/send")
+def sensys_admission_fax_send(payload: SensysAdmissionFaxSend, request: Request):
+    u = _sensys_require_user(request)
+
+    admission_id = int(payload.admission_id)
+    to_fax = (payload.to_fax or "").strip()
+    pdf_id = int(payload.pdf_id)
+    cover_text = (payload.cover_text or "").strip()
+    from_fax = (payload.from_fax or "").strip() or RC_FROM_NUMBER
+    fax_resolution = (payload.fax_resolution or "High").strip()
+
+    if not admission_id:
+        raise HTTPException(status_code=400, detail="admission_id is required")
+    if not to_fax:
+        raise HTTPException(status_code=400, detail="to_fax is required")
+    if not pdf_id:
+        raise HTTPException(status_code=400, detail="pdf_id is required")
+    if not from_fax:
+        raise HTTPException(status_code=400, detail="RC_FROM_NUMBER is not configured")
+
+    conn = get_db()
+    try:
+        _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+
+        # verify PDF belongs to this admission and exists on disk
+        row = conn.execute(
+            """
+            SELECT id, admission_id, stored_filename, original_filename, content_type
+            FROM sensys_pdf_files
+            WHERE id = ? AND admission_id = ?
+            """,
+            (int(pdf_id), int(admission_id)),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="PDF not found for this admission")
+
+        stored = row["stored_filename"]
+        pdf_path = PDF_STORAGE_DIR / stored
+        if not pdf_path.exists():
+            raise HTTPException(status_code=404, detail="PDF file missing on disk")
+
+        logger.info(
+            "[SENSYS][FAX][SEND_START] user_id=%s admission_id=%s to=%s pdf_id=%s",
+            int(u["user_id"]),
+            admission_id,
+            to_fax,
+            pdf_id,
+        )
+
+        rc_resp = None
+        rc_json = ""
+        try:
+            rc_resp = send_fax_rc(
+                to_number=to_fax,
+                pdf_path=str(pdf_path),
+                cover_text=cover_text,
+                from_number=from_fax,
+                fax_resolution=fax_resolution,
+            )
+            rc_id = (rc_resp.get("id") or "")
+            status = (rc_resp.get("messageStatus") or rc_resp.get("status") or "queued") or "queued"
+            error = ""
+            try:
+                rc_json = json.dumps(rc_resp)[:8000]
+            except Exception:
+                rc_json = ""
+        except Exception as e:
+            logger.exception("[SENSYS][FAX][SEND_FAILED] admission_id=%s to=%s", admission_id, to_fax)
+            rc_id = ""
+            status = "error"
+            error = str(e)
+            try:
+                rc_json = json.dumps({"error": str(e)})[:8000]
+            except Exception:
+                rc_json = ""
+
+        cur = conn.execute(
+            """
+            INSERT INTO sensys_fax_log
+              (created_by_user_id, admission_id, direction, to_fax, from_fax, cover_text, pdf_id, rc_fax_id, status, error, rc_response_json)
+            VALUES
+              (?, ?, 'outbound', ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(u["user_id"]),
+                admission_id,
+                to_fax,
+                from_fax,
+                cover_text,
+                int(pdf_id),
+                rc_id,
+                status,
+                error,
+                rc_json,
+            ),
+        )
+        conn.commit()
+
+        ok_statuses = {"queued", "sending", "sent", "delivered"}
+        if (status or "").strip().lower() not in ok_statuses:
+            raise HTTPException(status_code=500, detail=f"Fax not accepted by provider (status={status})")
+
+        return {"ok": True, "id": int(cur.lastrowid), "fax_id": rc_id, "provider_status": status}
+    finally:
+        conn.close()
+
+
+@app.post("/api/sensys/admission-fax/refresh-status/{fax_log_id}")
+def sensys_admission_fax_refresh_status(fax_log_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    try:
+        row = conn.execute(
+            """
+            SELECT id, admission_id, rc_fax_id, status
+            FROM sensys_fax_log
+            WHERE id = ?
+            """,
+            (int(fax_log_id),),
+        ).fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Fax log row not found")
+
+        admission_id = int(row["admission_id"] or 0)
+        _sensys_assert_admission_access(conn, int(u["user_id"]), admission_id)
+
+        rc_id = (row["rc_fax_id"] or "").strip()
+        if not rc_id:
+            raise HTTPException(status_code=400, detail="No rc_fax_id on this Fax row")
+
+        # Fax statuses live in Message Store as well. :contentReference[oaicite:4]{index=4}
+        rc = rc_get_message_status(rc_id)
+
+        new_status = (rc.get("messageStatus") or rc.get("status") or row["status"] or "").strip()
+        error_code = (rc.get("errorCode") or "").strip()
+
+        try:
+            rc_json = json.dumps(rc)[:8000]
+        except Exception:
+            rc_json = ""
+
+        conn.execute(
+            """
+            UPDATE sensys_fax_log
+               SET status = ?,
+                   error = CASE WHEN ? != '' THEN ? ELSE error END,
+                   rc_response_json = COALESCE(NULLIF(?, ''), rc_response_json)
+             WHERE id = ?
+            """,
+            (new_status, error_code, error_code, rc_json, int(fax_log_id)),
+        )
+        conn.commit()
+
+        return {"ok": True, "fax_log_id": int(fax_log_id), "provider_status": new_status, "errorCode": error_code}
+    finally:
+        conn.close()
 
 @app.post("/api/sensys/admission-sms/send")
 def sensys_admission_sms_send(payload: SensysAdmissionSmsSend, request: Request):
