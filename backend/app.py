@@ -20358,7 +20358,7 @@ def _provider_library_sync_now() -> dict:
 
         url = f"https://data.cms.gov/provider-data/api/1/datastore/query/{_CMS_HHA_DATASET_ID}/0"
 
-        limit = 2000
+        limit = 1500
         offset = 0
         total_upserted = 0
 
