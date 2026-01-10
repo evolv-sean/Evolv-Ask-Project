@@ -491,6 +491,10 @@
 
       <div id="ccErr" style="display:none;margin-top:10px;padding:10px;border-radius:12px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);color:#991b1b;font-size:12px;"></div>
 
+      <div id="ccStatus" style="display:none;margin-top:10px;padding:10px;border-radius:12px;background:#f9fafb;border:1px solid #eef0f4;color:#475467;font-size:12px;">
+        —
+      </div>
+
       <div style="margin-top:12px;border:1px solid #eef0f4;border-radius:14px;overflow:hidden;">
         <div style="max-height:360px;overflow:auto;">
           <table style="width:100%;border-collapse:collapse;">
@@ -1008,18 +1012,69 @@
   // ===============================
   let CARE_COMPARE_SELECTED = null;
 
+  // ✅ NEW: control in-flight searches so UI feels fluid
+  let CC_SEARCH_SEQ = 0;
+
+  function setCcStatus(text, isBusy){
+    const st = document.getElementById("ccStatus");
+    const btn = document.getElementById("ccSearchBtn");
+
+    if(st){
+      st.style.display = text ? "block" : "none";
+      st.textContent = text || "";
+    }
+    if(btn){
+      btn.disabled = !!isBusy;
+      btn.style.opacity = isBusy ? "0.75" : "1";
+      btn.style.cursor = isBusy ? "not-allowed" : "pointer";
+      btn.textContent = isBusy ? "Searching…" : "Search";
+    }
+  }
+
+  function resetCareCompareModal(){
+    // clear inputs
+    ["cc_q","cc_county","cc_city","cc_state","cc_zip","cc_ccn"].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el) el.value = "";
+    });
+
+    // clear errors + status
+    const err = document.getElementById("ccErr");
+    if(err){
+      err.style.display = "none";
+      err.textContent = "";
+    }
+    setCcStatus("", false);
+
+    // clear results
+    const tbody = document.getElementById("ccTbody");
+    if(tbody) tbody.innerHTML = "";
+
+    // OPTIONAL: don’t clear selection (keeps last selected HH on the DC screen)
+    // CARE_COMPARE_SELECTED = null;
+  }
+
   function openCareCompareModal(){
     document.getElementById("careCompareModalBackdrop").style.display = "flex";
+    // start fresh each time you open
+    // (if you prefer to keep the last search when re-opening, remove next line)
+    resetCareCompareModal();
     document.getElementById("cc_q").focus();
   }
+
   function closeCareCompareModal(){
     document.getElementById("careCompareModalBackdrop").style.display = "none";
+    // ✅ requirement: clear when you close so user can search again next time
+    resetCareCompareModal();
   }
 
   async function runCareCompareSearch(){
     const err = document.getElementById("ccErr");
     err.style.display = "none";
     err.textContent = "";
+
+    const tbody = document.getElementById("ccTbody");
+    if(tbody) tbody.innerHTML = "";
 
     const q = (document.getElementById("cc_q").value || "").trim();
     const county = (document.getElementById("cc_county").value || "").trim();
@@ -1028,39 +1083,54 @@
     const zip = (document.getElementById("cc_zip").value || "").trim();
     const ccn = (document.getElementById("cc_ccn").value || "").trim();
 
-    const qs = new URLSearchParams({
-      q, county, city, state, zip, ccn,
-      // your api() helper already adds token via query/header in your project
-    });
+    // ✅ nice UX: require at least one filter
+    if(!q && !county && !city && !state && !zip && !ccn){
+      err.style.display = "block";
+      err.textContent = "Enter at least one search field (name/DBA, county, city, state, zip, or CCN).";
+      setCcStatus("", false);
+      return;
+    }
+
+    const qs = new URLSearchParams({ q, county, city, state, zip, ccn });
+
+    // ✅ “latest search wins”
+    const mySeq = ++CC_SEARCH_SEQ;
+
+    setCcStatus("Searching Care Compare…", true);
 
     let resp;
     try{
       resp = await api(`/api/sensys/care-compare/hha-search?${qs.toString()}`, { method:"GET" });
     }catch(e){
+      // only show error if this is still the latest search
+      if(mySeq !== CC_SEARCH_SEQ) return;
+
       err.style.display = "block";
       err.textContent = "Search failed. Try again or narrow the search.";
+      setCcStatus("", false);
       return;
     }
+
+    // if another search started after this one, ignore this response
+    if(mySeq !== CC_SEARCH_SEQ) return;
 
     const results = (resp && resp.results) ? resp.results : [];
     const cols = (resp && resp.columns) ? resp.columns : {};
-
     const providerCol = cols.provider || null;
     const dbaCol = cols.dba || null;
     const ccnCol = cols.ccn || null;
-
-    const tbody = document.getElementById("ccTbody");
-    tbody.innerHTML = "";
+    const phoneCol = cols.phone || null;
+    const faxCol = cols.fax || null;
 
     if(!results.length){
-      tbody.innerHTML = `<tr><td colspan="4" style="padding:12px;color:#667085;font-size:12px;">No results</td></tr>`;
+      if(tbody){
+        tbody.innerHTML = `<tr><td colspan="4" style="padding:12px;color:#667085;font-size:12px;">No results</td></tr>`;
+      }
+      setCcStatus("Done • 0 results", false);
       return;
     }
 
-    function val(row, keyGuess){
-      // best effort: use known column name if provided, else fall back to common guesses
-      return (row && row[keyGuess]) ? String(row[keyGuess]) : "";
-    }
+    setCcStatus(`Loaded ${results.length} result${results.length===1?"":"s"} • Scroll to view`, false);
 
     results.forEach((row) => {
       const name = providerCol ? (row[providerCol] || "") : (row["provider_name"] || row["provider"] || row["name"] || "");
@@ -1072,7 +1142,17 @@
       const zipV = row["zip"] || row["zip_code"] || row["provider_zip_code"] || "";
       const countyV = row["county"] || row["county_name"] || "";
 
-      const displayName = dba ? `${name}<div style="font-size:11px;color:#667085;margin-top:2px;">DBA: ${dba}</div>` : `${name}`;
+      const phoneV =
+        (phoneCol ? (row[phoneCol] || "") : "") ||
+        row["phone"] || row["phone_number"] || row["provider_phone"] || row["telephone_number"] || "";
+
+      const faxV =
+        (faxCol ? (row[faxCol] || "") : "") ||
+        row["fax"] || row["fax_number"] || row["provider_fax"] || "";
+
+      const displayName = dba
+        ? `${name}<div style="font-size:11px;color:#667085;margin-top:2px;">DBA: ${dba}</div>`
+        : `${name}`;
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
@@ -1082,6 +1162,10 @@
         <td style="padding:10px;border-top:1px solid #eef0f4;font-size:12px;color:#475467;">
           ${[cityV, stateV, zipV].filter(Boolean).join(", ")}
           ${countyV ? `<div style="font-size:11px;color:#667085;margin-top:2px;">${countyV} County</div>` : ""}
+          ${(phoneV || faxV) ? `<div style="font-size:11px;color:#111827;margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;">
+              ${phoneV ? `<span>📞 ${phoneV}</span>` : ``}
+              ${faxV ? `<span>📠 ${faxV}</span>` : ``}
+            </div>` : ``}
         </td>
         <td style="padding:10px;border-top:1px solid #eef0f4;font-size:12px;color:#475467;">${ccnV || "—"}</td>
         <td style="padding:10px;border-top:1px solid #eef0f4;text-align:right;">
@@ -1100,9 +1184,10 @@
           state: String(stateV || "").trim(),
           zip: String(zipV || "").trim(),
           county: String(countyV || "").trim(),
+          phone: String(phoneV || "").trim(),
+          fax: String(faxV || "").trim(),
         };
 
-        // Put a special option into hhAgencySelect so the UI shows what was selected
         const sel = document.getElementById("hhAgencySelect");
         const optVal = `carecompare|${CARE_COMPARE_SELECTED.ccn || CARE_COMPARE_SELECTED.name}`;
 
@@ -1122,6 +1207,7 @@
     });
   }
 
+
   // Wire buttons
   document.getElementById("careCompareOpenBtn").onclick = openCareCompareModal;
   document.getElementById("careCompareCloseBtn").onclick = closeCareCompareModal;
@@ -1131,7 +1217,7 @@
   // Enter key triggers search
   ["cc_q","cc_county","cc_city","cc_state","cc_zip","cc_ccn"].forEach(id=>{
     document.getElementById(id).addEventListener("keydown", (e)=>{
-      if(e.key === "Enter") runCareCompareSearch();
+      if(e.key === "Enter" && !document.getElementById("ccSearchBtn").disabled) runCareCompareSearch();
     });
   });
 
