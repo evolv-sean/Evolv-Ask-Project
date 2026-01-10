@@ -2874,13 +2874,12 @@
   async function runProviderLibrarySearch(){
     const q = ($("plQ").value || "").trim();
     const tb = $("plTbody");
-    tb.innerHTML = "";
-    if(!q){
-      tb.innerHTML = `<tr><td colspan="4" style="padding:12px;color:#667085;font-size:12px;">Enter a search term</td></tr>`;
-      return;
-    }
+    tb.innerHTML = `<tr><td colspan="4" style="padding:12px;color:#667085;font-size:12px;">Loading…</td></tr>`;
 
-    const resp = await apiGet(`/api/sensys/admin/provider-library/hha-search?q=${encodeURIComponent(q)}&limit=200`);
+    // ✅ Always call the API. If q is blank, backend returns a default “top” list.
+    const url = `/api/sensys/admin/provider-library/hha-search?q=${encodeURIComponent(q)}&limit=200`;
+    const resp = await apiGet(url);
+
     const rows = (resp && resp.results) ? resp.results : [];
     if(!rows.length){
       tb.innerHTML = `<tr><td colspan="4" style="padding:12px;color:#667085;font-size:12px;">No results</td></tr>`;
@@ -2901,6 +2900,7 @@
       `;
     }).join("");
   }
+
 
   $("plSearchBtn").onclick = runProviderLibrarySearch;
   $("plQ").addEventListener("keydown", (e)=>{ if(e.key==="Enter") runProviderLibrarySearch(); });
@@ -2930,14 +2930,14 @@
     }
   };
 
-  // Load meta when panel opens (lightweight)
-  const _origShowPanel = showPanel;
   showPanel = (which) => {
     _origShowPanel(which);
     if(which==="providerLibrary"){
       loadProviderLibraryMeta();
+      runProviderLibrarySearch(); // ✅ will browse first 200 when blank
     }
   };
+
 
   // picking a file no longer uploads immediately
   function handleBulkFilePicked(file){
