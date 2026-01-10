@@ -204,6 +204,11 @@
     <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
         <div style="font-size:13px;color:#111827;font-weight:800;">DC Submissions</div>
+
+        <button id="careCompareOpenBtn" title="Search Care Compare (national)"
+          style="width:38px;height:38px;border-radius:12px;border:1px solid #d0d5dd;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:900;">
+          🔎
+        </button>
       </div>
 
       <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
@@ -449,6 +454,64 @@
           Close
         </button>
       </div>
+    </div>
+  </div>
+</div>
+<!-- Care Compare (Home Health) Search modal -->
+<div id="careCompareModalBackdrop" style="position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;padding:16px;z-index:9999;">
+  <div style="width:min(980px,96vw);background:#fff;border-radius:16px;border:1px solid #e6e8ef;box-shadow:0 18px 60px rgba(0,0,0,.25);overflow:hidden;">
+    <div style="padding:14px 16px;border-bottom:1px solid #eef0f4;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+      <div>
+        <div style="font-size:14px;font-weight:900;color:#111827;">Care Compare — Home Health Agency Search</div>
+        <div style="margin-top:2px;font-size:12px;color:#667085;">Search national CMS provider data by name/DBA, county, city, zip, CCN.</div>
+      </div>
+      <button id="careCompareCloseBtn" style="width:40px;height:40px;border-radius:12px;border:1px solid #d0d5dd;background:#fff;cursor:pointer;font-weight:900;">✕</button>
+    </div>
+
+    <div style="padding:14px 16px;">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+        <input id="cc_q" placeholder="Agency name or DBA"
+          style="width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+        <input id="cc_county" placeholder="County"
+          style="width:160px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+        <input id="cc_city" placeholder="City"
+          style="width:160px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+        <input id="cc_state" placeholder="State"
+          style="width:90px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+        <input id="cc_zip" placeholder="Zip"
+          style="width:120px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+        <input id="cc_ccn" placeholder="CCN"
+          style="width:120px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+
+        <button id="ccSearchBtn"
+          style="padding:10px 12px;border-radius:12px;border:1px solid #0d3b66;background:#0d3b66;color:#fff;cursor:pointer;font-size:12px;font-weight:900;">
+          Search
+        </button>
+      </div>
+
+      <div id="ccErr" style="display:none;margin-top:10px;padding:10px;border-radius:12px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);color:#991b1b;font-size:12px;"></div>
+
+      <div style="margin-top:12px;border:1px solid #eef0f4;border-radius:14px;overflow:hidden;">
+        <div style="max-height:360px;overflow:auto;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="background:#f8fafc;">
+                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Name / DBA</th>
+                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Location</th>
+                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">CCN</th>
+                <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="ccTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div style="padding:12px 16px;border-top:1px solid #eef0f4;display:flex;justify-content:flex-end;gap:10px;">
+      <button id="ccCancelBtn" style="padding:10px 12px;border-radius:12px;border:1px solid #d0d5dd;background:#fff;cursor:pointer;font-size:12px;font-weight:800;">
+        Close
+      </button>
     </div>
   </div>
 </div>
@@ -939,6 +1002,138 @@
     const s = SERVICES.find(x => Number(x.id) === Number(id));
     return s ? (s.name + ' (' + s.service_type + ')') : ('#' + id);
   }
+
+  // ===============================
+  // Care Compare (Home Health) modal
+  // ===============================
+  let CARE_COMPARE_SELECTED = null;
+
+  function openCareCompareModal(){
+    document.getElementById("careCompareModalBackdrop").style.display = "flex";
+    document.getElementById("cc_q").focus();
+  }
+  function closeCareCompareModal(){
+    document.getElementById("careCompareModalBackdrop").style.display = "none";
+  }
+
+  async function runCareCompareSearch(){
+    const err = document.getElementById("ccErr");
+    err.style.display = "none";
+    err.textContent = "";
+
+    const q = (document.getElementById("cc_q").value || "").trim();
+    const county = (document.getElementById("cc_county").value || "").trim();
+    const city = (document.getElementById("cc_city").value || "").trim();
+    const state = (document.getElementById("cc_state").value || "").trim();
+    const zip = (document.getElementById("cc_zip").value || "").trim();
+    const ccn = (document.getElementById("cc_ccn").value || "").trim();
+
+    const qs = new URLSearchParams({
+      q, county, city, state, zip, ccn,
+      // your api() helper already adds token via query/header in your project
+    });
+
+    let resp;
+    try{
+      resp = await api(`/api/sensys/care-compare/hha-search?${qs.toString()}`, { method:"GET" });
+    }catch(e){
+      err.style.display = "block";
+      err.textContent = "Search failed. Try again or narrow the search.";
+      return;
+    }
+
+    const results = (resp && resp.results) ? resp.results : [];
+    const cols = (resp && resp.columns) ? resp.columns : {};
+
+    const providerCol = cols.provider || null;
+    const dbaCol = cols.dba || null;
+    const ccnCol = cols.ccn || null;
+
+    const tbody = document.getElementById("ccTbody");
+    tbody.innerHTML = "";
+
+    if(!results.length){
+      tbody.innerHTML = `<tr><td colspan="4" style="padding:12px;color:#667085;font-size:12px;">No results</td></tr>`;
+      return;
+    }
+
+    function val(row, keyGuess){
+      // best effort: use known column name if provided, else fall back to common guesses
+      return (row && row[keyGuess]) ? String(row[keyGuess]) : "";
+    }
+
+    results.forEach((row) => {
+      const name = providerCol ? (row[providerCol] || "") : (row["provider_name"] || row["provider"] || row["name"] || "");
+      const dba = dbaCol ? (row[dbaCol] || "") : (row["dba"] || row["doing_business_as_name"] || "");
+      const ccnV = ccnCol ? (row[ccnCol] || "") : (row["ccn"] || row["provider_number"] || "");
+
+      const cityV = row["city"] || row["provider_city"] || row["city_name"] || row["provider_city_name"] || "";
+      const stateV = row["state"] || row["provider_state"] || row["state_name"] || "";
+      const zipV = row["zip"] || row["zip_code"] || row["provider_zip_code"] || "";
+      const countyV = row["county"] || row["county_name"] || "";
+
+      const displayName = dba ? `${name}<div style="font-size:11px;color:#667085;margin-top:2px;">DBA: ${dba}</div>` : `${name}`;
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td style="padding:10px;border-top:1px solid #eef0f4;font-size:12px;color:#111827;">
+          ${displayName}
+        </td>
+        <td style="padding:10px;border-top:1px solid #eef0f4;font-size:12px;color:#475467;">
+          ${[cityV, stateV, zipV].filter(Boolean).join(", ")}
+          ${countyV ? `<div style="font-size:11px;color:#667085;margin-top:2px;">${countyV} County</div>` : ""}
+        </td>
+        <td style="padding:10px;border-top:1px solid #eef0f4;font-size:12px;color:#475467;">${ccnV || "—"}</td>
+        <td style="padding:10px;border-top:1px solid #eef0f4;text-align:right;">
+          <button style="padding:8px 10px;border-radius:10px;border:1px solid #0d3b66;background:#fff;color:#0d3b66;cursor:pointer;font-size:12px;font-weight:900;">
+            Select
+          </button>
+        </td>
+      `;
+
+      tr.querySelector("button").onclick = () => {
+        CARE_COMPARE_SELECTED = {
+          name: String(name || "").trim(),
+          dba: String(dba || "").trim(),
+          ccn: String(ccnV || "").trim(),
+          city: String(cityV || "").trim(),
+          state: String(stateV || "").trim(),
+          zip: String(zipV || "").trim(),
+          county: String(countyV || "").trim(),
+        };
+
+        // Put a special option into hhAgencySelect so the UI shows what was selected
+        const sel = document.getElementById("hhAgencySelect");
+        const optVal = `carecompare|${CARE_COMPARE_SELECTED.ccn || CARE_COMPARE_SELECTED.name}`;
+
+        let opt = Array.from(sel.options).find(o => o.value === optVal);
+        if(!opt){
+          opt = document.createElement("option");
+          opt.value = optVal;
+          opt.textContent = `Care Compare: ${CARE_COMPARE_SELECTED.dba || CARE_COMPARE_SELECTED.name} (${CARE_COMPARE_SELECTED.city || ""}${CARE_COMPARE_SELECTED.state ? ", "+CARE_COMPARE_SELECTED.state : ""})`;
+          sel.appendChild(opt);
+        }
+        sel.value = optVal;
+
+        closeCareCompareModal();
+      };
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  // Wire buttons
+  document.getElementById("careCompareOpenBtn").onclick = openCareCompareModal;
+  document.getElementById("careCompareCloseBtn").onclick = closeCareCompareModal;
+  document.getElementById("ccCancelBtn").onclick = closeCareCompareModal;
+  document.getElementById("ccSearchBtn").onclick = runCareCompareSearch;
+
+  // Enter key triggers search
+  ["cc_q","cc_county","cc_city","cc_state","cc_zip","cc_ccn"].forEach(id=>{
+    document.getElementById(id).addEventListener("keydown", (e)=>{
+      if(e.key === "Enter") runCareCompareSearch();
+    });
+  });
 
   function openDcNoteModal(meta, text){
     const bd = document.getElementById("dcNoteModalBackdrop");
@@ -1440,9 +1635,15 @@
       showMsg('');
       
       const preferred = new Set(((DETAILS && DETAILS.preferred_provider_ids) || []).map(x => Number(x)));
-      const hhAgencyIdRaw = document.getElementById('hhAgencySelect').value;
-      const hhAgencyId = hhAgencyIdRaw ? Number(hhAgencyIdRaw) : null;
-      
+
+      // NOTE: hhAgencySelect can now contain either an internal agency id ("123")
+      // OR a Care Compare selection value like "carecompare|<ccn or name>"
+      const hhAgencyRaw = (document.getElementById('hhAgencySelect').value || "").trim();
+      const isCareCompare = hhAgencyRaw.startsWith("carecompare|");
+
+      // Only treat it as a numeric agency id if it's NOT a Care Compare selection
+      const hhAgencyId = (!isCareCompare && hhAgencyRaw) ? Number(hhAgencyRaw) : null;
+
       const payload = {
         admission_id: Number(ADMISSION_ID),
         dc_date: document.getElementById('dcDate').value.trim(),
@@ -1453,8 +1654,19 @@
         dc_destination: document.getElementById('dcDestination').value,
         destination_comments: document.getElementById('destinationComments').value.trim(),
         dc_with: document.getElementById('dcWith').value,
-        hh_agency_id: hhAgencyId,
-        hh_preferred: (hhAgencyId && preferred.has(hhAgencyId)) ? 1 : 0
+
+        // internal agency selection
+        hh_agency_id: (Number.isFinite(hhAgencyId) ? hhAgencyId : null),
+        hh_preferred: (hhAgencyId && preferred.has(hhAgencyId)) ? 1 : 0,
+
+        // Care Compare fields (only when a Care Compare selection is active)
+        hh_carecompare_ccn: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.ccn) || "") : "",
+        hh_carecompare_name: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.name) || "") : "",
+        hh_carecompare_dba: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.dba) || "") : "",
+        hh_carecompare_city: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.city) || "") : "",
+        hh_carecompare_state: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.state) || "") : "",
+        hh_carecompare_zip: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.zip) || "") : "",
+        hh_carecompare_county: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.county) || "") : ""
       };
       const resp = await api('/api/sensys/admission-dc-submissions/upsert', {
         method:'POST',
