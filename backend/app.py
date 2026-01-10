@@ -2868,6 +2868,7 @@ def init_db():
             agency_type   TEXT NOT NULL,  -- Hospital, SNF, Home Health, IRF, LTACH, Hospice, Outpatient PT
             aliases       TEXT DEFAULT '',
             facility_code TEXT DEFAULT '',
+            carecompare_ccn TEXT DEFAULT '',
             notes         TEXT DEFAULT '',
             notes2        TEXT DEFAULT '',
 
@@ -2895,6 +2896,7 @@ def init_db():
     for ddl in [
         "ALTER TABLE sensys_agencies ADD COLUMN aliases TEXT DEFAULT ''",
         "ALTER TABLE sensys_agencies ADD COLUMN facility_code TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN carecompare_ccn TEXT DEFAULT ''",
         "ALTER TABLE sensys_agencies ADD COLUMN notes TEXT DEFAULT ''",
         "ALTER TABLE sensys_agencies ADD COLUMN notes2 TEXT DEFAULT ''",
         "ALTER TABLE sensys_agencies ADD COLUMN address TEXT DEFAULT ''",
@@ -2914,6 +2916,45 @@ def init_db():
         except sqlite3.Error:
             # duplicate column name → already exists
             pass
+
+    # =========================================================
+    # Provider Library (CMS Provider Data Catalog) - Home Health
+    # =========================================================
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_provider_library_hha (
+            ccn           TEXT PRIMARY KEY,              -- ✅ key we use everywhere
+            provider_name TEXT DEFAULT '',
+            dba           TEXT DEFAULT '',
+            address       TEXT DEFAULT '',
+            city          TEXT DEFAULT '',
+            state         TEXT DEFAULT '',
+            zip           TEXT DEFAULT '',
+            county        TEXT DEFAULT '',
+            phone         TEXT DEFAULT '',
+            fax           TEXT DEFAULT '',
+            updated_at    TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_provider_hha_name ON sensys_provider_library_hha(provider_name)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_provider_hha_dba  ON sensys_provider_library_hha(dba)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_provider_hha_city ON sensys_provider_library_hha(city)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_provider_hha_state ON sensys_provider_library_hha(state)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_provider_hha_zip   ON sensys_provider_library_hha(zip)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_provider_hha_county ON sensys_provider_library_hha(county)")
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_provider_library_meta (
+            dataset_id     TEXT PRIMARY KEY,
+            last_sync_at   TEXT DEFAULT '',
+            last_row_count INTEGER DEFAULT 0,
+            last_error     TEXT DEFAULT '',
+            updated_at     TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
 
     # User <-> Agency (many-to-many)
     cur.execute(
@@ -16028,6 +16069,7 @@ class SensysAgencyUpsert(BaseModel):
     agency_type: str
     aliases: Optional[str] = None
     facility_code: Optional[str] = ""
+    carecompare_ccn: Optional[str] = ""
     notes: Optional[str] = ""
     notes2: Optional[str] = ""
 
@@ -16608,27 +16650,30 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
         conn.execute(
             """
             UPDATE sensys_agencies
-               SET agency_name   = ?,
-                   agency_type   = ?,
-                   facility_code = ?,
-                   notes         = ?,
-                   notes2        = ?,
-                   address       = ?,
-                   city          = ?,
-                   state         = ?,
-                   zip           = ?,
-                   phone1        = ?,
-                   phone2        = ?,
-                   email         = ?,
-                   fax           = ?,
-                   evolv_client  = ?,
-                   updated_at    = datetime('now')
+               SET agency_name      = ?,
+                   agency_type      = ?,
+                   aliases          = ?,
+                   facility_code    = ?,
+                   carecompare_ccn  = ?,  
+                   notes            = ?,
+                   notes2           = ?,
+                   address          = ?,
+                   city             = ?,
+                   state            = ?,
+                   zip              = ?,
+                   phone1           = ?,
+                   phone2           = ?,
+                   email            = ?,
+                   fax              = ?,
+                   evolv_client     = ?,
+                   updated_at       = datetime('now')
              WHERE id = ?
             """,
             (
                 name,
                 a_type,
                 (payload.facility_code or "").strip(),
+                (payload.carecompare_ccn or "").strip(),
                 (payload.notes or "").strip(),
                 (payload.notes2 or "").strip(),
                 (payload.address or "").strip(),
@@ -16647,14 +16692,21 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
         conn.execute(
             """
             INSERT INTO sensys_agencies
-                (agency_name, agency_type, facility_code, notes, notes2, address, city, state, zip, phone1, phone2, email, fax, evolv_client)
+                (
+                    agency_name, agency_type, aliases, facility_code, carecompare_ccn,
+                    notes, notes2,
+                    address, city, state, zip,
+                    phone1, phone2, email, fax,
+                    evolv_client
+                )
             VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
                 a_type,
                 (payload.facility_code or "").strip(),
+                (payload.carecompare_ccn or "").strip(),
                 (payload.notes or "").strip(),
                 (payload.notes2 or "").strip(),
                 (payload.address or "").strip(),
@@ -20192,18 +20244,225 @@ def _pick_col(cols: dict, needles: list[str]) -> str | None:
                 return cols[c]
     return None
 
+_PROVIDER_LIBRARY_LOCK = threading.Lock()
+
+def _provider_meta_get(conn) -> dict:
+    row = conn.execute(
+        "SELECT dataset_id, last_sync_at, last_row_count, last_error FROM sensys_provider_library_meta WHERE dataset_id = ?",
+        (_CMS_HHA_DATASET_ID,),
+    ).fetchone()
+    if not row:
+        return {"dataset_id": _CMS_HHA_DATASET_ID, "last_sync_at": "", "last_row_count": 0, "last_error": ""}
+    return dict(row)
+
+def _provider_meta_set(conn, *, last_sync_at: str, last_row_count: int, last_error: str):
+    conn.execute(
+        """
+        INSERT INTO sensys_provider_library_meta (dataset_id, last_sync_at, last_row_count, last_error, updated_at)
+        VALUES (?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(dataset_id) DO UPDATE SET
+            last_sync_at   = excluded.last_sync_at,
+            last_row_count = excluded.last_row_count,
+            last_error     = excluded.last_error,
+            updated_at     = datetime('now')
+        """,
+        (_CMS_HHA_DATASET_ID, last_sync_at, int(last_row_count), last_error or ""),
+    )
+    conn.commit()
+
+def _provider_library_should_sync(meta: dict) -> bool:
+    # monthly-ish (27 days) so you won’t miss it
+    last = (meta.get("last_sync_at") or "").strip()
+    if not last:
+        return True
+    try:
+        # stored as ISO-ish string by our own code
+        dt_last = dt.datetime.fromisoformat(last.replace("Z","").replace(" ", "T"))
+        return (dt.datetime.utcnow() - dt_last) > dt.timedelta(days=27)
+    except Exception:
+        return True
+
+def _provider_library_sync_now() -> dict:
+    """
+    Downloads all rows from CMS Provider Data Catalog dataset and upserts into sensys_provider_library_hha.
+    Safe to call repeatedly; uses a lock to prevent concurrent sync.
+    """
+    if not _PROVIDER_LIBRARY_LOCK.acquire(blocking=False):
+        return {"ok": False, "note": "Sync already running."}
+
+    conn = None
+    try:
+        conn = get_db()
+        meta = _provider_meta_get(conn)
+
+        cols = _cms_hha_get_cols()
+        col_provider = _pick_col(cols, ["provider name", "provider_name", "name"])
+        col_dba      = _pick_col(cols, ["dba", "doing business", "doing_business"])
+        col_city     = _pick_col(cols, ["city"])
+        col_state    = _pick_col(cols, ["state"])
+        col_zip      = _pick_col(cols, ["zip"])
+        col_county   = _pick_col(cols, ["county"])
+        col_ccn      = _pick_col(cols, ["ccn", "certification", "provider number", "provider_number"])
+        col_addr     = _pick_col(cols, ["address", "street"])
+        col_phone    = _pick_col(cols, ["phone"])
+        col_fax      = _pick_col(cols, ["fax"])
+
+        # We only fetch columns we care about to keep the payload small
+        props = [c for c in [col_ccn, col_provider, col_dba, col_addr, col_city, col_state, col_zip, col_county, col_phone, col_fax] if c]
+
+        url = f"https://data.cms.gov/provider-data/api/1/datastore/query/{_CMS_HHA_DATASET_ID}/0"
+
+        limit = 5000
+        offset = 0
+        total_upserted = 0
+
+        # Clear errors at start
+        _provider_meta_set(conn, last_sync_at=meta.get("last_sync_at",""), last_row_count=meta.get("last_row_count",0), last_error="")
+
+        while True:
+            params = {
+                "limit": limit,
+                "offset": offset,
+                "count": "false",
+                "results": "true",
+                "schema": "false",
+                "keys": "true",
+            }
+            if props:
+                params["properties"] = props
+
+            r = requests.get(url, params=params, timeout=60)
+            r.raise_for_status()
+            data = r.json() or {}
+            rows = data.get("results") or []
+            if not rows:
+                break
+
+            # Upsert page
+            for row in rows:
+                ccn = str(row.get(col_ccn) or row.get("ccn") or row.get("provider_number") or "").strip()
+                if not ccn:
+                    continue
+
+                provider_name = str(row.get(col_provider) or "").strip()
+                dba = str(row.get(col_dba) or "").strip()
+                addr = str(row.get(col_addr) or "").strip()
+                city = str(row.get(col_city) or "").strip()
+                state = str(row.get(col_state) or "").strip()
+                zipc = str(row.get(col_zip) or "").strip()
+                county = str(row.get(col_county) or "").strip()
+                phone = str(row.get(col_phone) or "").strip()
+                fax = str(row.get(col_fax) or "").strip()
+
+                conn.execute(
+                    """
+                    INSERT INTO sensys_provider_library_hha
+                        (ccn, provider_name, dba, address, city, state, zip, county, phone, fax, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                    ON CONFLICT(ccn) DO UPDATE SET
+                        provider_name = excluded.provider_name,
+                        dba           = excluded.dba,
+                        address       = excluded.address,
+                        city          = excluded.city,
+                        state         = excluded.state,
+                        zip           = excluded.zip,
+                        county        = excluded.county,
+                        phone         = excluded.phone,
+                        fax           = excluded.fax,
+                        updated_at    = datetime('now')
+                    """,
+                    (ccn, provider_name, dba, addr, city, state, zipc, county, phone, fax),
+                )
+                total_upserted += 1
+
+            conn.commit()
+            offset += limit
+
+        now_iso = dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+        _provider_meta_set(conn, last_sync_at=now_iso, last_row_count=total_upserted, last_error="")
+
+        return {"ok": True, "upserted": total_upserted, "last_sync_at": now_iso}
+
+    except Exception as e:
+        try:
+            if conn:
+                now_iso = dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+                _provider_meta_set(conn, last_sync_at=now_iso, last_row_count=0, last_error=str(e))
+        except Exception:
+            pass
+        return {"ok": False, "error": str(e)}
+    finally:
+        _PROVIDER_LIBRARY_LOCK.release()
+
+
+# -------------------------------
+# Admin endpoints
+# -------------------------------
+@app.get("/api/sensys/admin/provider-library/meta")
+def sensys_admin_provider_library_meta(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    return _provider_meta_get(conn)
+
+@app.post("/api/sensys/admin/provider-library/sync")
+def sensys_admin_provider_library_sync(token: str):
+    _require_admin_token(token)
+    return _provider_library_sync_now()
+
+@app.get("/api/sensys/admin/provider-library/hha-search")
+def sensys_admin_provider_library_hha_search(
+    token: str,
+    q: str = Query(""),
+    limit: int = Query(100, ge=1, le=500),
+):
+    _require_admin_token(token)
+    conn = get_db()
+    qq = (q or "").strip()
+    if not qq:
+        return {"results": []}
+
+    rows = conn.execute(
+        """
+        SELECT ccn, provider_name, dba, city, state, zip, county, phone, fax
+          FROM sensys_provider_library_hha
+         WHERE LOWER(provider_name) LIKE ?
+            OR LOWER(dba) LIKE ?
+            OR ccn LIKE ?
+         ORDER BY provider_name ASC
+         LIMIT ?
+        """,
+        (f"%{qq.casefold()}%", f"%{qq.casefold()}%", f"%{qq}%", int(limit)),
+    ).fetchall()
+
+    return {"results": [dict(r) for r in rows]}
+
+
+# -------------------------------
+# Auto-sync loop (no cron)
+# Runs daily; syncs monthly-ish
+# -------------------------------
+def _provider_library_autosync_loop():
+    while True:
+        try:
+            conn = get_db()
+            meta = _provider_meta_get(conn)
+            if _provider_library_should_sync(meta):
+                _provider_library_sync_now()
+        except Exception:
+            pass
+        time.sleep(24 * 3600)
+
+@app.on_event("startup")
+def _provider_library_startup():
+    t = threading.Thread(target=_provider_library_autosync_loop, daemon=True)
+    t.start()
 
 @app.get("/api/sensys/care-compare/hha-search")
 def sensys_care_compare_hha_search(
     request: Request,
-
-    # Primary name param (what we want the UI to use)
-    q: str = Query("", description="Agency/provider name (matches Provider Name OR DBA when available)"),
-
-    # ✅ Back-compat / UI-compat aliases (so if the UI sends ?name=Activa it still works)
+    q: str = Query("", description="Agency/provider name (matches Provider Name OR DBA)"),
     name: str = Query("", alias="name", description="Alias for q"),
     agency_name: str = Query("", alias="agency_name", description="Alias for q"),
-
     county: str = Query("", description="County"),
     city: str = Query("", description="City"),
     state: str = Query("", description="State (2-letter preferred)"),
@@ -20212,29 +20471,12 @@ def sensys_care_compare_hha_search(
     limit: int = Query(25, ge=1, le=100),
 ):
     """
-    Queries CMS Provider Data Catalog 'Home Health Care Agencies' dataset via datastore query.
-    Uses datasetId/index query endpoint (index=0).
+    ✅ NOW: queries our local Provider Library table (sensys_provider_library_hha),
+    instead of hitting CMS live each time.
     """
-    _ = _sensys_require_user(request)  # auth gate (token in query/header like your other APIs)
+    _ = _sensys_require_user(request)
 
-    cols = _cms_hha_get_cols()
-
-    col_provider = _pick_col(cols, ["provider name", "provider_name", "name"])
-    col_dba = _pick_col(cols, ["dba", "doing business", "doing_business"])
-    col_city = _pick_col(cols, ["city"])
-    col_state = _pick_col(cols, ["state"])
-    col_zip = _pick_col(cols, ["zip"])
-    col_county = _pick_col(cols, ["county"])
-    col_ccn = _pick_col(cols, ["ccn", "certification", "provider number", "provider_number"])
-
-    col_addr = _pick_col(cols, ["address", "street"])
-    col_phone = _pick_col(cols, ["phone"])
-    col_fax = _pick_col(cols, ["fax"])
-
-    # ✅ Unify name inputs (q OR name OR agency_name)
     q_merged = (q or "").strip() or (name or "").strip() or (agency_name or "").strip()
-
-    # ✅ Guard: if user didn’t enter ANY filters, return empty instead of random agencies
     any_filter = any([
         bool(q_merged),
         bool((county or "").strip()),
@@ -20244,179 +20486,84 @@ def sensys_care_compare_hha_search(
         bool((ccn or "").strip()),
     ])
     if not any_filter:
-        return {
-            "results": [],
-            "note": "Enter at least one search field.",
-            "columns": {"provider": col_provider, "dba": col_dba, "ccn": col_ccn, "phone": col_phone, "fax": col_fax},
-        }
+        return {"results": [], "note": "Enter at least one search field."}
 
-    conditions = []
+    conn = get_db()
 
-    # Name search: Provider Name OR DBA (if DBA column exists)
-    qv = (q_merged or "").strip()
-    if qv and col_provider:
-        if col_dba:
-            conditions.append(
-                {
-                    "groupOperator": "or",
-                    "conditions": [
-                        {"property": col_provider, "operator": "contains", "value": qv},
-                        {"property": col_dba, "operator": "contains", "value": qv},
-                    ],
-                }
-            )
-        else:
-            conditions.append({"property": col_provider, "operator": "contains", "value": qv})
+    # Build SQL safely
+    wh = ["1=1"]
+    params: list = []
 
-    def _add_contains(val: str, col: str | None):
+    def add_like(val: str, col: str):
         vv = (val or "").strip()
-        if vv and col:
-            conditions.append({"property": col, "operator": "contains", "value": vv})
+        if vv:
+            wh.append(f"LOWER({col}) LIKE ?")
+            params.append(f"%{vv.casefold()}%")
 
-    def _add_equals(val: str, col: str | None):
+    def add_eq_upper(val: str, col: str):
         vv = (val or "").strip()
-        if vv and col:
-            conditions.append({"property": col, "operator": "=", "value": vv})
+        if vv:
+            wh.append(f"UPPER({col}) = ?")
+            params.append(vv.upper())
 
-    _add_contains(county, col_county)
-    _add_contains(city, col_city)
+    # Name search hits provider_name OR dba
+    if q_merged:
+        wh.append("(LOWER(provider_name) LIKE ? OR LOWER(dba) LIKE ?)")
+        params.append(f"%{q_merged.casefold()}%")
+        params.append(f"%{q_merged.casefold()}%")
 
-    # state is usually exact match
-    _add_equals((state or "").strip().upper(), col_state)
+    add_like(county, "county")
+    add_like(city, "city")
+    add_eq_upper(state, "state")
+    add_like(zip, "zip")
+    add_like(ccn, "ccn")
 
-    # zip + ccn can be contains (people paste partials)
-    _add_contains(zip, col_zip)
-    _add_contains(ccn, col_ccn)
+    sql = f"""
+        SELECT
+            p.ccn, p.provider_name, p.dba, p.address, p.city, p.state, p.zip, p.county, p.phone, p.fax,
+            a.id   AS matched_agency_id,
+            a.agency_name AS matched_agency_name,
+            a.fax AS matched_agency_fax,
+            a.phone1 AS matched_agency_phone
+        FROM sensys_provider_library_hha p
+        LEFT JOIN sensys_agencies a
+               ON a.deleted_at IS NULL
+              AND TRIM(a.carecompare_ccn) <> ''
+              AND a.carecompare_ccn = p.ccn
+        WHERE {" AND ".join(wh)}
+        ORDER BY
+            CASE WHEN matched_agency_id IS NOT NULL THEN 0 ELSE 1 END,
+            provider_name ASC
+        LIMIT ?
+    """
+    params.append(int(limit))
 
-    # Properties to return (keep payload small)
-    props = []
-    for c in [col_provider, col_dba, col_ccn, col_addr, col_city, col_state, col_zip, col_county, col_phone, col_fax]:
-        if c and c not in props:
-            props.append(c)
+    rows = conn.execute(sql, params).fetchall()
 
-    url = f"https://data.cms.gov/provider-data/api/1/datastore/query/{_CMS_HHA_DATASET_ID}/0"
-    payload = {
-        "limit": int(limit),
-        "offset": 0,
-        "count": False,
-        "results": True,     # <-- results is a boolean flag
-        "schema": False,
-        "keys": True,
-        "conditions": conditions,
-    }
+    results = []
+    for r in rows:
+        results.append({
+            "ccn": r["ccn"] or "",
+            "provider_name": r["provider_name"] or "",
+            "dba": r["dba"] or "",
+            "address": r["address"] or "",
+            "city": r["city"] or "",
+            "state": r["state"] or "",
+            "zip": r["zip"] or "",
+            "county": r["county"] or "",
+            "phone": r["phone"] or "",
+            "fax": r["fax"] or "",
+            "matched_agency_id": r["matched_agency_id"],
+            "matched_agency_name": r["matched_agency_name"] or "",
+            "matched_agency_fax": r["matched_agency_fax"] or "",
+            "matched_agency_phone": r["matched_agency_phone"] or "",
+        })
 
-    # properties should be top-level (do NOT overwrite "results")
-    if props:
-        payload["properties"] = props
+    note = ""
+    if not results:
+        note = "No results found in Provider Library. (If this is unexpected, run a sync.)"
 
-    # ---------------------------------------------------------
-    # IMPORTANT: CMS DKAN sometimes ignores POST JSON conditions.
-    # If the response doesn't echo our conditions in "query",
-    # retry using GET params (which CMS reliably honors).
-    # ---------------------------------------------------------
-    r = requests.post(url, json=payload, timeout=25)
-    r.raise_for_status()
-    data = r.json() or {}
-
-    # If CMS ignored conditions, it often returns the same default first page,
-    # and the response "query" won't include our conditions.
-    resp_query = data.get("query") or {}
-    echoed_conditions = resp_query.get("conditions")
-
-    if conditions and not echoed_conditions:
-        # Fallback to GET with query params
-        params = {
-            "limit": int(limit),
-            "offset": 0,
-            "count": "false",
-            "results": "true",
-            "schema": "false",
-            "keys": "true",
-        }
-        if props:
-            # DKAN accepts properties in query string too
-            # (repeat params: properties=a&properties=b...)
-            # requests supports list values for repeated params
-            params["properties"] = props
-
-        # Some DKAN deployments accept `conditions` as JSON in query string
-        # (array of condition objects / groups).
-        params["conditions"] = json.dumps(conditions)
-
-        r2 = requests.get(url, params=params, timeout=25)
-        r2.raise_for_status()
-        data = r2.json() or {}
-
-
-    # -----------------------------
-    # ✅ ENFORCE FILTERS LOCALLY
-    # (CMS sometimes ignores conditions and returns the same default first page)
-    # -----------------------------
-    def _norm(s: str) -> str:
-        return (s or "").strip().casefold()
-
-    def _row_val(row: dict, key: str | None, fallbacks: list[str]) -> str:
-        if key and key in row:
-            return str(row.get(key) or "")
-        for fb in fallbacks:
-            if fb in row:
-                return str(row.get(fb) or "")
-        return ""
-
-    qn = _norm(q_merged)
-    county_n = _norm(county)
-    city_n = _norm(city)
-    state_n = _norm((state or "").upper())
-    zip_n = _norm(zip)
-    ccn_n = _norm(ccn)
-
-    filtered = []
-    for row in (data.get("results") or []):
-        provider_v = _row_val(row, col_provider, ["provider_name", "provider", "name"])
-        dba_v      = _row_val(row, col_dba,      ["dba", "doing_business_as_name"])
-        county_v   = _row_val(row, col_county,   ["county", "county_name"])
-        city_v     = _row_val(row, col_city,     ["city", "provider_city", "city_name"])
-        state_v    = _row_val(row, col_state,    ["state", "provider_state", "state_name"])
-        zip_v      = _row_val(row, col_zip,      ["zip", "zip_code", "provider_zip_code"])
-        ccn_v      = _row_val(row, col_ccn,      ["ccn", "provider_number"])
-
-        # q matches provider OR dba
-        if qn:
-            if qn not in _norm(provider_v) and qn not in _norm(dba_v):
-                continue
-
-        if county_n and county_n not in _norm(county_v):
-            continue
-        if city_n and city_n not in _norm(city_v):
-            continue
-        if state_n and state_n != _norm(state_v):
-            continue
-        if zip_n and zip_n not in _norm(zip_v):
-            continue
-        if ccn_n and ccn_n not in _norm(ccn_v):
-            continue
-
-        filtered.append(row)
-
-    # Keep the response small + predictable (respect limit)
-    filtered = filtered[: int(limit)]
-
-    return {
-        "results": filtered,
-        "columns": {"provider": col_provider, "dba": col_dba, "ccn": col_ccn, "phone": col_phone, "fax": col_fax},
-
-        # helpful debug so we can confirm searches are truly changing
-        "applied": {
-            "q": q_merged,
-            "county": county,
-            "city": city,
-            "state": (state or "").strip().upper(),
-            "zip": zip,
-            "ccn": ccn,
-            "conditions_count": len(conditions),
-            "server_filtered_count": len(filtered),
-        }
-    }
+    return {"results": results, "note": note}
 
 
 
