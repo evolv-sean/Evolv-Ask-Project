@@ -20299,12 +20299,18 @@ def sensys_care_compare_hha_search(
         "limit": int(limit),
         "offset": 0,
         "count": False,
+        "results": True,     # <-- results is a boolean flag
+        "schema": False,
+        "keys": True,
         "conditions": conditions,
     }
+
+    # properties should be top-level (do NOT overwrite "results")
     if props:
-        payload["results"] = {"properties": props}
+        payload["properties"] = props
 
     r = requests.post(url, json=payload, timeout=25)
+
     r.raise_for_status()
     data = r.json() or {}
 
