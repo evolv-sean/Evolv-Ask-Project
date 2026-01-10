@@ -20459,18 +20459,22 @@ def _provider_library_sync_now() -> dict:
             conn.commit()
             offset += limit
 
-        # ✅ If we fetched rows but upserted 0, store a “why” message in meta
+        now_iso = dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+        # ✅ If we fetched rows but upserted 0, keep a “why” message in meta
         if total_fetched > 0 and total_upserted == 0:
             _provider_meta_set(
                 conn,
-                last_sync_at=meta.get("last_sync_at",""),
+                last_sync_at=now_iso,
                 last_row_count=0,
-                last_error=f"Fetched {total_fetched} CMS rows but upserted 0. skipped_no_ccn={skipped_no_ccn}. debug={first_page_debug}",
+                last_error=(
+                    f"Fetched {total_fetched} CMS rows but upserted 0. "
+                    f"skipped_no_ccn={skipped_no_ccn}. debug={first_page_debug}"
+                ),
             )
-
-
-        now_iso = dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
-        _provider_meta_set(conn, last_sync_at=now_iso, last_row_count=total_upserted, last_error="")
+        else:
+            # Normal success path
+            _provider_meta_set(conn, last_sync_at=now_iso, last_row_count=total_upserted, last_error="")
 
         return {
             "ok": True,
@@ -20480,6 +20484,7 @@ def _provider_library_sync_now() -> dict:
             "skipped_no_ccn": skipped_no_ccn,
             "debug": first_page_debug,
         }
+
 
     except Exception as e:
         try:
