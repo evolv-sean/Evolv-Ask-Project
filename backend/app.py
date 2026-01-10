@@ -20205,8 +20205,17 @@ def _cms_hha_get_cols() -> dict:
         return _CMS_HHA_SCHEMA_CACHE["cols"]
 
     url = f"https://data.cms.gov/provider-data/api/1/datastore/query/{_CMS_HHA_DATASET_ID}/0"
-    # schema=true makes the response include schema metadata 
-    r = requests.get(url, params={"limit": 1, "offset": 0, "schema": "true", "count": "false", "keys": "true"}, timeout=20)
+
+    # Use POST so booleans/arrays stay correctly typed (avoids 400 from GET querystring coercion)
+    payload = {
+        "limit": 1,
+        "offset": 0,
+        "schema": True,
+        "count": False,
+        "results": False,   # we only need schema here
+        "keys": True,
+    }
+    r = requests.post(url, json=payload, timeout=20)
     r.raise_for_status()
     data = r.json() or {}
 
@@ -20320,18 +20329,18 @@ def _provider_library_sync_now() -> dict:
         _provider_meta_set(conn, last_sync_at=meta.get("last_sync_at",""), last_row_count=meta.get("last_row_count",0), last_error="")
 
         while True:
-            params = {
+            payload = {
                 "limit": limit,
                 "offset": offset,
-                "count": "false",
-                "results": "true",
-                "schema": "false",
-                "keys": "true",
+                "count": False,
+                "results": True,
+                "schema": False,
+                "keys": True,
             }
             if props:
-                params["properties"] = props
+                payload["properties"] = props  # keep as real array
 
-            r = requests.get(url, params=params, timeout=60)
+            r = requests.post(url, json=payload, timeout=60)
             r.raise_for_status()
             data = r.json() or {}
             rows = data.get("results") or []
