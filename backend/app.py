@@ -20358,7 +20358,7 @@ def _provider_library_sync_now() -> dict:
 
         url = f"https://data.cms.gov/provider-data/api/1/datastore/query/{_CMS_HHA_DATASET_ID}/0"
 
-        limit = 5000
+        limit = 2000
         offset = 0
         total_upserted = 0
 
@@ -20434,7 +20434,16 @@ def _provider_library_sync_now() -> dict:
                 _provider_meta_set(conn, last_sync_at=now_iso, last_row_count=0, last_error=str(e))
         except Exception:
             pass
-        return {"ok": False, "error": str(e)}
+        # include response body if this was a requests error (helps debug CMS 400s)
+        extra = ""
+        try:
+            resp = getattr(e, "response", None)
+            if resp is not None:
+                extra = f" | CMS response: {resp.text[:500]}"
+        except Exception:
+            pass
+        return {"ok": False, "error": str(e) + extra}
+
     finally:
         _PROVIDER_LIBRARY_LOCK.release()
 
