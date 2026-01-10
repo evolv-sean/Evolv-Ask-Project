@@ -20235,9 +20235,8 @@ def _cms_datastore_query_with_fallback(url: str, payload: dict, *, timeout: int 
 
 def _cms_hha_get_cols() -> dict:
     """
-    Fetch schema once and cache. Returns a dict of 'normalized_name' -> actual_column_name.
-    We use this to find columns like provider name / DBA / city / county / zip / state / CCN
-    without hardcoding exact column names.
+    Fetch schema once and cache. Returns a dict of 'lowered_column_name' -> actual_column_name.
+    If CMS doesn't return schema, fall back to keys from a 1-row sample.
     """
     now = dt.datetime.utcnow().timestamp()
     if _CMS_HHA_SCHEMA_CACHE["cols"] and (now - _CMS_HHA_SCHEMA_CACHE["ts"] < 6 * 3600):
@@ -20245,13 +20244,13 @@ def _cms_hha_get_cols() -> dict:
 
     url = f"https://data.cms.gov/provider-data/api/1/datastore/query/{_CMS_HHA_DATASET_ID}/0"
 
-    # Use POST so booleans/arrays stay correctly typed (avoids 400 from GET querystring coercion)
+    # 1) Try to fetch schema (preferred)
     payload = {
         "limit": 1,
         "offset": 0,
         "schema": True,
         "count": False,
-        "results": False,   # we only need schema here
+        "results": False,
         "keys": True,
     }
     data = _cms_datastore_query_with_fallback(url, payload, timeout=20)
@@ -20268,15 +20267,35 @@ def _cms_hha_get_cols() -> dict:
             fields = one.get("fields")
 
     cols = {}
-    for f in (fields or []):
-        nm = (f.get("name") or "").strip()
-        if not nm:
-            continue
-        cols[nm.lower()] = nm
+
+    # 2) If schema not returned, fall back to 1-row sample keys
+    if not fields:
+        sample_payload = {
+            "limit": 1,
+            "offset": 0,
+            "schema": False,
+            "count": False,
+            "results": True,
+            "keys": True,
+        }
+        sample = _cms_datastore_query_with_fallback(url, sample_payload, timeout=20)
+        sample_rows = sample.get("results") or []
+        if isinstance(sample_rows, list) and sample_rows:
+            for k in sample_rows[0].keys():
+                nm = (k or "").strip()
+                if nm:
+                    cols[nm.lower()] = nm
+    else:
+        for f in (fields or []):
+            nm = (f.get("name") or "").strip()
+            if not nm:
+                continue
+            cols[nm.lower()] = nm
 
     _CMS_HHA_SCHEMA_CACHE["cols"] = cols
     _CMS_HHA_SCHEMA_CACHE["ts"] = now
     return cols
+
 
 
 def _pick_col(cols: dict, needles: list[str]) -> str | None:
@@ -20404,7 +20423,6 @@ def _provider_library_sync_now() -> dict:
 
             rows = data.get("results") or []
             if not isinstance(rows, list):
-                # If CMS returns an unexpected shape, record it and stop.
                 _provider_meta_set(
                     conn,
                     last_sync_at=meta.get("last_sync_at",""),
@@ -20416,14 +20434,66 @@ def _provider_library_sync_now() -> dict:
             if not rows:
                 break
 
+            # ✅ If schema lookup failed, recover column names from actual row keys (page 1)
+            if offset == 0 and rows:
+                try:
+                    row_keys = list((rows[0] or {}).keys())
+
+                    def _find_key(substrings: list[str]) -> str | None:
+                        for k in row_keys:
+                            lk = (k or "").lower()
+                            for s in substrings:
+                                if s in lk:
+                                    return k
+                        return None
+
+                    if not col_ccn:
+                        col_ccn = _find_key(["ccn", "certification", "cms certification", "provider number", "provider_number", "provnum"])
+                    if not col_provider:
+                        col_provider = _find_key(["provider name", "provider_name", "agency name", "name"])
+                    if not col_dba:
+                        col_dba = _find_key(["dba", "doing business", "doing_business", "trade name"])
+                    if not col_phone:
+                        col_phone = _find_key(["phone", "telephone"])
+                    if not col_fax:
+                        col_fax = _find_key(["fax"])
+                    if not col_addr:
+                        col_addr = _find_key(["address", "street"])
+                    if not col_city:
+                        col_city = _find_key(["city"])
+                    if not col_state:
+                        col_state = _find_key(["state"])
+                    if not col_zip:
+                        col_zip = _find_key(["zip", "postal"])
+                    if not col_county:
+                        col_county = _find_key(["county"])
+
+                    # refresh debug so you can SEE what it detected
+                    if first_page_debug is not None:
+                        first_page_debug["sample_row_keys"] = sorted([str(x) for x in row_keys])[:80]
+                        first_page_debug["col_ccn_detected"] = col_ccn
+                        first_page_debug["col_provider_detected"] = col_provider
+                        first_page_debug["col_dba_detected"] = col_dba
+                except Exception:
+                    pass
+
             total_fetched += len(rows)
 
             # Upsert page
             for row in rows:
-                ccn = str(row.get(col_ccn) or row.get("ccn") or row.get("provider_number") or "").strip()
+                ccn = str(
+                    (row.get(col_ccn) if col_ccn else None)
+                    or row.get("ccn")
+                    or row.get("provider_number")
+                    or row.get("provider id")
+                    or row.get("provider_id")
+                    or ""
+                ).strip()
+
                 if not ccn:
                     skipped_no_ccn += 1
                     continue
+
 
                 provider_name = str(row.get(col_provider) or "").strip()
                 dba = str(row.get(col_dba) or "").strip()
