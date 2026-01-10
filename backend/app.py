@@ -20596,38 +20596,46 @@ def sensys_admin_provider_library_hha_search(
     token: str,
     q: str = Query(""),
     limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ):
     _require_admin_token(token)
     conn = get_db()
     qq = (q or "").strip()
 
-    # ✅ If no search text, still return a default list so the Admin table isn't empty
+    # fetch one extra row so we can tell the UI "has_more"
+    lim_plus = int(limit) + 1
+
     if not qq:
         rows = conn.execute(
             """
             SELECT ccn, provider_name, dba, city, state, zip, county, phone, fax
               FROM sensys_provider_library_hha
              ORDER BY provider_name ASC
-             LIMIT ?
+             LIMIT ? OFFSET ?
             """,
-            (int(limit),),
-        ).fetchall()
-        return {"results": [dict(r) for r in rows]}
-
-        rows = conn.execute(
-            """
-            SELECT ccn, provider_name, dba, city, state, zip, county, phone, fax
-              FROM sensys_provider_library_hha
-             WHERE LOWER(provider_name) LIKE ?
-                OR LOWER(dba) LIKE ?
-                OR ccn LIKE ?
-             ORDER BY provider_name ASC
-             LIMIT ?
-            """,
-            (f"%{qq.casefold()}%", f"%{qq.casefold()}%", f"%{qq}%", int(limit)),
+            (lim_plus, int(offset)),
         ).fetchall()
 
-        return {"results": [dict(r) for r in rows]}
+        has_more = len(rows) > int(limit)
+        rows = rows[: int(limit)]
+        return {"results": [dict(r) for r in rows], "has_more": has_more}
+
+    rows = conn.execute(
+        """
+        SELECT ccn, provider_name, dba, city, state, zip, county, phone, fax
+          FROM sensys_provider_library_hha
+         WHERE LOWER(provider_name) LIKE ?
+            OR LOWER(dba) LIKE ?
+            OR ccn LIKE ?
+         ORDER BY provider_name ASC
+         LIMIT ? OFFSET ?
+        """,
+        (f"%{qq.casefold()}%", f"%{qq.casefold()}%", f"%{qq}%", lim_plus, int(offset)),
+    ).fetchall()
+
+    has_more = len(rows) > int(limit)
+    rows = rows[: int(limit)]
+    return {"results": [dict(r) for r in rows], "has_more": has_more}
 
 
 # -------------------------------
