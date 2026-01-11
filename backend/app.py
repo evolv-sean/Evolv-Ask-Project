@@ -259,6 +259,86 @@ def normalize_date_to_iso(value: Any) -> Optional[str]:
     # If it’s some other format we don’t recognize, don’t destroy it
     return s
 
+def sync_discharge_dc_date_to_snf(cur, visit_id: str | None, dc_date: str | None):
+    if not visit_id:
+        return
+
+    dc_norm = normalize_date_to_iso(dc_date)
+
+    # Only push when we actually have a real dc_date value
+    if not dc_norm:
+        return
+
+    # ✅ STRICT: only allow YYYY-MM-DD into snf_admissions.dc_date
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(dc_norm)):
+        return
+
+    cur.execute(
+        """
+        UPDATE snf_admissions
+        SET dc_date = ?,
+            updated_at = datetime('now')
+        WHERE visit_id = ?
+        """,
+        (dc_norm, visit_id),
+    )
+
+def backfill_snf_dc_dates_from_hospital_discharges(cur, dry_run: bool = False) -> dict:
+    """
+    Backfill snf_admissions.dc_date from hospital_discharges.dc_date
+    where:
+      - snf_admissions.visit_id matches hospital_discharges.visit_id
+      - snf_admissions.dc_date is NULL/blank
+      - hospital_discharges.dc_date is present
+    """
+    # Count candidates first (works for dry_run and real run)
+    cur.execute(
+        """
+        SELECT COUNT(1) AS cnt
+        FROM snf_admissions s
+        WHERE (s.dc_date IS NULL OR TRIM(s.dc_date) = '')
+          AND s.visit_id IS NOT NULL AND TRIM(s.visit_id) <> ''
+          AND EXISTS (
+              SELECT 1
+              FROM hospital_discharges h
+              WHERE h.visit_id = s.visit_id
+                AND h.dc_date IS NOT NULL AND TRIM(h.dc_date) <> ''
+          )
+        """
+    )
+    row = cur.fetchone() or {}
+    try:
+        candidates = int(row["cnt"] or 0)
+    except Exception:
+        candidates = int(row[0] or 0)
+
+    if dry_run:
+        return {"ok": True, "dry_run": True, "candidates": candidates, "updated": 0}
+
+    # Do the actual update (SQLite-compatible)
+    cur.execute(
+        """
+        UPDATE snf_admissions
+        SET dc_date = (
+                SELECT h.dc_date
+                FROM hospital_discharges h
+                WHERE h.visit_id = snf_admissions.visit_id
+            ),
+            updated_at = datetime('now')
+        WHERE (dc_date IS NULL OR TRIM(dc_date) = '')
+          AND visit_id IS NOT NULL AND TRIM(visit_id) <> ''
+          AND EXISTS (
+              SELECT 1
+              FROM hospital_discharges h
+              WHERE h.visit_id = snf_admissions.visit_id
+                AND h.dc_date IS NOT NULL AND TRIM(h.dc_date) <> ''
+          )
+        """
+    )
+
+    updated = int(cur.rowcount or 0)
+    return {"ok": True, "dry_run": False, "candidates": candidates, "updated": updated}
+
 def log_pad_request_debug(request: Request, raw_text: str, payload: dict):
     """
     Debug helper to see exactly what PAD sent.
@@ -307,7 +387,8 @@ CENSUS_HTML = FRONTEND_DIR / "Census.html"
 SENSYS_LOGIN_HTML = FRONTEND_DIR / "Sensys Login.html"
 SENSYS_SNF_SW_HTML = FRONTEND_DIR / "Sensys SNF SW.html"
 SENSYS_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Admission Details.html"
-
+SENSYS_HOME_HEALTH_HTML = FRONTEND_DIR / "Sensys Home Health.html"
+SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Home Health Admission Details.html"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("evolv")
@@ -365,8 +446,15 @@ def _perf_log(job_id: str, filename: str, step: str, t0: float | None = None) ->
 CENSUS_UPLOAD_TMP = Path(
     os.getenv("CENSUS_UPLOAD_TMP", os.path.join(tempfile.gettempdir(), "evolv_census_uploads"))
 )
-
 CENSUS_UPLOAD_TMP.mkdir(parents=True, exist_ok=True)
+
+# ---------------------------------------------------------------------------
+# PDF STORAGE (persistent) — store files on Render disk, store metadata in SQLite
+# ---------------------------------------------------------------------------
+PDF_STORAGE_DIR = Path(
+    os.getenv("PDF_STORAGE_DIR", "/opt/render/project/data/pdfs")
+)
+PDF_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 
@@ -386,19 +474,14 @@ SMTP_PORT         = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER         = os.getenv("SMTP_USER", INTAKE_EMAIL_FROM or "")
 SMTP_PASSWORD     = os.getenv("SMTP_PASSWORD", "")
 
-# Optional: direct URL back to the Facility Details page (?f=&t=)
-FACILITY_FORM_BASE_URL = os.getenv("FACILITY_FORM_BASE_URL", "")
-
-
 # ---------------------------------------------------------------------------
-# Email / SMTP config for Facility Details intake notifications
+# RingCentral / SMS config
 # ---------------------------------------------------------------------------
-INTAKE_EMAIL_FROM = os.getenv("INTAKE_EMAIL_FROM", "")
-INTAKE_EMAIL_TO   = os.getenv("INTAKE_EMAIL_TO", "")
-SMTP_HOST         = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT         = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER         = os.getenv("SMTP_USER", INTAKE_EMAIL_FROM or "")
-SMTP_PASSWORD     = os.getenv("SMTP_PASSWORD", "")
+RC_SERVER_URL    = os.getenv("RC_SERVER_URL", "https://platform.ringcentral.com")
+RC_CLIENT_ID     = os.getenv("RC_CLIENT_ID", "")
+RC_CLIENT_SECRET = os.getenv("RC_CLIENT_SECRET", "")
+RC_JWT           = os.getenv("RC_JWT", "")
+RC_FROM_NUMBER   = os.getenv("RC_FROM_NUMBER", "")  # E.164 format, ex: +15551234567
 
 # Optional: direct URL back to the Facility Details page (?f=&t=)
 FACILITY_FORM_BASE_URL = os.getenv("FACILITY_FORM_BASE_URL", "")
@@ -478,6 +561,395 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
 
 def _safe(s: str) -> str:
     return (s or "").strip()
+
+import requests
+
+_rc_token_cache = {"token": None, "exp": 0}
+
+def _rc_get_access_token():
+    now = time.time()
+
+    # Cache hit
+    if _rc_token_cache["token"] and now < _rc_token_cache["exp"] - 60:
+        logger.info(
+            "[RC][TOKEN][CACHE_HIT] exp_in_sec=%s server=%s",
+            int(_rc_token_cache["exp"] - now),
+            RC_SERVER_URL,
+        )
+        return _rc_token_cache["token"]
+
+    # Config sanity
+    if not (RC_SERVER_URL and RC_CLIENT_ID and RC_CLIENT_SECRET and RC_JWT):
+        logger.error(
+            "[RC][TOKEN][CONFIG_MISSING] server_set=%s client_id_set=%s client_secret_set=%s jwt_set=%s",
+            bool(RC_SERVER_URL),
+            bool(RC_CLIENT_ID),
+            bool(RC_CLIENT_SECRET),
+            bool(RC_JWT),
+        )
+        raise Exception("RingCentral token failed: missing RC_SERVER_URL/RC_CLIENT_ID/RC_CLIENT_SECRET/RC_JWT")
+
+    logger.info("[RC][TOKEN][REQUEST] server=%s", RC_SERVER_URL)
+
+    try:
+        resp = requests.post(
+            f"{RC_SERVER_URL}/restapi/oauth/token",
+            data={
+                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                "assertion": RC_JWT,
+            },
+            auth=(RC_CLIENT_ID, RC_CLIENT_SECRET),
+            timeout=20,
+        )
+    except Exception:
+        logger.exception("[RC][TOKEN][NETWORK_ERROR] server=%s", RC_SERVER_URL)
+        raise
+
+    if not resp.ok:
+        # Keep this short — enough to debug, not a huge payload
+        body_snip = (resp.text or "")[:500]
+        logger.error("[RC][TOKEN][HTTP_ERROR] status=%s body=%s", resp.status_code, body_snip)
+        resp.raise_for_status()
+
+    data = resp.json()
+    _rc_token_cache["token"] = data["access_token"]
+    _rc_token_cache["exp"] = now + int(data.get("expires_in", 3600))
+
+    logger.info(
+        "[RC][TOKEN][OK] expires_in=%s server=%s",
+        int(data.get("expires_in", 3600)),
+        RC_SERVER_URL,
+    )
+
+    return _rc_token_cache["token"]
+
+def _require_admin_token_qs(token: str):
+    """Simple querystring admin guard (matches /admin/download-db style)."""
+    if token != os.getenv("ADMIN_TOKEN"):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+@app.post("/api/sensys/pdfs/upload")
+async def sensys_pdf_upload(
+    token: str,
+    admission_id: int = Form(0),              # optional
+    doc_type: str = Form("pdf"),
+    file: UploadFile = File(...),
+):
+    _require_admin_token_qs(token)
+
+    if not file or not (file.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Please upload a .pdf file")
+
+    # Generate stored filename
+    stored_name = f"{uuid.uuid4().hex}.pdf"
+    out_path = PDF_STORAGE_DIR / stored_name
+
+    # Stream to disk (avoid loading full PDF into RAM)
+    MAX_UPLOAD_BYTES = 75 * 1024 * 1024
+    CHUNK_SIZE = 256 * 1024
+    total = 0
+    sha = hashlib.sha256()
+
+    with open(out_path, "wb") as out_fp:
+        while True:
+            chunk = await file.read(CHUNK_SIZE)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_UPLOAD_BYTES:
+                try:
+                    out_fp.close()
+                except Exception:
+                    pass
+                try:
+                    out_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                raise HTTPException(status_code=413, detail="PDF too large. Please split/re-export.")
+
+            sha.update(chunk)
+            out_fp.write(chunk)
+
+            # yield occasionally
+            if total % (4 * 1024 * 1024) < CHUNK_SIZE:
+                await asyncio.sleep(0)
+
+    try:
+        await file.close()
+    except Exception:
+        pass
+
+    # Insert metadata
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO sensys_pdf_files
+            (admission_id, doc_type, original_filename, stored_filename, sha256, size_bytes, content_type)
+        VALUES
+            (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            int(admission_id) if int(admission_id or 0) > 0 else None,
+            (doc_type or "pdf").strip(),
+            (file.filename or "").strip(),
+            stored_name,
+            sha.hexdigest(),
+            int(total),
+            "application/pdf",
+        ),
+    )
+    pdf_id = int(cur.lastrowid)
+    conn.commit()
+
+    return {
+        "ok": True,
+        "pdf_id": pdf_id,
+        "stored_filename": stored_name,
+        "size_bytes": total,
+        "sha256": sha.hexdigest(),
+    }
+
+from fastapi.responses import FileResponse
+
+@app.get("/api/sensys/pdfs/{pdf_id}/download")
+def sensys_pdf_download(pdf_id: int, request: Request):
+    u = _sensys_require_user(request)
+
+    conn = get_db()
+    try:
+        # ✅ cleanup expired files to conserve disk
+        _sensys_pdf_cleanup_expired(conn)
+
+        row = conn.execute(
+            """
+            SELECT id, admission_id, original_filename, stored_filename, content_type, expires_at
+            FROM sensys_pdf_files
+            WHERE id = ?
+            """,
+            (int(pdf_id),),
+        ).fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="PDF not found")
+
+        admission_id = row["admission_id"]
+        if not admission_id:
+            raise HTTPException(status_code=404, detail="PDF not linked to an admission")
+
+        _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+
+        path = PDF_STORAGE_DIR / row["stored_filename"]
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="PDF file missing on disk")
+
+        filename = (row["original_filename"] or f"pdf_{pdf_id}.pdf").strip() or f"pdf_{pdf_id}.pdf"
+        return FileResponse(
+            str(path),
+            media_type=row["content_type"] or "application/pdf",
+            filename=filename,
+        )
+    finally:
+        conn.close()
+
+@app.get("/api/sensys/pdfs/{pdf_id}")
+def sensys_pdf_download(pdf_id: int, token: str):
+    _require_admin_token_qs(token)
+
+    conn = get_db()
+    cur = conn.cursor()
+    row = cur.execute(
+        """
+        SELECT id, original_filename, stored_filename, content_type
+        FROM sensys_pdf_files
+        WHERE id = ?
+        """,
+        (int(pdf_id),),
+    ).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="PDF not found")
+
+    stored = row["stored_filename"]
+    out_path = PDF_STORAGE_DIR / stored
+    if not out_path.exists():
+        raise HTTPException(status_code=404, detail="PDF file missing on disk")
+
+    download_name = (row["original_filename"] or f"{pdf_id}.pdf").strip() or f"{pdf_id}.pdf"
+    return FileResponse(
+        path=str(out_path),
+        filename=download_name,
+        media_type=(row["content_type"] or "application/pdf"),
+    )
+
+
+def _normalize_e164(num: str) -> str:
+    """
+    Normalize US numbers into E.164.
+    - If already starts with '+', keep as-is (after stripping spaces).
+    - If 10 digits, assume US and prefix +1
+    - If 11 digits starting with 1, prefix +
+    """
+    raw = (num or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("+"):
+        return raw
+
+    digits = re.sub(r"\D+", "", raw)
+    if len(digits) == 10:
+        return "+1" + digits
+    if len(digits) == 11 and digits.startswith("1"):
+        return "+" + digits
+    # fallback: return original raw so we can see it in logs
+    return raw
+
+def send_sms_rc(to_number: str, text: str, from_number: str | None = None):
+    token = _rc_get_access_token()
+
+    from_used = _normalize_e164((from_number or RC_FROM_NUMBER or "").strip())
+    to_used = _normalize_e164((to_number or "").strip())
+
+    # Log metadata only (avoid PHI in Render logs)
+    logger.info(
+        "[RC][SMS][REQUEST] from=%s to=%s text_len=%s server=%s",
+        from_used,
+        to_used,
+        len(text or ""),
+        RC_SERVER_URL,
+    )
+
+    payload = {
+        "from": {"phoneNumber": from_used},
+        "to": [{"phoneNumber": to_used}],
+        "text": text,
+    }
+
+    try:
+        r = requests.post(
+            f"{RC_SERVER_URL}/restapi/v1.0/account/~/extension/~/sms",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=20,
+        )
+    except Exception:
+        logger.exception("[RC][SMS][NETWORK_ERROR] to=%s", to_used)
+        raise
+
+    if not r.ok:
+        body_snip = (r.text or "")[:1200]
+        logger.error("[RC][SMS][HTTP_ERROR] status=%s body=%s", r.status_code, body_snip)
+        r.raise_for_status()
+
+    data = r.json()
+
+    logger.info(
+        "[RC][SMS][OK] rc_id=%s status=%s errorCode=%s",
+        (data.get("id") or ""),
+        (data.get("messageStatus") or data.get("status") or ""),
+        (data.get("errorCode") or ""),
+    )
+
+    return data
+
+def send_fax_rc(
+    to_number: str,
+    pdf_path: str,
+    cover_text: str = "",
+    from_number: str | None = None,
+    fax_resolution: str = "High",
+):
+    """
+    RingCentral Fax API: multipart form-data with:
+      - a JSON 'body' part describing recipients + cover/resolution
+      - a file part (PDF)
+    Docs: Fax uses multipart payloads. :contentReference[oaicite:3]{index=3}
+    """
+    token = _rc_get_access_token()
+
+    from_used = _normalize_e164((from_number or RC_FROM_NUMBER or "").strip())
+    to_used = _normalize_e164((to_number or "").strip())
+
+    if not to_used:
+        raise Exception("Missing to fax number")
+    if not from_used:
+        raise Exception("RC_FROM_NUMBER is not configured")
+    if not pdf_path:
+        raise Exception("Missing pdf_path")
+
+    logger.info("[RC][FAX][REQUEST] from=%s to=%s pdf=%s server=%s", from_used, to_used, pdf_path, RC_SERVER_URL)
+
+    body_obj = {
+        "to": [{"phoneNumber": to_used}],
+        "faxResolution": (fax_resolution or "High"),
+    }
+    if cover_text:
+        body_obj["coverPageText"] = cover_text
+
+    files = {
+        # 'body' is a JSON part
+        "body": (None, json.dumps(body_obj), "application/json"),
+        # attachment part
+        "attachment": (os.path.basename(pdf_path), open(pdf_path, "rb"), "application/pdf"),
+    }
+
+    try:
+        r = requests.post(
+            f"{RC_SERVER_URL}/restapi/v1.0/account/~/extension/~/fax",
+            headers={"Authorization": f"Bearer {token}"},
+            files=files,
+            timeout=60,
+        )
+    finally:
+        try:
+            files["attachment"][1].close()
+        except Exception:
+            pass
+
+    if not r.ok:
+        body_snip = (r.text or "")[:1200]
+        logger.error("[RC][FAX][HTTP_ERROR] status=%s body=%s", r.status_code, body_snip)
+        r.raise_for_status()
+
+    data = r.json()
+    logger.info(
+        "[RC][FAX][OK] rc_id=%s status=%s",
+        (data.get("id") or ""),
+        (data.get("messageStatus") or data.get("status") or ""),
+    )
+    return data
+
+
+def rc_get_message_status(message_id: str) -> dict:
+    """
+    Fetch message details from RingCentral message-store so we can see
+    final delivery status / error codes after initial 'Queued'.
+    """
+    token = _rc_get_access_token()
+    mid = (message_id or "").strip()
+    if not mid:
+        raise Exception("Missing message_id")
+
+    try:
+        r = requests.get(
+            f"{RC_SERVER_URL}/restapi/v1.0/account/~/extension/~/message-store/{mid}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=20,
+        )
+    except Exception:
+        logger.exception("[RC][MSG][NETWORK_ERROR] id=%s", mid)
+        raise
+
+    if not r.ok:
+        body_snip = (r.text or "")[:1200]
+        logger.error("[RC][MSG][HTTP_ERROR] status=%s body=%s", r.status_code, body_snip)
+        r.raise_for_status()
+
+    return r.json()
 
 def _split_name(full: str) -> tuple[str, str]:
     full = _safe(full)
@@ -1634,6 +2106,34 @@ def render_ingest_log(event: str, **fields):
         # Never break ingest due to logging
         print("[INGEST]", event, fields)
 
+def _sensys_pdf_cleanup_expired(conn: sqlite3.Connection) -> int:
+    """
+    Opportunistic cleanup: deletes expired PDFs from disk + removes rows.
+    Runs during list/upload/download so you don't need a background worker.
+    """
+    rows = conn.execute(
+        """
+        SELECT id, stored_filename
+        FROM sensys_pdf_files
+        WHERE expires_at IS NOT NULL
+          AND expires_at <= datetime('now')
+        """
+    ).fetchall()
+
+    deleted = 0
+    for r in rows:
+        try:
+            (PDF_STORAGE_DIR / r["stored_filename"]).unlink(missing_ok=True)
+        except Exception:
+            pass
+
+        conn.execute("DELETE FROM sensys_pdf_files WHERE id = ?", (int(r["id"]),))
+        deleted += 1
+
+    if deleted:
+        conn.commit()
+    return deleted
+
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
@@ -2306,12 +2806,100 @@ def init_db():
         """
     )
 
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_sms_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT DEFAULT (datetime('now')),
+            created_by_user_id INTEGER,
+
+            -- ✅ NEW: link SMS to an admission
+            admission_id INTEGER,
+
+            -- optional but helpful for later (inbound SMS, etc.)
+            direction TEXT DEFAULT 'outbound',
+
+            to_phone TEXT NOT NULL,
+            from_phone TEXT,
+            message TEXT,
+            rc_message_id TEXT,
+            status TEXT,
+            error TEXT,
+            rc_response_json TEXT,
+
+            FOREIGN KEY(admission_id) REFERENCES sensys_admissions(id)
+        )
+        """
+    )
+
+    # ✅ SAFE MIGRATIONS for sensys_sms_log (older DBs)
+    for ddl in [
+        "ALTER TABLE sensys_sms_log ADD COLUMN admission_id INTEGER",
+        "ALTER TABLE sensys_sms_log ADD COLUMN direction TEXT DEFAULT 'outbound'",
+    ]:
+        try:
+            cur.execute(ddl)
+        except sqlite3.Error:
+            pass
+    try:
+        cur.execute("ALTER TABLE sensys_sms_log ADD COLUMN rc_response_json TEXT")
+    except sqlite3.Error:
+        pass
+
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_sms_log_adm ON sensys_sms_log(admission_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_sms_log_created ON sensys_sms_log(created_at)")
+
     # Ensure debug_sql column exists on older DBs
     try:
         cur.execute("ALTER TABLE user_qa_log ADD COLUMN debug_sql TEXT")
     except sqlite3.Error:
         # Will fail with 'duplicate column name' once it already exists – that's fine.
         pass
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_fax_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT DEFAULT (datetime('now')),
+            created_by_user_id INTEGER,
+
+            admission_id INTEGER,
+            direction TEXT DEFAULT 'outbound',
+
+            to_fax TEXT NOT NULL,
+            from_fax TEXT,
+            cover_text TEXT,
+
+            -- link to stored PDF
+            pdf_id INTEGER,
+
+            -- RingCentral identifiers/status
+            rc_fax_id TEXT,
+            status TEXT,
+            error TEXT,
+            rc_response_json TEXT,
+
+            FOREIGN KEY(admission_id) REFERENCES sensys_admissions(id),
+            FOREIGN KEY(pdf_id) REFERENCES sensys_pdf_files(id)
+        )
+        """
+    )
+
+    # ✅ SAFE MIGRATIONS for sensys_fax_log (older DBs / future proof)
+    for ddl in [
+        "ALTER TABLE sensys_fax_log ADD COLUMN admission_id INTEGER",
+        "ALTER TABLE sensys_fax_log ADD COLUMN direction TEXT DEFAULT 'outbound'",
+        "ALTER TABLE sensys_fax_log ADD COLUMN cover_text TEXT",
+        "ALTER TABLE sensys_fax_log ADD COLUMN pdf_id INTEGER",
+        "ALTER TABLE sensys_fax_log ADD COLUMN rc_response_json TEXT",
+    ]:
+        try:
+            cur.execute(ddl)
+        except sqlite3.Error:
+            pass
+
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_fax_log_adm ON sensys_fax_log(admission_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_fax_log_created ON sensys_fax_log(created_at)")
 
 
     # AI settings (editable later via Admin)
@@ -2323,6 +2911,42 @@ def init_db():
         )
         """
     )
+    
+    # -------------------------------------------------------------------
+    # Stored PDFs (metadata only — actual PDF is saved to PDF_STORAGE_DIR)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_pdf_files (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            admission_id       INTEGER,                 -- linkage to admission
+            doc_type           TEXT DEFAULT 'pdf',
+            original_filename  TEXT,
+            stored_filename    TEXT NOT NULL,
+            sha256             TEXT,
+            size_bytes         INTEGER DEFAULT 0,
+            content_type       TEXT DEFAULT 'application/pdf',
+            created_at         TEXT DEFAULT (datetime('now')),
+
+            -- ✅ NEW: optional retention window (48h, etc.)
+            expires_at         TEXT
+        )
+        """
+    )
+
+    # ---- Safe migration FIRST: ensure expires_at exists on older DBs ----
+    try:
+        cur.execute("PRAGMA table_info(sensys_pdf_files)")
+        existing_cols = {r[1] for r in cur.fetchall()}
+        if "expires_at" not in existing_cols:
+            cur.execute("ALTER TABLE sensys_pdf_files ADD COLUMN expires_at TEXT")
+    except sqlite3.Error:
+        # Never block startup for a best-effort migration
+        pass
+
+    # Indexes (safe after migration)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_pdf_admission ON sensys_pdf_files(admission_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_pdf_sha256 ON sensys_pdf_files(sha256)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_pdf_expires ON sensys_pdf_files(expires_at)")
 
     # -------------------------------------------------------------------
     # Sensys 3.0: Users / Roles / Access Control (core "spine")
@@ -2359,6 +2983,24 @@ def init_db():
         except sqlite3.Error:
             # duplicate column name → already migrated
             pass
+
+    # -----------------------------
+    # DC Discharge Note Templates
+    # -----------------------------
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sensys_dc_note_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_name TEXT NOT NULL,
+      agency_id INTEGER NULL,                 -- NULL = global default; otherwise facility-specific
+      active INTEGER DEFAULT 1,
+
+      template_body TEXT NOT NULL,            -- supports {{var}} and {{#if var}}...{{/if}}
+
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      deleted_at TEXT NULL
+    )
+    """)
 
 
     # Roles (Admin / Care Manager / Viewer / etc.)
@@ -2419,6 +3061,7 @@ def init_db():
             agency_type   TEXT NOT NULL,  -- Hospital, SNF, Home Health, IRF, LTACH, Hospice, Outpatient PT
             aliases       TEXT DEFAULT '',
             facility_code TEXT DEFAULT '',
+            carecompare_ccn TEXT DEFAULT '',
             notes         TEXT DEFAULT '',
             notes2        TEXT DEFAULT '',
 
@@ -2446,6 +3089,7 @@ def init_db():
     for ddl in [
         "ALTER TABLE sensys_agencies ADD COLUMN aliases TEXT DEFAULT ''",
         "ALTER TABLE sensys_agencies ADD COLUMN facility_code TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN carecompare_ccn TEXT DEFAULT ''",
         "ALTER TABLE sensys_agencies ADD COLUMN notes TEXT DEFAULT ''",
         "ALTER TABLE sensys_agencies ADD COLUMN notes2 TEXT DEFAULT ''",
         "ALTER TABLE sensys_agencies ADD COLUMN address TEXT DEFAULT ''",
@@ -2466,6 +3110,45 @@ def init_db():
             # duplicate column name → already exists
             pass
 
+    # =========================================================
+    # Provider Library (CMS Provider Data Catalog) - Home Health
+    # =========================================================
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_provider_library_hha (
+            ccn           TEXT PRIMARY KEY,              -- ✅ key we use everywhere
+            provider_name TEXT DEFAULT '',
+            dba           TEXT DEFAULT '',
+            address       TEXT DEFAULT '',
+            city          TEXT DEFAULT '',
+            state         TEXT DEFAULT '',
+            zip           TEXT DEFAULT '',
+            county        TEXT DEFAULT '',
+            phone         TEXT DEFAULT '',
+            fax           TEXT DEFAULT '',
+            updated_at    TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_provider_hha_name ON sensys_provider_library_hha(provider_name)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_provider_hha_dba  ON sensys_provider_library_hha(dba)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_provider_hha_city ON sensys_provider_library_hha(city)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_provider_hha_state ON sensys_provider_library_hha(state)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_provider_hha_zip   ON sensys_provider_library_hha(zip)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_provider_hha_county ON sensys_provider_library_hha(county)")
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_provider_library_meta (
+            dataset_id     TEXT PRIMARY KEY,
+            last_sync_at   TEXT DEFAULT '',
+            last_row_count INTEGER DEFAULT 0,
+            last_error     TEXT DEFAULT '',
+            updated_at     TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+
     # User <-> Agency (many-to-many)
     cur.execute(
         """
@@ -2482,6 +3165,24 @@ def init_db():
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_agencies_user ON sensys_user_agencies(user_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_agencies_agency ON sensys_user_agencies(agency_id)")
+
+    # Agency -> Preferred Providers (Agency-to-Agency many-to-many)
+    # Used to show an admission facility's preferred Home Health agencies at top of dropdown.
+    cur.execute(
+        '''
+        CREATE TABLE IF NOT EXISTS sensys_agency_preferred_providers (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            agency_id           INTEGER NOT NULL,   -- the "client" facility (usually Hospital/SNF)
+            provider_agency_id  INTEGER NOT NULL,   -- the preferred provider (usually Home Health)
+            created_at          TEXT DEFAULT (datetime('now')),
+            UNIQUE(agency_id, provider_agency_id),
+            FOREIGN KEY(agency_id) REFERENCES sensys_agencies(id),
+            FOREIGN KEY(provider_agency_id) REFERENCES sensys_agencies(id)
+        )
+        '''
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_agency_pref_agency ON sensys_agency_preferred_providers(agency_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_agency_pref_provider ON sensys_agency_preferred_providers(provider_agency_id)")
 
     # User access to pages/features (drives which UI pages they see)
     cur.execute(
@@ -2721,6 +3422,18 @@ def init_db():
 
             dc_with               TEXT,   -- alone, spouse, other family, caregiver
 
+            -- NEW (Home Health agency selection)
+            hh_agency_id          INTEGER,                 -- sensys_agencies.id (Home Health)
+            hh_preferred          INTEGER DEFAULT 0,       -- 1 if selected from admission facility preferred list
+
+            hh_carecompare_ccn    TEXT,
+            hh_carecompare_name   TEXT,
+            hh_carecompare_dba    TEXT,
+            hh_carecompare_city   TEXT,
+            hh_carecompare_state  TEXT,
+            hh_carecompare_zip    TEXT,
+            hh_carecompare_county TEXT,
+
             hh_comments           TEXT,
             dme_comments          TEXT,
 
@@ -2744,6 +3457,23 @@ def init_db():
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_dc_sub_adm ON sensys_admission_dc_submissions(admission_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_dc_sub_deleted ON sensys_admission_dc_submissions(deleted_at)")
+
+    # ---- Safe migrations for older DBs (idempotent) ----
+    for ddl in [
+        "ALTER TABLE sensys_admission_dc_submissions ADD COLUMN hh_agency_id INTEGER",
+        "ALTER TABLE sensys_admission_dc_submissions ADD COLUMN hh_preferred INTEGER DEFAULT 0",
+    ]:
+        try:
+            cur.execute(ddl)
+        except sqlite3.Error:
+            pass
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_ccn",    "hh_carecompare_ccn TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_name",   "hh_carecompare_name TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_dba",    "hh_carecompare_dba TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_city",   "hh_carecompare_city TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_state",  "hh_carecompare_state TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_zip",    "hh_carecompare_zip TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_county", "hh_carecompare_county TEXT")
 
     # Join table: each DC submission can have multiple services linked
     cur.execute(
@@ -2855,7 +3585,9 @@ def init_db():
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
       deleted_at TEXT,
-      UNIQUE(template_id, field_key)
+
+      UNIQUE(template_id, field_key),
+      FOREIGN KEY(template_id) REFERENCES sensys_note_templates(id)
     )
     """)
 
@@ -2866,7 +3598,10 @@ def init_db():
       template_id INTEGER NOT NULL,
       created_at TEXT DEFAULT (datetime('now')),
       deleted_at TEXT,
-      UNIQUE(user_id, template_id)
+
+      UNIQUE(user_id, template_id),
+      FOREIGN KEY(user_id) REFERENCES sensys_users(id),
+      FOREIGN KEY(template_id) REFERENCES sensys_note_templates(id)
     )
     """)
 
@@ -2882,7 +3617,9 @@ def init_db():
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
       deleted_at TEXT,
-      UNIQUE(note_id, field_key)
+
+      UNIQUE(note_id, field_key),
+      FOREIGN KEY(note_id) REFERENCES sensys_admission_notes(id)
     )
     """)
 
@@ -5385,7 +6122,9 @@ async def pad_hospital_documents_bulk(request: Request):
                         doc_payload["insurance"],
                     ),
                 )
-
+                
+                sync_discharge_dc_date_to_snf(cur, doc_payload["visit_id"], doc_payload["dc_date"])
+                
                 render_ingest_log(
                     "hospital_discharge_hub_updated" if hub_existed else "hospital_discharge_hub_created",
                     visit_id=doc_payload["visit_id"],
@@ -5646,8 +6385,10 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
                 (visit_id, patient_mrn, patient_name, hospital_name, admit_date, dc_date, attending, pcp, insurance),
             )
 
+            sync_discharge_dc_date_to_snf(cur, visit_id, dc_date)
+
             # ✅ UPDATED: derive disposition + dc_agency using the most recent 5 hospital documents for this visit_id
-            llm_source_text = build_recent_hospital_context(cur, doc_payload["visit_id"], limit=5) or source_text
+            llm_source_text = build_recent_hospital_context(cur, visit_id, limit=5) or source_text
 
             dispo = analyze_discharge_disposition_with_llm(llm_source_text)
             new_dispo = (dispo.get("disposition") if dispo else None)
@@ -5818,6 +6559,45 @@ def load_dictionary_maps(conn: sqlite3.Connection) -> Dict[str, Dict[str, Any]]:
         "synonym": synonym_map,
         "facility_aliases": facility_aliases,
     }
+
+import re
+
+def _sensys_render_dc_note_template(template_body: str, ctx: dict) -> str:
+    """
+    Supported:
+      - {{var}} substitution
+      - {{#if var}} ... {{/if}} blocks (removed if var is falsy/empty)
+    """
+    if not template_body:
+        return ""
+
+    out = template_body
+
+    # 1) conditionals
+    # non-greedy match for blocks
+    pattern = re.compile(r"\{\{#if\s+([a-zA-Z0-9_]+)\s*\}\}(.*?)\{\{\/if\}\}", re.DOTALL)
+    while True:
+        m = pattern.search(out)
+        if not m:
+            break
+        key = m.group(1)
+        body = m.group(2)
+        keep = ctx.get(key)
+        out = out[:m.start()] + (body if keep else "") + out[m.end():]
+
+    # 2) substitutions
+    def repl(m):
+        key = m.group(1)
+        val = ctx.get(key)
+        return "" if val is None else str(val)
+
+    out = re.sub(r"\{\{([a-zA-Z0-9_]+)\}\}", repl, out)
+
+    # 3) normalize spacing
+    out = re.sub(r"[ \t]+\n", "\n", out)
+    out = re.sub(r"\n{3,}", "\n\n", out).strip()
+
+    return out
 
 
 
@@ -10441,7 +11221,28 @@ def admin_hospital_discharge_visit_recompute(payload: Dict[str, Any] = Body(...)
     finally:
         conn.close()
 
+@app.post("/admin/hospital-discharges/backfill-dc-to-snf")
+def admin_backfill_dc_dates_to_snf(payload: Dict[str, Any] = Body(...), admin=Depends(require_admin)):
+    """
+    One-click admin backfill:
+    Copies hospital_discharges.dc_date -> snf_admissions.dc_date
+    when snf_admissions.dc_date is blank AND visit_id matches.
 
+    payload (optional):
+      { "dry_run": true }
+    """
+    dry_run = bool(payload.get("dry_run", False))
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        result = backfill_snf_dc_dates_from_hospital_discharges(cur, dry_run=dry_run)
+        if not dry_run:
+            conn.commit()
+        return result
+    finally:
+        conn.close()
+        
 @app.post("/admin/snf/cm-notes/manual-add")
 def admin_manual_add_cm_note(payload: ManualCmNoteIn, admin=Depends(require_admin)):
     conn = get_db()
@@ -13531,6 +14332,62 @@ def get_snf_universal_pin_hash(cur) -> str:
     row = cur.fetchone()
     return ((row["value"] if row else "") or "").strip()
 
+@app.post("/admin/sms/send")
+async def admin_send_sms(
+    request: Request,
+    payload: Dict[str, Any] = Body(...),
+):
+    require_admin(request)
+
+    to_phone = (payload.get("to_phone") or "").strip()
+    text = (payload.get("text") or "").strip()
+
+    if not to_phone or not text:
+        raise HTTPException(status_code=400, detail="to_phone and text are required")
+
+    conn = get_db()
+    try:
+        try:
+            rc_resp = send_sms_rc(to_phone, text)
+            msg_id = rc_resp.get("id") or ""
+            status = "sent"
+            error = ""
+        except Exception as e:
+            logger.exception("SMS send failed")
+            msg_id = ""
+            status = "error"
+            error = str(e)
+
+        admission_id = payload.get("admission_id")
+        admission_id = int(admission_id) if str(admission_id or "").strip().isdigit() else None
+
+        conn.execute(
+            """
+            INSERT INTO sensys_sms_log
+            (created_by_user_id, admission_id, direction, to_phone, from_phone, message, rc_message_id, status, error)
+            VALUES (?, ?, 'outbound', ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                request.state.user["user_id"],
+                admission_id,
+                to_phone,
+                RC_FROM_NUMBER,
+                text,
+                msg_id,
+                status,
+                error,
+            ),
+        )
+        conn.commit()
+
+        if status != "sent":
+            raise HTTPException(status_code=500, detail="SMS failed to send")
+
+        return {"ok": True, "message_id": msg_id}
+    finally:
+        conn.close()
+
+
 @app.get("/admin/snf/universal-pin/get")
 async def admin_snf_universal_pin_get(request: Request):
     require_admin(request)
@@ -15430,6 +16287,7 @@ class SensysAgencyUpsert(BaseModel):
     agency_type: str
     aliases: Optional[str] = None
     facility_code: Optional[str] = ""
+    carecompare_ccn: Optional[str] = ""
     notes: Optional[str] = ""
     notes2: Optional[str] = ""
 
@@ -15444,7 +16302,7 @@ class SensysAgencyUpsert(BaseModel):
     fax: Optional[str] = ""
 
     evolv_client: Optional[bool] = False
-
+    preferred_provider_ids: Optional[List[int]] = []
 
 class SensysUserAgencyAssign(BaseModel):
     user_id: int
@@ -15949,7 +16807,9 @@ def sensys_admin_agencies(token: str):
             id,
             agency_name,
             agency_type,
+            aliases,
             facility_code,
+            carecompare_ccn,
             notes,
             notes2,
             address,
@@ -15970,6 +16830,23 @@ def sensys_admin_agencies(token: str):
 
     return {"agencies": [dict(r) for r in rows]}
 
+# -----------------------------
+# Sensys Admin: agency preferred providers
+# -----------------------------
+@app.get("/api/sensys/admin/agencies/{agency_id}/preferred-providers")
+def sensys_admin_agency_preferred_providers(agency_id: int, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT provider_agency_id
+        FROM sensys_agency_preferred_providers
+        WHERE agency_id = ?
+        ORDER BY provider_agency_id
+        """,
+        (int(agency_id),),
+    ).fetchall()
+    return {"ok": True, "provider_ids": [int(r["provider_agency_id"]) for r in rows]}
 
 # -----------------------------
 # Sensys Admin: upsert agency
@@ -15993,27 +16870,31 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
         conn.execute(
             """
             UPDATE sensys_agencies
-               SET agency_name   = ?,
-                   agency_type   = ?,
-                   facility_code = ?,
-                   notes         = ?,
-                   notes2        = ?,
-                   address       = ?,
-                   city          = ?,
-                   state         = ?,
-                   zip           = ?,
-                   phone1        = ?,
-                   phone2        = ?,
-                   email         = ?,
-                   fax           = ?,
-                   evolv_client  = ?,
-                   updated_at    = datetime('now')
+               SET agency_name      = ?,
+                   agency_type      = ?,
+                   aliases          = ?,
+                   facility_code    = ?,
+                   carecompare_ccn  = ?,  
+                   notes            = ?,
+                   notes2           = ?,
+                   address          = ?,
+                   city             = ?,
+                   state            = ?,
+                   zip              = ?,
+                   phone1           = ?,
+                   phone2           = ?,
+                   email            = ?,
+                   fax              = ?,
+                   evolv_client     = ?,
+                   updated_at       = datetime('now')
              WHERE id = ?
             """,
             (
                 name,
                 a_type,
+                (payload.aliases or "").strip(),
                 (payload.facility_code or "").strip(),
+                (payload.carecompare_ccn or "").strip(),
                 (payload.notes or "").strip(),
                 (payload.notes2 or "").strip(),
                 (payload.address or "").strip(),
@@ -16032,14 +16913,22 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
         conn.execute(
             """
             INSERT INTO sensys_agencies
-                (agency_name, agency_type, facility_code, notes, notes2, address, city, state, zip, phone1, phone2, email, fax, evolv_client)
+                (
+                    agency_name, agency_type, aliases, facility_code, carecompare_ccn,
+                    notes, notes2,
+                    address, city, state, zip,
+                    phone1, phone2, email, fax,
+                    evolv_client
+                )
             VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
                 a_type,
+                (payload.aliases or "").strip(),
                 (payload.facility_code or "").strip(),
+                (payload.carecompare_ccn or "").strip(),
                 (payload.notes or "").strip(),
                 (payload.notes2 or "").strip(),
                 (payload.address or "").strip(),
@@ -16054,9 +16943,26 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
             ),
         )
 
-    conn.commit()
-    return {"ok": True}
+    # Determine agency_id (needed for preferred providers join table)
+    agency_id = int(payload.id) if payload.id else conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
 
+    # Preferred Providers (optional)
+    # If UI sends preferred_provider_ids, we treat it as authoritative and replace the set.
+    if payload.preferred_provider_ids is not None:
+        conn.execute("DELETE FROM sensys_agency_preferred_providers WHERE agency_id = ?", (int(agency_id),))
+        pp_ids = [int(x) for x in (payload.preferred_provider_ids or []) if int(x) > 0 and int(x) != int(agency_id)]
+        if pp_ids:
+            conn.executemany(
+                '''
+                INSERT OR IGNORE INTO sensys_agency_preferred_providers (agency_id, provider_agency_id)
+                VALUES (?, ?)
+                ''',
+                [(int(agency_id), int(pid)) for pid in pp_ids],
+            )
+
+    conn.commit()
+    return {"ok": True, "id": int(agency_id)}
+    
 # -----------------------------
 # Sensys Admin: list patients
 # -----------------------------
@@ -16975,6 +17881,99 @@ class SensysNoteTemplateUpsert(BaseModel):
 
 class SensysNoteTemplateDelete(BaseModel):
     id: int
+    
+class DcNoteTemplateUpsert(BaseModel):
+    id: Optional[int] = None
+    template_name: str
+    agency_id: Optional[int] = None  # NULL = global default
+    active: int = 1
+    template_body: str
+    
+@app.get("/api/sensys/admin/dc-note-templates")
+def sensys_admin_dc_note_templates(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT id, template_name, agency_id, active, template_body, created_at, updated_at
+        FROM sensys_dc_note_templates
+        WHERE deleted_at IS NULL
+        ORDER BY COALESCE(agency_id, 0) ASC, template_name ASC
+        """
+    ).fetchall()
+    return {"templates": [dict(r) for r in rows]}
+
+
+@app.post("/api/sensys/admin/dc-note-templates/upsert")
+def sensys_admin_dc_note_templates_upsert(
+    payload: DcNoteTemplateUpsert = Body(...),
+    token: str = Query(...)
+):
+    _require_admin_token(token)
+    conn = get_db()
+
+    if not (payload.template_name or "").strip():
+        raise HTTPException(status_code=400, detail="template_name is required")
+    if not (payload.template_body or "").strip():
+        raise HTTPException(status_code=400, detail="template_body is required")
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_dc_note_templates
+               SET template_name = ?,
+                   agency_id = ?,
+                   active = ?,
+                   template_body = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+               AND deleted_at IS NULL
+            """,
+            (
+                payload.template_name.strip(),
+                payload.agency_id,
+                int(payload.active or 0),
+                payload.template_body,
+                int(payload.id),
+            ),
+        )
+        conn.commit()
+        return {"ok": True, "id": int(payload.id)}
+    else:
+        cur = conn.execute(
+            """
+            INSERT INTO sensys_dc_note_templates (template_name, agency_id, active, template_body)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                payload.template_name.strip(),
+                payload.agency_id,
+                int(payload.active or 0),
+                payload.template_body,
+            ),
+        )
+        conn.commit()
+        return {"ok": True, "id": int(cur.lastrowid)}
+
+
+@app.post("/api/sensys/admin/dc-note-templates/delete")
+def sensys_admin_dc_note_templates_delete(
+    payload: DcNoteTemplateDelete = Body(...),
+    token: str = Query(...)
+):
+    _require_admin_token(token)
+    conn = get_db()
+    conn.execute(
+        """
+        UPDATE sensys_dc_note_templates
+           SET deleted_at = datetime('now'),
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (int(payload.id),),
+    )
+    conn.commit()
+    return {"ok": True}
 
 @app.get("/api/sensys/admin/note-templates")
 def sensys_admin_note_templates(token: str):
@@ -17787,6 +18786,19 @@ def _sensys_require_user(request: Request) -> dict:
 
     return u
 
+def _sensys_require_admin(request: Request) -> dict:
+    """
+    Require a valid Sensys session token AND that the user has the 'admin' role.
+    Used by /api/sensys/admin/* endpoints that are called from the Admin HTML.
+    """
+    u = _sensys_require_user(request)
+    role_keys = u.get("role_keys") or []
+    if "admin" not in role_keys:
+        path = str(getattr(request.url, "path", "") or "")
+        ip = request.client.host if request.client else None
+        logger.warning("[SENSYS][AUTH][NOT_ADMIN] user_id=%s path=%s ip=%s", u.get("user_id"), path, ip)
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return u
 
 @app.post("/api/sensys/login")
 def sensys_login(payload: SensysLoginIn):
@@ -17833,6 +18845,8 @@ def sensys_login(payload: SensysLoginIn):
     redirect_url = "/sensys/login"
     if "snf_sw" in role_keys:
         redirect_url = "/sensys/snf-sw"
+    elif "home_health" in role_keys:
+        redirect_url = "/sensys/home-health"
     elif "admin" in role_keys:
         redirect_url = "/admin/sensys"
 
@@ -17860,12 +18874,71 @@ def sensys_me(request: Request):
 @app.get("/api/sensys/my-admissions")
 def sensys_my_admissions(request: Request):
     """
-    Returns admissions linked to the logged-in user via:
+    Returns admissions linked to the logged-in user.
+
+    Default:
       sensys_user_agencies.user_id -> sensys_admissions.agency_id
+
+    Home Health role:
+      sensys_user_agencies (their linked agencies)
+        -> sensys_admission_referrals.agency_id
+        -> sensys_admission_referrals.admission_id
+        -> sensys_admissions.id
     """
     u = _sensys_require_user(request)
     conn = get_db()
 
+    role_keys = u.get("role_keys") or []
+    user_id = int(u["user_id"])
+
+    # ✅ Home Health: show admissions where THIS user's agencies appear as a referral agency
+    if "home_health" in role_keys:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT
+                a.id,
+                a.patient_id,
+                (p.last_name || ', ' || p.first_name) AS patient_name,
+                p.dob AS patient_dob,
+
+                -- admission's main agency (still useful context)
+                a.agency_id,
+                ag.agency_name AS agency_name,
+
+                -- the agency that caused the HH user to see this admission
+                ar.agency_id AS referral_agency_id,
+                rag.agency_name AS referral_agency_name,
+
+                a.admit_date,
+                a.dc_date,
+                a.room,
+                a.reason,
+                a.latest_pcp,
+                a.active,
+                a.updated_at
+            FROM sensys_user_agencies ua
+            JOIN sensys_admission_referrals ar
+                 ON ar.agency_id = ua.agency_id
+                AND ar.deleted_at IS NULL
+            JOIN sensys_admissions a
+                 ON a.id = ar.admission_id
+            JOIN sensys_patients p
+                 ON p.id = a.patient_id
+            LEFT JOIN sensys_agencies ag
+                 ON ag.id = a.agency_id
+            LEFT JOIN sensys_agencies rag
+                 ON rag.id = ar.agency_id
+            WHERE ua.user_id = ?
+            ORDER BY
+                COALESCE(a.admit_date, '') DESC,
+                a.id DESC
+            """,
+            (user_id,),
+        ).fetchall()
+
+        return {"ok": True, "admissions": [dict(r) for r in rows]}
+
+    # Default (everyone else): admissions linked by admission.agency_id
     rows = conn.execute(
         """
         SELECT
@@ -17893,10 +18966,11 @@ def sensys_my_admissions(request: Request):
             COALESCE(a.admit_date, '') DESC,
             a.id DESC
         """,
-        (int(u["user_id"]),),
+        (user_id,),
     ).fetchall()
 
     return {"ok": True, "admissions": [dict(r) for r in rows]}
+
 
 # -----------------------------
 # Sensys: Admission Details APIs (tasks / notes / dc submissions / services / care team)
@@ -17905,15 +18979,35 @@ from pydantic import BaseModel
 from typing import Optional, List
 
 def _sensys_assert_admission_access(conn, user_id: int, admission_id: int):
+    """
+    Access is allowed if:
+      A) admission is linked by admission.agency_id ∈ user's agencies
+      OR
+      B) admission has a referral row where referral.agency_id ∈ user's agencies (Home Health use-case)
+    """
     ok = conn.execute(
         """
         SELECT 1
-        FROM sensys_user_agencies ua
-        JOIN sensys_admissions a ON a.agency_id = ua.agency_id
-        WHERE ua.user_id = ?
-          AND a.id = ?
+        WHERE
+            EXISTS (
+                SELECT 1
+                FROM sensys_user_agencies ua
+                JOIN sensys_admissions a ON a.agency_id = ua.agency_id
+                WHERE ua.user_id = ?
+                  AND a.id = ?
+            )
+            OR
+            EXISTS (
+                SELECT 1
+                FROM sensys_user_agencies ua
+                JOIN sensys_admission_referrals ar
+                     ON ar.agency_id = ua.agency_id
+                    AND ar.deleted_at IS NULL
+                WHERE ua.user_id = ?
+                  AND ar.admission_id = ?
+            )
         """,
-        (int(user_id), int(admission_id)),
+        (int(user_id), int(admission_id), int(user_id), int(admission_id)),
     ).fetchone()
 
     if not ok:
@@ -17923,6 +19017,748 @@ def _sensys_assert_admission_access(conn, user_id: int, admission_id: int):
             int(admission_id),
         )
         raise HTTPException(status_code=403, detail="Forbidden: admission not linked to your agencies")
+
+
+class SensysAdmissionSmsSend(BaseModel):
+    admission_id: int
+    to_phone: str
+    text: str
+    from_phone: Optional[str] = None  # optional override (rare)
+
+
+class SensysAdmissionFaxSend(BaseModel):
+    admission_id: int
+    to_fax: str
+    pdf_id: int
+    cover_text: Optional[str] = None
+    from_fax: Optional[str] = None  # optional override (rare)
+    fax_resolution: Optional[str] = "High"  # RingCentral supports "High"/"Low"
+
+
+@app.get("/api/sensys/admissions/{admission_id}/pdfs")
+def sensys_admission_pdfs_list(admission_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    try:
+        _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+
+        # ✅ cleanup expired files to conserve disk
+        _sensys_pdf_cleanup_expired(conn)
+
+        rows = conn.execute(
+            """
+            SELECT
+                id, admission_id, doc_type, original_filename,
+                stored_filename, sha256, size_bytes, content_type,
+                created_at, expires_at
+            FROM sensys_pdf_files
+            WHERE admission_id = ?
+            ORDER BY datetime(created_at) DESC, id DESC
+            """,
+            (int(admission_id),),
+        ).fetchall()
+
+        return {"ok": True, "pdfs": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+@app.post("/api/sensys/admissions/{admission_id}/pdfs/upload")
+async def sensys_admission_pdf_upload(
+    admission_id: int,
+    request: Request,
+    doc_type: str = Form("pdf"),
+    retention_hours: str = Form("0"),
+    file: UploadFile = File(...),
+):
+    u = _sensys_require_user(request)
+
+    if not file or not (file.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Please upload a .pdf file")
+
+    # parse retention
+    try:
+        rh = int(str(retention_hours or "0").strip() or "0")
+    except Exception:
+        rh = 0
+    if rh < 0:
+        rh = 0
+
+    conn = get_db()
+    try:
+        _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+
+        # ✅ cleanup expired files to conserve disk
+        _sensys_pdf_cleanup_expired(conn)
+
+        stored_name = f"{uuid.uuid4().hex}.pdf"
+        out_path = PDF_STORAGE_DIR / stored_name
+
+        MAX_UPLOAD_BYTES = 75 * 1024 * 1024
+        CHUNK_SIZE = 256 * 1024
+        total = 0
+        sha = hashlib.sha256()
+
+        with open(out_path, "wb") as out_fp:
+            while True:
+                chunk = await file.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_UPLOAD_BYTES:
+                    try:
+                        out_fp.close()
+                    except Exception:
+                        pass
+                    try:
+                        out_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    raise HTTPException(status_code=413, detail="PDF too large. Please split/re-export.")
+                sha.update(chunk)
+                out_fp.write(chunk)
+
+                if total % (4 * 1024 * 1024) < CHUNK_SIZE:
+                    await asyncio.sleep(0)
+
+        try:
+            await file.close()
+        except Exception:
+            pass
+
+        expires_sql = None
+        expires_param = None
+        if rh > 0:
+            expires_sql = "datetime('now', ?)"
+            expires_param = f"+{rh} hours"
+
+        if rh > 0:
+            cur = conn.execute(
+                """
+                INSERT INTO sensys_pdf_files
+                    (admission_id, doc_type, original_filename, stored_filename, sha256, size_bytes, content_type, expires_at)
+                VALUES
+                    (?, ?, ?, ?, ?, ?, ?, datetime('now', ?))
+                """,
+                (
+                    int(admission_id),
+                    (doc_type or "pdf").strip(),
+                    (file.filename or "").strip(),
+                    stored_name,
+                    sha.hexdigest(),
+                    int(total),
+                    "application/pdf",
+                    expires_param,
+                ),
+            )
+        else:
+            cur = conn.execute(
+                """
+                INSERT INTO sensys_pdf_files
+                    (admission_id, doc_type, original_filename, stored_filename, sha256, size_bytes, content_type, expires_at)
+                VALUES
+                    (?, ?, ?, ?, ?, ?, ?, NULL)
+                """,
+                (
+                    int(admission_id),
+                    (doc_type or "pdf").strip(),
+                    (file.filename or "").strip(),
+                    stored_name,
+                    sha.hexdigest(),
+                    int(total),
+                    "application/pdf",
+                ),
+            )
+
+        pdf_id = int(cur.lastrowid)
+        conn.commit()
+
+        return {"ok": True, "pdf_id": pdf_id}
+    finally:
+        conn.close()
+
+@app.get("/api/sensys/admission-sms/{admission_id}")
+def sensys_admission_sms_list(admission_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    try:
+        _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+
+        rows = conn.execute(
+            """
+            SELECT
+                id, created_at, created_by_user_id, admission_id, direction,
+                to_phone, from_phone, message, rc_message_id, status, error
+            FROM sensys_sms_log
+            WHERE admission_id = ?
+            ORDER BY datetime(created_at) DESC, id DESC
+            LIMIT 100
+            """,
+            (int(admission_id),),
+        ).fetchall()
+
+        return {"ok": True, "sms": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+@app.get("/api/sensys/admission-fax/{admission_id}")
+def sensys_admission_fax_list(admission_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    try:
+        _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+
+        rows = conn.execute(
+            """
+            SELECT
+                id, created_at, created_by_user_id, admission_id, direction,
+                to_fax, from_fax, cover_text, pdf_id,
+                rc_fax_id, status, error
+            FROM sensys_fax_log
+            WHERE admission_id = ?
+            ORDER BY datetime(created_at) DESC, id DESC
+            LIMIT 100
+            """,
+            (int(admission_id),),
+        ).fetchall()
+
+        return {"ok": True, "fax": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+
+@app.post("/api/sensys/admission-fax/send")
+def sensys_admission_fax_send(payload: SensysAdmissionFaxSend, request: Request):
+    u = _sensys_require_user(request)
+
+    admission_id = int(payload.admission_id)
+    to_fax = (payload.to_fax or "").strip()
+    pdf_id = int(payload.pdf_id)
+    cover_text = (payload.cover_text or "").strip()
+    from_fax = (payload.from_fax or "").strip() or RC_FROM_NUMBER
+    fax_resolution = (payload.fax_resolution or "High").strip()
+
+    if not admission_id:
+        raise HTTPException(status_code=400, detail="admission_id is required")
+    if not to_fax:
+        raise HTTPException(status_code=400, detail="to_fax is required")
+    if not pdf_id:
+        raise HTTPException(status_code=400, detail="pdf_id is required")
+    if not from_fax:
+        raise HTTPException(status_code=400, detail="RC_FROM_NUMBER is not configured")
+
+    conn = get_db()
+    try:
+        _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+
+        # verify PDF belongs to this admission and exists on disk
+        row = conn.execute(
+            """
+            SELECT id, admission_id, stored_filename, original_filename, content_type
+            FROM sensys_pdf_files
+            WHERE id = ? AND admission_id = ?
+            """,
+            (int(pdf_id), int(admission_id)),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="PDF not found for this admission")
+
+        stored = row["stored_filename"]
+        pdf_path = PDF_STORAGE_DIR / stored
+        if not pdf_path.exists():
+            raise HTTPException(status_code=404, detail="PDF file missing on disk")
+
+        logger.info(
+            "[SENSYS][FAX][SEND_START] user_id=%s admission_id=%s to=%s pdf_id=%s",
+            int(u["user_id"]),
+            admission_id,
+            to_fax,
+            pdf_id,
+        )
+
+        rc_resp = None
+        rc_json = ""
+        try:
+            rc_resp = send_fax_rc(
+                to_number=to_fax,
+                pdf_path=str(pdf_path),
+                cover_text=cover_text,
+                from_number=from_fax,
+                fax_resolution=fax_resolution,
+            )
+            rc_id = (rc_resp.get("id") or "")
+            status = (rc_resp.get("messageStatus") or rc_resp.get("status") or "queued") or "queued"
+            error = ""
+            try:
+                rc_json = json.dumps(rc_resp)[:8000]
+            except Exception:
+                rc_json = ""
+        except Exception as e:
+            logger.exception("[SENSYS][FAX][SEND_FAILED] admission_id=%s to=%s", admission_id, to_fax)
+            rc_id = ""
+            status = "error"
+            error = str(e)
+            try:
+                rc_json = json.dumps({"error": str(e)})[:8000]
+            except Exception:
+                rc_json = ""
+
+        cur = conn.execute(
+            """
+            INSERT INTO sensys_fax_log
+              (created_by_user_id, admission_id, direction, to_fax, from_fax, cover_text, pdf_id, rc_fax_id, status, error, rc_response_json)
+            VALUES
+              (?, ?, 'outbound', ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(u["user_id"]),
+                admission_id,
+                to_fax,
+                from_fax,
+                cover_text,
+                int(pdf_id),
+                rc_id,
+                status,
+                error,
+                rc_json,
+            ),
+        )
+        conn.commit()
+
+        ok_statuses = {"queued", "sending", "sent", "delivered"}
+        if (status or "").strip().lower() not in ok_statuses:
+            raise HTTPException(status_code=500, detail=f"Fax not accepted by provider (status={status})")
+
+        return {"ok": True, "id": int(cur.lastrowid), "fax_id": rc_id, "provider_status": status}
+    finally:
+        conn.close()
+
+
+@app.post("/api/sensys/admission-fax/refresh-status/{fax_log_id}")
+def sensys_admission_fax_refresh_status(fax_log_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    try:
+        row = conn.execute(
+            """
+            SELECT id, admission_id, rc_fax_id, status
+            FROM sensys_fax_log
+            WHERE id = ?
+            """,
+            (int(fax_log_id),),
+        ).fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Fax log row not found")
+
+        admission_id = int(row["admission_id"] or 0)
+        _sensys_assert_admission_access(conn, int(u["user_id"]), admission_id)
+
+        rc_id = (row["rc_fax_id"] or "").strip()
+        if not rc_id:
+            raise HTTPException(status_code=400, detail="No rc_fax_id on this Fax row")
+
+        # Fax statuses live in Message Store as well. :contentReference[oaicite:4]{index=4}
+        rc = rc_get_message_status(rc_id)
+
+        new_status = (rc.get("messageStatus") or rc.get("status") or row["status"] or "").strip()
+        error_code = (rc.get("errorCode") or "").strip()
+
+        try:
+            rc_json = json.dumps(rc)[:8000]
+        except Exception:
+            rc_json = ""
+
+        conn.execute(
+            """
+            UPDATE sensys_fax_log
+               SET status = ?,
+                   error = CASE WHEN ? != '' THEN ? ELSE error END,
+                   rc_response_json = COALESCE(NULLIF(?, ''), rc_response_json)
+             WHERE id = ?
+            """,
+            (new_status, error_code, error_code, rc_json, int(fax_log_id)),
+        )
+        conn.commit()
+
+        return {"ok": True, "fax_log_id": int(fax_log_id), "provider_status": new_status, "errorCode": error_code}
+    finally:
+        conn.close()
+
+
+# -----------------------------
+# ✅ NEW: light “refresh recent fax statuses” endpoint
+# -----------------------------
+class SensysFaxRefreshRecent(BaseModel):
+    max_age_minutes: int = 240   # faxes can take longer; default 4h
+    max_rows: int = 10           # hard cap to protect RC + Render
+
+
+@app.post("/api/sensys/admission-fax/refresh-recent/{admission_id}")
+def sensys_admission_fax_refresh_recent(admission_id: int, payload: SensysFaxRefreshRecent, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    try:
+        admission_id = int(admission_id)
+        _sensys_assert_admission_access(conn, int(u["user_id"]), admission_id)
+
+        max_age = int(payload.max_age_minutes or 240)
+        if max_age < 1:
+            max_age = 1
+        if max_age > 24 * 60:
+            max_age = 24 * 60  # cap at 24h
+
+        max_rows = int(payload.max_rows or 10)
+        if max_rows < 1:
+            max_rows = 1
+        if max_rows > 25:
+            max_rows = 25  # cap
+
+        # “final” statuses: don’t keep polling these
+        final_statuses = {"delivered", "failed", "undelivered", "canceled", "cancelled", "error"}
+        # “in-flight” statuses we *will* poll
+        inflight_statuses = {"queued", "sending", "sent"}
+
+        rows = conn.execute(
+            f"""
+            SELECT id, rc_fax_id, status
+            FROM sensys_fax_log
+            WHERE admission_id = ?
+              AND COALESCE(NULLIF(rc_fax_id, ''), '') != ''
+              AND datetime(created_at) >= datetime('now', ?)
+            ORDER BY datetime(created_at) DESC, id DESC
+            LIMIT {max_rows}
+            """,
+            (admission_id, f"-{max_age} minutes"),
+        ).fetchall()
+
+        checked = 0
+        updated = 0
+        errors = 0
+
+        for r in rows:
+            checked += 1
+            fax_log_id = int(r["id"])
+            rc_id = (r["rc_fax_id"] or "").strip()
+            cur_status = (r["status"] or "").strip().lower()
+
+            # skip final statuses
+            if cur_status in final_statuses:
+                continue
+
+            # if status is unknown/blank, we still allow checking (but prioritize inflight)
+            if cur_status and (cur_status not in inflight_statuses):
+                continue
+
+            try:
+                rc = rc_get_message_status(rc_id)
+                new_status = (rc.get("messageStatus") or rc.get("status") or r["status"] or "").strip()
+                error_code = (rc.get("errorCode") or "").strip()
+
+                try:
+                    rc_json = json.dumps(rc)[:8000]
+                except Exception:
+                    rc_json = ""
+
+                conn.execute(
+                    """
+                    UPDATE sensys_fax_log
+                       SET status = ?,
+                           error = CASE WHEN ? != '' THEN ? ELSE error END,
+                           rc_response_json = COALESCE(NULLIF(?, ''), rc_response_json)
+                     WHERE id = ?
+                    """,
+                    (new_status, error_code, error_code, rc_json, fax_log_id),
+                )
+                updated += 1
+            except Exception:
+                errors += 1
+                logger.exception(
+                    "[SENSYS][FAX][REFRESH_RECENT_ERR] admission_id=%s fax_log_id=%s rc_id=%s",
+                    admission_id, fax_log_id, rc_id
+                )
+
+        conn.commit()
+
+        logger.info(
+            "[SENSYS][FAX][REFRESH_RECENT] admission_id=%s checked=%s updated=%s errors=%s max_age_min=%s max_rows=%s",
+            admission_id, checked, updated, errors, max_age, max_rows
+        )
+
+        return {"ok": True, "admission_id": admission_id, "checked": checked, "updated": updated, "errors": errors}
+    finally:
+        conn.close()
+
+
+@app.post("/api/sensys/admission-sms/send")
+def sensys_admission_sms_send(payload: SensysAdmissionSmsSend, request: Request):
+    u = _sensys_require_user(request)
+
+    admission_id = int(payload.admission_id)
+    to_phone = (payload.to_phone or "").strip()
+    text = (payload.text or "").strip()
+    from_phone = (payload.from_phone or "").strip() or RC_FROM_NUMBER
+
+    if not admission_id:
+        raise HTTPException(status_code=400, detail="admission_id is required")
+    if not to_phone or not text:
+        raise HTTPException(status_code=400, detail="to_phone and text are required")
+    if not from_phone:
+        raise HTTPException(status_code=400, detail="RC_FROM_NUMBER is not configured")
+
+    conn = get_db()
+    try:
+        _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+
+        logger.info(
+            "[SENSYS][SMS][SEND_START] user_id=%s admission_id=%s to=%s from=%s text_len=%s",
+            int(u["user_id"]),
+            admission_id,
+            to_phone,
+            from_phone,
+            len(text or ""),
+        )
+
+        rc_resp = None
+        rc_json = ""
+        try:
+            rc_resp = send_sms_rc(to_phone, text, from_number=from_phone)
+            msg_id = (rc_resp.get("id") or "")
+
+            # RingCentral commonly returns "Queued" for accepted messages
+            status = (rc_resp.get("messageStatus") or rc_resp.get("status") or "sent") or "sent"
+            error = ""
+
+            try:
+                rc_json = json.dumps(rc_resp)[:8000]
+            except Exception:
+                rc_json = ""
+
+            logger.info(
+                "[SENSYS][SMS][SEND_OK] admission_id=%s to=%s rc_id=%s status=%s",
+                admission_id,
+                to_phone,
+                msg_id,
+                status,
+            )
+        except Exception as e:
+            logger.exception("[SENSYS][SMS][SEND_FAILED] admission_id=%s to=%s", admission_id, to_phone)
+            msg_id = ""
+            status = "error"
+            error = str(e)
+            try:
+                rc_json = json.dumps({"error": str(e)})[:8000]
+            except Exception:
+                rc_json = ""
+
+        cur = conn.execute(
+            """
+            INSERT INTO sensys_sms_log
+              (created_by_user_id, admission_id, direction, to_phone, from_phone, message, rc_message_id, status, error, rc_response_json)
+            VALUES
+              (?, ?, 'outbound', ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(u["user_id"]),
+                admission_id,
+                to_phone,
+                from_phone,
+                text,
+                msg_id,
+                status,
+                error,
+                rc_json,
+            ),
+        )
+
+        logger.info(
+            "[SENSYS][SMS][DB_WRITE] admission_id=%s sms_log_id=%s status=%s rc_id=%s",
+            admission_id,
+            int(cur.lastrowid),
+            status,
+            msg_id,
+        )
+        conn.commit()
+
+        ok_statuses = {"sent", "queued", "sending", "delivered", "received"}
+        status_norm = (status or "").strip().lower()
+        if status_norm not in ok_statuses:
+            raise HTTPException(
+                status_code=500,
+                detail=f"SMS not accepted by provider (status={status})",
+            )
+
+        return {
+            "ok": True,
+            "id": int(cur.lastrowid),
+            "message_id": msg_id,
+            "provider_status": status,
+        }
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/sensys/admission-sms/refresh-status/{sms_log_id}")
+def sensys_admission_sms_refresh_status(sms_log_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    try:
+        row = conn.execute(
+            """
+            SELECT id, admission_id, rc_message_id, status
+            FROM sensys_sms_log
+            WHERE id = ?
+            """,
+            (int(sms_log_id),),
+        ).fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="SMS log row not found")
+
+        admission_id = int(row["admission_id"] or 0)
+        _sensys_assert_admission_access(conn, int(u["user_id"]), admission_id)
+
+        rc_id = (row["rc_message_id"] or "").strip()
+        if not rc_id:
+            raise HTTPException(status_code=400, detail="No rc_message_id on this SMS row")
+
+        rc = rc_get_message_status(rc_id)
+
+        new_status = (rc.get("messageStatus") or rc.get("status") or row["status"] or "").strip()
+        error_code = (rc.get("errorCode") or "").strip()
+
+        # keep response small
+        try:
+            rc_json = json.dumps(rc)[:8000]
+        except Exception:
+            rc_json = ""
+
+        conn.execute(
+            """
+            UPDATE sensys_sms_log
+               SET status = ?,
+                   error = CASE WHEN ? != '' THEN ? ELSE error END,
+                   rc_response_json = COALESCE(NULLIF(?, ''), rc_response_json)
+             WHERE id = ?
+            """,
+            (new_status, error_code, error_code, rc_json, int(sms_log_id)),
+        )
+        conn.commit()
+
+        logger.info(
+            "[SENSYS][SMS][REFRESH_STATUS] sms_log_id=%s rc_id=%s status=%s errorCode=%s",
+            int(sms_log_id),
+            rc_id,
+            new_status,
+            error_code,
+        )
+
+        return {"ok": True, "sms_log_id": int(sms_log_id), "provider_status": new_status, "errorCode": error_code}
+    finally:
+        conn.close()
+
+
+# -----------------------------
+# ✅ NEW: light “refresh recent statuses” endpoint
+# -----------------------------
+class SensysSmsRefreshRecent(BaseModel):
+    max_age_minutes: int = 120   # only look at recent rows
+    max_rows: int = 10           # hard cap to protect RC + Render
+
+
+@app.post("/api/sensys/admission-sms/refresh-recent/{admission_id}")
+def sensys_admission_sms_refresh_recent(admission_id: int, payload: SensysSmsRefreshRecent, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    try:
+        admission_id = int(admission_id)
+        _sensys_assert_admission_access(conn, int(u["user_id"]), admission_id)
+
+        max_age = int(payload.max_age_minutes or 120)
+        if max_age < 1:
+            max_age = 1
+        if max_age > 24 * 60:
+            max_age = 24 * 60  # cap at 24h
+
+        max_rows = int(payload.max_rows or 10)
+        if max_rows < 1:
+            max_rows = 1
+        if max_rows > 25:
+            max_rows = 25  # cap
+
+        # “final” statuses: don’t keep polling these
+        # (keep this simple; adjust as you learn RC behaviors)
+        final_statuses = {"delivered", "failed", "undelivered", "received", "canceled", "cancelled", "error"}
+        # “in-flight” statuses we *will* poll
+        inflight_statuses = {"queued", "sending", "sent"}
+
+        rows = conn.execute(
+            f"""
+            SELECT id, rc_message_id, status
+            FROM sensys_sms_log
+            WHERE admission_id = ?
+              AND COALESCE(NULLIF(rc_message_id, ''), '') != ''
+              AND datetime(created_at) >= datetime('now', ?)
+            ORDER BY datetime(created_at) DESC, id DESC
+            LIMIT {max_rows}
+            """,
+            (admission_id, f"-{max_age} minutes"),
+        ).fetchall()
+
+        checked = 0
+        updated = 0
+        errors = 0
+
+        for r in rows:
+            checked += 1
+            sms_log_id = int(r["id"])
+            rc_id = (r["rc_message_id"] or "").strip()
+            cur_status = (r["status"] or "").strip().lower()
+
+            # skip final statuses
+            if cur_status in final_statuses:
+                continue
+
+            # if status is unknown/blank, we still allow checking (but prioritize inflight)
+            if cur_status and (cur_status not in inflight_statuses):
+                continue
+
+            try:
+                rc = rc_get_message_status(rc_id)
+                new_status = (rc.get("messageStatus") or rc.get("status") or r["status"] or "").strip()
+                error_code = (rc.get("errorCode") or "").strip()
+
+                try:
+                    rc_json = json.dumps(rc)[:8000]
+                except Exception:
+                    rc_json = ""
+
+                conn.execute(
+                    """
+                    UPDATE sensys_sms_log
+                       SET status = ?,
+                           error = CASE WHEN ? != '' THEN ? ELSE error END,
+                           rc_response_json = COALESCE(NULLIF(?, ''), rc_response_json)
+                     WHERE id = ?
+                    """,
+                    (new_status, error_code, error_code, rc_json, sms_log_id),
+                )
+                updated += 1
+            except Exception:
+                errors += 1
+                logger.exception("[SENSYS][SMS][REFRESH_RECENT_ERR] admission_id=%s sms_log_id=%s rc_id=%s", admission_id, sms_log_id, rc_id)
+
+        conn.commit()
+
+        logger.info(
+            "[SENSYS][SMS][REFRESH_RECENT] admission_id=%s checked=%s updated=%s errors=%s max_age_min=%s max_rows=%s",
+            admission_id, checked, updated, errors, max_age, max_rows
+        )
+
+        return {"ok": True, "admission_id": admission_id, "checked": checked, "updated": updated, "errors": errors}
+    finally:
+        conn.close()
+
 
 @app.get("/api/sensys/services")
 def sensys_services(request: Request):
@@ -18117,6 +19953,14 @@ def sensys_admission_details(admission_id: int, request: Request):
             id, admission_id, created_at, created_by,
             dc_date, dc_time, dc_confirmed, dc_urgent, urgent_comments,
             dc_destination, destination_comments, dc_with,
+            hh_agency_id, hh_preferred,    
+            hh_carecompare_ccn,
+            hh_carecompare_name,
+            hh_carecompare_dba,
+            hh_carecompare_city,
+            hh_carecompare_state,
+            hh_carecompare_zip,
+            hh_carecompare_county,                  
             hh_comments, dme_comments, aid_consult, pcp_freetext,
             coordinate_caregiver, caregiver_name, caregiver_number,
             apealling_dc, appeal_comments,
@@ -18205,6 +20049,22 @@ def sensys_admission_details(admission_id: int, request: Request):
         (int(admission_id),),
     ).fetchall()
 
+    preferred_provider_ids = []
+    try:
+        if admission and admission["agency_id"]:
+            rows = conn.execute(
+                """
+                SELECT provider_agency_id
+                FROM sensys_agency_preferred_providers
+                WHERE agency_id = ?
+                ORDER BY provider_agency_id
+                """,
+                (int(admission["agency_id"]),),
+            ).fetchall()
+            preferred_provider_ids = [int(r["provider_agency_id"]) for r in rows]
+    except Exception:
+        preferred_provider_ids = []
+        
     return {
         "ok": True,
         "admission": dict(admission),
@@ -18212,8 +20072,7 @@ def sensys_admission_details(admission_id: int, request: Request):
         "notes": [dict(r) for r in notes],
         "dc_submissions": dc_out,
         "care_team": [dict(r) for r in care_team_links],
-
-        # ✅ NEW
+        "preferred_provider_ids": preferred_provider_ids,
         "referrals": [dict(r) for r in referrals],
         "appointments": [dict(r) for r in appointments],
     }
@@ -18432,6 +20291,7 @@ def sensys_admission_notes_delete(payload: IdOnly, request: Request):
     conn.commit()
     return {"ok": True}
 
+
 class DcSubmissionUpsert(BaseModel):
     id: Optional[int] = None
     admission_id: int
@@ -18445,6 +20305,16 @@ class DcSubmissionUpsert(BaseModel):
     dc_destination: Optional[str] = "Home"
     destination_comments: Optional[str] = ""
     dc_with: Optional[str] = "alone"
+    hh_agency_id: Optional[int] = None
+    hh_preferred: int = 0
+
+    hh_carecompare_ccn: Optional[str] = ""
+    hh_carecompare_name: Optional[str] = ""
+    hh_carecompare_dba: Optional[str] = ""
+    hh_carecompare_city: Optional[str] = ""
+    hh_carecompare_state: Optional[str] = ""
+    hh_carecompare_zip: Optional[str] = ""
+    hh_carecompare_county: Optional[str] = ""
 
     hh_comments: Optional[str] = ""
     dme_comments: Optional[str] = ""
@@ -18456,11 +20326,144 @@ class DcSubmissionUpsert(BaseModel):
     apealling_dc: int = 0
     appeal_comments: Optional[str] = ""
 
+@app.get("/api/sensys/dc-note/render")
+def sensys_dc_note_render(dc_submission_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    dc = conn.execute(
+        """
+        SELECT dcs.*,
+               a.agency_id AS admission_agency_id,
+               a.id AS admission_pk,
+               a.patient_id,
+               a.admit_date,
+               a.dc_date AS admission_dc_date
+        FROM sensys_admission_dc_submissions dcs
+        JOIN sensys_admissions a ON a.id = dcs.admission_id
+        WHERE dcs.id = ?
+        """,
+        (int(dc_submission_id),),
+    ).fetchone()
+    if not dc:
+        raise HTTPException(status_code=404, detail="DC submission not found")
+
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(dc["admission_id"]))
+
+    # patient name
+    p = conn.execute(
+        "SELECT first_name, last_name, dob FROM sensys_patients WHERE id = ?",
+        (int(dc["patient_id"]),),
+    ).fetchone()
+
+    patient_name = ""
+    if p:
+        patient_name = f"{(p['first_name'] or '').strip()} {(p['last_name'] or '').strip()}".strip()
+
+    # HH agency name
+    hh_agency_name = ""
+    if dc["hh_agency_id"]:
+        arow = conn.execute(
+            "SELECT agency_name FROM sensys_agencies WHERE id = ?",
+            (int(dc["hh_agency_id"]),),
+        ).fetchone()
+        if arow:
+            hh_agency_name = (arow["agency_name"] or "").strip()
+
+    # services selected for this DC submission
+    svc_rows = conn.execute(
+        """
+        SELECT s.id, s.name, s.service_type
+        FROM sensys_dc_submission_services j
+        JOIN sensys_services s ON s.id = j.services_id
+        WHERE j.admission_dc_submission_id = ?
+        """,
+        (int(dc_submission_id),),
+    ).fetchall()
+
+    hh_svcs = []
+    dme_svcs = []
+    for r in svc_rows:
+        st = (r["service_type"] or "").strip().lower()
+        nm = (r["name"] or "").strip()
+        if not nm:
+            continue
+        if st in ("hh", "home health", "homehealth"):
+            hh_svcs.append(nm)
+        elif st in ("dme", "durable medical equipment"):
+            dme_svcs.append(nm)
+
+    # choose template: facility-specific first, else global
+    tpl = conn.execute(
+        """
+        SELECT *
+        FROM sensys_dc_note_templates
+        WHERE deleted_at IS NULL
+          AND active = 1
+          AND (agency_id = ? OR agency_id IS NULL)
+        ORDER BY CASE WHEN agency_id IS NULL THEN 1 ELSE 0 END, updated_at DESC
+        LIMIT 1
+        """,
+        (dc["admission_agency_id"],),
+    ).fetchone()
+
+    if not tpl:
+        raise HTTPException(status_code=400, detail="No active DC note template found (create one in Admin → Notes).")
+
+    # build context for the template
+    discharge_date = (dc["dc_date"] or "").strip() or (dc["admission_dc_date"] or "").strip()
+    destination = (dc["dc_destination"] or "").strip()
+    dc_with = (dc["dc_with"] or "").strip()
+
+    ctx = {
+        "patient_name": patient_name,
+        "discharge_date": discharge_date,
+        "destination": destination,
+        "dc_with": dc_with,
+        "hh_agency_name": hh_agency_name,
+
+        # booleans for {{#if ...}}
+        "has_destination": True if destination else False,
+        "has_with": True if dc_with else False,
+        "has_hh": True if hh_svcs else False,
+        "has_dme": True if dme_svcs else False,
+        "has_hh_agency": True if hh_agency_name else False,
+
+        # pre-joined strings to keep templates simple
+        "hh_services": ", ".join(hh_svcs),
+        "dme_services": ", ".join(dme_svcs),
+
+        # keep your Evolv phone centralized
+        "evolv_phone": "1-800-868-0506",
+    }
+
+    rendered = _sensys_render_dc_note_template(tpl["template_body"], ctx)
+
+    return {
+        "ok": True,
+        "template_id": int(tpl["id"]),
+        "template_name": tpl["template_name"],
+        "note_text": rendered,
+        "ctx": ctx,  # helpful for debugging; remove later if you want
+    }
+
 @app.post("/api/sensys/admission-dc-submissions/upsert")
 def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request: Request):
     u = _sensys_require_user(request)
     conn = get_db()
     _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
+
+    # If user picked a Care Compare agency, hh_agency_id should be NULL and we store carecompare fields.
+    # If user picked an internal agency, we clear the carecompare fields.
+    using_carecompare = (payload.hh_agency_id is None) and bool((payload.hh_carecompare_name or "").strip() or (payload.hh_carecompare_ccn or "").strip())
+
+    cc_ccn = (payload.hh_carecompare_ccn or "").strip() if using_carecompare else ""
+    cc_name = (payload.hh_carecompare_name or "").strip() if using_carecompare else ""
+    cc_dba = (payload.hh_carecompare_dba or "").strip() if using_carecompare else ""
+    cc_city = (payload.hh_carecompare_city or "").strip() if using_carecompare else ""
+    cc_state = (payload.hh_carecompare_state or "").strip() if using_carecompare else ""
+    cc_zip = (payload.hh_carecompare_zip or "").strip() if using_carecompare else ""
+    cc_county = (payload.hh_carecompare_county or "").strip() if using_carecompare else ""
 
     if payload.id:
         conn.execute(
@@ -18474,6 +20477,18 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                    dc_destination = ?,
                    destination_comments = ?,
                    dc_with = ?,
+
+                   hh_agency_id = ?,
+                   hh_preferred = ?,
+
+                   hh_carecompare_ccn = ?,
+                   hh_carecompare_name = ?,
+                   hh_carecompare_dba = ?,
+                   hh_carecompare_city = ?,
+                   hh_carecompare_state = ?,
+                   hh_carecompare_zip = ?,
+                   hh_carecompare_county = ?,
+
                    hh_comments = ?,
                    dme_comments = ?,
                    aid_consult = ?,
@@ -18497,6 +20512,18 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                 (payload.dc_destination or "").strip(),
                 (payload.destination_comments or "").strip(),
                 (payload.dc_with or "").strip(),
+
+                (int(payload.hh_agency_id) if payload.hh_agency_id else None),
+                int(payload.hh_preferred or 0),
+
+                cc_ccn,
+                cc_name,
+                cc_dba,
+                cc_city,
+                cc_state,
+                cc_zip,
+                cc_county,
+
                 (payload.hh_comments or "").strip(),
                 (payload.dme_comments or "").strip(),
                 (payload.aid_consult or "").strip(),
@@ -18506,93 +20533,77 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                 (payload.caregiver_number or "").strip(),
                 int(payload.apealling_dc or 0),
                 (payload.appeal_comments or "").strip(),
+
                 int(payload.id),
                 int(payload.admission_id),
             ),
         )
-
-        # If the update didn't touch a row, fail loudly so the UI doesn't "think" it saved
-        if conn.total_changes == 0:
-            raise HTTPException(status_code=404, detail="DC submission not found (or was deleted)")
-
-    else:
-        conn.execute(
-            """
-            INSERT INTO sensys_admission_dc_submissions
-                (admission_id, created_by,
-                 dc_date, dc_time, dc_confirmed, dc_urgent, urgent_comments,
-                 dc_destination, destination_comments, dc_with,
-                 hh_comments, dme_comments, aid_consult, pcp_freetext,
-                 coordinate_caregiver, caregiver_name, caregiver_number,
-                 apealling_dc, appeal_comments)
-            VALUES
-                (?, ?,
-                 ?, ?, ?, ?, ?,
-                 ?, ?, ?,
-                 ?, ?, ?, ?,
-                 ?, ?, ?,
-                 ?, ?)
-            """,
-            (
-                int(payload.admission_id),
-                int(u["user_id"]),
-                (payload.dc_date or "").strip(),
-                (payload.dc_time or "").strip(),
-                int(payload.dc_confirmed or 0),
-                int(payload.dc_urgent or 0),
-                (payload.urgent_comments or "").strip(),
-                (payload.dc_destination or "").strip(),
-                (payload.destination_comments or "").strip(),
-                (payload.dc_with or "").strip(),
-                (payload.hh_comments or "").strip(),
-                (payload.dme_comments or "").strip(),
-                (payload.aid_consult or "").strip(),
-                (payload.pcp_freetext or "").strip(),
-                int(payload.coordinate_caregiver or 0),
-                (payload.caregiver_name or "").strip(),
-                (payload.caregiver_number or "").strip(),
-                int(payload.apealling_dc or 0),
-                (payload.appeal_comments or "").strip(),
-            ),
-        )
-
-    new_id = payload.id
-    if not new_id:
-        new_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
-
-    # ---- WRITE WRAP LOG (db path + verify) ----
-    try:
-        db_row = conn.execute("PRAGMA database_list").fetchone()
-        db_file = (db_row["file"] if db_row and "file" in db_row.keys() else None) or DB_PATH
-
         conn.commit()
+        return {"ok": True, "id": int(payload.id)}
 
-        exists = conn.execute(
-            "SELECT COUNT(1) AS c FROM sensys_admission_dc_submissions WHERE id = ?",
-            (int(new_id),),
-        ).fetchone()["c"]
-
-        logger.info(
-            "[SENSYS][WRITE] table=sensys_admission_dc_submissions op=%s id=%s admission_id=%s user_id=%s db=%s verify_exists=%s",
-            ("update" if payload.id else "insert"),
-            int(new_id),
+    cur = conn.execute(
+        """
+        INSERT INTO sensys_admission_dc_submissions (
+            admission_id, created_by,
+            dc_date, dc_time, dc_confirmed, dc_urgent, urgent_comments,
+            dc_destination, destination_comments, dc_with,
+            hh_agency_id, hh_preferred,
+            hh_carecompare_ccn, hh_carecompare_name, hh_carecompare_dba,
+            hh_carecompare_city, hh_carecompare_state, hh_carecompare_zip, hh_carecompare_county,
+            hh_comments, dme_comments, aid_consult, pcp_freetext,
+            coordinate_caregiver, caregiver_name, caregiver_number,
+            apealling_dc, appeal_comments
+        ) VALUES (
+            ?, ?,
+            ?, ?, ?, ?, ?,
+            ?, ?, ?,
+            ?, ?,
+            ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?,
+            ?, ?
+        )
+        """,
+        (
             int(payload.admission_id),
             int(u["user_id"]),
-            db_file,
-            int(exists),
-        )
-    except Exception:
-        logger.exception(
-            "[SENSYS][WRITE][ERROR] table=sensys_admission_dc_submissions op=%s id=%s admission_id=%s db=%s",
-            ("update" if payload.id else "insert"),
-            int(new_id),
-            int(payload.admission_id),
-            DB_PATH,
-        )
-        raise
-    # ------------------------------------------
 
-    return {"ok": True, "id": int(new_id)}
+            (payload.dc_date or "").strip(),
+            (payload.dc_time or "").strip(),
+            int(payload.dc_confirmed or 0),
+            int(payload.dc_urgent or 0),
+            (payload.urgent_comments or "").strip(),
+
+            (payload.dc_destination or "").strip(),
+            (payload.destination_comments or "").strip(),
+            (payload.dc_with or "").strip(),
+
+            (int(payload.hh_agency_id) if payload.hh_agency_id else None),
+            int(payload.hh_preferred or 0),
+
+            cc_ccn,
+            cc_name,
+            cc_dba,
+            cc_city,
+            cc_state,
+            cc_zip,
+            cc_county,
+
+            (payload.hh_comments or "").strip(),
+            (payload.dme_comments or "").strip(),
+            (payload.aid_consult or "").strip(),
+            (payload.pcp_freetext or "").strip(),
+
+            int(payload.coordinate_caregiver or 0),
+            (payload.caregiver_name or "").strip(),
+            (payload.caregiver_number or "").strip(),
+            int(payload.apealling_dc or 0),
+            (payload.appeal_comments or "").strip(),
+        ),
+    )
+    conn.commit()
+    return {"ok": True, "id": int(cur.lastrowid)}
 
 
 @app.post("/api/sensys/admission-dc-submissions/delete")
@@ -18695,6 +20706,587 @@ def sensys_admission_care_team_unlink(payload: IdOnly, request: Request):
     conn.commit()
     return {"ok": True}
 
+# =========================================================
+# Care Compare (CMS Provider Data Catalog) - Home Health
+# =========================================================
+
+_CMS_HHA_DATASET_ID = "6jpm-sxkc"  # Home Health Care Agencies dataset id on Provider Data Catalog 
+_CMS_HHA_SCHEMA_CACHE = {"cols": None, "ts": 0}
+
+def _cms_datastore_query_with_fallback(url: str, payload: dict, *, timeout: int = 60) -> dict:
+    """
+    CMS DKAN datastore endpoints support BOTH POST (JSON body) and GET (querystring).
+    We prefer POST (keeps booleans/arrays typed), but some deployments/edges return 400.
+    If POST fails with 400, fallback to GET with safe query param coercion.
+    """
+    headers = {"User-Agent": "sensys/1.0"}
+
+    # 1) Try POST first (preferred)
+    try:
+        r = requests.post(url, json=payload, headers=headers, timeout=timeout)
+        r.raise_for_status()
+        return r.json() or {}
+    except requests.HTTPError as e:
+        resp = getattr(e, "response", None)
+        status = getattr(resp, "status_code", None)
+
+        # Only fallback on 400 (Bad Request). Otherwise re-raise.
+        if status != 400:
+            raise
+
+        # 2) Fallback to GET (querystring)
+        params = {}
+        for k, v in (payload or {}).items():
+            if isinstance(v, bool):
+                params[k] = "true" if v else "false"
+            elif isinstance(v, (list, tuple)):
+                # CMS GET expects comma-separated strings for arrays (ex: properties=a,b,c)
+                params[k] = ",".join([str(x) for x in v if x is not None and str(x).strip() != ""])
+            elif v is None:
+                continue
+            else:
+                params[k] = str(v)
+
+        r2 = requests.get(url, params=params, headers=headers, timeout=timeout)
+        r2.raise_for_status()
+        return r2.json() or {}
+
+
+def _cms_hha_get_cols() -> dict:
+    """
+    Fetch schema once and cache. Returns a dict of 'lowered_column_name' -> actual_column_name.
+    If CMS doesn't return schema, fall back to keys from a 1-row sample.
+    """
+    now = dt.datetime.utcnow().timestamp()
+    if _CMS_HHA_SCHEMA_CACHE["cols"] and (now - _CMS_HHA_SCHEMA_CACHE["ts"] < 6 * 3600):
+        return _CMS_HHA_SCHEMA_CACHE["cols"]
+
+    url = f"https://data.cms.gov/provider-data/api/1/datastore/query/{_CMS_HHA_DATASET_ID}/0"
+
+    # 1) Try to fetch schema (preferred)
+    payload = {
+        "limit": 1,
+        "offset": 0,
+        "schema": True,
+        "count": False,
+        "results": False,
+        "keys": True,
+    }
+    data = _cms_datastore_query_with_fallback(url, payload, timeout=20)
+
+    schema = data.get("schema")
+    fields = None
+
+    # DKAN schema can be either { "fields":[...] } or { "<resourceId>": { "fields":[...] } }
+    if isinstance(schema, dict) and isinstance(schema.get("fields"), list):
+        fields = schema.get("fields")
+    elif isinstance(schema, dict) and len(schema.keys()) == 1:
+        one = next(iter(schema.values()))
+        if isinstance(one, dict) and isinstance(one.get("fields"), list):
+            fields = one.get("fields")
+
+    cols = {}
+
+    # 2) If schema not returned, fall back to 1-row sample keys
+    if not fields:
+        sample_payload = {
+            "limit": 1,
+            "offset": 0,
+            "schema": False,
+            "count": False,
+            "results": True,
+            "keys": True,
+        }
+        sample = _cms_datastore_query_with_fallback(url, sample_payload, timeout=20)
+        sample_rows = sample.get("results") or []
+        if isinstance(sample_rows, list) and sample_rows:
+            for k in sample_rows[0].keys():
+                nm = (k or "").strip()
+                if nm:
+                    cols[nm.lower()] = nm
+    else:
+        for f in (fields or []):
+            nm = (f.get("name") or "").strip()
+            if not nm:
+                continue
+            cols[nm.lower()] = nm
+
+    _CMS_HHA_SCHEMA_CACHE["cols"] = cols
+    _CMS_HHA_SCHEMA_CACHE["ts"] = now
+    return cols
+
+
+
+def _pick_col(cols: dict, needles: list[str]) -> str | None:
+    """Pick the first column whose name contains ANY of the provided substrings."""
+    if not cols:
+        return None
+    for n in needles:
+        n = (n or "").lower()
+        for c in cols.keys():
+            if n in c:
+                return cols[c]
+    return None
+
+_PROVIDER_LIBRARY_LOCK = threading.Lock()
+
+def _provider_meta_get(conn) -> dict:
+    row = conn.execute(
+        "SELECT dataset_id, last_sync_at, last_row_count, last_error FROM sensys_provider_library_meta WHERE dataset_id = ?",
+        (_CMS_HHA_DATASET_ID,),
+    ).fetchone()
+    if not row:
+        return {"dataset_id": _CMS_HHA_DATASET_ID, "last_sync_at": "", "last_row_count": 0, "last_error": ""}
+    return dict(row)
+
+def _provider_meta_set(conn, *, last_sync_at: str, last_row_count: int, last_error: str):
+    conn.execute(
+        """
+        INSERT INTO sensys_provider_library_meta (dataset_id, last_sync_at, last_row_count, last_error, updated_at)
+        VALUES (?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(dataset_id) DO UPDATE SET
+            last_sync_at   = excluded.last_sync_at,
+            last_row_count = excluded.last_row_count,
+            last_error     = excluded.last_error,
+            updated_at     = datetime('now')
+        """,
+        (_CMS_HHA_DATASET_ID, last_sync_at, int(last_row_count), last_error or ""),
+    )
+    conn.commit()
+
+def _provider_library_should_sync(meta: dict) -> bool:
+    # monthly-ish (27 days) so you won’t miss it
+    last = (meta.get("last_sync_at") or "").strip()
+    if not last:
+        return True
+    try:
+        # stored as ISO-ish string by our own code
+        dt_last = dt.datetime.fromisoformat(last.replace("Z","").replace(" ", "T"))
+        return (dt.datetime.utcnow() - dt_last) > dt.timedelta(days=27)
+    except Exception:
+        return True
+
+def _provider_library_sync_now() -> dict:
+    """
+    Downloads all rows from CMS Provider Data Catalog dataset and upserts into sensys_provider_library_hha.
+    Safe to call repeatedly; uses a lock to prevent concurrent sync.
+    """
+    if not _PROVIDER_LIBRARY_LOCK.acquire(blocking=False):
+        return {"ok": False, "note": "Sync already running."}
+
+    conn = None
+    try:
+        conn = get_db()
+        meta = _provider_meta_get(conn)
+
+        cols = _cms_hha_get_cols()
+        col_provider = _pick_col(cols, ["provider name", "provider_name", "name"])
+        col_dba      = _pick_col(cols, ["dba", "doing business", "doing_business"])
+        col_city     = _pick_col(cols, ["city"])
+        col_state    = _pick_col(cols, ["state"])
+        col_zip      = _pick_col(cols, ["zip"])
+        col_county   = _pick_col(cols, ["county"])
+        col_ccn      = _pick_col(cols, ["ccn", "certification", "provider number", "provider_number"])
+        col_addr     = _pick_col(cols, ["address", "street"])
+        col_phone    = _pick_col(cols, ["phone"])
+        col_fax      = _pick_col(cols, ["fax"])
+
+        # We only fetch columns we care about to keep the payload small
+        props = [c for c in [col_ccn, col_provider, col_dba, col_addr, col_city, col_state, col_zip, col_county, col_phone, col_fax] if c]
+
+        url = f"https://data.cms.gov/provider-data/api/1/datastore/query/{_CMS_HHA_DATASET_ID}/0"
+
+        limit = 1500
+        offset = 0
+        total_upserted = 0
+
+        # ✅ Diagnostics
+        total_fetched = 0
+        skipped_no_ccn = 0
+        first_page_debug = None
+
+        # Clear errors at start
+        _provider_meta_set(
+            conn,
+            last_sync_at=meta.get("last_sync_at",""),
+            last_row_count=meta.get("last_row_count",0),
+            last_error=""
+        )
+
+        while True:
+            payload = {
+                "limit": limit,
+                "offset": offset,
+                "count": False,
+                "results": True,
+                "schema": False,
+                "keys": True,
+            }
+            if props:
+                payload["properties"] = props  # keep as real array
+
+            data = _cms_datastore_query_with_fallback(url, payload, timeout=60)
+
+            # ✅ Capture response shape once (helps confirm CMS is actually returning results)
+            if first_page_debug is None:
+                try:
+                    first_page_debug = {
+                        "top_level_keys": sorted(list((data or {}).keys()))[:30],
+                        "col_ccn": col_ccn,
+                        "col_provider": col_provider,
+                        "col_dba": col_dba,
+                        "props_sent": props,
+                    }
+                except Exception:
+                    first_page_debug = {"note": "failed to build first_page_debug"}
+
+            rows = data.get("results") or []
+            if not isinstance(rows, list):
+                _provider_meta_set(
+                    conn,
+                    last_sync_at=meta.get("last_sync_at",""),
+                    last_row_count=0,
+                    last_error=f"CMS results not a list. type={type(rows).__name__}. debug={first_page_debug}",
+                )
+                break
+
+            if not rows:
+                break
+
+            # ✅ If schema lookup failed, recover column names from actual row keys (page 1)
+            if offset == 0 and rows:
+                try:
+                    row_keys = list((rows[0] or {}).keys())
+
+                    def _find_key(substrings: list[str]) -> str | None:
+                        for k in row_keys:
+                            lk = (k or "").lower()
+                            for s in substrings:
+                                if s in lk:
+                                    return k
+                        return None
+
+                    if not col_ccn:
+                        col_ccn = _find_key(["ccn", "certification", "cms certification", "provider number", "provider_number", "provnum"])
+                    if not col_provider:
+                        col_provider = _find_key(["provider name", "provider_name", "agency name", "name"])
+                    if not col_dba:
+                        col_dba = _find_key(["dba", "doing business", "doing_business", "trade name"])
+                    if not col_phone:
+                        col_phone = _find_key(["phone", "telephone"])
+                    if not col_fax:
+                        col_fax = _find_key(["fax"])
+                    if not col_addr:
+                        col_addr = _find_key(["address", "street"])
+                    if not col_city:
+                        col_city = _find_key(["city"])
+                    if not col_state:
+                        col_state = _find_key(["state"])
+                    if not col_zip:
+                        col_zip = _find_key(["zip", "postal"])
+                    if not col_county:
+                        col_county = _find_key(["county"])
+
+                    # refresh debug so you can SEE what it detected
+                    if first_page_debug is not None:
+                        first_page_debug["sample_row_keys"] = sorted([str(x) for x in row_keys])[:80]
+                        first_page_debug["col_ccn_detected"] = col_ccn
+                        first_page_debug["col_provider_detected"] = col_provider
+                        first_page_debug["col_dba_detected"] = col_dba
+                except Exception:
+                    pass
+
+            total_fetched += len(rows)
+
+            # Upsert page
+            for row in rows:
+                ccn = str(
+                    (row.get(col_ccn) if col_ccn else None)
+                    or row.get("ccn")
+                    or row.get("provider_number")
+                    or row.get("provider id")
+                    or row.get("provider_id")
+                    or ""
+                ).strip()
+
+                if not ccn:
+                    skipped_no_ccn += 1
+                    continue
+
+
+                provider_name = str(row.get(col_provider) or "").strip()
+                dba = str(row.get(col_dba) or "").strip()
+                addr = str(row.get(col_addr) or "").strip()
+                city = str(row.get(col_city) or "").strip()
+                state = str(row.get(col_state) or "").strip()
+                zipc = str(row.get(col_zip) or "").strip()
+                county = str(row.get(col_county) or "").strip()
+                phone = str(row.get(col_phone) or "").strip()
+                fax = str(row.get(col_fax) or "").strip()
+
+                conn.execute(
+                    """
+                    INSERT INTO sensys_provider_library_hha
+                        (ccn, provider_name, dba, address, city, state, zip, county, phone, fax, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                    ON CONFLICT(ccn) DO UPDATE SET
+                        provider_name = excluded.provider_name,
+                        dba           = excluded.dba,
+                        address       = excluded.address,
+                        city          = excluded.city,
+                        state         = excluded.state,
+                        zip           = excluded.zip,
+                        county        = excluded.county,
+                        phone         = excluded.phone,
+                        fax           = excluded.fax,
+                        updated_at    = datetime('now')
+                    """,
+                    (ccn, provider_name, dba, addr, city, state, zipc, county, phone, fax),
+                )
+                total_upserted += 1
+
+            conn.commit()
+            offset += limit
+
+        now_iso = dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+        # ✅ If we fetched rows but upserted 0, keep a “why” message in meta
+        if total_fetched > 0 and total_upserted == 0:
+            _provider_meta_set(
+                conn,
+                last_sync_at=now_iso,
+                last_row_count=0,
+                last_error=(
+                    f"Fetched {total_fetched} CMS rows but upserted 0. "
+                    f"skipped_no_ccn={skipped_no_ccn}. debug={first_page_debug}"
+                ),
+            )
+        else:
+            # Normal success path
+            _provider_meta_set(conn, last_sync_at=now_iso, last_row_count=total_upserted, last_error="")
+
+        return {
+            "ok": True,
+            "upserted": total_upserted,
+            "last_sync_at": now_iso,
+            "fetched": total_fetched,
+            "skipped_no_ccn": skipped_no_ccn,
+            "debug": first_page_debug,
+        }
+
+
+    except Exception as e:
+        try:
+            if conn:
+                now_iso = dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+                _provider_meta_set(conn, last_sync_at=now_iso, last_row_count=0, last_error=str(e))
+        except Exception:
+            pass
+        # include response body if this was a requests error (helps debug CMS 400s)
+        extra = ""
+        try:
+            resp = getattr(e, "response", None)
+            if resp is not None:
+                extra = f" | CMS response: {resp.text[:500]}"
+        except Exception:
+            pass
+        return {"ok": False, "error": str(e) + extra}
+
+    finally:
+        _PROVIDER_LIBRARY_LOCK.release()
+
+
+# -------------------------------
+# Admin endpoints
+# -------------------------------
+@app.get("/api/sensys/admin/provider-library/meta")
+def sensys_admin_provider_library_meta(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    return _provider_meta_get(conn)
+
+@app.post("/api/sensys/admin/provider-library/sync")
+def sensys_admin_provider_library_sync(token: str):
+    _require_admin_token(token)
+    return _provider_library_sync_now()
+
+@app.get("/api/sensys/admin/provider-library/hha-search")
+def sensys_admin_provider_library_hha_search(
+    token: str,
+    q: str = Query(""),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    _require_admin_token(token)
+    conn = get_db()
+    qq = (q or "").strip()
+
+    # fetch one extra row so we can tell the UI "has_more"
+    lim_plus = int(limit) + 1
+
+    if not qq:
+        rows = conn.execute(
+            """
+            SELECT ccn, provider_name, dba, city, state, zip, county, phone, fax
+              FROM sensys_provider_library_hha
+             ORDER BY provider_name ASC
+             LIMIT ? OFFSET ?
+            """,
+            (lim_plus, int(offset)),
+        ).fetchall()
+
+        has_more = len(rows) > int(limit)
+        rows = rows[: int(limit)]
+        return {"results": [dict(r) for r in rows], "has_more": has_more}
+
+    rows = conn.execute(
+        """
+        SELECT ccn, provider_name, dba, city, state, zip, county, phone, fax
+          FROM sensys_provider_library_hha
+         WHERE LOWER(provider_name) LIKE ?
+            OR LOWER(dba) LIKE ?
+            OR ccn LIKE ?
+         ORDER BY provider_name ASC
+         LIMIT ? OFFSET ?
+        """,
+        (f"%{qq.casefold()}%", f"%{qq.casefold()}%", f"%{qq}%", lim_plus, int(offset)),
+    ).fetchall()
+
+    has_more = len(rows) > int(limit)
+    rows = rows[: int(limit)]
+    return {"results": [dict(r) for r in rows], "has_more": has_more}
+
+
+# -------------------------------
+# Auto-sync loop (no cron)
+# Runs daily; syncs monthly-ish
+# -------------------------------
+def _provider_library_autosync_loop():
+    while True:
+        try:
+            conn = get_db()
+            meta = _provider_meta_get(conn)
+            if _provider_library_should_sync(meta):
+                _provider_library_sync_now()
+        except Exception:
+            pass
+        time.sleep(24 * 3600)
+
+@app.on_event("startup")
+def _provider_library_startup():
+    t = threading.Thread(target=_provider_library_autosync_loop, daemon=True)
+    t.start()
+
+@app.get("/api/sensys/care-compare/hha-search")
+def sensys_care_compare_hha_search(
+    request: Request,
+    q: str = Query("", description="Agency/provider name (matches Provider Name OR DBA)"),
+    name: str = Query("", alias="name", description="Alias for q"),
+    agency_name: str = Query("", alias="agency_name", description="Alias for q"),
+    county: str = Query("", description="County"),
+    city: str = Query("", description="City"),
+    state: str = Query("", description="State (2-letter preferred)"),
+    zip: str = Query("", description="ZIP"),
+    ccn: str = Query("", description="CMS Certification Number / CCN"),
+    limit: int = Query(25, ge=1, le=100),
+):
+    """
+    ✅ NOW: queries our local Provider Library table (sensys_provider_library_hha),
+    instead of hitting CMS live each time.
+    """
+    _ = _sensys_require_user(request)
+
+    q_merged = (q or "").strip() or (name or "").strip() or (agency_name or "").strip()
+    any_filter = any([
+        bool(q_merged),
+        bool((county or "").strip()),
+        bool((city or "").strip()),
+        bool((state or "").strip()),
+        bool((zip or "").strip()),
+        bool((ccn or "").strip()),
+    ])
+    if not any_filter:
+        return {"results": [], "note": "Enter at least one search field."}
+
+    conn = get_db()
+
+    # Build SQL safely
+    wh = ["1=1"]
+    params: list = []
+
+    def add_like(val: str, col: str):
+        vv = (val or "").strip()
+        if vv:
+            wh.append(f"LOWER({col}) LIKE ?")
+            params.append(f"%{vv.casefold()}%")
+
+    def add_eq_upper(val: str, col: str):
+        vv = (val or "").strip()
+        if vv:
+            wh.append(f"UPPER({col}) = ?")
+            params.append(vv.upper())
+
+    # Name search hits provider_name OR dba
+    if q_merged:
+        wh.append("(LOWER(provider_name) LIKE ? OR LOWER(dba) LIKE ?)")
+        params.append(f"%{q_merged.casefold()}%")
+        params.append(f"%{q_merged.casefold()}%")
+
+    add_like(county, "county")
+    add_like(city, "city")
+    add_eq_upper(state, "state")
+    add_like(zip, "zip")
+    add_like(ccn, "ccn")
+
+    sql = f"""
+        SELECT
+            p.ccn, p.provider_name, p.dba, p.address, p.city, p.state, p.zip, p.county, p.phone, p.fax,
+            a.id   AS matched_agency_id,
+            a.agency_name AS matched_agency_name,
+            a.fax AS matched_agency_fax,
+            a.phone1 AS matched_agency_phone
+        FROM sensys_provider_library_hha p
+        LEFT JOIN sensys_agencies a
+               ON a.deleted_at IS NULL
+              AND TRIM(a.carecompare_ccn) <> ''
+              AND a.carecompare_ccn = p.ccn
+        WHERE {" AND ".join(wh)}
+        ORDER BY
+            CASE WHEN matched_agency_id IS NOT NULL THEN 0 ELSE 1 END,
+            provider_name ASC
+        LIMIT ?
+    """
+    params.append(int(limit))
+
+    rows = conn.execute(sql, params).fetchall()
+
+    results = []
+    for r in rows:
+        results.append({
+            "ccn": r["ccn"] or "",
+            "provider_name": r["provider_name"] or "",
+            "dba": r["dba"] or "",
+            "address": r["address"] or "",
+            "city": r["city"] or "",
+            "state": r["state"] or "",
+            "zip": r["zip"] or "",
+            "county": r["county"] or "",
+            "phone": r["phone"] or "",
+            "fax": r["fax"] or "",
+            "matched_agency_id": r["matched_agency_id"],
+            "matched_agency_name": r["matched_agency_name"] or "",
+            "matched_agency_fax": r["matched_agency_fax"] or "",
+            "matched_agency_phone": r["matched_agency_phone"] or "",
+        })
+
+    note = ""
+    if not results:
+        note = "No results found in Provider Library. (If this is unexpected, run a sync.)"
+
+    return {"results": results, "note": note}
+
+
+
 # ---------------------------------------------------------------------------
 # HTML routes & health check
 # ---------------------------------------------------------------------------
@@ -18769,6 +21361,15 @@ async def sensys_snf_sw_ui():
 @app.get("/sensys/admission-details", response_class=HTMLResponse)
 async def sensys_admission_details_ui():
     return HTMLResponse(content=read_html(SENSYS_ADMISSION_DETAILS_HTML))
+
+# ✅ NEW: Home Health admissions list + trimmed details page
+@app.get("/sensys/home-health", response_class=HTMLResponse)
+async def sensys_home_health_ui():
+    return HTMLResponse(content=read_html(SENSYS_HOME_HEALTH_HTML))
+
+@app.get("/sensys/home-health/admission-details", response_class=HTMLResponse)
+async def sensys_home_health_admission_details_ui():
+    return HTMLResponse(content=read_html(SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML))
 
 
 @app.get("/snf-admissions", response_class=HTMLResponse)
