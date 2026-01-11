@@ -63,6 +63,7 @@
             <button data-tab="appts" class="sideTabBtn">Appointments</button>
             <button data-tab="pdfs" class="sideTabBtn">PDFs</button>
             <button data-tab="careteam" class="sideTabBtn">Care Team</button>
+            <button data-tab="esign" class="sideTabBtn">E-Sign</button>
           </div>
         </div>
       </div>
@@ -523,6 +524,60 @@
             </div>
           </div>
         </div>
+        <!-- PANEL: E-Sign -->
+        <div class="tabPanel" data-panel="esign" style="display:none;">
+          <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div style="font-size:13px;color:#111827;font-weight:800;">E-Sign Orders</div>
+            </div>
+
+            <!-- Entry form -->
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <select id="esignCareTeamSelect"
+                style="flex:1;min-width:260px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+                <option value="">Loading care team…</option>
+              </select>
+
+              <select id="esignServiceTypeSelect"
+                style="flex:1;min-width:240px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+                <option value="">Select service type…</option>
+              </select>
+
+              <select id="esignServicesMulti" multiple
+                style="flex:1;min-width:320px;min-height:44px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+              </select>
+
+              <input id="esignComments" placeholder="Comments (optional)"
+                style="flex:1;min-width:240px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <button id="addEsignBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Add E-Sign
+              </button>
+            </div>
+
+            <!-- List -->
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:1050px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Care Team</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Service Type</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Services</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Status</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Comments</th>
+                    <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="esignTbody"></tbody>
+              </table>
+            </div>
+
+            <div style="margin-top:8px;font-size:12px;color:#667085;">
+              Status defaults to <b>Pending</b>. Signed/Declined fields will populate later from the signer workflow.
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -595,7 +650,6 @@
             <thead>
               <tr style="background:#f8fafc;">
                 <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Name / DBA</th>
-                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Location</th>
                 <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">CCN</th>
                 <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Action</th>
               </tr>
@@ -775,6 +829,8 @@
   let SMS_LOG = [];
   let FAX_LOG = [];
   let PDFS = [];
+  let ESIGNS = [];
+  let SERVICE_TYPES = [];
 
   // ✅ NEW: SMS auto refresh controls (lightweight)
   let SMS_AUTO_REFRESH_MS = 60000; // 60s (change to 120000 for 2 min if you want even lighter)
@@ -1007,6 +1063,114 @@
         } catch(e) { showMsg(e.message); }
       });
     });
+  }
+  function renderEsignCareTeamSelect(){
+    const sel = document.getElementById('esignCareTeamSelect');
+    if(!sel) return;
+
+    sel.innerHTML = '<option value="">Select care team…</option>' + (CARE_TEAM || []).map(ct => {
+      const id = ct.id;
+      const name = ct.name || ct.full_name || ct.display_name || ('Care Team #' + id);
+      const role = ct.role ? (' • ' + ct.role) : '';
+      return `<option value="${id}">${name}${role}</option>`;
+    }).join('');
+  }
+
+  function renderEsignServiceTypes(){
+    const sel = document.getElementById('esignServiceTypeSelect');
+    if(!sel) return;
+
+    // Build unique service types from SERVICES
+    const seen = new Map();
+    (SERVICES || []).forEach(s => {
+      const stid = (s.service_type_id ?? s.service_type ?? s.type_id ?? null);
+      const stname = (s.service_type_name ?? s.service_type_label ?? s.service_type ?? s.type_name ?? null);
+      if(stid == null) return;
+      if(!seen.has(String(stid))){
+        seen.set(String(stid), stname || ('Service Type ' + stid));
+      }
+    });
+
+    SERVICE_TYPES = Array.from(seen.entries()).map(([id, name]) => ({ id: Number(id), name }));
+    SERVICE_TYPES.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+
+    sel.innerHTML = `<option value="">Select service type…</option>` + SERVICE_TYPES.map(st =>
+      `<option value="${st.id}">${st.name}</option>`
+    ).join('');
+
+    // reset services multi
+    renderEsignServicesMultiForSelectedType();
+  }
+
+  function renderEsignServicesMultiForSelectedType(){
+    const multi = document.getElementById('esignServicesMulti');
+    const stSel = document.getElementById('esignServiceTypeSelect');
+    if(!multi || !stSel) return;
+
+    const stid = stSel.value ? Number(stSel.value) : null;
+    const rows = (SERVICES || []).filter(s => Number(s.service_type_id ?? s.service_type ?? s.type_id) === stid);
+
+    // Sort by service name
+    rows.sort((a,b) => ((a.service_name||a.name||'') + '').localeCompare((b.service_name||b.name||'') + ''));
+
+    multi.innerHTML = rows.map(s => {
+      const id = s.id;
+      const name = s.service_name || s.name || ('Service #' + id);
+      return `<option value="${id}">${name}</option>`;
+    }).join('');
+  }
+
+  function renderEsigns(){
+    // ESIGNS are returned inside DETAILS (backend change below)
+    ESIGNS = ((DETAILS && DETAILS.esigns) || []);
+
+    const tb = document.getElementById('esignTbody');
+    if(!tb) return;
+
+    tb.innerHTML = ESIGNS.map(r => {
+      const servicesText = (r.services || []).map(s => s.service_name || s.name || '').filter(Boolean).join(', ');
+      const status = r.status || 'Pending';
+
+      return `
+        <tr style="border-bottom:1px solid #eef0f5;">
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.care_team_name || '—')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.service_type_name || '—')}</td>
+          <td style="padding:10px;font-size:12px;color:#475467;">${escapeHtml(servicesText || '—')}</td>
+          <td style="padding:10px;font-size:12px;color:#475467;">${escapeHtml(status)}</td>
+          <td style="padding:10px;font-size:12px;color:#475467;">${escapeHtml(r.comments || '')}</td>
+          <td style="padding:10px;text-align:right;">
+            <button data-esign-del="${r.id}"
+              style="padding:8px 10px;border-radius:10px;border:1px solid #d0d5dd;background:#fff;cursor:pointer;font-size:12px;font-weight:800;">
+              Delete
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    tb.querySelectorAll('[data-esign-del]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = Number(btn.getAttribute('data-esign-del'));
+        try{
+          showMsg('');
+          await api('/api/sensys/admission-esigns/delete', {
+            method:'POST',
+            body: JSON.stringify({ id })
+          });
+          await loadAll();
+        }catch(e){ showMsg(e.message); }
+      });
+    });
+  }
+
+  // small helper (safe)
+  function escapeHtml(s){
+    return (s ?? '').toString()
+      .replaceAll('&','&amp;')
+      .replaceAll('<','&lt;')
+      .replaceAll('>','&gt;')
+      .replaceAll('"','&quot;')
+      .replaceAll("'","&#039;");
   }
 
   function renderNotes() {
@@ -1342,7 +1506,7 @@
 
     if(!results.length){
       if(tbody){
-        tbody.innerHTML = `<tr><td colspan="4" style="padding:12px;color:#667085;font-size:12px;">No results</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="3" style="padding:12px;color:#667085;font-size:12px;">No results</td></tr>`;
       }
       setCcStatus("Done • 0 results", false);
       return;
@@ -1714,6 +1878,9 @@
     renderFax();       // ✅ NEW
     renderDc();
     renderDcServicesMulti();
+    renderEsignServiceTypes();
+    renderEsignCareTeamSelect();
+    renderEsigns();
     renderReferralsSelect();
     renderReferrals();
     renderAppointmentsSelect();
@@ -2064,6 +2231,59 @@
 
       await loadAll();
     } catch(e) { showMsg(e.message); }
+  });
+
+  document.getElementById('esignServiceTypeSelect')?.addEventListener('change', () => {
+    renderEsignServicesMultiForSelectedType();
+  });
+
+  document.getElementById('addEsignBtn')?.addEventListener('click', async () => {
+    try{
+      showMsg('');
+
+      const careTeamId = document.getElementById('esignCareTeamSelect').value;
+      const stid = document.getElementById('esignServiceTypeSelect').value;
+
+      if(!careTeamId) throw new Error("Select a care team member first.");
+      if(!stid) throw new Error("Select a service type first.");
+
+      const selectedServiceIds = Array.from(document.getElementById("esignServicesMulti").selectedOptions)
+        .map(o => Number(o.value))
+        .filter(n => Number.isFinite(n) && n > 0);
+
+      if(selectedServiceIds.length === 0) throw new Error("Select at least 1 service.");
+
+      const payload = {
+        admission_id: Number(ADMISSION_ID),
+        care_team_id: Number(careTeamId),
+        service_type_id: Number(stid),
+        comments: document.getElementById('esignComments').value.trim(),
+        status: "Pending"
+      };
+
+      const resp = await api('/api/sensys/admission-esigns/upsert', {
+        method:'POST',
+        body: JSON.stringify(payload)
+      });
+
+      const esignId = resp && resp.id ? Number(resp.id) : null;
+      if(!esignId) throw new Error("E-Sign saved but no id returned.");
+
+      await api('/api/sensys/esign-services/set', {
+        method:'POST',
+        body: JSON.stringify({ esign_id: esignId, services_ids: selectedServiceIds })
+      });
+
+      // clear
+      document.getElementById('esignCareTeamSelect').value = '';
+      document.getElementById('esignServiceTypeSelect').value = '';
+      document.getElementById('esignServicesMulti').innerHTML = '';
+      document.getElementById('esignComments').value = '';
+
+      await loadAll();
+    }catch(e){
+      showMsg(e.message);
+    }
   });
 
   document.getElementById('addCareTeamBtn').addEventListener('click', async () => {
