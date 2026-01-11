@@ -20032,21 +20032,6 @@ def sensys_admission_sms_refresh_recent(admission_id: int, payload: SensysSmsRef
     finally:
         conn.close()
 
-
-@app.get("/api/sensys/services")
-def sensys_services(request: Request):
-    _sensys_require_user(request)
-    conn = get_db()
-    rows = conn.execute(
-        """
-        SELECT id, name, service_type, dropdown, reminder_id, deleted_at, created_at, updated_at
-        FROM sensys_services
-        WHERE deleted_at IS NULL
-        ORDER BY service_type COLLATE NOCASE, name COLLATE NOCASE
-        """
-    ).fetchall()
-    return {"ok": True, "services": [dict(r) for r in rows]}
-
 @app.get("/api/sensys/care-team")
 def sensys_care_team(request: Request):
     _sensys_require_user(request)
@@ -20080,7 +20065,6 @@ def sensys_service_types(request: Request):
     return {"ok": True, "service_types": [dict(r) for r in rows]}
 
 
-# ✅ Sensys (User): Services list (needed by Admission Details page)
 @app.get("/api/sensys/services")
 def sensys_services(request: Request):
     _sensys_require_user(request)
@@ -20089,10 +20073,25 @@ def sensys_services(request: Request):
     rows = conn.execute(
         """
         SELECT
-            id, name, service_type, dropdown, reminder_id, deleted_at, created_at, updated_at
-        FROM sensys_services
-        WHERE deleted_at IS NULL
-        ORDER BY service_type COLLATE NOCASE, name COLLATE NOCASE
+            s.id,
+            s.name,
+            s.name AS service_name,                -- keep legacy-friendly key
+            s.service_type_id,
+            st.name AS service_type_name,
+            st.code AS service_type_code,
+            COALESCE(st.code, s.service_type) AS service_type,  -- keep legacy key too
+            s.dropdown,
+            s.reminder_id,
+            s.deleted_at,
+            s.created_at,
+            s.updated_at
+        FROM sensys_services s
+        LEFT JOIN sensys_service_type st
+          ON st.id = s.service_type_id
+         AND st.deleted_at IS NULL
+        WHERE s.deleted_at IS NULL
+        ORDER BY COALESCE(st.name, s.service_type) COLLATE NOCASE,
+                 s.name COLLATE NOCASE
         """
     ).fetchall()
 
@@ -20384,10 +20383,10 @@ def sensys_admission_details(admission_id: int, request: Request):
         SELECT
           es.esign_id,
           s.id AS service_id,
-          s.service_name
+          s.name AS service_name
         FROM sensys_esign_services es
         JOIN sensys_services s ON s.id = es.services_id
-        ORDER BY s.service_name
+        ORDER BY s.name COLLATE NOCASE
         """
     ).fetchall()
 
