@@ -1879,7 +1879,7 @@
 
   async function loadAll() {
     showMsg('');
-    const [details, services, careTeam, agencies, noteTemplates, smsLogs, faxResp, pdfsResp] = await Promise.all([
+    const [details, servicesResp, careTeam, agencies, noteTemplates, smsLogs, faxResp, pdfsResp, serviceTypesResp] = await Promise.all([
       api('/api/sensys/admission-details/' + ADMISSION_ID, { method:'GET' }),
       api('/api/sensys/services', { method:'GET' }),
       api('/api/sensys/care-team', { method:'GET' }),
@@ -1894,7 +1894,7 @@
     const stResp = await api('/api/sensys/service-types');
     SERVICE_TYPES = stResp.service_types || [];
     DETAILS = details;
-    SERVICES = (services && services.services) || [];
+    SERVICES = (servicesResp && servicesResp.services) || [];
     SERVICE_TYPES = (serviceTypesResp && serviceTypesResp.service_types) || [];
     CARE_TEAM = (careTeam && careTeam.care_team) || [];
     AGENCIES = (agencies && agencies.agencies) || []; // ✅ NEW
