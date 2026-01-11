@@ -17852,62 +17852,6 @@ def sensys_admin_services_upsert(payload: SensysServiceUpsert, token: str):
     conn.commit()
     return {"ok": True}
 
-
-@app.get("/api/sensys/admin/services")
-def sensys_admin_services(token: str):
-    _require_admin_token(token)
-    conn = get_db()
-    rows = conn.execute(
-        """
-        SELECT id, name, service_type, dropdown, reminder_id, deleted_at, created_at, updated_at
-        FROM sensys_services
-        WHERE deleted_at IS NULL
-        ORDER BY service_type COLLATE NOCASE, name COLLATE NOCASE
-        """
-    ).fetchall()
-    return {"services": [dict(r) for r in rows]}
-
-@app.post("/api/sensys/admin/services/upsert")
-def sensys_admin_services_upsert(payload: SensysServiceUpsert, token: str):
-    _require_admin_token(token)
-    conn = get_db()
-
-    name = (payload.name or "").strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="name is required")
-
-    st = (payload.service_type or "").strip().lower()
-    if st not in ("dme", "hh"):
-        raise HTTPException(status_code=400, detail="service_type must be 'dme' or 'hh'")
-
-    dropdown = 1 if int(payload.dropdown or 0) == 1 else 0
-    reminder_id = (payload.reminder_id or "").strip() or None
-
-    if payload.id:
-        conn.execute(
-            """
-            UPDATE sensys_services
-               SET name = ?,
-                   service_type = ?,
-                   dropdown = ?,
-                   reminder_id = ?,
-                   updated_at = datetime('now')
-             WHERE id = ?
-            """,
-            (name, st, dropdown, reminder_id, int(payload.id)),
-        )
-    else:
-        conn.execute(
-            """
-            INSERT INTO sensys_services (name, service_type, dropdown, reminder_id)
-            VALUES (?, ?, ?, ?)
-            """,
-            (name, st, dropdown, reminder_id),
-        )
-
-    conn.commit()
-    return {"ok": True}
-
 @app.post("/api/sensys/admin/services/bulk")
 async def sensys_admin_services_bulk(token: str, file: UploadFile = File(...)):
     _require_admin_token(token)
