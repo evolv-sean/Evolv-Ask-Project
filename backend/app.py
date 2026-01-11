@@ -16702,7 +16702,9 @@ def sensys_admin_agencies(token: str):
             id,
             agency_name,
             agency_type,
+            aliases,
             facility_code,
+            carecompare_ccn,
             notes,
             notes2,
             address,
@@ -16785,6 +16787,7 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
             (
                 name,
                 a_type,
+                (payload.aliases or "").strip(),
                 (payload.facility_code or "").strip(),
                 (payload.carecompare_ccn or "").strip(),
                 (payload.notes or "").strip(),
@@ -16818,6 +16821,7 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
             (
                 name,
                 a_type,
+                (payload.aliases or "").strip(),
                 (payload.facility_code or "").strip(),
                 (payload.carecompare_ccn or "").strip(),
                 (payload.notes or "").strip(),
