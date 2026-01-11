@@ -376,6 +376,11 @@
      height: 100%;
      overflow:auto;
    }
+   /* =========================
+      Notes subtabs (internal)
+   ========================= */
+   .notes-tab{ display:none; }
+   .notes-tab.on{ display:block; }
 
 
   </style>
@@ -680,46 +685,93 @@
             </div>
           </div>
 
-          <!-- Split area: Templates (fixed) + Questions (fill) -->
+          <!-- Notes Subtabs (pills) -->
+          <div id="notesSubtabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"></div>
+
           <div class="body">
-            <div class="notes-split">
 
-              <!-- TEMPLATES CARD -->
-              <div class="card notes-card">
-                <div class="hd">
-                  <div>
-                    <h2 style="margin:0;font-size:14px;color:var(--navy)">Templates</h2>
-                    <div class="hint">Select a template to manage its questions below.</div>
+            <!-- =========================
+                 NOTES TAB (Templates + Questions)
+                 - DC templates REMOVED from here
+                 - Questions grows taller automatically
+            ========================= -->
+            <div id="notesTabMain" class="notes-tab on">
+              <div class="notes-split">
+
+                <!-- TEMPLATES CARD (fixed height) -->
+                <div class="card notes-card">
+                  <div class="hd">
+                    <div>
+                      <h2 style="margin:0;font-size:14px;color:var(--navy)">Templates</h2>
+                      <div class="hint">Select a template to manage its questions below.</div>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center">
+                      <button class="btn primary" onclick="openNoteTemplateModal(null)">+ New Template</button>
+                    </div>
                   </div>
-                  <div style="display:flex;gap:8px;align-items:center">
-                    <button class="btn primary" onclick="openNoteTemplateModal(null)">+ New Template</button>
+
+                  <div class="body">
+                    <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+                      <input class="input" id="notesListSearch" placeholder="Search templates..." />
+                    </div>
+
+                    <div class="table-wrap notes-templates-table">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Template</th>
+                            <th>Agency</th>
+                            <th>Active</th>
+                            <th style="text-align:right;">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody id="notesTemplatesTbody"></tbody>
+                      </table>
+                    </div>
+
+                    <div id="notesListMsg" class="toast"></div>
                   </div>
                 </div>
 
-                <div class="body">
-                  <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
-                    <input class="input" id="notesListSearch" placeholder="Search templates..." />
+                <!-- QUESTIONS CARD (fills remainder) -->
+                <div class="card notes-card notes-questions-grow">
+                  <div class="hd">
+                    <div>
+                      <h2 style="margin:0;font-size:14px;color:var(--navy)">Questions / Fields</h2>
+                      <div class="hint">Questions for the selected template.</div>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center">
+                      <button class="btn primary" onclick="openNoteFieldModal(null)" id="btnAddNoteField" disabled>+ Add Question</button>
+                    </div>
                   </div>
 
-                  <div class="table-wrap notes-templates-table">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Template</th>
-                          <th>Agency</th>
-                          <th>Active</th>
-                          <th style="text-align:right;">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody id="notesTemplatesTbody"></tbody>
-                    </table>
+                  <div class="body" style="height:100%;display:flex;flex-direction:column;">
+                    <div class="table-wrap notes-questions-table" style="flex:1;">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Key</th>
+                            <th>Label</th>
+                            <th>Type</th>
+                            <th>Required</th>
+                            <th>Order</th>
+                            <th style="text-align:right;">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody id="notesFieldsTbody"></tbody>
+                      </table>
+                    </div>
                   </div>
-
-                  <div id="notesListMsg" class="toast"></div>
                 </div>
+
               </div>
-              <!-- DC NOTE TEMPLATES CARD (Discharge Planning generator) -->
-              <div class="card notes-card" style="margin-top:14px;">
+            </div><!-- /notesTabMain -->
+
+            <!-- =========================
+                 DC NOTE TAB (DC templates only)
+            ========================= -->
+            <div id="notesTabDc" class="notes-tab">
+              <div class="card notes-card">
                 <div class="hd">
                   <div>
                     <h2 style="margin:0;font-size:14px;color:var(--navy)">DC Discharge Note Templates</h2>
@@ -735,7 +787,7 @@
                     <input class="input" id="dcNotesListSearch" placeholder="Search DC note templates." />
                   </div>
 
-                  <div class="table-wrap" style="max-height:260px;overflow:auto;">
+                  <div class="table-wrap" style="max-height:calc(100vh - 310px);overflow:auto;">
                     <table>
                       <thead>
                         <tr>
@@ -752,39 +804,8 @@
                   <div id="dcNotesListMsg" class="toast"></div>
                 </div>
               </div>
+            </div><!-- /notesTabDc -->
 
-              <!-- QUESTIONS CARD -->
-              <div class="card notes-card notes-questions-grow">
-                <div class="hd">
-                  <div>
-                    <h2 style="margin:0;font-size:14px;color:var(--navy)">Questions / Fields</h2>
-                    <div class="hint">Questions for the selected template.</div>
-                  </div>
-                  <div style="display:flex;gap:8px;align-items:center">
-                    <button class="btn primary" onclick="openNoteFieldModal(null)" id="btnAddNoteField" disabled>+ Add Question</button>
-                  </div>
-                </div>
-
-                <div class="body" style="height:100%;display:flex;flex-direction:column;">
-                  <div class="table-wrap notes-questions-table" style="flex:1;">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Key</th>
-                          <th>Label</th>
-                          <th>Type</th>
-                          <th>Required</th>
-                          <th>Order</th>
-                          <th style="text-align:right;">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody id="notesFieldsTbody"></tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-
-            </div>
           </div>
         </div>
       </div>
@@ -1908,6 +1929,56 @@
   $("agencySearch").addEventListener("input", renderAgencyChecklist);
   $("preferredProviderSearch").addEventListener("input", renderPreferredProvidersChecklist);
 
+  // -----------------------------
+  // Notes Subtabs (Templates vs DC Note)
+  // -----------------------------
+  let notesSubtabKey = "notes"; // "notes" | "dc"
+
+  function renderNotesSubtabs(){
+    const wrap = $("notesSubtabs");
+    if(!wrap) return;
+
+    const tabs = [
+      { key:"notes", label:"Notes" },
+      { key:"dc", label:"DC Note" }
+    ];
+
+    wrap.innerHTML = "";
+    tabs.forEach(t => {
+      const pill = document.createElement("span");
+      pill.className = "tag " + (notesSubtabKey === t.key ? "on" : "");
+      pill.textContent = t.label;
+
+      pill.onclick = () => {
+        notesSubtabKey = t.key;
+        renderNotesSubtabs();
+        showNotesSubtab();
+      };
+
+      wrap.appendChild(pill);
+    });
+  }
+
+  function showNotesSubtab(){
+    // toggle internal panels
+    const main = $("notesTabMain");
+    const dc = $("notesTabDc");
+    if(!main || !dc) return;
+
+    main.classList.remove("on");
+    dc.classList.remove("on");
+
+    if(notesSubtabKey === "dc"){
+      dc.classList.add("on");
+      // ensure DC list is fresh when user flips to it
+      refreshDcNoteTemplatesAdmin();
+    }else{
+      main.classList.add("on");
+      // ensure Note templates/questions list is fresh when user flips back
+      refreshNoteTemplatesAdmin();
+    }
+  }
+
   function showPanel(which){
     // nav highlighting
     $("tabUsers").className = "navitem " + (which==="users" ? "on" : "");
@@ -1952,9 +2023,16 @@
       refreshCareTeamList();
     }else{
       $("panelNotes").classList.add("on");
+
+      // init + show default Notes subtab
+      renderNotesSubtabs();
+      showNotesSubtab();
+
+      // load both caches once so tab switching is instant
       refreshNoteTemplatesAdmin();
       refreshDcNoteTemplatesAdmin();
     }
+
 
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
