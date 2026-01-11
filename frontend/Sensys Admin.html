@@ -645,36 +645,72 @@
           <div class="hd" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
             <div>
               <h2 style="margin:0">Services</h2>
-              <div class="hint">Reference list used for DC submissions (DME / HH).</div>
+              <div class="hint">Reference list used for DC submissions (DME / HH) and E-Sign orders.</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
               <button class="iconbtn" id="bulkServicesIcon" title="Bulk upload services" aria-label="Bulk upload services">⇪</button>
               <button class="iconbtn" id="addServiceIcon" title="Add new service" aria-label="Add new service">+</button>
+              <button class="iconbtn" id="addServiceTypeIcon" title="Add new service type" aria-label="Add new service type" style="display:none;">＋T</button>
             </div>
           </div>
 
+          <!-- Subtabs -->
+          <div id="servicesSubtabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"></div>
+
           <div class="body">
-            <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
-              <input class="input" id="servicesListSearch" placeholder="Search services (name/type)." />
+
+            <!-- =========================
+                 SUBTAB: SERVICES
+            ========================= -->
+            <div id="servicesSubtabServices">
+              <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+                <input class="input" id="servicesListSearch" placeholder="Search services (name/type)." />
+              </div>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Type</th>
+                      <th>Dropdown</th>
+                    </tr>
+                  </thead>
+                  <tbody id="servicesTbody"></tbody>
+                </table>
+              </div>
+
+              <div id="servicesListMsg" class="toast"></div>
             </div>
 
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>Dropdown</th>
-                  </tr>
-                </thead>
-                <tbody id="servicesTbody"></tbody>
-              </table>
+            <!-- =========================
+                 SUBTAB: SERVICE TYPES
+            ========================= -->
+            <div id="servicesSubtabTypes" style="display:none;">
+              <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+                <input class="input" id="serviceTypesSearch" placeholder="Search service types (name/code)." />
+              </div>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Code</th>
+                      <th>Active</th>
+                    </tr>
+                  </thead>
+                  <tbody id="serviceTypesTbody"></tbody>
+                </table>
+              </div>
+
+              <div id="serviceTypesMsg" class="toast"></div>
             </div>
 
-            <div id="servicesListMsg" class="toast"></div>
           </div>
         </div>
       </div><!-- /panelServices -->
+
       <div id="panelNotes" class="panel">
         <div class="content">
           <!-- Match other panels: header -->
@@ -1313,6 +1349,48 @@
 
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;">
         <button id="saveServiceBtn" class="btn primary">Save Service</button>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ✅ Service Type modal -->
+<div id="serviceTypeModalBackdrop" class="modal-backdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="serviceTypeModalTitle">
+    <div class="modal-hd">
+      <div>
+        <h3 class="modal-title" id="serviceTypeModalTitle">Edit Service Type</h3>
+        <div class="modal-sub">service_type_id: <b id="selServiceTypeId">—</b></div>
+      </div>
+      <button class="xbtn" id="closeServiceTypeModal" aria-label="Close">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <input id="st_id" type="hidden" />
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:240px;">
+          <div class="label">Name</div>
+          <input id="st_name" class="input" placeholder="Example: Home Health" />
+        </div>
+
+        <div style="width:220px;">
+          <div class="label">Code (short)</div>
+          <input id="st_code" class="input" placeholder="Example: HH" />
+        </div>
+
+        <div style="width:160px;">
+          <div class="label">Active</div>
+          <select id="st_active" class="input">
+            <option value="1">Yes</option>
+            <option value="0">No</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="stMsg" class="toast"></div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;">
+        <button id="saveServiceTypeBtn" class="btn primary">Save Type</button>
       </div>
     </div>
   </div>
@@ -2559,6 +2637,154 @@
   }
 
   $("servicesListSearch").addEventListener("input", renderServicesTable);
+
+  // -----------------------------
+  // Services: subtabs (Services / Service Types)
+  // -----------------------------
+  let servicesActiveSubtab = "services"; // "services" | "types"
+
+  function renderServicesSubtabs(){
+    const host = $("servicesSubtabs");
+    if(!host) return;
+
+    const mkBtn = (key, label) => {
+      const b = document.createElement("button");
+      b.className = "btn";
+      b.textContent = label;
+
+      const active = (servicesActiveSubtab === key);
+      b.style.fontWeight = active ? "900" : "800";
+      b.style.borderColor = active ? "#7f56d9" : "#d0d5dd";
+      b.style.background = active ? "rgba(127,86,217,.10)" : "#fff";
+
+      b.onclick = () => {
+        servicesActiveSubtab = key;
+        syncServicesSubtabUI();
+      };
+      return b;
+    };
+
+    host.innerHTML = "";
+    host.appendChild(mkBtn("services", "Services"));
+    host.appendChild(mkBtn("types", "Service Types"));
+  }
+
+  function syncServicesSubtabUI(){
+    renderServicesSubtabs();
+
+    const showServices = (servicesActiveSubtab === "services");
+    $("servicesSubtabServices").style.display = showServices ? "" : "none";
+    $("servicesSubtabTypes").style.display = showServices ? "none" : "";
+
+    // header buttons
+    $("addServiceIcon").style.display = showServices ? "" : "none";
+    $("bulkServicesIcon").style.display = showServices ? "" : "none";
+    $("addServiceTypeIcon").style.display = showServices ? "none" : "";
+
+    // ensure type list loaded when first opened
+    if(!showServices){
+      renderServiceTypesTable();
+      setMsg($("serviceTypesMsg"), `Loaded ${serviceTypesCache.length} types.`, true);
+    }
+  }
+
+  // -----------------------------
+  // Service Types list UI
+  // -----------------------------
+  function renderServiceTypesTable(){
+    const tb = $("serviceTypesTbody");
+    if(!tb) return;
+    tb.innerHTML = "";
+
+    const q = ($("serviceTypesSearch").value || "").trim().toLowerCase();
+    const items = (serviceTypesCache || []).filter(t => {
+      const hay = `${t.name||""} ${t.code||""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+
+    items.forEach(t => {
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.onclick = () => openServiceTypeModal(t);
+
+      tr.innerHTML = `
+        <td><b>${escapeHtml(t.name||"")}</b></td>
+        <td>${escapeHtml(t.code||"")}</td>
+        <td>${String(t.active||0)==="1" ? "Yes" : "No"}</td>
+      `;
+      tb.appendChild(tr);
+    });
+  }
+
+  $("serviceTypesSearch").addEventListener("input", renderServiceTypesTable);
+
+  // Reuse your existing refreshServiceTypes() to keep the Service modal dropdown populated.
+  // We’ll extend it to also refresh the table view if we are on the “Service Types” subtab.
+  const _refreshServiceTypesOriginal = refreshServiceTypes;
+  refreshServiceTypes = async function(){
+    await _refreshServiceTypesOriginal();
+    if(servicesActiveSubtab === "types"){
+      renderServiceTypesTable();
+      setMsg($("serviceTypesMsg"), `Loaded ${serviceTypesCache.length} types.`, true);
+    }
+  };
+
+  // -----------------------------
+  // Service Type modal
+  // -----------------------------
+  function openServiceTypeModal(t){
+    $("serviceTypeModalBackdrop").style.display = "flex";
+    $("stMsg").textContent = "";
+    $("serviceTypeModalTitle").textContent = (t && t.id) ? "Edit Service Type" : "Add Service Type";
+    $("selServiceTypeId").textContent = (t && t.id) ? String(t.id) : "—";
+
+    $("st_id").value = (t && t.id) ? String(t.id) : "";
+    $("st_name").value = (t && t.name) ? t.name : "";
+    $("st_code").value = (t && t.code) ? t.code : "";
+    $("st_active").value = String((t && (t.active ?? 1)) ?? 1);
+  }
+
+  function closeServiceTypeModal(){
+    $("serviceTypeModalBackdrop").style.display = "none";
+  }
+
+  $("closeServiceTypeModal").addEventListener("click", closeServiceTypeModal);
+  $("serviceTypeModalBackdrop").addEventListener("click", (e) => {
+    if(e.target === $("serviceTypeModalBackdrop")) closeServiceTypeModal();
+  });
+
+  $("addServiceTypeIcon").addEventListener("click", () => openServiceTypeModal(null));
+
+  $("saveServiceTypeBtn").addEventListener("click", async () => {
+    try{
+      setMsg($("stMsg"), "Saving…", true);
+
+      const payload = {
+        id: $("st_id").value ? Number($("st_id").value) : null,
+        name: ($("st_name").value || "").trim(),
+        code: ($("st_code").value || "").trim() || null,
+        active: Number($("st_active").value || "1")
+      };
+
+      if(!payload.name) throw new Error("Name is required.");
+
+      await apiPost("/api/sensys/admin/service-types/upsert", payload);
+
+      // refresh cache + dropdown + list
+      await refreshServiceTypes();
+      await refreshServicesList(); // so services list shows updated type labels
+
+      setMsg($("stMsg"), "Saved.", true);
+      closeServiceTypeModal();
+    }catch(e){
+      setMsg($("stMsg"), String(e.message || e), false);
+    }
+  });
+
+  // Initialize subtabs once (do this after your page init code runs)
+  renderServicesSubtabs();
+  syncServicesSubtabUI();
+
 
   // -----------------------------
   // Care Team page logic
