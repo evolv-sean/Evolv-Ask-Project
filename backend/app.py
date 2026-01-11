@@ -259,6 +259,30 @@ def normalize_date_to_iso(value: Any) -> Optional[str]:
     # If it’s some other format we don’t recognize, don’t destroy it
     return s
 
+def sync_discharge_dc_date_to_snf(cur, visit_id: str | None, dc_date: str | None):
+    """
+    Push hospital discharge dc_date -> snf_admissions.dc_date for the same visit_id.
+    Only updates snf_admissions.dc_date (does not touch any other fields).
+    """
+    if not visit_id:
+        return
+
+    dc_norm = normalize_date_to_iso(dc_date)
+
+    # Only push when we actually have a real dc_date value
+    if not dc_norm:
+        return
+
+    cur.execute(
+        """
+        UPDATE snf_admissions
+        SET dc_date = ?,
+            updated_at = datetime('now')
+        WHERE visit_id = ?
+        """,
+        (dc_norm, visit_id),
+    )
+
 def log_pad_request_debug(request: Request, raw_text: str, payload: dict):
     """
     Debug helper to see exactly what PAD sent.
@@ -6042,7 +6066,9 @@ async def pad_hospital_documents_bulk(request: Request):
                         doc_payload["insurance"],
                     ),
                 )
-
+                
+                sync_discharge_dc_date_to_snf(cur, doc_payload["visit_id"], doc_payload["dc_date"])
+                
                 render_ingest_log(
                     "hospital_discharge_hub_updated" if hub_existed else "hospital_discharge_hub_created",
                     visit_id=doc_payload["visit_id"],
@@ -6302,6 +6328,8 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
                 ,
                 (visit_id, patient_mrn, patient_name, hospital_name, admit_date, dc_date, attending, pcp, insurance),
             )
+
+            sync_discharge_dc_date_to_snf(cur, visit_id, dc_date)
 
             # ✅ UPDATED: derive disposition + dc_agency using the most recent 5 hospital documents for this visit_id
             llm_source_text = build_recent_hospital_context(cur, doc_payload["visit_id"], limit=5) or source_text
