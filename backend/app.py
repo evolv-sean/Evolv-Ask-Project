@@ -3321,6 +3321,78 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_active ON sensys_admissions(active)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_dates ON sensys_admissions(admit_date, dc_date)")
 
+    # -----------------------------
+    # Sensys: Service Types (NEW)
+    # -----------------------------
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sensys_service_type (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT NOT NULL,
+      code       TEXT,                 -- optional: short code like "dme", "hh"
+      active     INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      deleted_at TEXT
+    );
+    """)
+
+    # helpful uniqueness (ignore deleted)
+    conn.execute("""
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sensys_service_type_name_active
+    ON sensys_service_type (name)
+    WHERE deleted_at IS NULL;
+    """)
+
+    conn.execute("""
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sensys_service_type_code_active
+    ON sensys_service_type (code)
+    WHERE deleted_at IS NULL AND code IS NOT NULL;
+    """)
+
+    # -----------------------------
+    # Sensys: Services table migration (add service_type_id)
+    # -----------------------------
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(sensys_services)").fetchall()]
+    if "service_type_id" not in cols:
+        conn.execute("ALTER TABLE sensys_services ADD COLUMN service_type_id INTEGER;")
+
+    # Backfill service_type_id from existing string service_type values ("dme"/"hh") if present
+    # (keeps old column for backward compatibility)
+    existing_types = conn.execute("""
+      SELECT DISTINCT TRIM(LOWER(service_type)) AS st
+      FROM sensys_services
+      WHERE service_type IS NOT NULL AND TRIM(service_type) <> ''
+    """).fetchall()
+
+    for r in existing_types:
+        st = (r["st"] or "").strip().lower()
+        if not st:
+            continue
+
+        # create a type row if missing; use code = st and name = upper label
+        row = conn.execute("""
+          SELECT id FROM sensys_service_type
+          WHERE deleted_at IS NULL AND code = ?
+        """, (st,)).fetchone()
+
+        if not row:
+            conn.execute("""
+              INSERT INTO sensys_service_type (name, code, active)
+              VALUES (?, ?, 1)
+            """, (st.upper(), st))
+            row = conn.execute("""
+              SELECT id FROM sensys_service_type
+              WHERE deleted_at IS NULL AND code = ?
+            """, (st,)).fetchone()
+
+        if row:
+            conn.execute("""
+              UPDATE sensys_services
+                 SET service_type_id = ?
+               WHERE (service_type_id IS NULL OR service_type_id = 0)
+                 AND TRIM(LOWER(service_type)) = ?
+            """, (int(row["id"]), st))
+
     # =========================
     # E-SIGN: orders + services
     # =========================
@@ -3350,6 +3422,77 @@ def init_db():
       deleted_at TEXT
     )
     """)
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sensys_admission_esigns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      admission_id INTEGER NOT NULL,
+
+      care_team_id INTEGER NOT NULL,
+      service_type_id INTEGER NOT NULL,
+
+      comments TEXT,
+
+      status TEXT DEFAULT 'Pending',
+
+      created_by_user_id INTEGER,
+      updated_by_user_id INTEGER,
+
+      signed_by INTEGER,
+      signed_at TEXT,
+      declined_by INTEGER,
+      declined_at TEXT,
+
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      deleted_at TEXT
+    )
+    """)
+
+    # --- SAFE MIGRATION: add missing columns if DB already existed without them ---
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(sensys_admission_esigns)")
+    existing_cols = {r[1] for r in cur.fetchall()}
+
+    if "care_team_id" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_esigns ADD COLUMN care_team_id INTEGER")
+    if "service_type_id" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_esigns ADD COLUMN service_type_id INTEGER")
+    if "comments" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_esigns ADD COLUMN comments TEXT")
+    if "status" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_esigns ADD COLUMN status TEXT DEFAULT 'Pending'")
+
+    if "created_by_user_id" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_esigns ADD COLUMN created_by_user_id INTEGER")
+    if "updated_by_user_id" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_esigns ADD COLUMN updated_by_user_id INTEGER")
+
+    if "signed_by" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_esigns ADD COLUMN signed_by INTEGER")
+    if "signed_at" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_esigns ADD COLUMN signed_at TEXT")
+    if "declined_by" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_esigns ADD COLUMN declined_by INTEGER")
+    if "declined_at" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_esigns ADD COLUMN declined_at TEXT")
+
+    if "created_at" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_esigns ADD COLUMN created_at TEXT")
+    if "updated_at" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_esigns ADD COLUMN updated_at TEXT")
+    if "deleted_at" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_esigns ADD COLUMN deleted_at TEXT")
+
+    # -----------------------------
+    # Sensys: E-Sign migration safety
+    # -----------------------------
+    if conn.execute("""
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='sensys_admission_esigns'
+    """).fetchone():
+        es_cols = [r["name"] for r in conn.execute("PRAGMA table_info(sensys_admission_esigns)").fetchall()]
+        if "service_type_id" not in es_cols:
+            conn.execute("ALTER TABLE sensys_admission_esigns ADD COLUMN service_type_id INTEGER;")
 
     conn.execute("""
     CREATE TABLE IF NOT EXISTS sensys_esign_services (
@@ -3363,6 +3506,9 @@ def init_db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_sensys_admission_esigns_admission_id ON sensys_admission_esigns(admission_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_sensys_esign_services_esign_id ON sensys_esign_services(esign_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_sensys_esign_services_services_id ON sensys_esign_services(services_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sensys_admission_esigns_deleted ON sensys_admission_esigns(deleted_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sensys_admission_esigns_care_team ON sensys_admission_esigns(care_team_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sensys_admission_esigns_service_type ON sensys_admission_esigns(service_type_id)")
 
     # -------------------------------------------------------------------
     # Sensys 3.0: Admission-connected “detail” tables
@@ -15298,10 +15444,6 @@ def build_snf_pdf_html(
 """
     return html_doc
 
-
-
-
-
 # ============================
 # SNF Secure Link routes
 # ============================
@@ -17583,12 +17725,133 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
 from pydantic import BaseModel
 from typing import Optional
 
+# -----------------------------
+# Sensys Admin: Service Types (NEW)
+# -----------------------------
+class SensysServiceTypeUpsert(BaseModel):
+    id: Optional[int] = None
+    name: str
+    code: Optional[str] = None
+    active: int = 1
+
+@app.get("/api/sensys/admin/service-types")
+def sensys_admin_service_types(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT id, name, code, active, created_at, updated_at
+        FROM sensys_service_type
+        WHERE deleted_at IS NULL
+        ORDER BY name COLLATE NOCASE
+    """).fetchall()
+    return {"service_types": [dict(r) for r in rows]}
+
+@app.post("/api/sensys/admin/service-types/upsert")
+def sensys_admin_service_types_upsert(payload: SensysServiceTypeUpsert, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+
+    code = (payload.code or "").strip().lower() or None
+    active = 1 if int(payload.active or 0) == 1 else 0
+
+    if payload.id:
+        conn.execute("""
+            UPDATE sensys_service_type
+               SET name = ?,
+                   code = ?,
+                   active = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+        """, (name, code, active, int(payload.id)))
+    else:
+        conn.execute("""
+            INSERT INTO sensys_service_type (name, code, active)
+            VALUES (?, ?, ?)
+        """, (name, code, active))
+
+    conn.commit()
+    return {"ok": True}
+
+
+# -----------------------------
+# Sensys Admin: Services (list / upsert / bulk) (UPDATED)
+# -----------------------------
 class SensysServiceUpsert(BaseModel):
     id: Optional[int] = None
     name: str
-    service_type: str            # dme | hh
-    dropdown: int = 1            # 1/0
+    service_type_id: int          # NEW (FK to sensys_service_type.id)
+    dropdown: int = 1             # 1/0
     reminder_id: Optional[str] = None
+
+@app.get("/api/sensys/admin/services")
+def sensys_admin_services(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT s.id,
+               s.name,
+               s.service_type_id,
+               st.name AS service_type_name,
+               st.code AS service_type_code,
+               s.dropdown,
+               s.reminder_id,
+               s.deleted_at,
+               s.created_at,
+               s.updated_at
+          FROM sensys_services s
+          LEFT JOIN sensys_service_type st ON st.id = s.service_type_id AND st.deleted_at IS NULL
+         WHERE s.deleted_at IS NULL
+         ORDER BY COALESCE(st.name, '') COLLATE NOCASE, s.name COLLATE NOCASE
+    """).fetchall()
+    return {"services": [dict(r) for r in rows]}
+
+@app.post("/api/sensys/admin/services/upsert")
+def sensys_admin_services_upsert(payload: SensysServiceUpsert, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+
+    stid = int(payload.service_type_id or 0)
+    if stid <= 0:
+        raise HTTPException(status_code=400, detail="service_type_id is required")
+
+    # ensure type exists
+    ok = conn.execute("""
+        SELECT id FROM sensys_service_type
+        WHERE deleted_at IS NULL AND id = ?
+    """, (stid,)).fetchone()
+    if not ok:
+        raise HTTPException(status_code=400, detail="service_type_id not found")
+
+    dropdown = 1 if int(payload.dropdown or 0) == 1 else 0
+    reminder_id = (payload.reminder_id or "").strip() or None
+
+    if payload.id:
+        conn.execute("""
+            UPDATE sensys_services
+               SET name = ?,
+                   service_type_id = ?,
+                   dropdown = ?,
+                   reminder_id = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+        """, (name, stid, dropdown, reminder_id, int(payload.id)))
+    else:
+        conn.execute("""
+            INSERT INTO sensys_services (name, service_type_id, dropdown, reminder_id)
+            VALUES (?, ?, ?, ?)
+        """, (name, stid, dropdown, reminder_id))
+
+    conn.commit()
+    return {"ok": True}
+
 
 @app.get("/api/sensys/admin/services")
 def sensys_admin_services(token: str):
@@ -17664,9 +17927,32 @@ async def sensys_admin_services_bulk(token: str, file: UploadFile = File(...)):
             if not name:
                 raise ValueError("name is required")
 
-            st = (r.get("service_type", "") or "").strip().lower()
-            if st not in ("dme", "hh"):
-                raise ValueError("service_type must be 'dme' or 'hh'")
+            # NEW: accept service_type_id or legacy service_type
+            stid = _to_int(r.get("service_type_id"))
+            if not stid:
+                st = (r.get("service_type", "") or "").strip().lower()
+                if not st:
+                    raise ValueError("service_type_id (or legacy service_type) is required")
+
+                # map legacy string to service type id via code
+                row_type = conn.execute("""
+                  SELECT id FROM sensys_service_type
+                  WHERE deleted_at IS NULL AND code = ?
+                """, (st,)).fetchone()
+                if not row_type:
+                    # auto-create if missing
+                    conn.execute("""
+                      INSERT INTO sensys_service_type (name, code, active)
+                      VALUES (?, ?, 1)
+                    """, (st.upper(), st))
+                    row_type = conn.execute("""
+                      SELECT id FROM sensys_service_type
+                      WHERE deleted_at IS NULL AND code = ?
+                    """, (st,)).fetchone()
+                stid = int(row_type["id"]) if row_type else 0
+
+            if not stid:
+                raise ValueError("Could not resolve service_type_id")
 
             dropdown = _to_bool_int(r.get("dropdown"), 1)
             reminder_id = (r.get("reminder_id", "") or "").strip() or None
@@ -19835,6 +20121,18 @@ def sensys_care_team(request: Request):
     ).fetchall()
     return {"ok": True, "care_team": [dict(r) for r in rows]}
 
+@app.get("/api/sensys/service-types")
+def sensys_service_types(token: str):
+    # token required (same pattern as other /api/sensys/* endpoints)
+    _require_token(token)
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT id, name, code
+        FROM sensys_service_type
+        WHERE deleted_at IS NULL AND active = 1
+        ORDER BY name COLLATE NOCASE
+    """).fetchall()
+    return {"service_types": [dict(r) for r in rows]}
 
 # ✅ Sensys (User): Services list (needed by Admission Details page)
 @app.get("/api/sensys/services")
