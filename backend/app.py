@@ -19275,6 +19275,111 @@ def sensys_admission_fax_refresh_status(fax_log_id: int, request: Request):
     finally:
         conn.close()
 
+
+# -----------------------------
+# ✅ NEW: light “refresh recent fax statuses” endpoint
+# -----------------------------
+class SensysFaxRefreshRecent(BaseModel):
+    max_age_minutes: int = 240   # faxes can take longer; default 4h
+    max_rows: int = 10           # hard cap to protect RC + Render
+
+
+@app.post("/api/sensys/admission-fax/refresh-recent/{admission_id}")
+def sensys_admission_fax_refresh_recent(admission_id: int, payload: SensysFaxRefreshRecent, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    try:
+        admission_id = int(admission_id)
+        _sensys_assert_admission_access(conn, int(u["user_id"]), admission_id)
+
+        max_age = int(payload.max_age_minutes or 240)
+        if max_age < 1:
+            max_age = 1
+        if max_age > 24 * 60:
+            max_age = 24 * 60  # cap at 24h
+
+        max_rows = int(payload.max_rows or 10)
+        if max_rows < 1:
+            max_rows = 1
+        if max_rows > 25:
+            max_rows = 25  # cap
+
+        # “final” statuses: don’t keep polling these
+        final_statuses = {"delivered", "failed", "undelivered", "canceled", "cancelled", "error"}
+        # “in-flight” statuses we *will* poll
+        inflight_statuses = {"queued", "sending", "sent"}
+
+        rows = conn.execute(
+            f"""
+            SELECT id, rc_fax_id, status
+            FROM sensys_fax_log
+            WHERE admission_id = ?
+              AND COALESCE(NULLIF(rc_fax_id, ''), '') != ''
+              AND datetime(created_at) >= datetime('now', ?)
+            ORDER BY datetime(created_at) DESC, id DESC
+            LIMIT {max_rows}
+            """,
+            (admission_id, f"-{max_age} minutes"),
+        ).fetchall()
+
+        checked = 0
+        updated = 0
+        errors = 0
+
+        for r in rows:
+            checked += 1
+            fax_log_id = int(r["id"])
+            rc_id = (r["rc_fax_id"] or "").strip()
+            cur_status = (r["status"] or "").strip().lower()
+
+            # skip final statuses
+            if cur_status in final_statuses:
+                continue
+
+            # if status is unknown/blank, we still allow checking (but prioritize inflight)
+            if cur_status and (cur_status not in inflight_statuses):
+                continue
+
+            try:
+                rc = rc_get_message_status(rc_id)
+                new_status = (rc.get("messageStatus") or rc.get("status") or r["status"] or "").strip()
+                error_code = (rc.get("errorCode") or "").strip()
+
+                try:
+                    rc_json = json.dumps(rc)[:8000]
+                except Exception:
+                    rc_json = ""
+
+                conn.execute(
+                    """
+                    UPDATE sensys_fax_log
+                       SET status = ?,
+                           error = CASE WHEN ? != '' THEN ? ELSE error END,
+                           rc_response_json = COALESCE(NULLIF(?, ''), rc_response_json)
+                     WHERE id = ?
+                    """,
+                    (new_status, error_code, error_code, rc_json, fax_log_id),
+                )
+                updated += 1
+            except Exception:
+                errors += 1
+                logger.exception(
+                    "[SENSYS][FAX][REFRESH_RECENT_ERR] admission_id=%s fax_log_id=%s rc_id=%s",
+                    admission_id, fax_log_id, rc_id
+                )
+
+        conn.commit()
+
+        logger.info(
+            "[SENSYS][FAX][REFRESH_RECENT] admission_id=%s checked=%s updated=%s errors=%s max_age_min=%s max_rows=%s",
+            admission_id, checked, updated, errors, max_age, max_rows
+        )
+
+        return {"ok": True, "admission_id": admission_id, "checked": checked, "updated": updated, "errors": errors}
+    finally:
+        conn.close()
+
+
 @app.post("/api/sensys/admission-sms/send")
 def sensys_admission_sms_send(payload: SensysAdmissionSmsSend, request: Request):
     u = _sensys_require_user(request)
