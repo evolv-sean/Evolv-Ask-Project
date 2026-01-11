@@ -260,10 +260,6 @@ def normalize_date_to_iso(value: Any) -> Optional[str]:
     return s
 
 def sync_discharge_dc_date_to_snf(cur, visit_id: str | None, dc_date: str | None):
-    """
-    Push hospital discharge dc_date -> snf_admissions.dc_date for the same visit_id.
-    Only updates snf_admissions.dc_date (does not touch any other fields).
-    """
     if not visit_id:
         return
 
@@ -271,6 +267,10 @@ def sync_discharge_dc_date_to_snf(cur, visit_id: str | None, dc_date: str | None
 
     # Only push when we actually have a real dc_date value
     if not dc_norm:
+        return
+
+    # ✅ STRICT: only allow YYYY-MM-DD into snf_admissions.dc_date
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(dc_norm)):
         return
 
     cur.execute(
@@ -6332,7 +6332,7 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
             sync_discharge_dc_date_to_snf(cur, visit_id, dc_date)
 
             # ✅ UPDATED: derive disposition + dc_agency using the most recent 5 hospital documents for this visit_id
-            llm_source_text = build_recent_hospital_context(cur, doc_payload["visit_id"], limit=5) or source_text
+            llm_source_text = build_recent_hospital_context(cur, visit_id, limit=5) or source_text
 
             dispo = analyze_discharge_disposition_with_llm(llm_source_text)
             new_dispo = (dispo.get("disposition") if dispo else None)
