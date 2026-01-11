@@ -1845,6 +1845,38 @@
       (a.reason ? ('Reason: ' + a.reason) : 'View and edit tasks, notes, DC submissions, services, and care team.');
   }
 
+  // ======================
+  // E-Sign: Service Types
+  // ======================
+  function renderEsignServiceTypeSelect(){
+    const sel = document.getElementById("esignServiceTypeSelect");
+    if(!sel) return; // if the E-Sign panel isn't on the page yet, this safely does nothing
+
+    sel.innerHTML = ['<option value="">Select service type…</option>']
+      .concat((SERVICE_TYPES || []).map(t => {
+        return `<option value="${t.id}">${escapeHtml(t.name || "")}</option>`;
+      }))
+      .join("");
+  }
+
+  function renderEsignServicesMulti(){
+    const typeEl = document.getElementById("esignServiceTypeSelect");
+    const multi = document.getElementById("esignServicesMulti");
+    if(!typeEl || !multi) return;
+
+    const selTypeId = Number(typeEl.value || 0);
+    const filtered = (SERVICES || []).filter(s => Number(s.service_type_id) === selTypeId);
+
+    multi.innerHTML = filtered
+      .map(s => `<option value="${s.id}">${escapeHtml(s.name || "")}</option>`)
+      .join("");
+  }
+
+  // Wire the change event once
+  document.getElementById("esignServiceTypeSelect")?.addEventListener("change", () => {
+    renderEsignServicesMulti();
+  });
+
   async function loadAll() {
     showMsg('');
     const [details, services, careTeam, agencies, noteTemplates, smsLogs, faxResp, pdfsResp] = await Promise.all([
@@ -1855,11 +1887,15 @@
       api('/api/sensys/note-templates', { method:'GET' }),
       api('/api/sensys/admission-sms/' + ADMISSION_ID, { method:'GET' }),
       api('/api/sensys/admission-fax/' + ADMISSION_ID, { method:'GET' }).catch(() => ({ fax: [] })),
-      api('/api/sensys/admissions/' + ADMISSION_ID + '/pdfs', { method:'GET' }).catch(() => ({ pdfs: [] }))
+      api('/api/sensys/admissions/' + ADMISSION_ID + '/pdfs', { method:'GET' }).catch(() => ({ pdfs: [] })),
+      api('/api/sensys/service-types', { method:'GET' }).catch(() => ({ service_types: [] }))
     ]);
 
+    const stResp = await api('/api/sensys/service-types');
+    SERVICE_TYPES = stResp.service_types || [];
     DETAILS = details;
     SERVICES = (services && services.services) || [];
+    SERVICE_TYPES = (serviceTypesResp && serviceTypesResp.service_types) || [];
     CARE_TEAM = (careTeam && careTeam.care_team) || [];
     AGENCIES = (agencies && agencies.agencies) || []; // ✅ NEW
     renderHhAgencySelect();
@@ -1889,6 +1925,9 @@
     renderFaxPdfSelect(); // ✅ NEW (keeps fax dropdown in sync)
     renderCareTeamSelect();
     renderCareTeamLinked();
+
+    renderEsignServiceTypeSelect();
+    renderEsignServicesMulti();
 
     // ✅ NEW: start lightweight polling after initial data load
     setSmsMeta();
