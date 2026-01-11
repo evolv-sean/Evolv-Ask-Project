@@ -202,7 +202,12 @@
     <!-- E-Fax -->
     <div style="margin-top:12px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-        <div style="font-size:13px;color:#111827;font-weight:800;">E-Fax</div>
+        <div>
+          <div style="font-size:13px;color:#111827;font-weight:800;">E-Fax</div>
+          <div id="faxAutoRefreshMeta" style="margin-top:2px;font-size:12px;color:#667085;">
+            Auto-refresh: On • Last checked: —
+          </div>
+        </div>
 
         <div style="display:flex;gap:8px;align-items:center;">
           <button id="faxRefreshBtn"
@@ -732,6 +737,56 @@
     }, SMS_AUTO_REFRESH_MS);
   }
 
+  // ✅ NEW: Fax auto refresh controls (lightweight)
+  let FAX_AUTO_REFRESH_MS = 60000; // 60s
+  let FAX_POLL_TIMER = null;
+  let FAX_LAST_CHECKED_AT = null;
+
+  function setFaxMeta(){
+    const el = document.getElementById('faxAutoRefreshMeta');
+    if(!el) return;
+    const ts = FAX_LAST_CHECKED_AT ? FAX_LAST_CHECKED_AT : '—';
+    el.textContent = `Auto-refresh: On • Last checked: ${ts}`;
+  }
+
+  async function loadFaxOnly(opts){
+    const refreshStatuses = !!(opts && opts.refreshStatuses);
+
+    if(refreshStatuses){
+      // ✅ call the light backend refresh (recent + capped)
+      await api('/api/sensys/admission-fax/refresh-recent/' + ADMISSION_ID, {
+        method:'POST',
+        body: JSON.stringify({ max_age_minutes: 240, max_rows: 10 })
+      });
+    }
+
+    const faxLogs = await api('/api/sensys/admission-fax/' + ADMISSION_ID, { method:'GET' });
+    FAX_LOG = (faxLogs && faxLogs.fax) || [];
+    renderFax();
+
+    FAX_LAST_CHECKED_AT = new Date().toLocaleTimeString();
+    setFaxMeta();
+  }
+
+  function stopFaxAutoRefresh(){
+    if(FAX_POLL_TIMER){
+      clearInterval(FAX_POLL_TIMER);
+      FAX_POLL_TIMER = null;
+    }
+  }
+
+  function startFaxAutoRefresh(){
+    stopFaxAutoRefresh();
+
+    // do an immediate lightweight refresh once
+    loadFaxOnly({ refreshStatuses:true }).catch(e => console.error('[SENSYS][FAX][AUTO_REFRESH_ERR]', e));
+
+    FAX_POLL_TIMER = setInterval(() => {
+      // skip if tab hidden
+      if(document.hidden) return;
+      loadFaxOnly({ refreshStatuses:true }).catch(e => console.error('[SENSYS][FAX][AUTO_REFRESH_ERR]', e));
+    }, FAX_AUTO_REFRESH_MS);
+  }
 
   function escapeHtml(s) {
     return (s || '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
@@ -1578,9 +1633,12 @@
     renderCareTeamSelect();
     renderCareTeamLinked();
 
-    // ✅ NEW: start the lightweight SMS polling after initial data load
+    // ✅ NEW: start lightweight polling after initial data load
     setSmsMeta();
     startSmsAutoRefresh();
+
+    setFaxMeta();
+    startFaxAutoRefresh();
     }
 
 
@@ -1648,7 +1706,7 @@
   document.getElementById('faxRefreshBtn')?.addEventListener('click', async () => {
     try{
       showMsg('');
-      await loadAll();
+      await loadFaxOnly({ refreshStatuses:true });
     }catch(e){
       showMsg(e.message || 'Fax refresh failed.');
     }
@@ -1693,15 +1751,15 @@
     }
   });
 
-  // ✅ NEW: auto polling start + visibility pause
   document.addEventListener('visibilitychange', () => {
     if(document.hidden){
       stopSmsAutoRefresh();
+      stopFaxAutoRefresh();
     } else {
       startSmsAutoRefresh();
+      startFaxAutoRefresh();
     }
   });
-
 
   document.getElementById('logoutBtn').addEventListener('click', () => {
     localStorage.removeItem('sensys_token');
