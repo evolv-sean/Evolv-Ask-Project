@@ -1297,8 +1297,7 @@
         <div style="width:180px;">
           <div class="label">Type</div>
           <select id="svc_type" class="input">
-            <option value="dme">DME</option>
-            <option value="hh">HH</option>
+            <option value="">Loading…</option>
           </select>
         </div>
         <div style="width:160px;">
@@ -1495,7 +1494,7 @@
       const payload = {
         id: $("svc_id").value ? Number($("svc_id").value) : null,
         name: ($("svc_name").value || "").trim(),
-        service_type: ($("svc_type").value || "").trim(),
+        service_type_id: Number($("svc_type").value || 0),
         dropdown: Number($("svc_dropdown").value || 1)
       };
       await apiPost("/api/sensys/admin/services/upsert", payload);
@@ -2497,6 +2496,23 @@
       headers: ["id","name","type","npi","active","phone1","phone2","email1","email2"]
     }
   };
+
+  let serviceTypesCache = [];
+
+  async function refreshServiceTypes(){
+    const resp = await apiGet("/api/sensys/admin/service-types");
+    serviceTypesCache = resp.service_types || [];
+
+    const sel = $("svc_type");
+    if(sel){
+      sel.innerHTML = ['<option value="">Select type…</option>']
+        .concat(serviceTypesCache.map(t => {
+          const label = `${escapeHtml(t.name || "")}` + (t.code ? ` (${escapeHtml(t.code)})` : "");
+          return `<option value="${t.id}">${label}</option>`;
+        }))
+        .join('');
+    }
+  }
 
   // -----------------------------
   // Services page logic
