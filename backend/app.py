@@ -283,6 +283,62 @@ def sync_discharge_dc_date_to_snf(cur, visit_id: str | None, dc_date: str | None
         (dc_norm, visit_id),
     )
 
+def backfill_snf_dc_dates_from_hospital_discharges(cur, dry_run: bool = False) -> dict:
+    """
+    Backfill snf_admissions.dc_date from hospital_discharges.dc_date
+    where:
+      - snf_admissions.visit_id matches hospital_discharges.visit_id
+      - snf_admissions.dc_date is NULL/blank
+      - hospital_discharges.dc_date is present
+    """
+    # Count candidates first (works for dry_run and real run)
+    cur.execute(
+        """
+        SELECT COUNT(1) AS cnt
+        FROM snf_admissions s
+        WHERE (s.dc_date IS NULL OR TRIM(s.dc_date) = '')
+          AND s.visit_id IS NOT NULL AND TRIM(s.visit_id) <> ''
+          AND EXISTS (
+              SELECT 1
+              FROM hospital_discharges h
+              WHERE h.visit_id = s.visit_id
+                AND h.dc_date IS NOT NULL AND TRIM(h.dc_date) <> ''
+          )
+        """
+    )
+    row = cur.fetchone() or {}
+    try:
+        candidates = int(row["cnt"] or 0)
+    except Exception:
+        candidates = int(row[0] or 0)
+
+    if dry_run:
+        return {"ok": True, "dry_run": True, "candidates": candidates, "updated": 0}
+
+    # Do the actual update (SQLite-compatible)
+    cur.execute(
+        """
+        UPDATE snf_admissions
+        SET dc_date = (
+                SELECT h.dc_date
+                FROM hospital_discharges h
+                WHERE h.visit_id = snf_admissions.visit_id
+            ),
+            updated_at = datetime('now')
+        WHERE (dc_date IS NULL OR TRIM(dc_date) = '')
+          AND visit_id IS NOT NULL AND TRIM(visit_id) <> ''
+          AND EXISTS (
+              SELECT 1
+              FROM hospital_discharges h
+              WHERE h.visit_id = snf_admissions.visit_id
+                AND h.dc_date IS NOT NULL AND TRIM(h.dc_date) <> ''
+          )
+        """
+    )
+
+    updated = int(cur.rowcount or 0)
+    return {"ok": True, "dry_run": False, "candidates": candidates, "updated": updated}
+
 def log_pad_request_debug(request: Request, raw_text: str, payload: dict):
     """
     Debug helper to see exactly what PAD sent.
@@ -11165,7 +11221,28 @@ def admin_hospital_discharge_visit_recompute(payload: Dict[str, Any] = Body(...)
     finally:
         conn.close()
 
+@app.post("/admin/hospital-discharges/backfill-dc-to-snf")
+def admin_backfill_dc_dates_to_snf(payload: Dict[str, Any] = Body(...), admin=Depends(require_admin)):
+    """
+    One-click admin backfill:
+    Copies hospital_discharges.dc_date -> snf_admissions.dc_date
+    when snf_admissions.dc_date is blank AND visit_id matches.
 
+    payload (optional):
+      { "dry_run": true }
+    """
+    dry_run = bool(payload.get("dry_run", False))
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        result = backfill_snf_dc_dates_from_hospital_discharges(cur, dry_run=dry_run)
+        if not dry_run:
+            conn.commit()
+        return result
+    finally:
+        conn.close()
+        
 @app.post("/admin/snf/cm-notes/manual-add")
 def admin_manual_add_cm_note(payload: ManualCmNoteIn, admin=Depends(require_admin)):
     conn = get_db()
