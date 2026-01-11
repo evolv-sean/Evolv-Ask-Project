@@ -20065,10 +20065,11 @@ def sensys_care_team(request: Request):
     ).fetchall()
     return {"ok": True, "care_team": [dict(r) for r in rows]}
 
+from fastapi import Request
+
 @app.get("/api/sensys/service-types")
-def sensys_service_types(token: str):
-    # token required (same pattern as other /api/sensys/* endpoints)
-    _require_token(token)
+def sensys_service_types(request: Request):
+    _sensys_require_user(request)  # uses Authorization: Bearer token header
     conn = get_db()
     rows = conn.execute("""
         SELECT id, name, code
@@ -20076,7 +20077,8 @@ def sensys_service_types(token: str):
         WHERE deleted_at IS NULL AND active = 1
         ORDER BY name COLLATE NOCASE
     """).fetchall()
-    return {"service_types": [dict(r) for r in rows]}
+    return {"ok": True, "service_types": [dict(r) for r in rows]}
+
 
 # ✅ Sensys (User): Services list (needed by Admission Details page)
 @app.get("/api/sensys/services")
@@ -20362,14 +20364,14 @@ def sensys_admission_details(admission_id: int, request: Request):
         SELECT
           e.*,
           ct.name AS care_team_name,
-          st.service_type_name AS service_type_name
+          st.name AS service_type_name,
+          st.code AS service_type_code
         FROM sensys_admission_esigns e
-        LEFT JOIN sensys_care_team ct ON ct.id = e.care_team_id
-        LEFT JOIN (
-          SELECT service_type_id, MAX(service_type_name) AS service_type_name
-          FROM sensys_services
-          GROUP BY service_type_id
-        ) st ON st.service_type_id = e.service_type_id
+        LEFT JOIN sensys_care_team ct
+          ON ct.id = e.care_team_id
+        LEFT JOIN sensys_service_type st
+          ON st.id = e.service_type_id
+         AND st.deleted_at IS NULL
         WHERE e.admission_id = ?
           AND e.deleted_at IS NULL
         ORDER BY e.id DESC
