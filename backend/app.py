@@ -3321,6 +3321,49 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_active ON sensys_admissions(active)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_dates ON sensys_admissions(admit_date, dc_date)")
 
+    # =========================
+    # E-SIGN: orders + services
+    # =========================
+
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sensys_admission_esigns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      admission_id INTEGER NOT NULL,
+
+      care_team_id INTEGER NOT NULL,
+      service_type_id INTEGER NOT NULL,
+
+      comments TEXT,
+
+      status TEXT DEFAULT 'Pending',
+
+      created_by_user_id INTEGER,
+      updated_by_user_id INTEGER,
+
+      signed_by INTEGER,
+      signed_at TEXT,
+      declined_by INTEGER,
+      declined_at TEXT,
+
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      deleted_at TEXT
+    )
+    """)
+
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sensys_esign_services (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      esign_id INTEGER NOT NULL,
+      services_id INTEGER NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+    """)
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sensys_admission_esigns_admission_id ON sensys_admission_esigns(admission_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sensys_esign_services_esign_id ON sensys_esign_services(esign_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sensys_esign_services_services_id ON sensys_esign_services(services_id)")
+
     # -------------------------------------------------------------------
     # Sensys 3.0: Admission-connected “detail” tables
     # -------------------------------------------------------------------
@@ -20049,6 +20092,75 @@ def sensys_admission_details(admission_id: int, request: Request):
         (int(admission_id),),
     ).fetchall()
 
+    appointments = conn.execute(
+        """
+        SELECT
+            aa.id,
+            aa.appt_datetime,
+            aa.care_team_id,
+            ct.name AS care_team_name,
+            ct.type AS care_team_type,
+            aa.appt_status,
+            aa.created_at,
+            aa.updated_at
+        FROM sensys_admission_appointments aa
+        LEFT JOIN sensys_care_team ct ON ct.id = aa.care_team_id
+        WHERE aa.admission_id = ?
+          AND aa.deleted_at IS NULL
+        ORDER BY COALESCE(aa.appt_datetime, '') DESC, aa.id DESC
+        """,
+        (int(admission_id),),
+    ).fetchall()
+
+    # ---------------------------
+    # E-Sign orders for admission
+    # ---------------------------
+    esign_rows = conn.execute(
+        """
+        SELECT
+          e.*,
+          ct.name AS care_team_name,
+          st.service_type_name AS service_type_name
+        FROM sensys_admission_esigns e
+        LEFT JOIN sensys_care_team ct ON ct.id = e.care_team_id
+        LEFT JOIN (
+          SELECT service_type_id, MAX(service_type_name) AS service_type_name
+          FROM sensys_services
+          GROUP BY service_type_id
+        ) st ON st.service_type_id = e.service_type_id
+        WHERE e.admission_id = ?
+          AND e.deleted_at IS NULL
+        ORDER BY e.id DESC
+        """,
+        (int(admission_id),),
+    ).fetchall()
+
+    esign_services = conn.execute(
+        """
+        SELECT
+          es.esign_id,
+          s.id AS service_id,
+          s.service_name
+        FROM sensys_esign_services es
+        JOIN sensys_services s ON s.id = es.services_id
+        ORDER BY s.service_name
+        """
+    ).fetchall()
+
+    services_by_esign = {}
+    for r in esign_services:
+        eid = int(r["esign_id"])
+        services_by_esign.setdefault(eid, []).append({
+            "id": int(r["service_id"]),
+            "service_name": r["service_name"]
+        })
+
+    esign_out = []
+    for r in esign_rows:
+        d = dict(r)
+        d["services"] = services_by_esign.get(int(r["id"]), [])
+        esign_out.append(d)
+
     preferred_provider_ids = []
     try:
         if admission and admission["agency_id"]:
@@ -20071,6 +20183,7 @@ def sensys_admission_details(admission_id: int, request: Request):
         "tasks": [dict(r) for r in tasks],
         "notes": [dict(r) for r in notes],
         "dc_submissions": dc_out,
+        "esigns": esign_out,
         "care_team": [dict(r) for r in care_team_links],
         "preferred_provider_ids": preferred_provider_ids,
         "referrals": [dict(r) for r in referrals],
@@ -20605,6 +20718,115 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
     conn.commit()
     return {"ok": True, "id": int(cur.lastrowid)}
 
+class AdmissionEsignUpsert(BaseModel):
+    id: Optional[int] = None
+    admission_id: int
+    care_team_id: int
+    service_type_id: int
+    comments: Optional[str] = ""
+    status: Optional[str] = "Pending"
+
+@app.post("/api/sensys/admission-esigns/upsert")
+def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_admission_esigns
+            SET care_team_id = ?,
+                service_type_id = ?,
+                comments = ?,
+                status = COALESCE(?, status),
+                updated_by_user_id = ?,
+                updated_at = datetime('now'),
+                deleted_at = NULL
+            WHERE id = ?
+            """,
+            (
+                int(payload.care_team_id),
+                int(payload.service_type_id),
+                (payload.comments or "").strip(),
+                (payload.status or "Pending"),
+                int(u["user_id"]),
+                int(payload.id),
+            ),
+        )
+        esign_id = int(payload.id)
+    else:
+        cur = conn.execute(
+            """
+            INSERT INTO sensys_admission_esigns
+              (admission_id, care_team_id, service_type_id, comments, status, created_by_user_id, updated_by_user_id, deleted_at, updated_at)
+            VALUES
+              (?, ?, ?, ?, ?, ?, ?, NULL, datetime('now'))
+            """,
+            (
+                int(payload.admission_id),
+                int(payload.care_team_id),
+                int(payload.service_type_id),
+                (payload.comments or "").strip(),
+                (payload.status or "Pending"),
+                int(u["user_id"]),
+                int(u["user_id"]),
+            ),
+        )
+        esign_id = int(cur.lastrowid)
+
+    conn.commit()
+    return {"ok": True, "id": esign_id}
+
+@app.post("/api/sensys/admission-esigns/delete")
+def sensys_admission_esigns_delete(payload: IdOnly, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    row = conn.execute(
+        "SELECT admission_id FROM sensys_admission_esigns WHERE id = ?",
+        (int(payload.id),),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="E-Sign not found")
+
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(row["admission_id"]))
+
+    conn.execute("DELETE FROM sensys_esign_services WHERE esign_id = ?", (int(payload.id),))
+    conn.execute("DELETE FROM sensys_admission_esigns WHERE id = ?", (int(payload.id),))
+    conn.commit()
+    return {"ok": True}
+
+class EsignServicesSet(BaseModel):
+    esign_id: int
+    services_ids: List[int] = []
+
+@app.post("/api/sensys/esign-services/set")
+def sensys_esign_services_set(payload: EsignServicesSet, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    row = conn.execute(
+        "SELECT admission_id FROM sensys_admission_esigns WHERE id = ?",
+        (int(payload.esign_id),),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="E-Sign not found")
+
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(row["admission_id"]))
+
+    conn.execute("DELETE FROM sensys_esign_services WHERE esign_id = ?", (int(payload.esign_id),))
+    for sid in payload.services_ids or []:
+        conn.execute(
+            """
+            INSERT INTO sensys_esign_services (esign_id, services_id)
+            VALUES (?, ?)
+            """,
+            (int(payload.esign_id), int(sid)),
+        )
+
+    conn.commit()
+    return {"ok": True}
 
 @app.post("/api/sensys/admission-dc-submissions/delete")
 def sensys_admission_dc_submissions_delete(payload: IdOnly, request: Request):
