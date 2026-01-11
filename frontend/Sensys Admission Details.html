@@ -280,320 +280,251 @@
 
         <!-- PANEL: DC Submissions -->
         <div class="tabPanel" data-panel="dc" style="display:none;">
-          <!-- paste your existing DC Submissions card HTML here unchanged -->
-          <!-- (Use the exact DC Submissions block you already have) -->
+          <!-- DC submissions (full width) -->
+          <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div style="font-size:13px;color:#111827;font-weight:800;">DC Submissions</div>
+
+              <button id="careCompareOpenBtn" title="Search Care Compare (national)"
+                style="width:38px;height:38px;border-radius:12px;border:1px solid #d0d5dd;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:900;">
+                🔎
+              </button>
+            </div>
+
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <input id="dcDate" placeholder="DC date (YYYY-MM-DD)"
+                style="width:190px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+              <input id="dcTime" placeholder="DC time (HH:MM)"
+                style="width:150px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <label style="font-size:12px;color:#475467;display:flex;gap:6px;align-items:center;">
+                <input id="dcConfirmed" type="checkbox" /> Confirmed
+              </label>
+              <label style="font-size:12px;color:#475467;display:flex;gap:6px;align-items:center;">
+                <input id="dcUrgent" type="checkbox" /> Urgent
+              </label>
+
+              <input id="urgentComments" placeholder="Urgent comments"
+                style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <select id="dcDestination"
+                style="padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+                <option>Home</option>
+                <option>ALF</option>
+                <option>ILF</option>
+                <option>Hospital</option>
+                <option>LTC</option>
+                <option>AMA</option>
+                <option>Other</option>
+              </select>
+
+              <input id="destinationComments" placeholder="Destination comments"
+                style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <select id="dcWith"
+                style="padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+                <option>alone</option>
+                <option>spouse</option>
+                <option>other family</option>
+                <option>caregiver</option>
+              </select>
+
+              <select id="hhAgencySelect"
+                style="min-width:260px;max-width:320px;height:42px;padding:8px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+              </select>
+
+              <select id="dcServicesMulti" multiple
+                style="min-width:260px;max-width:320px;height:42px;padding:8px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+              </select>
+
+              <button id="addDcBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Add DC Submission
+              </button>
+            </div>
+
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:1050px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">DC</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Destination</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Urgent</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Services</th>
+                    <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="dcTbody"></tbody>
+              </table>
+            </div>
+            <div style="margin-top:10px;font-size:12px;color:#667085;">
+              Tip: Services are loaded from your Services admin tab (DME / HH). Use “Edit services” per submission.
+            </div>
+          </div>
         </div>
 
         <!-- PANEL: Referrals -->
         <div class="tabPanel" data-panel="referrals" style="display:none;">
-          <!-- paste your existing Referrals card HTML here unchanged -->
-          <!-- (Use the exact Referrals block you already have) -->
+          <!-- Referrals (full width) -->
+          <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div style="font-size:13px;color:#111827;font-weight:800;">Referrals</div>
+            </div>
+
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <select id="referralAgencySelect"
+                style="flex:1;min-width:320px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+                <option value="">Loading agencies…</option>
+              </select>
+
+              <button id="addReferralBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Add Referral
+              </button>
+            </div>
+
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:900px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Agency</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Type</th>
+                    <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="referralsTbody"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         <!-- PANEL: Appointments -->
         <div class="tabPanel" data-panel="appts" style="display:none;">
-          <!-- paste your existing Appointments card HTML here unchanged -->
-          <!-- (Use the exact Appointments block you already have) -->
+          <!-- Appointments (full width) -->
+          <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div style="font-size:13px;color:#111827;font-weight:800;">Appointments</div>
+            </div>
+
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <select id="apptCareTeamSelect"
+                style="flex:1;min-width:320px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+                <option value="">Loading care team…</option>
+              </select>
+
+              <input id="apptDatetime" type="datetime-local"
+                style="width:240px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <select id="apptStatus"
+                style="width:210px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+                <option>New</option>
+                <option>Attended</option>
+                <option>Missed</option>
+                <option>Rescheduled</option>
+              </select>
+
+              <button id="addApptBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Add Appointment
+              </button>
+            </div>
+
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:1050px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Date/Time</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Care Team</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Status</th>
+                    <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="apptsTbody"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         <!-- PANEL: PDFs -->
         <div class="tabPanel" data-panel="pdfs" style="display:none;">
-          <!-- paste your existing PDFs card HTML here unchanged -->
-          <!-- (Use the exact PDFs block you already have) -->
+          <!-- PDFs (uploaded docs) -->
+          <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div style="font-size:13px;color:#111827;font-weight:800;">PDFs</div>
+            </div>
+
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <input id="pdfDocType" placeholder="Doc type (e.g., SNF, Insurance, Orders)"
+                style="flex:1;min-width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <input id="pdfRetentionHours" type="number" min="0" placeholder="Retention hrs (0 = keep)"
+                style="width:190px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <input id="pdfFile" type="file" accept="application/pdf"
+                style="flex:1;min-width:260px;box-sizing:border-box;padding:8px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;" />
+
+              <button id="uploadPdfBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Upload PDF
+              </button>
+            </div>
+
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:1050px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">File</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Type</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Size</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Created</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Expires</th>
+                    <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="pdfsTbody"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         <!-- PANEL: Care Team -->
         <div class="tabPanel" data-panel="careteam" style="display:none;">
-          <!-- paste your existing Care Team card HTML here unchanged -->
-          <!-- (Use the exact Care Team block you already have) -->
-        </div>
+          <!-- Care team (full width) -->
+          <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div style="font-size:13px;color:#111827;font-weight:800;">Care Team (linked to this admission)</div>
+            </div>
 
-      </div>
-    </div>
-    <!-- E-Fax -->
-    <div style="margin-top:12px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-        <div>
-          <div style="font-size:13px;color:#111827;font-weight:800;">E-Fax</div>
-          <div id="faxAutoRefreshMeta" style="margin-top:2px;font-size:12px;color:#667085;">
-            Auto-refresh: On • Last checked: —
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <select id="careTeamSelect"
+                style="flex:1;min-width:320px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+                <option value="">Loading care team…</option>
+              </select>
+
+              <button id="addCareTeamBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Link to Admission
+              </button>
+            </div>
+
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:900px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Name</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Type</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Phone</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Email</th>
+                    <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="careTeamTbody"></tbody>
+              </table>
+            </div>
           </div>
         </div>
-
-        <div style="display:flex;gap:8px;align-items:center;">
-          <button id="faxRefreshBtn"
-            style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
-            Refresh Fax
-          </button>
-        </div>
-      </div>
-
-      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <input id="faxToNumber" placeholder="To fax (E.164 preferred, e.g. +15551234567)"
-          style="width:280px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
-
-        <select id="faxPdfSelect"
-          style="flex:1;min-width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
-          <option value="">Select PDF to fax…</option>
-        </select>
-
-        <button id="sendFaxBtn"
-          style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
-          Send Fax
-        </button>
-      </div>
-
-      <div style="margin-top:8px;">
-        <input id="faxCoverText" placeholder="Cover page text (optional)"
-          style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
-      </div>
-
-      <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
-        <table style="width:100%;border-collapse:collapse;min-width:760px;">
-          <thead>
-            <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">To</th>
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">PDF</th>
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Created</th>
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Status</th>
-            </tr>
-          </thead>
-          <tbody id="faxTbody"></tbody>
-        </table>
       </div>
     </div>
-
-    <!-- DC submissions (full width) -->
-    <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-        <div style="font-size:13px;color:#111827;font-weight:800;">DC Submissions</div>
-
-        <button id="careCompareOpenBtn" title="Search Care Compare (national)"
-          style="width:38px;height:38px;border-radius:12px;border:1px solid #d0d5dd;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:900;">
-          🔎
-        </button>
-      </div>
-
-      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <input id="dcDate" placeholder="DC date (YYYY-MM-DD)"
-          style="width:190px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
-        <input id="dcTime" placeholder="DC time (HH:MM)"
-          style="width:150px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
-
-        <label style="font-size:12px;color:#475467;display:flex;gap:6px;align-items:center;">
-          <input id="dcConfirmed" type="checkbox" /> Confirmed
-        </label>
-        <label style="font-size:12px;color:#475467;display:flex;gap:6px;align-items:center;">
-          <input id="dcUrgent" type="checkbox" /> Urgent
-        </label>
-
-        <input id="urgentComments" placeholder="Urgent comments"
-          style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
-
-        <select id="dcDestination"
-          style="padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
-          <option>Home</option>
-          <option>ALF</option>
-          <option>ILF</option>
-          <option>Hospital</option>
-          <option>LTC</option>
-          <option>AMA</option>
-          <option>Other</option>
-        </select>
-
-        <input id="destinationComments" placeholder="Destination comments"
-          style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
-
-        <select id="dcWith"
-          style="padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
-          <option>alone</option>
-          <option>spouse</option>
-          <option>other family</option>
-          <option>caregiver</option>
-        </select>
-
-        <select id="hhAgencySelect"
-          style="min-width:260px;max-width:320px;height:42px;padding:8px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
-        </select>
-
-        <select id="dcServicesMulti" multiple
-          style="min-width:260px;max-width:320px;height:42px;padding:8px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
-        </select>
-
-        <button id="addDcBtn"
-          style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
-          Add DC Submission
-        </button>
-      </div>
-
-      <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
-        <table style="width:100%;border-collapse:collapse;min-width:1050px;">
-          <thead>
-            <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">DC</th>
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Destination</th>
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Urgent</th>
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Services</th>
-              <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="dcTbody"></tbody>
-        </table>
-      </div>
-
-      <div style="margin-top:10px;font-size:12px;color:#667085;">
-        Tip: Services are loaded from your Services admin tab (DME / HH). Use “Edit services” per submission.
-      </div>
-    </div>
-
-    <!-- Referrals (full width) -->
-    <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-        <div style="font-size:13px;color:#111827;font-weight:800;">Referrals</div>
-      </div>
-
-      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <select id="referralAgencySelect"
-          style="flex:1;min-width:320px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
-          <option value="">Loading agencies…</option>
-        </select>
-
-        <button id="addReferralBtn"
-          style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
-          Add Referral
-        </button>
-      </div>
-
-      <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
-        <table style="width:100%;border-collapse:collapse;min-width:900px;">
-          <thead>
-            <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Agency</th>
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Type</th>
-              <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="referralsTbody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Appointments (full width) -->
-    <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-        <div style="font-size:13px;color:#111827;font-weight:800;">Appointments</div>
-      </div>
-
-      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <select id="apptCareTeamSelect"
-          style="flex:1;min-width:320px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
-          <option value="">Loading care team…</option>
-        </select>
-
-        <input id="apptDatetime" type="datetime-local"
-          style="width:240px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
-
-        <select id="apptStatus"
-          style="width:210px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
-          <option>New</option>
-          <option>Attended</option>
-          <option>Missed</option>
-          <option>Rescheduled</option>
-        </select>
-
-        <button id="addApptBtn"
-          style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
-          Add Appointment
-        </button>
-      </div>
-
-      <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
-        <table style="width:100%;border-collapse:collapse;min-width:1050px;">
-          <thead>
-            <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Date/Time</th>
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Care Team</th>
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Status</th>
-              <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="apptsTbody"></tbody>
-        </table>
-      </div>
-    </div>
-    <!-- PDFs (uploaded docs) -->
-    <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-        <div style="font-size:13px;color:#111827;font-weight:800;">PDFs</div>
-      </div>
-
-      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <input id="pdfDocType" placeholder="Doc type (e.g., SNF, Insurance, Orders)"
-          style="flex:1;min-width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
-
-        <input id="pdfRetentionHours" type="number" min="0" placeholder="Retention hrs (0 = keep)"
-          style="width:190px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
-
-        <input id="pdfFile" type="file" accept="application/pdf"
-          style="flex:1;min-width:260px;box-sizing:border-box;padding:8px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;" />
-
-        <button id="uploadPdfBtn"
-          style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
-          Upload PDF
-        </button>
-      </div>
-
-      <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
-        <table style="width:100%;border-collapse:collapse;min-width:1050px;">
-          <thead>
-            <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">File</th>
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Type</th>
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Size</th>
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Created</th>
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Expires</th>
-              <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="pdfsTbody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Care team (full width) -->
-    <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-        <div style="font-size:13px;color:#111827;font-weight:800;">Care Team (linked to this admission)</div>
-      </div>
-
-      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <select id="careTeamSelect"
-          style="flex:1;min-width:320px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
-          <option value="">Loading care team…</option>
-        </select>
-
-        <button id="addCareTeamBtn"
-          style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
-          Link to Admission
-        </button>
-      </div>
-
-      <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
-        <table style="width:100%;border-collapse:collapse;min-width:900px;">
-          <thead>
-            <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Name</th>
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Type</th>
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Phone</th>
-              <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Email</th>
-              <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="careTeamTbody"></tbody>
-        </table>
-      </div>
-    </div>
-
   </div>
 <!-- Generated DC Note modal -->
 <div id="dcNoteModalBackdrop" style="position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;padding:16px;z-index:9999;">
