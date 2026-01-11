@@ -45,158 +45,269 @@
       </div>
     </div>
 
-    <!-- GRID -->
-    <div style="margin-top:14px;display:grid;grid-template-columns:1fr;gap:14px;">
-      <!-- Tasks -->
-      <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-          <div style="font-size:13px;color:#111827;font-weight:800;">Tasks</div>
-        </div>
+    <!-- SIDE TABS LAYOUT -->
+    <div style="margin-top:14px;display:flex;gap:14px;align-items:flex-start;">
 
-        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
-          <select id="taskStatus"
-            style="padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
-            <option>New</option>
-            <option>Moved</option>
-            <option>Pending</option>
-            <option>Completed</option>
-          </select>
-          <input id="taskName" placeholder="Task name"
-            style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
-          <input id="taskAssignedUser" placeholder="Assigned user id (optional)"
-            style="width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
-          <input id="taskComments" placeholder="Comments (optional)"
-            style="flex:1;min-width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
-          <button id="addTaskBtn"
-            style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
-            Add
-          </button>
-        </div>
+      <!-- LEFT: Tabs -->
+      <div style="width:240px;flex:0 0 240px;">
+        <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:10px;position:sticky;top:12px;">
+          <div style="font-size:12px;color:#667085;font-weight:900;padding:8px 10px;">Admission Panels</div>
 
-        <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
-          <table style="width:100%;border-collapse:collapse;min-width:760px;">
-            <thead>
-              <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
-                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Status</th>
-                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Task</th>
-                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Assigned</th>
-                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Comments</th>
-                <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="tasksTbody"></tbody>
-          </table>
+          <div id="sideTabs" style="display:flex;flex-direction:column;gap:8px;padding:6px;">
+            <button data-tab="tasks" class="sideTabBtn">Tasks</button>
+            <button data-tab="notes" class="sideTabBtn">Notes</button>
+            <button data-tab="sms" class="sideTabBtn">SMS</button>
+            <button data-tab="fax" class="sideTabBtn">E-Fax</button>
+            <button data-tab="dc" class="sideTabBtn">DC Submissions</button>
+            <button data-tab="referrals" class="sideTabBtn">Referrals</button>
+            <button data-tab="appts" class="sideTabBtn">Appointments</button>
+            <button data-tab="pdfs" class="sideTabBtn">PDFs</button>
+            <button data-tab="careteam" class="sideTabBtn">Care Team</button>
+          </div>
         </div>
       </div>
 
-      <!-- Notes -->
-      <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-          <div style="font-size:13px;color:#111827;font-weight:800;">Notes</div>
-        </div>
+      <!-- RIGHT: Panels -->
+      <div style="flex:1;min-width:0;">
 
-        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <!-- PANEL: Tasks -->
+        <div class="tabPanel" data-panel="tasks" style="display:none;">
+          <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div style="font-size:13px;color:#111827;font-weight:800;">Tasks</div>
+            </div>
 
-          <!-- NEW: Note template/type -->
-          <select id="noteTemplateSelect"
-            style="width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
-            <option value="">Select note type…</option>
-          </select>
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+              <select id="taskStatus"
+                style="padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+                <option>New</option>
+                <option>Moved</option>
+                <option>Pending</option>
+                <option>Completed</option>
+              </select>
+              <input id="taskName" placeholder="Task name"
+                style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+              <input id="taskAssignedUser" placeholder="Assigned user id (optional)"
+                style="width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+              <input id="taskComments" placeholder="Comments (optional)"
+                style="flex:1;min-width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+              <button id="addTaskBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Add
+              </button>
+            </div>
 
-          <!-- Keep legacy note_name (optional) -->
-          <input id="noteName" placeholder="Note name (optional / legacy)"
-            style="width:240px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
-
-          <!-- NEW: Common fields -->
-          <input id="noteTitle" placeholder="Note title"
-            style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
-
-          <select id="noteStatus"
-            style="width:170px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
-            <option value="New">New</option>
-            <option value="In Progress">In Progress</option>
-            <option value="Completed">Completed</option>
-          </select>
-
-          <input id="noteResponse1" placeholder="Response 1"
-            style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
-
-          <input id="noteResponse2" placeholder="Response 2"
-            style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
-
-          <button id="addNoteBtn"
-            style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
-            Add
-          </button>
-        </div>
-
-        <!-- Optional legacy comments (keep for now) -->
-        <div style="margin-top:8px;">
-          <input id="noteComments" placeholder="Legacy comments (optional)"
-            style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
-        </div>
-
-        <!-- NEW: dynamic template fields render here -->
-        <div id="noteDynamicFields" style="margin-top:10px;"></div>
-
-        <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
-          <table style="width:100%;border-collapse:collapse;min-width:760px;">
-            <thead>
-              <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
-                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Name</th>
-                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Comments</th>
-                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Created</th>
-                <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="notesTbody"></tbody>
-          </table>
-        </div>
-      </div>
-      <!-- SMS -->
-      <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-          <div>
-            <div style="font-size:13px;color:#111827;font-weight:800;">SMS</div>
-            <div id="smsAutoRefreshMeta" style="margin-top:2px;font-size:12px;color:#667085;">
-              Auto-refresh: On • Last checked: —
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:760px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Status</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Task</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Assigned</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Comments</th>
+                    <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="tasksTbody"></tbody>
+              </table>
             </div>
           </div>
+        </div>
 
-          <div style="display:flex;gap:8px;align-items:center;">
-            <button id="smsRefreshBtn"
-              style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
-              Refresh SMS
-            </button>
+        <!-- PANEL: Notes -->
+        <div class="tabPanel" data-panel="notes" style="display:none;">
+          <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div style="font-size:13px;color:#111827;font-weight:800;">Notes</div>
+            </div>
+
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <select id="noteTemplateSelect"
+                style="width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+                <option value="">Select note type…</option>
+              </select>
+
+              <input id="noteName" placeholder="Note name (optional / legacy)"
+                style="width:240px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <input id="noteTitle" placeholder="Note title"
+                style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <select id="noteStatus"
+                style="width:170px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+                <option value="New">New</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Completed">Completed</option>
+              </select>
+
+              <input id="noteResponse1" placeholder="Response 1"
+                style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <input id="noteResponse2" placeholder="Response 2"
+                style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <button id="addNoteBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Add
+              </button>
+            </div>
+
+            <div style="margin-top:8px;">
+              <input id="noteComments" placeholder="Legacy comments (optional)"
+                style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+            </div>
+
+            <div id="noteDynamicFields" style="margin-top:10px;"></div>
+
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:760px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Name</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Comments</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Created</th>
+                    <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="notesTbody"></tbody>
+              </table>
+            </div>
           </div>
         </div>
 
-        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-          <input id="smsToPhone" placeholder="To phone (E.164 preferred, e.g. +15551234567)"
-            style="width:280px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+        <!-- PANEL: SMS -->
+        <div class="tabPanel" data-panel="sms" style="display:none;">
+          <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div>
+                <div style="font-size:13px;color:#111827;font-weight:800;">SMS</div>
+                <div id="smsAutoRefreshMeta" style="margin-top:2px;font-size:12px;color:#667085;">
+                  Auto-refresh: On • Last checked: —
+                </div>
+              </div>
 
-          <input id="smsText" placeholder="Message"
-            style="flex:1;min-width:300px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+              <div style="display:flex;gap:8px;align-items:center;">
+                <button id="smsRefreshBtn"
+                  style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+                  Refresh SMS
+                </button>
+              </div>
+            </div>
 
-          <button id="sendSmsBtn"
-            style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
-            Send SMS
-          </button>
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <input id="smsToPhone" placeholder="To phone (E.164 preferred, e.g. +15551234567)"
+                style="width:280px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <input id="smsText" placeholder="Message"
+                style="flex:1;min-width:300px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <button id="sendSmsBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Send SMS
+              </button>
+            </div>
+
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:760px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">To</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Message</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Created</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Status</th>
+                  </tr>
+                </thead>
+                <tbody id="smsTbody"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
-        <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
-          <table style="width:100%;border-collapse:collapse;min-width:760px;">
-            <thead>
-              <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
-                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">To</th>
-                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Message</th>
-                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Created</th>
-                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Status</th>
-              </tr>
-            </thead>
-            <tbody id="smsTbody"></tbody>
-          </table>
+        <!-- PANEL: E-Fax -->
+        <div class="tabPanel" data-panel="fax" style="display:none;">
+          <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div>
+                <div style="font-size:13px;color:#111827;font-weight:800;">E-Fax</div>
+                <div id="faxAutoRefreshMeta" style="margin-top:2px;font-size:12px;color:#667085;">
+                  Auto-refresh: On • Last checked: —
+                </div>
+              </div>
+
+              <div style="display:flex;gap:8px;align-items:center;">
+                <button id="faxRefreshBtn"
+                  style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+                  Refresh Fax
+                </button>
+              </div>
+            </div>
+
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <input id="faxToNumber" placeholder="To fax (E.164 preferred, e.g. +15551234567)"
+                style="width:280px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <select id="faxPdfSelect"
+                style="flex:1;min-width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+                <option value="">Select PDF to fax…</option>
+              </select>
+
+              <button id="sendFaxBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Send Fax
+              </button>
+            </div>
+
+            <div style="margin-top:8px;">
+              <input id="faxCoverText" placeholder="Cover page text (optional)"
+                style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+            </div>
+
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:760px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">To</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">PDF</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Created</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Status</th>
+                  </tr>
+                </thead>
+                <tbody id="faxTbody"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
+
+        <!-- PANEL: DC Submissions -->
+        <div class="tabPanel" data-panel="dc" style="display:none;">
+          <!-- paste your existing DC Submissions card HTML here unchanged -->
+          <!-- (Use the exact DC Submissions block you already have) -->
+        </div>
+
+        <!-- PANEL: Referrals -->
+        <div class="tabPanel" data-panel="referrals" style="display:none;">
+          <!-- paste your existing Referrals card HTML here unchanged -->
+          <!-- (Use the exact Referrals block you already have) -->
+        </div>
+
+        <!-- PANEL: Appointments -->
+        <div class="tabPanel" data-panel="appts" style="display:none;">
+          <!-- paste your existing Appointments card HTML here unchanged -->
+          <!-- (Use the exact Appointments block you already have) -->
+        </div>
+
+        <!-- PANEL: PDFs -->
+        <div class="tabPanel" data-panel="pdfs" style="display:none;">
+          <!-- paste your existing PDFs card HTML here unchanged -->
+          <!-- (Use the exact PDFs block you already have) -->
+        </div>
+
+        <!-- PANEL: Care Team -->
+        <div class="tabPanel" data-panel="careteam" style="display:none;">
+          <!-- paste your existing Care Team card HTML here unchanged -->
+          <!-- (Use the exact Care Team block you already have) -->
+        </div>
+
       </div>
     </div>
     <!-- E-Fax -->
@@ -573,6 +684,54 @@
 </div>
 
 <script>
+  // ======================
+  // Side panel tab system
+  // ======================
+  function styleSideTabButtons(){
+    document.querySelectorAll(".sideTabBtn").forEach(btn => {
+      btn.style.padding = "10px 12px";
+      btn.style.borderRadius = "12px";
+      btn.style.border = "1px solid #e6e8ef";
+      btn.style.background = "#fff";
+      btn.style.cursor = "pointer";
+      btn.style.textAlign = "left";
+      btn.style.fontSize = "13px";
+      btn.style.fontWeight = "900";
+      btn.style.color = "#111827";
+    });
+  }
+
+  function setActiveTab(tabKey){
+    // toggle active button
+    document.querySelectorAll(".sideTabBtn").forEach(btn => {
+      const on = btn.getAttribute("data-tab") === tabKey;
+      btn.style.background = on ? "#111827" : "#fff";
+      btn.style.borderColor = on ? "#111827" : "#e6e8ef";
+      btn.style.color = on ? "#fff" : "#111827";
+    });
+
+    // toggle panels
+    document.querySelectorAll(".tabPanel").forEach(p => {
+      const on = p.getAttribute("data-panel") === tabKey;
+      p.style.display = on ? "block" : "none";
+    });
+
+    // OPTIONAL but recommended: only poll SMS/Fax when on those tabs
+    if (tabKey === "sms") startSmsAutoRefresh(); else stopSmsAutoRefresh();
+    if (tabKey === "fax") startFaxAutoRefresh(); else stopFaxAutoRefresh();
+  }
+
+  function wireSideTabs(){
+    styleSideTabButtons();
+
+    document.querySelectorAll(".sideTabBtn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const tab = btn.getAttribute("data-tab");
+        setActiveTab(tab);
+      });
+    });
+  }
+  
   function qs(name) {
     const u = new URL(window.location.href);
     return u.searchParams.get(name);
@@ -1992,10 +2151,16 @@
 
   (async function init(){
     try {
+      wireSideTabs();
+
       ADMISSION_ID = Number(qs('admission_id') || '');
       if (!ADMISSION_ID) throw new Error("Missing admission_id in URL.");
       document.getElementById('admissionIdTag').textContent = String(ADMISSION_ID);
+
       await loadAll();
+
+      // Default opening panel
+      setActiveTab("tasks");
     } catch(e) {
       showMsg(e.message);
     }
