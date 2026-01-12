@@ -57,6 +57,23 @@
         </table>
       </div>
     </div>
+    <!-- ✅ NEW: Notifications card (Dashboard inbox) -->
+    <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <div style="font-size:13px;color:#111827;font-weight:800;">
+          Notifications
+          <span id="notifCount" style="margin-left:8px;font-size:12px;color:#667085;font-weight:700;"></span>
+        </div>
+        <button id="notifRefreshBtn"
+          style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+          Refresh
+        </button>
+      </div>
+
+      <div id="notifMsg" style="margin-top:10px;font-size:12px;color:#b42318;display:none;"></div>
+
+      <div id="notifList" style="margin-top:10px;display:flex;flex-direction:column;gap:10px;"></div>
+    </div>
 
   </div>
 
@@ -89,6 +106,110 @@
   }
 
   let ALL = [];
+
+  let NOTIFS = [];
+
+  function showNotifMsg(s){
+    const el = document.getElementById('notifMsg');
+    if(!el) return;
+    if(!s){ el.style.display='none'; el.textContent=''; return; }
+    el.style.display='block';
+    el.textContent = String(s);
+  }
+
+  async function apiPost(url, payload){
+    const tok = getToken();
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + tok,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload || {})
+    });
+    if(!resp.ok){
+      const t = await resp.text().catch(()=> '');
+      throw new Error(t || ('Request failed: ' + resp.status));
+    }
+    return await resp.json();
+  }
+
+  function renderNotifs(){
+    const host = document.getElementById('notifList');
+    const badge = document.getElementById('notifCount');
+    if(!host) return;
+
+    const unread = (NOTIFS || []).filter(n => !n.read_at).length;
+    if(badge) badge.textContent = unread ? (`${unread} unread`) : ('0 unread');
+
+    if(!NOTIFS.length){
+      host.innerHTML = `<div style="font-size:12px;color:#667085;">No notifications.</div>`;
+      return;
+    }
+
+    host.innerHTML = '';
+    NOTIFS.forEach(n => {
+      const card = document.createElement('div');
+      card.style.border = '1px solid #eef0f6';
+      card.style.borderRadius = '12px';
+      card.style.padding = '12px';
+      card.style.background = n.read_at ? '#fbfcfe' : '#ffffff';
+
+      const title = esc(n.title || n.notif_name || n.notif_key || 'Notification');
+      const body = esc(n.body || '');
+      const meta = esc(n.created_at || '');
+
+      card.innerHTML = `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+          <div>
+            <div style="font-size:13px;font-weight:800;color:#111827;">${title}</div>
+            <div style="margin-top:4px;font-size:12px;color:#475467;white-space:pre-wrap;">${body}</div>
+            <div style="margin-top:8px;font-size:11px;color:#667085;">${meta}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
+            ${n.read_at ? `<span style="font-size:11px;color:#667085;font-weight:700;">Read</span>` : `<button data-id="${esc(n.id)}"
+              style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;font-weight:700;">
+              Mark read
+            </button>`}
+          </div>
+        </div>
+      `;
+
+      // wire mark-read button
+      const btn = card.querySelector('button[data-id]');
+      if(btn){
+        btn.onclick = async () => {
+          try{
+            btn.disabled = true;
+            // BACKEND TO ADD IN SEGMENT 2:
+            // POST /api/sensys/notifications/mark-read { id }
+            await apiPost('/api/sensys/notifications/mark-read', { id: Number(n.id) });
+            await loadNotifs();
+          }catch(e){
+            showNotifMsg(e.message || String(e));
+          }finally{
+            btn.disabled = false;
+          }
+        };
+      }
+
+      host.appendChild(card);
+    });
+  }
+
+  async function loadNotifs(){
+    try{
+      showNotifMsg('');
+      // BACKEND TO ADD IN SEGMENT 2:
+      // GET /api/sensys/my-notifications
+      const resp = await apiGet('/api/sensys/my-notifications');
+      NOTIFS = (resp && resp.notifications) ? resp.notifications : [];
+      renderNotifs();
+    }catch(e){
+      showNotifMsg(e.message || String(e));
+    }
+  }
+
 
   function render(){
     const q = (document.getElementById('q').value || '').trim().toLowerCase();
@@ -143,13 +264,11 @@
   }
 
   document.getElementById('q').addEventListener('input', render);
-  document.getElementById('refreshBtn').addEventListener('click', load);
-  document.getElementById('logoutBtn').addEventListener('click', () => {
-    localStorage.removeItem('sensys_token');
-    window.location.href = '/sensys/login';
-  });
+  document.getElementById('refreshBtn').addEventListener('click', () => { load(); loadNotifs(); });
+  document.getElementById('notifRefreshBtn').addEventListener('click', loadNotifs);
 
   load();
+  loadNotifs();
 </script>
 </body>
 </html>
