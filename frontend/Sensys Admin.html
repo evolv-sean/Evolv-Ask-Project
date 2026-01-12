@@ -382,6 +382,62 @@
    .notes-tab{ display:none; }
    .notes-tab.on{ display:block; }
 
+   /* --- NEW: User Notification Preferences --- */
+   .notif-pref-wrap{
+     border:1px solid rgba(13,59,102,.18);
+     border-radius:12px;
+     background:#fff;
+     padding:10px;
+   }
+   .notif-pref-top{
+     display:flex;
+     gap:10px;
+     align-items:center;
+     justify-content:space-between;
+     flex-wrap:wrap;
+     margin-bottom:10px;
+   }
+   .notif-pref-addrow{
+     display:flex;
+     gap:10px;
+     align-items:center;
+     flex-wrap:wrap;
+   }
+   .notif-pref-list{
+     max-height: 28vh;
+     overflow:auto;
+     border-top:1px solid rgba(15,23,42,.06);
+     padding-top:10px;
+   }
+   .notif-item{
+     display:flex;
+     align-items:flex-start;
+     justify-content:space-between;
+     gap:10px;
+     padding:8px 6px;
+     border-radius:10px;
+   }
+   .notif-item:hover{background: rgba(77,168,218,08);}
+   .notif-methods{
+     display:flex;
+     gap:8px;
+     flex-wrap:wrap;
+     align-items:center;
+     color: var(--muted);
+     font-size: 11px;
+     font-weight: 800;
+   }
+   .notif-x{
+     border:1px solid rgba(13,59,102,.18);
+     background:#fff;
+     border-radius:10px;
+     padding:6px 10px;
+     cursor:pointer;
+     font-weight:900;
+     font-size:12px;
+     color: var(--navy);
+   }
+   .notif-x:hover{ box-shadow: 0 0 0 3px rgba(168,230,207,.35); border-color: rgba(168,230,207,.95); }
 
   </style>
 </head>
@@ -423,6 +479,7 @@
         <div class="navitem" id="tabServices">Services</div>
         <div class="navitem" id="tabCareTeam">Care Team</div>
         <div class="navitem" id="tabNotes">Notes</div>
+        <div class="navitem" id="tabNotifications">Notifications</div>
       </div>
 
       <!-- USERS PANEL -->
@@ -884,6 +941,44 @@
           </div>
         </div>
       </div><!-- /panelCareTeam -->
+      <!-- =========================
+           NOTIFICATIONS PANEL
+      ========================= -->
+      <div class="panel" id="panelNotifications">
+        <div class="content">
+          <div class="hd" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+            <div>
+              <h2 style="margin:0">Notifications</h2>
+              <div class="hint">Manage notification templates (subject/body) used for email/SMS/dashboard.</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="iconbtn" id="addNotifIcon" title="Add notification template" aria-label="Add notification template">+</button>
+            </div>
+          </div>
+
+          <div class="body">
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+              <input class="input" id="notifSearch" placeholder="Search notifications (key/name)..." />
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Key</th>
+                    <th>Name</th>
+                    <th>Active</th>
+                    <th style="text-align:right;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="notifTbody"></tbody>
+              </table>
+            </div>
+
+            <div id="notifMsg" class="toast"></div>
+          </div>
+        </div>
+      </div><!-- /panelNotifications -->
 
     </div><!-- /layout -->
   </div>
@@ -962,6 +1057,35 @@
       <div class="checkwrap">
         <input class="checksearch" id="agencySearch" placeholder="Search agencies." />
         <div class="checklist" id="agencyChecklist"></div>
+      </div>
+
+      <div style="height:14px"></div>
+
+      <!-- ✅ NEW: Notification Preferences -->
+      <div class="label">Notification Preferences</div>
+      <div class="notif-pref-wrap">
+        <div class="notif-pref-top">
+          <div class="hint">Assign which notifications this user receives + delivery methods.</div>
+          <div class="notif-pref-addrow">
+            <select class="select" id="userNotifSelect" style="width:min(360px, 70vw);">
+              <option value="">Loading notifications…</option>
+            </select>
+
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;font-weight:800;">
+              <input type="checkbox" id="userNotifEmail" /> Email
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;font-weight:800;">
+              <input type="checkbox" id="userNotifSms" /> SMS
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;font-weight:800;">
+              <input type="checkbox" id="userNotifDash" checked /> Dashboard
+            </label>
+
+            <button class="btn" id="addUserNotifBtn" style="padding:10px 12px;">+ Add</button>
+          </div>
+        </div>
+
+        <div class="notif-pref-list" id="userNotifList"></div>
       </div>
 
       <div style="height:14px"></div>
@@ -1563,6 +1687,64 @@
     </div>
   </div>
 </div>
+<!-- ✅ Notification Template modal -->
+<div id="notifModalBackdrop" class="modal-backdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="notifModalTitle">
+    <div class="modal-hd">
+      <div>
+        <h3 class="modal-title" id="notifModalTitle">Notification Template</h3>
+        <div class="modal-sub">Configure subject + body for email/SMS/dashboard.</div>
+      </div>
+      <button class="xbtn" id="closeNotifModal" aria-label="Close">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <input id="notif_id" type="hidden" />
+
+      <div class="label">Key (internal)</div>
+      <input class="input" id="notif_key" placeholder="e.g. new_discharge" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Name (label shown in UI)</div>
+      <input class="input" id="notif_name" placeholder="e.g. New Discharge" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Active</div>
+      <select class="select" id="notif_active">
+        <option value="1">Yes</option>
+        <option value="0">No</option>
+      </select>
+
+      <div style="height:14px"></div>
+
+      <div class="label">Email Subject</div>
+      <input class="input" id="notif_email_subject" placeholder="Subject line..." />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Email Body (text or HTML)</div>
+      <textarea class="input" id="notif_email_body" style="min-height:140px;"></textarea>
+
+      <div style="height:10px"></div>
+
+      <div class="label">SMS Body</div>
+      <textarea class="input" id="notif_sms_body" style="min-height:90px;"></textarea>
+
+      <div style="height:10px"></div>
+
+      <div class="label">Dashboard Body</div>
+      <textarea class="input" id="notif_dash_body" style="min-height:90px;"></textarea>
+
+      <div id="notifModalMsg" class="toast"></div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;">
+        <button class="btn" id="saveNotifBtn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
   const $ = (id) => document.getElementById(id);
@@ -1707,6 +1889,9 @@
   let usersCache = [];
   let selectedUserId = null;
   let selectedRoleKeys = new Set();
+  
+  let notificationsMaster = []; // admin-defined notification templates
+  let selectedUserNotifPrefs = []; 
 
   let agenciesMaster = [];
   let selectedAgencyIds = new Set();
@@ -1821,6 +2006,100 @@
     renderPreferredProvidersChecklist();
   }
 
+  async function ensureNotificationsMasterLoaded(){
+    if(Array.isArray(notificationsMaster) && notificationsMaster.length) return notificationsMaster;
+    try{
+      // BACKEND TO ADD IN SEGMENT 2:
+      // GET /api/sensys/admin/notifications (or a non-admin endpoint if you prefer)
+      const resp = await apiGet("/api/sensys/admin/notifications");
+      notificationsMaster = (resp && resp.notifications) ? resp.notifications : [];
+    }catch(e){
+      notificationsMaster = [];
+    }
+    renderUserNotifSelectOptions();
+    return notificationsMaster;
+  }
+
+  function renderUserNotifSelectOptions(){
+    const sel = $("userNotifSelect");
+    if(!sel) return;
+
+    const opts = (notificationsMaster || []).filter(n => String(n.active||0)==="1");
+    sel.innerHTML = ['<option value="">Select a notification…</option>']
+      .concat(opts.map(n => `<option value="${escapeHtml(n.notif_key||"")}">${escapeHtml(n.name||n.notif_key||"")}</option>`))
+      .join("");
+  }
+
+  function _prefLabelForKey(key){
+    const n = (notificationsMaster || []).find(x => String(x.notif_key||"") === String(key||""));
+    return (n && (n.name || n.notif_key)) ? (n.name || n.notif_key) : (key || "");
+  }
+
+  function renderUserNotifPrefs(){
+    const host = $("userNotifList");
+    if(!host) return;
+
+    const prefs = (selectedUserNotifPrefs || []);
+    if(!prefs.length){
+      host.innerHTML = `<div class="hint">No notifications assigned.</div>`;
+      return;
+    }
+
+    host.innerHTML = "";
+    prefs.forEach((p, idx) => {
+      const row = document.createElement("div");
+      row.className = "notif-item";
+
+      const left = document.createElement("div");
+      left.innerHTML = `<b>${escapeHtml(_prefLabelForKey(p.notif_key))}</b><div class="mini">${escapeHtml(p.notif_key||"")}</div>`;
+
+      const methods = [];
+      if(Number(p.email||0)===1) methods.push("Email");
+      if(Number(p.sms||0)===1) methods.push("SMS");
+      if(Number(p.dashboard||0)===1) methods.push("Dashboard");
+
+      const mid = document.createElement("div");
+      mid.className = "notif-methods";
+      mid.textContent = methods.length ? ("Methods: " + methods.join(" • ")) : "No methods";
+
+      const x = document.createElement("button");
+      x.className = "notif-x";
+      x.textContent = "Remove";
+      x.onclick = () => {
+        selectedUserNotifPrefs = selectedUserNotifPrefs.filter((_, i) => i !== idx);
+        renderUserNotifPrefs();
+      };
+
+      row.appendChild(left);
+      row.appendChild(mid);
+      row.appendChild(x);
+      host.appendChild(row);
+    });
+  }
+
+  $("addUserNotifBtn") && ($("addUserNotifBtn").onclick = (e) => {
+    e.preventDefault();
+
+    const key = ($("userNotifSelect").value || "").trim();
+    if(!key) return;
+
+    // prevent duplicates: if exists, overwrite methods
+    const email = $("userNotifEmail").checked ? 1 : 0;
+    const sms = $("userNotifSms").checked ? 1 : 0;
+    const dash = $("userNotifDash").checked ? 1 : 0;
+
+    const existingIdx = (selectedUserNotifPrefs || []).findIndex(x => String(x.notif_key) === String(key));
+    const obj = { notif_key: key, email, sms, dashboard: dash };
+
+    if(existingIdx >= 0){
+      selectedUserNotifPrefs[existingIdx] = obj;
+    }else{
+      selectedUserNotifPrefs = (selectedUserNotifPrefs || []).concat([obj]);
+    }
+
+    renderUserNotifPrefs();
+  });
+
   function renderRolesPills(){
     const wrap = $("roles");
     wrap.innerHTML = "";
@@ -1876,6 +2155,13 @@
     renderAgencyChecklist();
 
     setMsg($("editMsg"), "", true);
+
+    // ✅ NEW: notifications master + user prefs
+    selectedUserNotifPrefs = Array.isArray(u.notification_prefs) ? (u.notification_prefs || []) : [];
+    ensureNotificationsMasterLoaded().then(() => {
+      renderUserNotifSelectOptions();
+      renderUserNotifPrefs();
+    });
 
     // NEW: open modal
     openUserModal();
@@ -2027,6 +2313,13 @@
 
     setMsg($("editMsg"), "New user mode (Save User to create).", true);
 
+    // ✅ NEW: notifications (new user starts empty)
+    selectedUserNotifPrefs = [];
+    ensureNotificationsMasterLoaded().then(() => {
+      renderUserNotifSelectOptions();
+      renderUserNotifPrefs();
+    });
+
     openUserModal();
   }
 
@@ -2081,7 +2374,13 @@
         });
       }
 
-      setMsg($("editMsg"), "User + roles + agencies saved.", true);
+      // 5) ✅ Notification prefs (save for this user)
+      await apiPost("/api/sensys/admin/users/set-notification-prefs", {
+        user_id: selectedUserId,
+        notification_prefs: (selectedUserNotifPrefs || [])
+      });
+
+      setMsg($("editMsg"), "User + roles + agencies + notifications saved.", true);
       await refreshAll();
     }catch(e){
       setMsg($("editMsg"), String(e.message || e), false);
@@ -2155,6 +2454,7 @@
     $("tabServices").className = "navitem " + (which==="services" ? "on" : "");
     $("tabCareTeam").className = "navitem " + (which==="careTeam" ? "on" : "");
     $("tabNotes").className = "navitem " + (which==="notes" ? "on" : "");
+    $("tabNotifications").className = "navitem " + (which==="notifications" ? "on" : "");
 
     // hide all panels
     $("panelUsers").classList.remove("on");
@@ -2165,6 +2465,7 @@
     $("panelServices").classList.remove("on");
     $("panelCareTeam").classList.remove("on");
     $("panelNotes").classList.remove("on");
+    $("panelNotifications").classList.remove("on");
 
     if(which==="users"){
       $("panelUsers").classList.add("on");
@@ -2194,7 +2495,7 @@
     }else if(which==="careTeam"){
       $("panelCareTeam").classList.add("on");
       refreshCareTeamList();
-    }else{
+    }else if(which==="notes"){
       $("panelNotes").classList.add("on");
 
       // init + show default Notes subtab
@@ -2204,6 +2505,11 @@
       // load both caches once so tab switching is instant
       refreshNoteTemplatesAdmin();
       refreshDcNoteTemplatesAdmin();
+    }else if(which==="notifications"){
+      $("panelNotifications").classList.add("on");
+      refreshNotificationsAdmin();
+    }else{
+      $("panelUsers").classList.add("on");
     }
 
 
@@ -2218,6 +2524,7 @@
   onClickSafe("tabServices", () => showPanel("services"));
   onClickSafe("tabCareTeam", () => showPanel("careTeam"));
   onClickSafe("tabNotes", () => showPanel("notes"));
+  onClickSafe("tabNotifications", () => showPanel("notifications"));
 
 
   // --- Agencies page logic ---
@@ -2670,6 +2977,113 @@
       headers: ["id","name","type","npi","active","phone1","phone2","email1","email2"]
     }
   };
+  // -----------------------------
+  // Notifications (Admin) logic
+  // -----------------------------
+  let notifTemplatesCache = [];
+  let editingNotifTemplate = null;
+
+  function renderNotificationsAdminTable(){
+    const tb = $("notifTbody");
+    if(!tb) return;
+    tb.innerHTML = "";
+
+    const q = ($("notifSearch").value || "").trim().toLowerCase();
+    const items = (notifTemplatesCache || []).filter(n => {
+      const hay = `${n.notif_key||""} ${n.name||""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+
+    items.forEach(n => {
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.onclick = () => openNotifModal(n);
+
+      tr.innerHTML = `
+        <td><b>${escapeHtml(n.notif_key||"")}</b></td>
+        <td>${escapeHtml(n.name||"")}</td>
+        <td>${String(n.active||0)==="1" ? "Yes" : "No"}</td>
+        <td style="text-align:right;">
+          <button class="mini" onclick="event.stopPropagation(); openNotifModal(${JSON.stringify(n)})">Edit</button>
+        </td>
+      `;
+      tb.appendChild(tr);
+    });
+  }
+
+  async function refreshNotificationsAdmin(){
+    setMsg($("notifMsg"), "Loading…", true);
+    try{
+      // BACKEND TO ADD IN SEGMENT 2:
+      // GET /api/sensys/admin/notifications
+      const resp = await apiGet("/api/sensys/admin/notifications");
+      notifTemplatesCache = (resp && resp.notifications) ? resp.notifications : [];
+      renderNotificationsAdminTable();
+      setMsg($("notifMsg"), `Loaded ${notifTemplatesCache.length} notifications.`, true);
+    }catch(e){
+      setMsg($("notifMsg"), String(e.message || e), false);
+    }
+  }
+
+  $("notifSearch") && $("notifSearch").addEventListener("input", renderNotificationsAdminTable);
+
+  function openNotifModal(n){
+    editingNotifTemplate = n || null;
+    setMsg($("notifModalMsg"), "", true);
+
+    $("notif_id").value = (n && n.id) ? String(n.id) : "";
+    $("notif_key").value = (n && n.notif_key) ? String(n.notif_key) : "";
+    $("notif_name").value = (n && n.name) ? String(n.name) : "";
+    $("notif_active").value = String((n && (n.active ?? 1)) ?? 1);
+
+    $("notif_email_subject").value = (n && n.email_subject) ? String(n.email_subject) : "";
+    $("notif_email_body").value = (n && n.email_body) ? String(n.email_body) : "";
+    $("notif_sms_body").value = (n && n.sms_body) ? String(n.sms_body) : "";
+    $("notif_dash_body").value = (n && n.dashboard_body) ? String(n.dashboard_body) : "";
+
+    $("notifModalBackdrop").classList.add("on");
+  }
+
+  function closeNotifModal(){
+    $("notifModalBackdrop").classList.remove("on");
+  }
+
+  $("closeNotifModal") && ($("closeNotifModal").onclick = closeNotifModal);
+  $("notifModalBackdrop") && $("notifModalBackdrop").addEventListener("click", (e) => {
+    if(e.target.id === "notifModalBackdrop") closeNotifModal();
+  });
+
+  $("addNotifIcon") && ($("addNotifIcon").onclick = () => openNotifModal(null));
+
+  $("saveNotifBtn") && ($("saveNotifBtn").onclick = async () => {
+    try{
+      setMsg($("notifModalMsg"), "Saving…", true);
+
+      const payload = {
+        id: $("notif_id").value ? Number($("notif_id").value) : null,
+        notif_key: ($("notif_key").value || "").trim(),
+        name: ($("notif_name").value || "").trim(),
+        active: Number($("notif_active").value || "1"),
+        email_subject: ($("notif_email_subject").value || "").trim(),
+        email_body: ($("notif_email_body").value || ""),
+        sms_body: ($("notif_sms_body").value || ""),
+        dashboard_body: ($("notif_dash_body").value || "")
+      };
+
+      if(!payload.notif_key) throw new Error("Key is required.");
+      if(!payload.name) throw new Error("Name is required.");
+
+      // BACKEND TO ADD IN SEGMENT 2:
+      // POST /api/sensys/admin/notifications/upsert
+      await apiPost("/api/sensys/admin/notifications/upsert", payload);
+
+      setMsg($("notifModalMsg"), "Saved.", true);
+      closeNotifModal();
+      await refreshNotificationsAdmin();
+    }catch(e){
+      setMsg($("notifModalMsg"), String(e.message || e), false);
+    }
+  });
 
   let serviceTypesCache = [];
 
