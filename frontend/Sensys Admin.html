@@ -924,6 +924,22 @@
 
       <div style="height:14px"></div>
 
+      <!-- ✅ Provider-only fields -->
+      <div id="providerFields" style="display:none;">
+        <div class="label">NPI (Provider E-sign)</div>
+        <input class="input" id="provider_npi" placeholder="NPI" />
+
+        <div style="height:10px"></div>
+
+        <div class="label">E-Sign Linking (Care Team)</div>
+        <div class="checkwrap">
+          <input class="checksearch" id="esignLinkSearch" placeholder="Search care team." />
+          <div class="checklist" id="esignLinkChecklist"></div>
+        </div>
+
+        <div style="height:14px"></div>
+      </div>
+
       <div class="label">Cell Phone</div>
       <input class="input" id="cell_phone" placeholder="(xxx) xxx-xxxx" />
 
@@ -1698,6 +1714,8 @@
   let agenciesCache = [];
   let selectedAgencyId = null;
   
+  let selectedEsignLinkIds = new Set();
+  
   let selectedPreferredProviderIds = new Set();
 
   function renderAgencyChecklist(){
@@ -1814,9 +1832,15 @@
         if(selectedRoleKeys.has(r.role_key)) selectedRoleKeys.delete(r.role_key);
         else selectedRoleKeys.add(r.role_key);
         renderRolesPills();
+        refreshProviderFieldsVisibility();
       };
       wrap.appendChild(b);
     });
+  }
+
+  function refreshProviderFieldsVisibility(){
+    const on = selectedRoleKeys.has("provider");
+    $("providerFields").style.display = on ? "" : "none";
   }
 
   function selectUser(u){
@@ -1833,6 +1857,12 @@
     $("password").value = ""; // never auto-fill password
     $("account_locked").value = String(u.account_locked ? 1 : 0);
 
+    // ✅ Provider E-sign
+    $("provider_npi").value = u.npi || "";
+    selectedEsignLinkIds = new Set(u.esign_link_ids || []);
+    renderEsignLinkChecklist();
+    refreshProviderFieldsVisibility();
+
     selectedAgencyIds = new Set(u.agency_ids || []);
     renderAgencyChecklist();
 
@@ -1841,6 +1871,40 @@
     // NEW: open modal
     openUserModal();
   }
+
+  function renderEsignLinkChecklist(){
+    const wrap = $("esignLinkChecklist");
+    if(!wrap) return;
+
+    const q = ($("esignLinkSearch").value || "").trim().toLowerCase();
+    wrap.innerHTML = "";
+
+    const items = (careTeamCache || []).filter(ct => {
+      const hay = `${ct.name||""} ${ct.type||""} ${ct.npi||""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+
+    items.forEach(ct => {
+      const row = document.createElement("div");
+      row.className = "checkrow";
+
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = selectedEsignLinkIds.has(ct.id);
+      cb.onchange = () => {
+        if(cb.checked) selectedEsignLinkIds.add(ct.id);
+        else selectedEsignLinkIds.delete(ct.id);
+      };
+
+      const label = document.createElement("div");
+      label.innerHTML = `<b>${escapeHtml(ct.name||"")}</b> <span class="agmeta">— ${escapeHtml(ct.type||"")}</span>`;
+
+      row.appendChild(cb);
+      row.appendChild(label);
+      wrap.appendChild(row);
+    });
+  }
+
 
   function renderUsersTable(){
     const tbody = $("tbody");
@@ -1946,6 +2010,12 @@
     $("password").value = "";
     $("account_locked").value = "0";
 
+    // ✅ Provider E-sign
+    $("provider_npi").value = "";
+    selectedEsignLinkIds = new Set();
+    renderEsignLinkChecklist();
+    refreshProviderFieldsVisibility();
+
     setMsg($("editMsg"), "New user mode (Save User to create).", true);
 
     openUserModal();
@@ -1973,7 +2043,8 @@
 
         cell_phone: ($("cell_phone").value || "").trim(),
         password: ($("password").value || "").trim(), // blank = keep unchanged (backend handles)
-        account_locked: $("account_locked").value === "1"
+        account_locked: $("account_locked").value === "1",
+        npi: ($("provider_npi").value || "").trim()
       };
 
       // 1) Save core user (backend will return user_id)
@@ -1993,6 +2064,14 @@
         agency_ids: Array.from(selectedAgencyIds)
       });
 
+      // 4) ✅ Provider E-sign links (only if Provider role selected)
+      if(selectedRoleKeys.has("provider")){
+        await apiPost("/api/sensys/admin/users/set-esign-links", {
+          user_id: selectedUserId,
+          care_team_ids: Array.from(selectedEsignLinkIds)
+        });
+      }
+
       setMsg($("editMsg"), "User + roles + agencies saved.", true);
       await refreshAll();
     }catch(e){
@@ -2005,6 +2084,7 @@
 
   $("agencySearch").addEventListener("input", renderAgencyChecklist);
   $("preferredProviderSearch").addEventListener("input", renderPreferredProvidersChecklist);
+  $("esignLinkSearch").addEventListener("input", renderEsignLinkChecklist);
 
   // -----------------------------
   // Notes Subtabs (Templates vs DC Note)
