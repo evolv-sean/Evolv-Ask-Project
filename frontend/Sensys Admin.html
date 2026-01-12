@@ -1860,7 +1860,16 @@
     // ✅ Provider E-sign
     $("provider_npi").value = u.npi || "";
     selectedEsignLinkIds = new Set(u.esign_link_ids || []);
-    renderEsignLinkChecklist();
+
+    // show immediate feedback while preloading
+    const wrap = $("esignLinkChecklist");
+    if(wrap) wrap.innerHTML = `<div class="hint">Loading care team…</div>`;
+
+    // ✅ NEW: preload care team cache, then render checklist
+    ensureCareTeamCacheLoaded().then(() => {
+      renderEsignLinkChecklist();
+    });
+
     refreshProviderFieldsVisibility();
 
     selectedAgencyIds = new Set(u.agency_ids || []);
@@ -2877,6 +2886,35 @@
   // Care Team page logic
   // -----------------------------
   let careTeamCache = [];
+
+  // ✅ NEW: lazy-load cache so User modal can render E-sign linking without opening Care Team tab first
+  let careTeamCachePromise = null;
+
+  async function ensureCareTeamCacheLoaded(){
+    // already have data
+    if(Array.isArray(careTeamCache) && careTeamCache.length) return careTeamCache;
+
+    // in-flight request
+    if(careTeamCachePromise) return careTeamCachePromise;
+
+    // start request
+    careTeamCachePromise = (async () => {
+      try{
+        const resp = await apiGet("/api/sensys/admin/care-team");
+        careTeamCache = resp.care_team || [];
+      }catch(e){
+        console.warn("[ADMIN] Failed to preload care team for esign linking:", e);
+        careTeamCache = [];
+      }finally{
+        // allow re-try later if it failed / returned empty
+        careTeamCachePromise = null;
+      }
+      return careTeamCache;
+    })();
+
+    return careTeamCachePromise;
+  }
+
 
   function renderCareTeamTable(){
     const tbody = $("careTeamTbody");
