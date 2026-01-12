@@ -58,6 +58,22 @@
 
       <div id="count" style="margin-top:10px;font-size:12px;color:#667085;"></div>
     </div>
+    <!-- ✅ NEW: Notifications card -->
+    <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div style="font-size:13px;color:#111827;font-weight:800;">
+          Notifications
+          <span id="notifCount" style="margin-left:8px;font-size:12px;color:#667085;font-weight:700;"></span>
+        </div>
+        <button id="notifRefreshBtn"
+          style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">
+          Refresh
+        </button>
+      </div>
+
+      <div id="notifMsg" style="margin-top:10px;font-size:12px;color:#b42318;display:none;"></div>
+      <div id="notifList" style="margin-top:10px;display:flex;flex-direction:column;gap:10px;"></div>
+    </div>
   </div>
 
 <script>
@@ -71,6 +87,105 @@
   const logoutBtn = document.getElementById('logoutBtn');
 
   let allRows = [];
+
+  let NOTIFS = [];
+
+  function showNotifError(t){
+    const el = document.getElementById('notifMsg');
+    if(!el) return;
+    if(!t){ el.style.display='none'; el.textContent=''; return; }
+    el.style.display='block';
+    el.textContent = t || 'Error';
+  }
+
+  async function apiPost(url, payload){
+    const resp = await fetch(url, {
+      method:'POST',
+      headers: Object.assign({ 'Content-Type':'application/json' }, authHeaders()),
+      body: JSON.stringify(payload || {})
+    });
+    if(!resp.ok){
+      const t = await resp.text().catch(()=> '');
+      throw new Error(t || ('Request failed: ' + resp.status));
+    }
+    return await resp.json();
+  }
+
+  function esc(s){
+    return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  function renderNotifs(){
+    const host = document.getElementById('notifList');
+    const badge = document.getElementById('notifCount');
+    if(!host) return;
+
+    const unread = (NOTIFS || []).filter(n => !n.read_at).length;
+    if(badge) badge.textContent = unread ? (`${unread} unread`) : ('0 unread');
+
+    if(!NOTIFS.length){
+      host.innerHTML = `<div style="font-size:12px;color:#667085;">No notifications.</div>`;
+      return;
+    }
+
+    host.innerHTML = '';
+    NOTIFS.forEach(n => {
+      const card = document.createElement('div');
+      card.style.border = '1px solid #eef0f5';
+      card.style.borderRadius = '12px';
+      card.style.padding = '12px';
+      card.style.background = n.read_at ? '#fbfcfe' : '#ffffff';
+
+      card.innerHTML = `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+          <div>
+            <div style="font-size:13px;font-weight:800;color:#111827;">${esc(n.title || n.notif_name || n.notif_key || 'Notification')}</div>
+            <div style="margin-top:4px;font-size:12px;color:#475467;white-space:pre-wrap;">${esc(n.body || '')}</div>
+            <div style="margin-top:8px;font-size:11px;color:#667085;">${esc(n.created_at || '')}</div>
+          </div>
+          <div>
+            ${n.read_at ? `<span style="font-size:11px;color:#667085;font-weight:700;">Read</span>` : `<button data-id="${esc(n.id)}"
+              style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;font-weight:700;">
+              Mark read
+            </button>`}
+          </div>
+        </div>
+      `;
+
+      const btn = card.querySelector('button[data-id]');
+      if(btn){
+        btn.onclick = async () => {
+          try{
+            btn.disabled = true;
+            await apiPost('/api/sensys/notifications/mark-read', { id: Number(n.id) });
+            await loadNotifs();
+          }catch(e){
+            showNotifError(e.message || String(e));
+          }finally{
+            btn.disabled = false;
+          }
+        };
+      }
+
+      host.appendChild(card);
+    });
+  }
+
+  async function loadNotifs(){
+    try{
+      showNotifError('');
+      const res = await fetch('/api/sensys/my-notifications', { headers: authHeaders() });
+      const data = await res.json();
+      if(!res.ok || !data.ok){
+        showNotifError((data && data.detail) ? data.detail : 'Failed to load notifications');
+        return;
+      }
+      NOTIFS = data.notifications || [];
+      renderNotifs();
+    }catch(e){
+      showNotifError('Network error');
+    }
+  }
 
   function token(){
     return (localStorage.getItem('sensys_token') || '').trim();
@@ -187,7 +302,11 @@
     window.location.href = '/sensys/login';
   });
 
+  const notifRefreshBtn = document.getElementById('notifRefreshBtn');
+  if(notifRefreshBtn) notifRefreshBtn.addEventListener('click', loadNotifs);
+
   load();
+  loadNotifs();
 })();
 </script>
 </body>
