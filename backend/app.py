@@ -16561,6 +16561,9 @@ class SensysUserUpsert(BaseModel):
 
     # ✅ Provider E-sign
     npi: Optional[str] = ""
+    
+    # 🔔 Notifications (optional; if provided, we persist it on save)
+    notification_prefs: list[SensysUserNotificationPrefItem] = []
 
 
 class SensysRoleAssign(BaseModel):
@@ -17128,7 +17131,48 @@ def sensys_admin_users_upsert(payload: SensysUserUpsert, token: str):
 
     # Return the user_id so the UI can immediately save roles/agencies
     conn.commit()
-    return {"ok": True, "user_id": int(payload.user_id) if payload.user_id else int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])}
+
+    user_id = int(payload.user_id) if payload.user_id else int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+
+    # 🔔 ALSO persist notification prefs when saving the user (clean replace)
+    # If the UI sends notification_prefs, they will now stick when reopening the modal.
+    try:
+        conn.execute("DELETE FROM sensys_user_notification_prefs WHERE user_id = ?", (user_id,))
+
+        items = payload.notification_prefs or []
+        rows = []
+        for it in items:
+            k = (it.notif_key or "").strip().lower()
+            if not k:
+                continue
+            rows.append(
+                (
+                    user_id,
+                    k,
+                    1 if bool(it.deliver_email) else 0,
+                    1 if bool(it.deliver_sms) else 0,
+                    1 if bool(it.deliver_dashboard) else 0,
+                )
+            )
+
+        if rows:
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO sensys_user_notification_prefs
+                    (user_id, notif_key, deliver_email, deliver_sms, deliver_dashboard, updated_at)
+                VALUES
+                    (?, ?, ?, ?, ?, datetime('now'))
+                """,
+                rows,
+            )
+
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+    return {"ok": True, "user_id": user_id}
+
 
 
 # -----------------------------
