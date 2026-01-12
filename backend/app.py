@@ -389,6 +389,7 @@ SENSYS_SNF_SW_HTML = FRONTEND_DIR / "Sensys SNF SW.html"
 SENSYS_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Admission Details.html"
 SENSYS_HOME_HEALTH_HTML = FRONTEND_DIR / "Sensys Home Health.html"
 SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Home Health Admission Details.html"
+SENSYS_PROVIDER_ESIGN_HTML = FRONTEND_DIR / "Sensys Provider E-Sign.html"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("evolv")
@@ -19224,6 +19225,8 @@ def sensys_login(payload: SensysLoginIn):
         redirect_url = "/sensys/snf-sw"
     elif "home_health" in role_keys:
         redirect_url = "/sensys/home-health"
+    elif "provider" in role_keys:
+        redirect_url = "/sensys/provider-esign"
     elif "admin" in role_keys:
         redirect_url = "/admin/sensys"
 
@@ -21080,6 +21083,16 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
     _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
 
     if payload.id:
+        # ✅ NEW: once signed, it cannot be edited
+        existing = conn.execute(
+            "SELECT status, signed_at FROM sensys_admission_esigns WHERE id = ?",
+            (int(payload.id),),
+        ).fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="E-Sign not found")
+        if (existing["status"] or "").strip().lower() == "signed" or existing["signed_at"]:
+            raise HTTPException(status_code=400, detail="This E-Sign is already signed and cannot be edited.")
+
         conn.execute(
             """
             UPDATE sensys_admission_esigns
@@ -21102,6 +21115,7 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
             ),
         )
         esign_id = int(payload.id)
+
     else:
         cur = conn.execute(
             """
@@ -21172,6 +21186,221 @@ def sensys_esign_services_set(payload: EsignServicesSet, request: Request):
             (int(payload.esign_id), int(sid)),
         )
 
+    conn.commit()
+    return {"ok": True}
+
+# -------------------------------------------------------------------
+# ✅ NEW: Provider E-Sign list + sign/decline endpoints
+# -------------------------------------------------------------------
+def _sensys_assert_provider_role(u: dict):
+    role_keys = u.get("role_keys") or []
+    if "provider" not in role_keys:
+        raise HTTPException(status_code=403, detail="Provider role required")
+
+def _sensys_provider_linked_care_team_ids(conn, user_id: int) -> list[int]:
+    rows = conn.execute(
+        """
+        SELECT care_team_id
+        FROM sensys_user_esign_links
+        WHERE user_id = ?
+        ORDER BY care_team_id
+        """,
+        (int(user_id),),
+    ).fetchall()
+    return [int(r["care_team_id"]) for r in rows]
+
+@app.get("/api/sensys/provider/esigns")
+def sensys_provider_esigns(request: Request):
+    u = _sensys_require_user(request)
+    _sensys_assert_provider_role(u)
+
+    conn = get_db()
+    user_id = int(u["user_id"])
+
+    linked_ids = _sensys_provider_linked_care_team_ids(conn, user_id)
+    if not linked_ids:
+        return {"ok": True, "esigns": []}
+
+    # build (?, ?, ?) list safely
+    placeholders = ",".join(["?"] * len(linked_ids))
+
+    rows = conn.execute(
+        f"""
+        SELECT
+            ae.id,
+            ae.admission_id,
+            ae.care_team_id,
+            ct.name AS care_team_name,
+
+            ae.service_type_id,
+            st.name AS service_type_name,
+            st.code AS service_type_code,
+
+            ae.comments,
+            ae.status,
+            ae.created_at,
+            ae.updated_at,
+
+            ae.signed_by,
+            ae.signed_at,
+            ae.declined_by,
+            ae.declined_at,
+
+            a.admit_date,
+            a.dc_date,
+            a.mrn,
+            a.visit_id,
+
+            p.first_name AS patient_first_name,
+            p.last_name  AS patient_last_name,
+
+            ag.agency_name
+        FROM sensys_admission_esigns ae
+        JOIN sensys_admissions a ON a.id = ae.admission_id
+        JOIN sensys_patients p ON p.id = a.patient_id
+        LEFT JOIN sensys_care_team ct ON ct.id = ae.care_team_id
+        LEFT JOIN sensys_service_type st ON st.id = ae.service_type_id AND st.deleted_at IS NULL
+        LEFT JOIN sensys_agencies ag ON ag.id = a.agency_id
+        WHERE ae.deleted_at IS NULL
+          AND ae.care_team_id IN ({placeholders})
+        ORDER BY
+            CASE
+              WHEN lower(COALESCE(ae.status,'')) = 'pending' THEN 0
+              WHEN lower(COALESCE(ae.status,'')) = 'declined' THEN 1
+              WHEN lower(COALESCE(ae.status,'')) = 'signed' THEN 2
+              ELSE 3
+            END,
+            ae.updated_at DESC
+        """,
+        tuple(linked_ids),
+    ).fetchall()
+
+    esigns = [dict(r) for r in rows]
+    esign_ids = [int(e["id"]) for e in esigns]
+
+    # Attach services to each e-sign (multi-select)
+    services_by_esign: dict[int, list[dict]] = {}
+    if esign_ids:
+        placeholders2 = ",".join(["?"] * len(esign_ids))
+        svc_rows = conn.execute(
+            f"""
+            SELECT
+                ess.esign_id,
+                s.id AS service_id,
+                s.name AS service_name
+            FROM sensys_esign_services ess
+            JOIN sensys_services s ON s.id = ess.services_id
+            WHERE ess.esign_id IN ({placeholders2})
+            ORDER BY ess.esign_id, s.name COLLATE NOCASE
+            """,
+            tuple(esign_ids),
+        ).fetchall()
+
+        for r in svc_rows:
+            eid = int(r["esign_id"])
+            services_by_esign.setdefault(eid, []).append(
+                {"service_id": int(r["service_id"]), "service_name": r["service_name"]}
+            )
+
+    for e in esigns:
+        e["services"] = services_by_esign.get(int(e["id"]), [])
+
+    return {"ok": True, "esigns": esigns}
+
+class ProviderEsignAction(BaseModel):
+    esign_id: int
+
+@app.post("/api/sensys/provider/esigns/sign")
+def sensys_provider_esigns_sign(payload: ProviderEsignAction, request: Request):
+    u = _sensys_require_user(request)
+    _sensys_assert_provider_role(u)
+
+    conn = get_db()
+    user_id = int(u["user_id"])
+    esign_id = int(payload.esign_id)
+
+    # Must be linked via care_team_id
+    linked_ids = set(_sensys_provider_linked_care_team_ids(conn, user_id))
+
+    row = conn.execute(
+        """
+        SELECT id, admission_id, care_team_id, status, signed_at, declined_at
+        FROM sensys_admission_esigns
+        WHERE id = ? AND deleted_at IS NULL
+        """,
+        (esign_id,),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="E-Sign not found")
+
+    if int(row["care_team_id"]) not in linked_ids:
+        raise HTTPException(status_code=403, detail="Not linked to this E-Sign")
+
+    if (row["signed_at"] or ""):
+        raise HTTPException(status_code=400, detail="Already signed")
+    if (row["declined_at"] or ""):
+        raise HTTPException(status_code=400, detail="Already declined")
+    if (row["status"] or "").strip().lower() == "signed":
+        raise HTTPException(status_code=400, detail="Already signed")
+
+    conn.execute(
+        """
+        UPDATE sensys_admission_esigns
+           SET status = 'Signed',
+               signed_by = ?,
+               signed_at = datetime('now'),
+               updated_by_user_id = ?,
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (user_id, user_id, esign_id),
+    )
+    conn.commit()
+    return {"ok": True}
+
+@app.post("/api/sensys/provider/esigns/decline")
+def sensys_provider_esigns_decline(payload: ProviderEsignAction, request: Request):
+    u = _sensys_require_user(request)
+    _sensys_assert_provider_role(u)
+
+    conn = get_db()
+    user_id = int(u["user_id"])
+    esign_id = int(payload.esign_id)
+
+    linked_ids = set(_sensys_provider_linked_care_team_ids(conn, user_id))
+
+    row = conn.execute(
+        """
+        SELECT id, admission_id, care_team_id, status, signed_at, declined_at
+        FROM sensys_admission_esigns
+        WHERE id = ? AND deleted_at IS NULL
+        """,
+        (esign_id,),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="E-Sign not found")
+
+    if int(row["care_team_id"]) not in linked_ids:
+        raise HTTPException(status_code=403, detail="Not linked to this E-Sign")
+
+    if (row["signed_at"] or "") or (row["status"] or "").strip().lower() == "signed":
+        raise HTTPException(status_code=400, detail="Already signed (cannot decline)")
+
+    if (row["declined_at"] or ""):
+        raise HTTPException(status_code=400, detail="Already declined")
+
+    conn.execute(
+        """
+        UPDATE sensys_admission_esigns
+           SET status = 'Declined',
+               declined_by = ?,
+               declined_at = datetime('now'),
+               updated_by_user_id = ?,
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (user_id, user_id, esign_id),
+    )
     conn.commit()
     return {"ok": True}
 
@@ -21940,6 +22169,10 @@ async def sensys_home_health_ui():
 async def sensys_home_health_admission_details_ui():
     return HTMLResponse(content=read_html(SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML))
 
+# ✅ NEW: Provider E-Sign list page
+@app.get("/sensys/provider-esign", response_class=HTMLResponse)
+async def sensys_provider_esign_ui():
+    return HTMLResponse(content=read_html(SENSYS_PROVIDER_ESIGN_HTML))
 
 @app.get("/snf-admissions", response_class=HTMLResponse)
 async def snf_admissions_ui():
