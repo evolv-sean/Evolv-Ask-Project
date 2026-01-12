@@ -3293,6 +3293,35 @@ def init_db():
         ],
     )
 
+    # ---------------------------------------------
+    # NEW: Per-user notification inbox (read state)
+    # ---------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_user_notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            user_id INTEGER NOT NULL,
+            notif_key TEXT NOT NULL,
+
+            admission_id INTEGER,
+            related_table TEXT DEFAULT '',
+            related_id INTEGER,
+
+            title TEXT DEFAULT '',
+            body TEXT DEFAULT '',
+            payload_json TEXT DEFAULT '',
+
+            created_at TEXT DEFAULT (datetime('now')),
+            read_at TEXT DEFAULT NULL
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_notifs_user ON sensys_user_notifications(user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_notifs_read ON sensys_user_notifications(read_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_notifs_adm ON sensys_user_notifications(admission_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_notifs_key ON sensys_user_notifications(notif_key)")
+
     # -------------------------------------------------------------------
     # NEW: Sensys sessions (simple token auth for test login pages)
     # -------------------------------------------------------------------
@@ -16834,6 +16863,9 @@ class SensysUserNotificationPrefsSet(BaseModel):
     user_id: int
     prefs: list[SensysUserNotificationPrefItem] = []
 
+class SensysNotificationMarkRead(BaseModel):
+    id: int
+
 class AdmissionReferralUpsert(BaseModel):
     id: Optional[int] = None
     admission_id: int
@@ -19671,6 +19703,136 @@ class SensysAdmissionFaxSend(BaseModel):
     from_fax: Optional[str] = None  # optional override (rare)
     fax_resolution: Optional[str] = "High"  # RingCentral supports "High"/"Low"
 
+def _sensys_user_wants_dashboard_notif(conn, user_id: int, notif_key: str) -> bool:
+    r = conn.execute(
+        """
+        SELECT deliver_dashboard
+        FROM sensys_user_notification_prefs
+        WHERE user_id = ?
+          AND notif_key = ?
+          AND deleted_at IS NULL
+        """,
+        (int(user_id), (notif_key or "").strip()),
+    ).fetchone()
+    return bool(int(r["deliver_dashboard"] or 0)) if r else False
+
+
+def _sensys_user_ids_linked_to_admission(conn, admission_id: int) -> list[int]:
+    """
+    A user is "linked" to an admission if:
+      A) they have an agency link to admission.agency_id
+      OR
+      B) they have an agency link to a referral agency on that admission (Home Health scenario)
+    """
+    rows = conn.execute(
+        """
+        SELECT DISTINCT ua.user_id
+        FROM sensys_user_agencies ua
+        JOIN sensys_admissions a ON a.agency_id = ua.agency_id
+        WHERE a.id = ?
+
+        UNION
+
+        SELECT DISTINCT ua.user_id
+        FROM sensys_user_agencies ua
+        JOIN sensys_admission_referrals ar
+             ON ar.agency_id = ua.agency_id
+            AND ar.deleted_at IS NULL
+        WHERE ar.admission_id = ?
+        """,
+        (int(admission_id), int(admission_id)),
+    ).fetchall()
+
+    return [int(r["user_id"]) for r in rows]
+
+
+def _sensys_insert_dashboard_notifications(conn, *, user_ids, notif_key: str, admission_id: int, related_table: str, related_id: int, title: str, body: str, payload_json: str = ""):
+    if not user_ids:
+        return
+
+    for uid in user_ids:
+        if not _sensys_user_wants_dashboard_notif(conn, int(uid), notif_key):
+            continue
+
+        conn.execute(
+            """
+            INSERT INTO sensys_user_notifications
+                (user_id, notif_key, admission_id, related_table, related_id, title, body, payload_json)
+            VALUES
+                (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(uid),
+                (notif_key or "").strip(),
+                int(admission_id) if admission_id else None,
+                (related_table or "").strip(),
+                int(related_id) if related_id else None,
+                (title or "").strip(),
+                (body or "").strip(),
+                payload_json or "",
+            ),
+        )
+
+# -----------------------------
+# Notifications (User): inbox for dashboard
+# -----------------------------
+@app.get("/api/sensys/my-notifications")
+def sensys_my_notifications(request: Request, limit: int = 50, offset: int = 0):
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    user_id = int(u["user_id"])
+    limit = max(1, min(int(limit or 50), 200))
+    offset = max(0, int(offset or 0))
+
+    rows = conn.execute(
+        """
+        SELECT
+            n.id,
+            n.notif_key,
+            t.name AS notif_name,
+            n.title,
+            n.body,
+            n.payload_json,
+            n.created_at,
+            n.read_at
+        FROM sensys_user_notifications n
+        LEFT JOIN sensys_notification_templates t
+               ON t.notif_key = n.notif_key
+        WHERE n.user_id = ?
+        ORDER BY
+            (n.read_at IS NULL) DESC,
+            n.created_at DESC,
+            n.id DESC
+        LIMIT ? OFFSET ?
+        """,
+        (user_id, limit, offset),
+    ).fetchall()
+
+    return {"ok": True, "notifications": [dict(r) for r in rows]}
+
+
+@app.post("/api/sensys/notifications/mark-read")
+def sensys_notifications_mark_read(payload: SensysNotificationMarkRead, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    user_id = int(u["user_id"])
+    notif_id = int(payload.id)
+
+    conn.execute(
+        """
+        UPDATE sensys_user_notifications
+           SET read_at = datetime('now')
+         WHERE id = ?
+           AND user_id = ?
+           AND read_at IS NULL
+        """,
+        (notif_id, user_id),
+    )
+    conn.commit()
+
+    return {"ok": True}
 
 @app.get("/api/sensys/admissions/{admission_id}/pdfs")
 def sensys_admission_pdfs_list(admission_id: int, request: Request):
@@ -21322,8 +21484,76 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
             (payload.appeal_comments or "").strip(),
         ),
     )
+
+    dc_submission_id = int(cur.lastrowid)
+
+    # -----------------------------
+    # 🔔 AUTOMATED NOTIFICATION TRIGGER:
+    # New Discharge vs Updated Discharge
+    # -----------------------------
+    dc_count = conn.execute(
+        """
+        SELECT COUNT(1) AS c
+        FROM sensys_admission_dc_submissions
+        WHERE admission_id = ?
+          AND deleted_at IS NULL
+        """,
+        (int(payload.admission_id),),
+    ).fetchone()["c"]
+    dc_count = int(dc_count or 0)
+
+    notif_key = "new_discharge" if dc_count == 1 else "updated_discharge"
+
+    # patient/admission label
+    adm = conn.execute(
+        """
+        SELECT
+            a.id,
+            (p.last_name || ', ' || p.first_name) AS patient_name
+        FROM sensys_admissions a
+        JOIN sensys_patients p ON p.id = a.patient_id
+        WHERE a.id = ?
+        """,
+        (int(payload.admission_id),),
+    ).fetchone()
+    patient_name = (adm["patient_name"] if adm else "") or ""
+    patient_name = (patient_name or "").strip()
+
+    dc_date = (payload.dc_date or "").strip()
+    dc_time = (payload.dc_time or "").strip()
+    dest = (payload.dc_destination or "").strip()
+
+    title = "New Discharge" if notif_key == "new_discharge" else "Updated Discharge"
+    if patient_name:
+        title = f"{title} — {patient_name}"
+
+    body_parts = []
+    if dc_date:
+        body_parts.append(f"DC Date: {dc_date}")
+    if dc_time:
+        body_parts.append(f"Time: {dc_time}")
+    if dest:
+        body_parts.append(f"Destination: {dest}")
+    body = " • ".join(body_parts) if body_parts else "A discharge submission was entered."
+
+    # recipients = all users linked to this admission (agency OR referral-agency)
+    user_ids = _sensys_user_ids_linked_to_admission(conn, int(payload.admission_id))
+
+    _sensys_insert_dashboard_notifications(
+        conn,
+        user_ids=user_ids,
+        notif_key=notif_key,
+        admission_id=int(payload.admission_id),
+        related_table="sensys_admission_dc_submissions",
+        related_id=int(dc_submission_id),
+        title=title,
+        body=body,
+        payload_json="",
+    )
+
     conn.commit()
-    return {"ok": True, "id": int(cur.lastrowid)}
+    return {"ok": True, "id": int(dc_submission_id)}
+
 
 class AdmissionEsignUpsert(BaseModel):
     id: Optional[int] = None
