@@ -17758,20 +17758,45 @@ def sensys_admin_service_types_upsert(payload: SensysServiceTypeUpsert, token: s
     code = (payload.code or "").strip().lower() or None
     active = 1 if int(payload.active or 0) == 1 else 0
 
+    # ✅ prevent 500: enforce unique code with a friendly message
+    if code:
+        existing = conn.execute(
+            """
+            SELECT id
+              FROM sensys_service_type
+             WHERE deleted_at IS NULL
+               AND code = ?
+            """,
+            (code,),
+        ).fetchone()
+
+        # If code exists and it's not "this same record", block it cleanly
+        if existing and (not payload.id or int(existing["id"]) != int(payload.id)):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Service Type code '{code}' already exists. Choose a different code (or leave it blank).",
+            )
+
     if payload.id:
-        conn.execute("""
+        conn.execute(
+            """
             UPDATE sensys_service_type
                SET name = ?,
                    code = ?,
                    active = ?,
                    updated_at = datetime('now')
              WHERE id = ?
-        """, (name, code, active, int(payload.id)))
+            """,
+            (name, code, active, int(payload.id)),
+        )
     else:
-        conn.execute("""
+        conn.execute(
+            """
             INSERT INTO sensys_service_type (name, code, active)
             VALUES (?, ?, ?)
-        """, (name, code, active))
+            """,
+            (name, code, active),
+        )
 
     conn.commit()
     return {"ok": True}
