@@ -16931,6 +16931,7 @@ class SensysUserNotificationPrefItem(BaseModel):
 class SensysUserNotificationPrefsSet(BaseModel):
     user_id: int
     prefs: list[SensysUserNotificationPrefItem] = []
+    notification_prefs: list[SensysUserNotificationPrefItem] = []
 
 class SensysNotificationMarkRead(BaseModel):
     id: int
@@ -17414,7 +17415,8 @@ def sensys_admin_users_set_notification_prefs(payload: SensysUserNotificationPre
     # wipe existing prefs (clean replace)
     conn.execute("DELETE FROM sensys_user_notification_prefs WHERE user_id = ?", (user_id,))
 
-    items = payload.prefs or []
+    # ✅ accept either key
+    items = (payload.prefs or []) or (payload.notification_prefs or [])
     rows = []
     for it in items:
         k = (it.notif_key or "").strip().lower()
