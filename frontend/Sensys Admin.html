@@ -2059,9 +2059,9 @@
       left.innerHTML = `<b>${escapeHtml(_prefLabelForKey(p.notif_key))}</b><div class="mini">${escapeHtml(p.notif_key||"")}</div>`;
 
       const methods = [];
-      if(Number(p.email||0)===1) methods.push("Email");
-      if(Number(p.sms||0)===1) methods.push("SMS");
-      if(Number(p.dashboard||0)===1) methods.push("Dashboard");
+      if(Number(p.deliver_email||0)===1) methods.push("Email");
+      if(Number(p.deliver_sms||0)===1) methods.push("SMS");
+      if(Number(p.deliver_dashboard||0)===1) methods.push("Dashboard");
 
       const mid = document.createElement("div");
       mid.className = "notif-methods";
@@ -2088,13 +2088,13 @@
     const key = ($("userNotifSelect").value || "").trim();
     if(!key) return;
 
-    // prevent duplicates: if exists, overwrite methods
-    const email = $("userNotifEmail").checked ? 1 : 0;
-    const sms = $("userNotifSms").checked ? 1 : 0;
-    const dash = $("userNotifDash").checked ? 1 : 0;
+    // ✅ store in backend-compatible shape
+    const deliver_email = $("userNotifEmail").checked ? 1 : 0;
+    const deliver_sms = $("userNotifSms").checked ? 1 : 0;
+    const deliver_dashboard = $("userNotifDash").checked ? 1 : 0;
 
     const existingIdx = (selectedUserNotifPrefs || []).findIndex(x => String(x.notif_key) === String(key));
-    const obj = { notif_key: key, email, sms, dashboard: dash };
+    const obj = { notif_key: key, deliver_email, deliver_sms, deliver_dashboard };
 
     if(existingIdx >= 0){
       selectedUserNotifPrefs[existingIdx] = obj;
@@ -2161,8 +2161,13 @@
 
     setMsg($("editMsg"), "", true);
 
-    // ✅ NEW: notifications master + user prefs
-    selectedUserNotifPrefs = Array.isArray(u.notification_prefs) ? (u.notification_prefs || []) : [];
+    // ✅ normalize server prefs into UI array using deliver_* keys
+    selectedUserNotifPrefs = Array.isArray(u.notification_prefs) ? (u.notification_prefs || []).map(p => ({
+      notif_key: p.notif_key,
+      deliver_email: Number(p.deliver_email ?? p.email ?? 0),
+      deliver_sms: Number(p.deliver_sms ?? p.sms ?? 0),
+      deliver_dashboard: Number(p.deliver_dashboard ?? p.dashboard ?? 0),
+    })) : [];
     ensureNotificationsMasterLoaded().then(() => {
       renderUserNotifSelectOptions();
       renderUserNotifPrefs();
@@ -2382,9 +2387,13 @@
       // 5) ✅ Notification prefs (save for this user)
       await apiPost("/api/sensys/admin/users/set-notification-prefs", {
         user_id: selectedUserId,
-        notification_prefs: (selectedUserNotifPrefs || [])
+        notification_prefs: (selectedUserNotifPrefs || []).map(p => ({
+          notif_key: p.notif_key,
+          deliver_email: Number(p.deliver_email ?? p.email ?? 0),
+          deliver_sms: Number(p.deliver_sms ?? p.sms ?? 0),
+          deliver_dashboard: Number(p.deliver_dashboard ?? p.dashboard ?? 0),
+        }))
       });
-
       setMsg($("editMsg"), "User + roles + agencies + notifications saved.", true);
       await refreshAll();
     }catch(e){
