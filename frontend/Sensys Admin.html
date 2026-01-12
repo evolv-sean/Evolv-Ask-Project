@@ -439,6 +439,22 @@
    }
    .notif-x:hover{ box-shadow: 0 0 0 3px rgba(168,230,207,.35); border-color: rgba(168,230,207,.95); }
 
+   .miniIconBtn{
+     width: 30px;
+     height: 30px;
+     border-radius: 10px;
+     border: 1px solid #e5e7eb;
+     background: #ffffff;
+     display: inline-flex;
+     align-items: center;
+     justify-content: center;
+     cursor: pointer;
+     color: #111827;
+   }
+   .miniIconBtn:hover{
+     background: #f9fafb;
+   }
+
   </style>
 </head>
 <body>
@@ -503,6 +519,7 @@
               <table>
                 <thead>
                   <tr>
+                    <th>Login</th>
                     <th>Email</th>
                     <th>Name</th>
                     <th>Active</th>
@@ -2210,6 +2227,20 @@
     });
   }
 
+  async function loginAsUser(userId){
+    try{
+      const resp = await apiPost("/api/sensys/admin/users/login-as", { user_id: Number(userId) });
+      if(!resp || !resp.ok) throw new Error((resp && resp.detail) ? resp.detail : "Login-as failed");
+
+      const st = encodeURIComponent(resp.token || "");
+      const r  = encodeURIComponent(resp.redirect_url || "/sensys/login");
+
+      // Open a new tab that sets localStorage.sensys_token then redirects
+      window.open(`/sensys/impersonate?st=${st}&r=${r}`, "_blank");
+    }catch(e){
+      alert(String(e.message || e));
+    }
+  }
 
   function renderUsersTable(){
     const tbody = $("tbody");
@@ -2224,6 +2255,13 @@
       const ags = (u.agency_names || []).join(", ");
 
       tr.innerHTML = `
+        <td style="width:48px;">
+          <button class="miniIconBtn"
+                  title="Login as this user"
+                  onclick="event.stopPropagation(); loginAsUser(${Number(u.user_id)})">
+            🔑
+          </button>
+        </td>
         <td><b>${escapeHtml(u.email || "")}</b></td>
         <td>${escapeHtml(u.display_name || "")}</td>
         <td>${u.is_active ? "Yes" : "No"}</td>
