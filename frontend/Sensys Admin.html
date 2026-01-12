@@ -1729,6 +1729,11 @@
 
       <div style="height:10px"></div>
 
+      <div class="label">Email HTML (optional)</div>
+      <textarea class="input" id="notif_email_html" style="min-height:140px;" placeholder="Optional: if provided, email can use this HTML body."></textarea>
+
+      <div style="height:10px"></div>
+
       <div class="label">SMS Body</div>
       <textarea class="input" id="notif_sms_body" style="min-height:90px;"></textarea>
 
@@ -3038,6 +3043,7 @@
 
     $("notif_email_subject").value = (n && n.email_subject) ? String(n.email_subject) : "";
     $("notif_email_body").value = (n && n.email_body) ? String(n.email_body) : "";
+    $("notif_email_html").value = (n && n.email_html) ? String(n.email_html) : "";
     $("notif_sms_body").value = (n && n.sms_body) ? String(n.sms_body) : "";
     $("notif_dash_body").value = (n && n.dashboard_body) ? String(n.dashboard_body) : "";
 
@@ -3066,6 +3072,7 @@
         active: Number($("notif_active").value || "1"),
         email_subject: ($("notif_email_subject").value || "").trim(),
         email_body: ($("notif_email_body").value || ""),
+        email_html: ($("notif_email_html").value || ""),
         sms_body: ($("notif_sms_body").value || ""),
         dashboard_body: ($("notif_dash_body").value || "")
       };
