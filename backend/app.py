@@ -2977,12 +2977,33 @@ def init_db():
         "ALTER TABLE sensys_users ADD COLUMN password TEXT DEFAULT ''",
         "ALTER TABLE sensys_users ADD COLUMN cell_phone TEXT DEFAULT ''",
         "ALTER TABLE sensys_users ADD COLUMN account_locked INTEGER DEFAULT 0",
+
+        # ✅ Provider E-sign
+        "ALTER TABLE sensys_users ADD COLUMN npi TEXT DEFAULT ''",
     ]:
         try:
             cur.execute(ddl)
         except sqlite3.Error:
             # duplicate column name → already migrated
             pass
+
+    # -------------------------------------------------------------------
+    # Provider E-Sign Linking (User <-> Care Team)
+    # -------------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_user_esign_links (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id       INTEGER NOT NULL,
+            care_team_id  INTEGER NOT NULL,
+            created_at    TEXT DEFAULT (datetime('now')),
+            UNIQUE(user_id, care_team_id),
+            FOREIGN KEY(user_id) REFERENCES sensys_users(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_esign_links_user ON sensys_user_esign_links(user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_esign_links_ct ON sensys_user_esign_links(care_team_id)")
 
     # -----------------------------
     # DC Discharge Note Templates
@@ -16456,6 +16477,9 @@ class SensysUserUpsert(BaseModel):
     cell_phone: Optional[str] = ""
     account_locked: Optional[bool] = False
 
+    # ✅ Provider E-sign
+    npi: Optional[str] = ""
+
 
 class SensysRoleAssign(BaseModel):
     user_id: int
@@ -16492,6 +16516,10 @@ class SensysAgencyUpsert(BaseModel):
 class SensysUserAgencyAssign(BaseModel):
     user_id: int
     agency_ids: List[int]
+
+class SensysUserEsignLinkAssign(BaseModel):
+    user_id: int
+    care_team_ids: List[int] = []
 
 
 class SensysPatientUpsert(BaseModel):
@@ -16565,7 +16593,6 @@ def _sensys_seed_roles(conn: sqlite3.Connection):
     roles = [
         ("admin", "Admin"),
         ("cm", "Care Manager"),
-
         ("home_health", "Home Health"),
         ("provider", "Provider"),
         ("ccm", "CCM"),
@@ -16638,7 +16665,8 @@ def sensys_admin_users(token: str):
             -- NEW
             u.password,
             u.cell_phone,
-            u.account_locked
+            u.account_locked,
+            u.npi
         FROM sensys_users u
         ORDER BY u.email
         """
@@ -16673,6 +16701,19 @@ def sensys_admin_users(token: str):
         agency_ids_by_user.setdefault(uid, []).append(int(r["agency_id"]))
         agency_names_by_user.setdefault(uid, []).append(r["agency_name"])
 
+    # ✅ Provider e-sign links per user (care_team_id list)
+    link_rows = conn.execute(
+        """
+        SELECT user_id, care_team_id
+        FROM sensys_user_esign_links
+        ORDER BY user_id, care_team_id
+        """
+    ).fetchall()
+
+    esign_link_ids_by_user = {}
+    for r in link_rows:
+        esign_link_ids_by_user.setdefault(r["user_id"], []).append(int(r["care_team_id"]))
+
 
     out = []
     for u in users:
@@ -16682,6 +16723,9 @@ def sensys_admin_users(token: str):
         # NEW
         d["agency_ids"] = sorted(agency_ids_by_user.get(u["user_id"], []))
         d["agency_names"] = sorted(agency_names_by_user.get(u["user_id"], []), key=lambda x: (x or "").lower())
+
+        # ✅ Provider E-sign
+        d["esign_link_ids"] = sorted(esign_link_ids_by_user.get(u["user_id"], []))
 
         out.append(d)
 
@@ -16895,6 +16939,9 @@ def sensys_admin_users_upsert(payload: SensysUserUpsert, token: str):
     password = (payload.password or "")
     password = password.strip() if isinstance(password, str) else ""
 
+    # ✅ Provider E-sign
+    npi = (payload.npi or "").strip()
+
     if payload.user_id:
         # Update password ONLY if the admin typed one (blank means "leave unchanged")
         if password:
@@ -16907,10 +16954,14 @@ def sensys_admin_users_upsert(payload: SensysUserUpsert, token: str):
                     password = ?,
                     cell_phone = ?,
                     account_locked = ?,
+
+                    -- ✅ Provider E-sign
+                    npi = ?,
+
                     updated_at = datetime('now')
                 WHERE id = ?
                 """,
-                (email, display_name, int(payload.is_active), password, cell_phone, account_locked, int(payload.user_id)),
+                (email, display_name, int(payload.is_active), password, cell_phone, account_locked, npi, int(payload.user_id)),
             )
         else:
             conn.execute(
@@ -16921,19 +16972,23 @@ def sensys_admin_users_upsert(payload: SensysUserUpsert, token: str):
                     is_active = ?,
                     cell_phone = ?,
                     account_locked = ?,
+
+                    -- ✅ Provider E-sign
+                    npi = ?,
+
                     updated_at = datetime('now')
                 WHERE id = ?
                 """,
-                (email, display_name, int(payload.is_active), cell_phone, account_locked, int(payload.user_id)),
+                (email, display_name, int(payload.is_active), cell_phone, account_locked, npi, int(payload.user_id)),
             )
 
     else:
         conn.execute(
             """
-            INSERT INTO sensys_users (email, display_name, is_active, password, cell_phone, account_locked)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO sensys_users (email, display_name, is_active, password, cell_phone, account_locked, npi)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (email, display_name, int(payload.is_active), password, cell_phone, account_locked),
+            (email, display_name, int(payload.is_active), password, cell_phone, account_locked, npi),
         )
 
     # Return the user_id so the UI can immediately save roles/agencies
@@ -16975,6 +17030,30 @@ def sensys_admin_users_set_roles(payload: SensysRoleAssign, token: str):
             """,
             [(user_id, rid) for rid in role_ids],
         )
+    conn.commit()
+    return {"ok": True}
+
+
+@app.post("/api/sensys/admin/users/set-esign-links")
+def sensys_admin_users_set_esign_links(payload: SensysUserEsignLinkAssign, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    user_id = int(payload.user_id)
+    care_team_ids = sorted({int(x) for x in (payload.care_team_ids or []) if int(x) > 0})
+
+    # replace existing set
+    conn.execute("DELETE FROM sensys_user_esign_links WHERE user_id = ?", (user_id,))
+
+    if care_team_ids:
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO sensys_user_esign_links (user_id, care_team_id)
+            VALUES (?, ?)
+            """,
+            [(user_id, ctid) for ctid in care_team_ids],
+        )
+
     conn.commit()
     return {"ok": True}
 
