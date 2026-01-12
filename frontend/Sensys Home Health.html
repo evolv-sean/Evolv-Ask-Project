@@ -267,6 +267,11 @@
   document.getElementById('refreshBtn').addEventListener('click', () => { load(); loadNotifs(); });
   document.getElementById('notifRefreshBtn').addEventListener('click', loadNotifs);
 
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('sensys_token');
+    window.location.href = '/sensys/login';
+  });
+
   load();
   loadNotifs();
 </script>
