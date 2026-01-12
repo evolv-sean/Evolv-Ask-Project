@@ -3444,31 +3444,6 @@ def init_db():
       deleted_at TEXT
     )
     """)
-    conn.execute("""
-    CREATE TABLE IF NOT EXISTS sensys_admission_esigns (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      admission_id INTEGER NOT NULL,
-
-      care_team_id INTEGER NOT NULL,
-      service_type_id INTEGER NOT NULL,
-
-      comments TEXT,
-
-      status TEXT DEFAULT 'Pending',
-
-      created_by_user_id INTEGER,
-      updated_by_user_id INTEGER,
-
-      signed_by INTEGER,
-      signed_at TEXT,
-      declined_by INTEGER,
-      declined_at TEXT,
-
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now')),
-      deleted_at TEXT
-    )
-    """)
 
     # --- SAFE MIGRATION: add missing columns if DB already existed without them ---
     cur = conn.cursor()
@@ -3540,19 +3515,26 @@ def init_db():
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS sensys_services (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            name        TEXT NOT NULL,
-            service_type TEXT NOT NULL,       -- 'dme' | 'hh'
-            dropdown    INTEGER DEFAULT 1,     -- 1/0
-            reminder_id TEXT,
-            deleted_at  TEXT,
-            created_at  TEXT DEFAULT (datetime('now')),
-            updated_at  TEXT DEFAULT (datetime('now'))
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            name          TEXT NOT NULL,
+
+            -- keep legacy string column for backward compatibility
+            service_type  TEXT NOT NULL DEFAULT '',       -- 'dme' | 'hh' (legacy)
+
+            -- NEW FK-style column used by the UI/admin endpoints
+            service_type_id INTEGER,                      -- FK -> sensys_service_type.id
+
+            dropdown      INTEGER DEFAULT 1,              -- 1/0
+            reminder_id   TEXT,
+            deleted_at    TEXT,
+            created_at    TEXT DEFAULT (datetime('now')),
+            updated_at    TEXT DEFAULT (datetime('now'))
         )
         """
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_services_name ON sensys_services(name)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_services_type ON sensys_services(service_type)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_services_type_id ON sensys_services(service_type_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_services_deleted ON sensys_services(deleted_at)")
 
     # Care Team master (ADMIN TAB)
@@ -16662,9 +16644,6 @@ def sensys_admin_users(token: str):
             u.email,
             u.display_name,
             u.is_active,
-
-            -- NEW
-            u.password,
             u.cell_phone,
             u.account_locked,
             u.npi
@@ -17978,6 +17957,8 @@ async def sensys_admin_services_bulk(token: str, file: UploadFile = File(...)):
 
             # NEW: accept service_type_id or legacy service_type
             stid = _to_int(r.get("service_type_id"))
+            st = ""  # ALWAYS define st (legacy string)
+
             if not stid:
                 st = (r.get("service_type", "") or "").strip().lower()
                 if not st:
@@ -17985,7 +17966,7 @@ async def sensys_admin_services_bulk(token: str, file: UploadFile = File(...)):
 
                 # map legacy string to service type id via code
                 row_type = conn.execute("""
-                  SELECT id FROM sensys_service_type
+                  SELECT id, code FROM sensys_service_type
                   WHERE deleted_at IS NULL AND code = ?
                 """, (st,)).fetchone()
                 if not row_type:
@@ -17995,13 +17976,23 @@ async def sensys_admin_services_bulk(token: str, file: UploadFile = File(...)):
                       VALUES (?, ?, 1)
                     """, (st.upper(), st))
                     row_type = conn.execute("""
-                      SELECT id FROM sensys_service_type
+                      SELECT id, code FROM sensys_service_type
                       WHERE deleted_at IS NULL AND code = ?
                     """, (st,)).fetchone()
+
                 stid = int(row_type["id"]) if row_type else 0
+                st = (row_type["code"] or st) if row_type else st
 
             if not stid:
                 raise ValueError("Could not resolve service_type_id")
+
+            # If CSV gave service_type_id, derive legacy string st from the type row
+            if not st:
+                row_type2 = conn.execute("""
+                  SELECT code FROM sensys_service_type
+                  WHERE deleted_at IS NULL AND id = ?
+                """, (int(stid),)).fetchone()
+                st = (row_type2["code"] or "") if row_type2 else ""
 
             dropdown = _to_bool_int(r.get("dropdown"), 1)
             reminder_id = (r.get("reminder_id", "") or "").strip() or None
@@ -18011,22 +18002,23 @@ async def sensys_admin_services_bulk(token: str, file: UploadFile = File(...)):
                     """
                     UPDATE sensys_services
                        SET name = ?,
-                           service_type = ?,
+                           service_type_id = ?,
+                           service_type = ?,              -- keep legacy column updated too
                            dropdown = ?,
                            reminder_id = ?,
                            updated_at = datetime('now')
                      WHERE id = ?
                     """,
-                    (name, st, int(dropdown), reminder_id, int(sid)),
+                    (name, int(stid), st, int(dropdown), reminder_id, int(sid)),
                 )
                 updated += 1
             else:
                 conn.execute(
                     """
-                    INSERT INTO sensys_services (name, service_type, dropdown, reminder_id)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO sensys_services (name, service_type_id, service_type, dropdown, reminder_id)
+                    VALUES (?, ?, ?, ?, ?)
                     """,
-                    (name, st, int(dropdown), reminder_id),
+                    (name, int(stid), st, int(dropdown), reminder_id),
                 )
                 inserted += 1
 
