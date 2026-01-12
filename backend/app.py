@@ -3224,6 +3224,76 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_pages_page ON sensys_user_pages(page_key)")
 
     # -------------------------------------------------------------------
+    # NEW: Notifications — templates + user delivery preferences
+    # -------------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_notification_templates (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            notif_key        TEXT NOT NULL UNIQUE,   -- 'new_discharge', 'updated_discharge', etc.
+            name             TEXT NOT NULL,
+            active           INTEGER DEFAULT 1,
+
+            email_subject    TEXT DEFAULT '',
+            email_body       TEXT DEFAULT '',
+            email_html       TEXT DEFAULT '',        -- optional HTML body
+
+            sms_body         TEXT DEFAULT '',
+            dashboard_body   TEXT DEFAULT '',
+
+            created_at       TEXT DEFAULT (datetime('now')),
+            updated_at       TEXT DEFAULT (datetime('now')),
+            deleted_at       TEXT
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_notif_tpl_key ON sensys_notification_templates(notif_key)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_notif_tpl_active ON sensys_notification_templates(active)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_notif_tpl_deleted ON sensys_notification_templates(deleted_at)")
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_user_notification_prefs (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id       INTEGER NOT NULL,
+            notif_key     TEXT NOT NULL,             -- matches sensys_notification_templates.notif_key
+
+            deliver_email     INTEGER DEFAULT 0,
+            deliver_sms       INTEGER DEFAULT 0,
+            deliver_dashboard INTEGER DEFAULT 1,
+
+            created_at    TEXT DEFAULT (datetime('now')),
+            updated_at    TEXT DEFAULT (datetime('now')),
+            deleted_at    TEXT,
+
+            UNIQUE(user_id, notif_key),
+            FOREIGN KEY(user_id) REFERENCES sensys_users(id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_notif_prefs_user ON sensys_user_notification_prefs(user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_notif_prefs_key ON sensys_user_notification_prefs(notif_key)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_notif_prefs_deleted ON sensys_user_notification_prefs(deleted_at)")
+
+    # Seed the starting notification templates (safe / idempotent)
+    cur.executemany(
+        """
+        INSERT OR IGNORE INTO sensys_notification_templates
+            (notif_key, name, active, email_subject, email_body, sms_body, dashboard_body)
+        VALUES
+            (?, ?, 1, ?, ?, ?, ?)
+        """,
+        [
+            ("new_discharge", "New Discharge", "New Discharge for {{patient}}", "A new discharge submission was created.", "New Discharge: {{patient}}", "New Discharge: {{patient}}"),
+            ("updated_discharge", "Updated Discharge", "Updated Discharge for {{patient}}", "A discharge submission was updated.", "Updated Discharge: {{patient}}", "Updated Discharge: {{patient}}"),
+            ("new_esign_orders", "New E-sign Orders", "New E-sign Orders for {{patient}}", "A new e-sign order was created.", "New E-sign: {{patient}}", "New E-sign: {{patient}}"),
+            ("new_referral", "New Referral", "New Referral for {{patient}}", "A new referral was created.", "New Referral: {{patient}}", "New Referral: {{patient}}"),
+            ("new_task", "New Task", "New Task: {{task}}", "A task was assigned to you.", "New Task: {{task}}", "New Task: {{task}}"),
+            ("new_document", "New Document", "New Document for {{patient}}", "A document was uploaded.", "New Document: {{patient}}", "New Document: {{patient}}"),
+        ],
+    )
+
+    # -------------------------------------------------------------------
     # NEW: Sensys sessions (simple token auth for test login pages)
     # -------------------------------------------------------------------
     cur.execute(
@@ -16694,6 +16764,31 @@ def sensys_admin_users(token: str):
     for r in link_rows:
         esign_link_ids_by_user.setdefault(r["user_id"], []).append(int(r["care_team_id"]))
 
+    # 🔔 Notification prefs per user
+    pref_rows = conn.execute(
+        """
+        SELECT
+            user_id,
+            notif_key,
+            deliver_email,
+            deliver_sms,
+            deliver_dashboard
+        FROM sensys_user_notification_prefs
+        WHERE deleted_at IS NULL
+        ORDER BY user_id, notif_key
+        """
+    ).fetchall()
+
+    prefs_by_user = {}
+    for r in pref_rows:
+        prefs_by_user.setdefault(r["user_id"], []).append(
+            {
+                "notif_key": r["notif_key"],
+                "deliver_email": bool(int(r["deliver_email"] or 0)),
+                "deliver_sms": bool(int(r["deliver_sms"] or 0)),
+                "deliver_dashboard": bool(int(r["deliver_dashboard"] or 0)),
+            }
+        )
 
     out = []
     for u in users:
@@ -16707,15 +16802,43 @@ def sensys_admin_users(token: str):
         # ✅ Provider E-sign
         d["esign_link_ids"] = sorted(esign_link_ids_by_user.get(u["user_id"], []))
 
+        # 🔔 Notifications
+        d["notification_prefs"] = prefs_by_user.get(u["user_id"], [])
+
         out.append(d)
 
 
     return {"users": out}
 
+# -----------------------------
+# Notifications: Admin models
+# -----------------------------
+class SensysNotificationTemplateUpsert(BaseModel):
+    id: Optional[int] = None
+    notif_key: str
+    name: str
+    active: bool = True
+    email_subject: Optional[str] = ""
+    email_body: Optional[str] = ""
+    email_html: Optional[str] = ""
+    sms_body: Optional[str] = ""
+    dashboard_body: Optional[str] = ""
+
+class SensysUserNotificationPrefItem(BaseModel):
+    notif_key: str
+    deliver_email: bool = False
+    deliver_sms: bool = False
+    deliver_dashboard: bool = True
+
+class SensysUserNotificationPrefsSet(BaseModel):
+    user_id: int
+    prefs: list[SensysUserNotificationPrefItem] = []
+
 class AdmissionReferralUpsert(BaseModel):
     id: Optional[int] = None
     admission_id: int
     agency_id: int
+
 
 @app.post("/api/sensys/admission-referrals/upsert")
 def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request: Request):
@@ -17032,6 +17155,148 @@ def sensys_admin_users_set_esign_links(payload: SensysUserEsignLinkAssign, token
             VALUES (?, ?)
             """,
             [(user_id, ctid) for ctid in care_team_ids],
+        )
+
+    conn.commit()
+    return {"ok": True}
+
+# -----------------------------
+# Notifications (Admin): list templates
+# -----------------------------
+@app.get("/api/sensys/admin/notifications")
+def sensys_admin_notifications(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    rows = conn.execute(
+        """
+        SELECT
+            id,
+            notif_key,
+            name,
+            active,
+            email_subject,
+            email_body,
+            email_html,
+            sms_body,
+            dashboard_body,
+            created_at,
+            updated_at
+        FROM sensys_notification_templates
+        WHERE deleted_at IS NULL
+        ORDER BY name COLLATE NOCASE
+        """
+    ).fetchall()
+
+    return {"ok": True, "notifications": [dict(r) for r in rows]}
+
+# -----------------------------
+# Notifications (Admin): upsert template
+# -----------------------------
+@app.post("/api/sensys/admin/notifications/upsert")
+def sensys_admin_notifications_upsert(payload: SensysNotificationTemplateUpsert, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    notif_key = (payload.notif_key or "").strip().lower()
+    name = (payload.name or "").strip()
+    if not notif_key:
+        raise HTTPException(status_code=400, detail="notif_key is required")
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+
+    active = 1 if bool(payload.active) else 0
+
+    if payload.id:
+        conn.execute(
+            """
+            UPDATE sensys_notification_templates
+               SET notif_key = ?,
+                   name = ?,
+                   active = ?,
+                   email_subject = ?,
+                   email_body = ?,
+                   email_html = ?,
+                   sms_body = ?,
+                   dashboard_body = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (
+                notif_key,
+                name,
+                active,
+                (payload.email_subject or ""),
+                (payload.email_body or ""),
+                (payload.email_html or ""),
+                (payload.sms_body or ""),
+                (payload.dashboard_body or ""),
+                int(payload.id),
+            ),
+        )
+        conn.commit()
+        return {"ok": True, "id": int(payload.id)}
+
+    conn.execute(
+        """
+        INSERT INTO sensys_notification_templates
+            (notif_key, name, active, email_subject, email_body, email_html, sms_body, dashboard_body)
+        VALUES
+            (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            notif_key,
+            name,
+            active,
+            (payload.email_subject or ""),
+            (payload.email_body or ""),
+            (payload.email_html or ""),
+            (payload.sms_body or ""),
+            (payload.dashboard_body or ""),
+        ),
+    )
+    new_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+    conn.commit()
+    return {"ok": True, "id": new_id}
+
+# -----------------------------
+# Notifications (Admin): set delivery prefs for a user (replace)
+# -----------------------------
+@app.post("/api/sensys/admin/users/set-notification-prefs")
+def sensys_admin_users_set_notification_prefs(payload: SensysUserNotificationPrefsSet, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    user_id = int(payload.user_id)
+
+    # wipe existing prefs (clean replace)
+    conn.execute("DELETE FROM sensys_user_notification_prefs WHERE user_id = ?", (user_id,))
+
+    items = payload.prefs or []
+    rows = []
+    for it in items:
+        k = (it.notif_key or "").strip().lower()
+        if not k:
+            continue
+        rows.append(
+            (
+                user_id,
+                k,
+                1 if bool(it.deliver_email) else 0,
+                1 if bool(it.deliver_sms) else 0,
+                1 if bool(it.deliver_dashboard) else 0,
+            )
+        )
+
+    if rows:
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO sensys_user_notification_prefs
+                (user_id, notif_key, deliver_email, deliver_sms, deliver_dashboard, updated_at)
+            VALUES
+                (?, ?, ?, ?, ?, datetime('now'))
+            """,
+            rows,
         )
 
     conn.commit()
