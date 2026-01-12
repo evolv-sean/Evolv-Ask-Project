@@ -2094,7 +2094,14 @@
       refreshAdmissionsList();
     }else if(which==="services"){
       $("panelServices").classList.add("on");
-      refreshServicesList();
+
+      // ✅ ensure both lists are loaded
+      refreshServiceTypes();   // fills serviceTypesCache + svc_type dropdown
+      refreshServicesList();   // fills servicesCache
+
+      // ✅ ensure subtabs state is applied (safe if already loaded)
+      if(typeof renderServicesSubtabs === "function") renderServicesSubtabs();
+      if(typeof syncServicesSubtabUI === "function") syncServicesSubtabUI();
     }else if(which==="careTeam"){
       $("panelCareTeam").classList.add("on");
       refreshCareTeamList();
