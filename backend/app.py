@@ -16843,6 +16843,72 @@ def sensys_admin_users(token: str):
     return {"users": out}
 
 # -----------------------------
+# Sensys Admin: login as user (impersonate)
+# -----------------------------
+class SensysAdminLoginAsIn(BaseModel):
+    user_id: int
+
+@app.post("/api/sensys/admin/users/login-as")
+def sensys_admin_users_login_as(payload: SensysAdminLoginAsIn, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    try:
+        # Load target user
+        row = conn.execute(
+            """
+            SELECT id, email, display_name, is_active, account_locked
+            FROM sensys_users
+            WHERE id = ?
+            """,
+            (int(payload.user_id),),
+        ).fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Safety: don't allow impersonating locked/inactive users
+        if str(row["is_active"] or 0) != "1":
+            raise HTTPException(status_code=403, detail="User is inactive")
+        if str(row["account_locked"] or 0) == "1":
+            raise HTTPException(status_code=403, detail="User is locked")
+
+        user_id = int(row["id"])
+
+        # Roles -> determine landing page (same pattern as /api/sensys/login)
+        role_rows = conn.execute(
+            """
+            SELECT r.role_key
+            FROM sensys_user_roles ur
+            JOIN sensys_roles r ON r.id = ur.role_id
+            WHERE ur.user_id = ?
+            """,
+            (user_id,),
+        ).fetchall()
+
+        role_keys = [r["role_key"] for r in role_rows]
+
+        redirect_url = "/sensys/login"
+        if "admin" in role_keys:
+            redirect_url = "/admin/sensys"
+        elif "snf_sw" in role_keys:
+            redirect_url = "/sensys/snf-sw"
+        elif "home_health" in role_keys:
+            redirect_url = "/sensys/home-health"
+        elif "provider" in role_keys:
+            redirect_url = "/sensys/provider-esign"
+
+        # Create a real Sensys session token for that user
+        session_token = _sensys_create_session(conn, user_id=user_id, ttl_hours=24)
+
+        return {"ok": True, "token": session_token, "redirect_url": redirect_url}
+
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+# -----------------------------
 # Notifications: Admin models
 # -----------------------------
 class SensysNotificationTemplateUpsert(BaseModel):
@@ -22683,9 +22749,43 @@ async def sensys_admin_ui():
 async def sensys_login_ui():
     return HTMLResponse(content=read_html(SENSYS_LOGIN_HTML))
 
+# ✅ NEW: Admin "Login As" helper page
+# Opens in a new tab, stores the session token into localStorage, then redirects to the user's landing page.
+@app.get("/sensys/impersonate", response_class=HTMLResponse)
+async def sensys_impersonate_ui(st: str = "", r: str = "/sensys/login"):
+    safe_r = (r or "/sensys/login").strip() or "/sensys/login"
+    safe_st = (st or "").strip()
+
+    # Minimal HTML that sets the token and redirects
+    page = f"""<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Logging in…</title>
+</head>
+<body style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; padding: 18px;">
+  <div>Logging in…</div>
+  <script>
+    try {{
+      var st = {repr(safe_st)};
+      var r  = {repr(safe_r)};
+      if(st) {{
+        localStorage.setItem("sensys_token", st);
+      }}
+      window.location.replace(r || "/sensys/login");
+    }} catch(e) {{
+      document.body.innerHTML = "<div>Login failed. Please close this tab and try again.</div>";
+    }}
+  </script>
+</body>
+</html>"""
+    return HTMLResponse(content=page)
+
 @app.get("/sensys/snf-sw", response_class=HTMLResponse)
 async def sensys_snf_sw_ui():
     return HTMLResponse(content=read_html(SENSYS_SNF_SW_HTML))
+
 
 @app.get("/sensys/admission-details", response_class=HTMLResponse)
 async def sensys_admission_details_ui():
