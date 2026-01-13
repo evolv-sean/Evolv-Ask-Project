@@ -4643,6 +4643,10 @@ def init_db():
         """
     )
 
+    # NEW: cache invalidation metadata
+    ensure_column(conn, "snf_ai_summaries", "notes_limit", "notes_limit INTEGER DEFAULT 0")
+    ensure_column(conn, "snf_ai_summaries", "latest_note_id", "latest_note_id INTEGER DEFAULT 0")
+
     # Helpful index (fast lookups by snf_id)
     try:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_snf_ai_summaries_snf_id ON snf_ai_summaries(snf_id)")
@@ -13222,17 +13226,31 @@ async def admin_snf_ai_summary_run(request: Request, payload: Dict[str, Any] = B
         if not visit_id:
             raise HTTPException(status_code=400, detail="this admission has no visit_id; cannot summarize notes")
 
-        # If not forcing, return latest cached
+        # Figure out the newest (non-ignored) CM note id for this visit_id
+        cur.execute(
+            """
+            SELECT COALESCE(MAX(id), 0) AS max_id
+            FROM cm_notes_raw
+            WHERE visit_id = ?
+              AND (ignored IS NULL OR ignored = 0)
+            """,
+            (visit_id,),
+        )
+        current_latest_note_id = int((cur.fetchone() or {}).get("max_id") or 0)
+
+        # If not forcing, return latest cached ONLY if it matches the newest note + same notes_limit
         if not force:
             cur.execute(
                 """
-                SELECT id, created_at, model, summary_json
+                SELECT id, created_at, model, summary_json, notes_limit, latest_note_id
                 FROM snf_ai_summaries
                 WHERE snf_id = ?
+                  AND notes_limit = ?
+                  AND latest_note_id = ?
                 ORDER BY id DESC
                 LIMIT 1
                 """,
-                (snf_id,),
+                (snf_id, notes_limit, current_latest_note_id),
             )
             row = cur.fetchone()
             if row:
@@ -13297,8 +13315,12 @@ async def admin_snf_ai_summary_run(request: Request, payload: Dict[str, Any] = B
         prompt_val = get_setting(cur, SNF_MAIN_SYSTEM_PROMPT_KEY) or DEFAULT_SNF_MAIN_SYSTEM_PROMPT
         cur.execute(
             """
-            INSERT INTO snf_ai_summaries(snf_id, visit_id, model, prompt_key, prompt_value, notes_count, summary_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO snf_ai_summaries(
+                snf_id, visit_id, model, prompt_key, prompt_value,
+                notes_count, notes_limit, latest_note_id,
+                summary_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 snf_id,
@@ -13307,9 +13329,12 @@ async def admin_snf_ai_summary_run(request: Request, payload: Dict[str, Any] = B
                 SNF_MAIN_SYSTEM_PROMPT_KEY,
                 prompt_val,
                 len(notes),
+                int(notes_limit),
+                int(current_latest_note_id),
                 json.dumps(summary_obj),
             ),
         )
+
         conn.commit()
 
         return {
