@@ -17191,6 +17191,48 @@ def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request:
         )
         raise
     # ------------------------------------------
+    # -----------------------------
+    # 🔔 AUTOMATED NOTIFICATION TRIGGER:
+    # New Referral (insert only)
+    # -----------------------------
+    if op == "insert":
+        adm = conn.execute(
+            """
+            SELECT
+                a.id,
+                (p.last_name || ', ' || p.first_name) AS patient_name
+            FROM sensys_admissions a
+            JOIN sensys_patients p ON p.id = a.patient_id
+            WHERE a.id = ?
+            """,
+            (int(payload.admission_id),),
+        ).fetchone()
+
+        patient_name = (adm["patient_name"] if adm else "") or ""
+        patient_name = patient_name.strip()
+
+        title = "New Referral"
+        if patient_name:
+            title = f"New Referral — {patient_name}"
+
+        body = "A new referral was created."
+
+        # recipients = all users linked to this admission (agency OR referral-agency)
+        user_ids = _sensys_user_ids_linked_to_admission(conn, int(payload.admission_id))
+
+        _sensys_insert_dashboard_notifications(
+            conn,
+            user_ids=user_ids,
+            notif_key="new_referral",
+            admission_id=int(payload.admission_id),
+            related_table="sensys_admission_referrals",
+            related_id=int(new_id),
+            title=title,
+            body=body,
+            payload_json="",
+        )
+
+        conn.commit()
 
     # return extra debug so UI/logs can prove which DB handled this write
     return {
@@ -17200,6 +17242,7 @@ def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request:
         "db_file": db_file,
         "verify_exists": int(exists),
     }
+
 
 
 @app.post("/api/sensys/admission-referrals/delete")
@@ -20077,6 +20120,250 @@ def _sensys_user_wants_dashboard_notif(conn, user_id: int, notif_key: str) -> bo
     return bool(int(r["deliver_dashboard"] or 0)) if r else False
 
 
+def _sensys_user_notif_prefs(conn, user_id: int, notif_key: str) -> dict:
+    """
+    Returns {deliver_email, deliver_sms, deliver_dashboard} (all ints 0/1).
+    If no pref row exists, returns all disabled (so nothing sends unexpectedly).
+    """
+    r = conn.execute(
+        """
+        SELECT deliver_email, deliver_sms, deliver_dashboard
+        FROM sensys_user_notification_prefs
+        WHERE user_id = ?
+          AND notif_key = ?
+          AND deleted_at IS NULL
+        """,
+        (int(user_id), (notif_key or "").strip()),
+    ).fetchone()
+
+    if not r:
+        return {"deliver_email": 0, "deliver_sms": 0, "deliver_dashboard": 0}
+
+    return {
+        "deliver_email": int(r["deliver_email"] or 0),
+        "deliver_sms": int(r["deliver_sms"] or 0),
+        "deliver_dashboard": int(r["deliver_dashboard"] or 0),
+    }
+
+
+def _sensys_get_notif_template(conn, notif_key: str) -> dict | None:
+    r = conn.execute(
+        """
+        SELECT
+            notif_key, name, active,
+            email_subject, email_body, email_html,
+            sms_body, dashboard_body
+        FROM sensys_notification_templates
+        WHERE notif_key = ?
+          AND deleted_at IS NULL
+          AND active = 1
+        LIMIT 1
+        """,
+        ((notif_key or "").strip(),),
+    ).fetchone()
+    return dict(r) if r else None
+
+
+def _sensys_render_placeholders(text: str, ctx: dict) -> str:
+    """
+    Minimal placeholder renderer:
+      - replaces {{key}} with ctx[key]
+    """
+    s = text or ""
+    if not s:
+        return ""
+    for k, v in (ctx or {}).items():
+        s = s.replace("{{" + str(k) + "}}", str(v if v is not None else ""))
+    return s
+
+
+def _sensys_patient_name_for_admission(conn, admission_id: int) -> str:
+    r = conn.execute(
+        """
+        SELECT (p.last_name || ', ' || p.first_name) AS patient_name
+        FROM sensys_admissions a
+        JOIN sensys_patients p ON p.id = a.patient_id
+        WHERE a.id = ?
+        """,
+        (int(admission_id),),
+    ).fetchone()
+    return ((r["patient_name"] if r else "") or "").strip()
+
+
+def _sensys_user_ids_linked_to_care_team(conn, care_team_id: int) -> list[int]:
+    rows = conn.execute(
+        """
+        SELECT DISTINCT user_id
+        FROM sensys_user_esign_links
+        WHERE care_team_id = ?
+        """,
+        (int(care_team_id),),
+    ).fetchall()
+    return [int(r["user_id"]) for r in rows]
+
+
+def _sensys_send_notification_email(to_email: str, subject: str, text_body: str, html_body: str = "") -> None:
+    """
+    Uses existing SMTP_* config already in this app.
+    If SMTP isn't configured, silently skip.
+    """
+    try:
+        if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD):
+            return
+        if not (to_email or "").strip():
+            return
+
+        msg = EmailMessage()
+        msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
+        msg["To"] = (to_email or "").strip()
+        msg["Subject"] = (subject or "").strip() or "Sensys Notification"
+
+        # plain text fallback
+        msg.set_content((text_body or "").strip() or "You have a new notification.")
+
+        # optional HTML
+        if (html_body or "").strip():
+            msg.add_alternative(html_body, subtype="html")
+
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(msg)
+
+    except Exception as e:
+        logger.warning("[SENSYS][NOTIF][EMAIL][ERROR] to=%s err=%s", to_email, e)
+
+
+def _sensys_send_notification_sms(conn, *, to_phone: str, body: str, admission_id: int | None = None, from_phone: str | None = None) -> None:
+    """
+    Sends SMS via existing RingCentral helper + logs to sensys_sms_log.
+    """
+    to_phone = (to_phone or "").strip()
+    text = (body or "").strip()
+    if not to_phone or not text:
+        return
+
+    rc_resp = None
+    err = ""
+    status = ""
+    rc_message_id = ""
+
+    try:
+        rc_resp = send_sms_rc(to_phone, text, from_number=from_phone)
+        # rc_resp is a dict; try common fields
+        rc_message_id = str(rc_resp.get("id") or rc_resp.get("messageId") or "")
+        status = str(rc_resp.get("messageStatus") or rc_resp.get("status") or "sent")
+    except Exception as e:
+        err = str(e)
+        status = "error"
+        logger.warning("[SENSYS][NOTIF][SMS][ERROR] to=%s err=%s", to_phone, e)
+
+    # log attempt (success or error)
+    try:
+        conn.execute(
+            """
+            INSERT INTO sensys_sms_log
+                (created_by_user_id, admission_id, direction, to_phone, from_phone, message, rc_message_id, status, error, rc_response_json)
+            VALUES
+                (?, ?, 'outbound', ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                0,
+                int(admission_id) if admission_id else None,
+                to_phone,
+                (from_phone or ""),
+                text,
+                rc_message_id,
+                status,
+                err,
+                json.dumps(rc_resp or {}),
+            ),
+        )
+    except Exception:
+        pass
+
+
+def _sensys_fire_notification(
+    conn,
+    *,
+    notif_key: str,
+    user_ids: list[int],
+    admission_id: int | None,
+    related_table: str,
+    related_id: int | None,
+    title: str,
+    body: str,
+    ctx: dict | None = None,
+    payload_json: str = "",
+):
+    """
+    Central dispatcher:
+      - reads template (if present)
+      - checks per-user prefs for delivery methods
+      - inserts dashboard inbox items
+      - sends email/sms (if configured)
+    """
+    if not user_ids:
+        return
+
+    tpl = _sensys_get_notif_template(conn, notif_key)  # may be None
+    ctx = ctx or {}
+
+    # template-driven content (fallback to passed title/body)
+    dash_body = _sensys_render_placeholders((tpl.get("dashboard_body") if tpl else "") or "", ctx).strip()
+    sms_body = _sensys_render_placeholders((tpl.get("sms_body") if tpl else "") or "", ctx).strip()
+    email_subject = _sensys_render_placeholders((tpl.get("email_subject") if tpl else "") or "", ctx).strip()
+    email_body = _sensys_render_placeholders((tpl.get("email_body") if tpl else "") or "", ctx).strip()
+    email_html = _sensys_render_placeholders((tpl.get("email_html") if tpl else "") or "", ctx).strip()
+
+    dash_body = dash_body or (body or "")
+    sms_body = sms_body or (body or "")
+    email_subject = email_subject or (title or "Sensys Notification")
+    email_body = email_body or (body or "")
+
+    for uid in user_ids:
+        uid = int(uid)
+        prefs = _sensys_user_notif_prefs(conn, uid, notif_key)
+
+        # DASHBOARD
+        if int(prefs.get("deliver_dashboard") or 0) == 1:
+            conn.execute(
+                """
+                INSERT INTO sensys_user_notifications
+                    (user_id, notif_key, admission_id, related_table, related_id, title, body, payload_json)
+                VALUES
+                    (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    uid,
+                    (notif_key or "").strip(),
+                    int(admission_id) if admission_id else None,
+                    (related_table or "").strip(),
+                    int(related_id) if related_id else None,
+                    (title or "").strip(),
+                    (dash_body or "").strip(),
+                    payload_json or "",
+                ),
+            )
+
+        # EMAIL
+        if int(prefs.get("deliver_email") or 0) == 1:
+            urow = conn.execute(
+                "SELECT email FROM sensys_users WHERE id = ?",
+                (uid,),
+            ).fetchone()
+            to_email = ((urow["email"] if urow else "") or "").strip()
+            _sensys_send_notification_email(to_email, email_subject, email_body, email_html)
+
+        # SMS
+        if int(prefs.get("deliver_sms") or 0) == 1:
+            urow = conn.execute(
+                "SELECT cell_phone FROM sensys_users WHERE id = ?",
+                (uid,),
+            ).fetchone()
+            to_phone = ((urow["cell_phone"] if urow else "") or "").strip()
+            _sensys_send_notification_sms(conn, to_phone=to_phone, body=sms_body, admission_id=int(admission_id) if admission_id else None)
+
 def _sensys_user_ids_linked_to_admission(conn, admission_id: int) -> list[int]:
     """
     A user is "linked" to an admission if:
@@ -21382,7 +21669,17 @@ def sensys_admission_tasks_upsert(payload: AdmissionTaskUpsert, request: Request
     if not (payload.task_name or "").strip():
         raise HTTPException(status_code=400, detail="task_name is required")
 
+    notif_key = "new_task"
+    task_id = None
+
     if payload.id:
+        # detect reassignment
+        existing = conn.execute(
+            "SELECT assigned_user_id FROM sensys_admission_tasks WHERE id = ?",
+            (int(payload.id),),
+        ).fetchone()
+        prev_assigned = existing["assigned_user_id"] if existing else None
+
         conn.execute(
             """
             UPDATE sensys_admission_tasks
@@ -21401,8 +21698,37 @@ def sensys_admission_tasks_upsert(payload: AdmissionTaskUpsert, request: Request
                 int(payload.id),
             ),
         )
+        task_id = int(payload.id)
+
+        # 🔔 notify only if assignment changed to someone (or was newly assigned)
+        new_assigned = int(payload.assigned_user_id) if payload.assigned_user_id else None
+        should_notify = (new_assigned is not None) and (prev_assigned is None or int(prev_assigned) != int(new_assigned))
+
+        if should_notify:
+            patient_name = _sensys_patient_name_for_admission(conn, int(payload.admission_id))
+            task_name = (payload.task_name or "").strip()
+
+            title = "New Task"
+            if patient_name:
+                title = f"{title} — {patient_name}"
+
+            body = f"Task: {task_name}" if task_name else "A task was assigned to you."
+
+            _sensys_fire_notification(
+                conn,
+                notif_key=notif_key,
+                user_ids=[int(new_assigned)],
+                admission_id=int(payload.admission_id),
+                related_table="sensys_admission_tasks",
+                related_id=int(task_id),
+                title=title,
+                body=body,
+                ctx={"task": task_name, "patient": patient_name},
+                payload_json="",
+            )
+
     else:
-        conn.execute(
+        cur = conn.execute(
             """
             INSERT INTO sensys_admission_tasks
                 (admission_id, assigned_user_id, task_status, task_name, task_comments)
@@ -21417,9 +21743,35 @@ def sensys_admission_tasks_upsert(payload: AdmissionTaskUpsert, request: Request
                 (payload.task_comments or "").strip(),
             ),
         )
+        task_id = int(cur.lastrowid)
+
+        # 🔔 notify assigned user (if any) on create
+        if payload.assigned_user_id:
+            patient_name = _sensys_patient_name_for_admission(conn, int(payload.admission_id))
+            task_name = (payload.task_name or "").strip()
+
+            title = "New Task"
+            if patient_name:
+                title = f"{title} — {patient_name}"
+
+            body = f"Task: {task_name}" if task_name else "A task was assigned to you."
+
+            _sensys_fire_notification(
+                conn,
+                notif_key=notif_key,
+                user_ids=[int(payload.assigned_user_id)],
+                admission_id=int(payload.admission_id),
+                related_table="sensys_admission_tasks",
+                related_id=int(task_id),
+                title=title,
+                body=body,
+                ctx={"task": task_name, "patient": patient_name},
+                payload_json="",
+            )
 
     conn.commit()
-    return {"ok": True}
+    return {"ok": True, "id": int(task_id) if task_id else None}
+
 
 class IdOnly(BaseModel):
     id: int
@@ -21780,8 +22132,59 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                 int(payload.admission_id),
             ),
         )
+        # -----------------------------
+        # 🔔 AUTOMATED NOTIFICATION TRIGGER:
+        # Updated Discharge (update path)
+        # -----------------------------
+        adm = conn.execute(
+            """
+            SELECT
+                a.id,
+                (p.last_name || ', ' || p.first_name) AS patient_name
+            FROM sensys_admissions a
+            JOIN sensys_patients p ON p.id = a.patient_id
+            WHERE a.id = ?
+            """,
+            (int(payload.admission_id),),
+        ).fetchone()
+
+        patient_name = (adm["patient_name"] if adm else "") or ""
+        patient_name = patient_name.strip()
+
+        dc_date = (payload.dc_date or "").strip()
+        dc_time = (payload.dc_time or "").strip()
+        dest = (payload.dc_destination or "").strip()
+
+        title = "Updated Discharge"
+        if patient_name:
+            title = f"Updated Discharge — {patient_name}"
+
+        body_parts = []
+        if dc_date:
+            body_parts.append(f"DC Date: {dc_date}")
+        if dc_time:
+            body_parts.append(f"Time: {dc_time}")
+        if dest:
+            body_parts.append(f"Destination: {dest}")
+        body = " • ".join(body_parts) if body_parts else "A discharge submission was updated."
+
+        user_ids = _sensys_user_ids_linked_to_admission(conn, int(payload.admission_id))
+
+        _sensys_insert_dashboard_notifications(
+            conn,
+            user_ids=user_ids,
+            notif_key="updated_discharge",
+            admission_id=int(payload.admission_id),
+            related_table="sensys_admission_dc_submissions",
+            related_id=int(payload.id),
+            title=title,
+            body=body,
+            payload_json="",
+        )
+
         conn.commit()
         return {"ok": True, "id": int(payload.id)}
+
 
     cur = conn.execute(
         """
@@ -21983,8 +22386,58 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
         )
         esign_id = int(cur.lastrowid)
 
+        # 🔔 NEW E-SIGN ORDER notification (providers linked to this care team)
+        notif_key = "new_esign_orders"
+
+        patient_name = _sensys_patient_name_for_admission(conn, int(payload.admission_id))
+
+        ct = conn.execute(
+            "SELECT name FROM sensys_care_team WHERE id = ?",
+            (int(payload.care_team_id),),
+        ).fetchone()
+        care_team_name = ((ct["name"] if ct else "") or "").strip()
+
+        st = conn.execute(
+            "SELECT name, code FROM sensys_service_types WHERE id = ?",
+            (int(payload.service_type_id),),
+        ).fetchone()
+        service_label = ""
+        if st:
+            nm = ((st["name"] if "name" in st.keys() else "") or "").strip()
+            cd = ((st["code"] if "code" in st.keys() else "") or "").strip()
+            service_label = (nm or "")
+            if cd:
+                service_label = f"{service_label} ({cd})" if service_label else cd
+
+        title = "New E-Sign Order"
+        if patient_name:
+            title = f"{title} — {patient_name}"
+
+        body_bits = []
+        if care_team_name:
+            body_bits.append(f"Provider: {care_team_name}")
+        if service_label:
+            body_bits.append(f"Service Type: {service_label}")
+        body = " • ".join(body_bits) if body_bits else "A new e-sign order was created."
+
+        user_ids = _sensys_user_ids_linked_to_care_team(conn, int(payload.care_team_id))
+
+        _sensys_fire_notification(
+            conn,
+            notif_key=notif_key,
+            user_ids=user_ids,
+            admission_id=int(payload.admission_id),
+            related_table="sensys_admission_esigns",
+            related_id=int(esign_id),
+            title=title,
+            body=body,
+            ctx={"patient": patient_name},
+            payload_json="",
+        )
+
     conn.commit()
     return {"ok": True, "id": esign_id}
+
 
 @app.post("/api/sensys/admission-esigns/delete")
 def sensys_admission_esigns_delete(payload: IdOnly, request: Request):
