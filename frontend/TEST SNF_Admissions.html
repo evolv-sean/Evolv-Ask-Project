@@ -1501,8 +1501,22 @@
               <div class="email-log-card">
                 <div class="email-log-card-head">
                   <div class="email-log-card-title">Sent emails</div>
-                  <span id="email-log-left-status" class="message"></span>
+
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <span id="email-log-left-status" class="message"></span>
+
+                    <!-- Export CSV button (top-right of Sent emails card) -->
+                    <button class="pdf-btn" title="Export CSV" onclick="exportEmailLogCsv()">
+                      <!-- simple export/download icon -->
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M12 3v10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M8 11l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M4 21h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
+
                 <div id="email-log-list" class="email-log-scroll"></div>
               </div>
 
@@ -3953,6 +3967,37 @@
       } catch (err) {
         console.error("downloadEmailLogPdf error", err);
         showToast("Error downloading PDF: " + err, "error");
+      }
+    }
+
+    async function exportEmailLogCsv() {
+      const token = getAdminToken();
+      if (!token) {
+        showToast("Please paste your ADMIN_TOKEN first.", "error");
+        return;
+      }
+
+      try {
+        const resp = await fetch(`/admin/snf/email-log/export.csv`, {
+          headers: { "X-Admin-Token": token }
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+
+        const stamp = new Date().toISOString().slice(0, 10);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `SNF_Email_Log_${stamp}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+      } catch (err) {
+        console.error("exportEmailLogCsv error", err);
+        showToast("Error exporting CSV: " + err, "error");
       }
     }
 
