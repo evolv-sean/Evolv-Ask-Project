@@ -1247,6 +1247,7 @@
             <option value="LTC">LTC</option>
             <option value="Home Health">Home Health</option>
             <option value="Home Self-care">Home Self-care</option>
+            <option value="Hospice">Hospice</option>
             <option value="IRF">IRF</option>
             <option value="LTACH">LTACH</option>
             <option value="Other">Other</option>
@@ -4226,24 +4227,24 @@
 
 
     function getDisplayFacilityLabel(r) {
-      // 1) Manual override always wins
+      // 1) Manual override always wins (strip Medrina star if present)
       if (r.final_snf_name_display) {
-        return r.final_snf_name_display;
+        return stripMedrinaStarPrefix(r.final_snf_name_display);
       }
 
       // 2) System facility name if AI matches name or aliases
       const aiDisplay = getFacilityAiDisplayName(r);
       if (aiDisplay) {
-        return aiDisplay;
+        return stripMedrinaStarPrefix(aiDisplay);
       }
 
       // 3) Absolute fallback
       return "";
     }
 
-    // Sort-safe facility label (don’t let the " *" change ordering)
+    // Sort-safe facility label (don’t let the "★ " or " *" change ordering)
     function getSortFacilityLabel(r) {
-      const label = (getDisplayFacilityLabel(r) || "").trim();
+      const label = stripMedrinaStarPrefix((getDisplayFacilityLabel(r) || "").trim());
       return label.replace(/\s*\*$/, "").trim();
     }
 
@@ -4352,12 +4353,18 @@
             }
 
             ${
-              (getFacilityAiPhone(r) || "").trim()
-                ? `<div class="fac-subrow">
-                     <span>${escapeHtml(getFacilityAiPhone(r))}</span>
-                     ${getAssignmentDotHtml(r)}
-                   </div>`
-                : ""
+              (() => {
+                const dispo = (r.disposition || "").toString().trim();
+                const phone = (getFacilityAiPhone(r) || "").toString().trim();
+
+                const line = [dispo, phone].filter(Boolean).join(" | ");
+                if (!line) return "";
+
+                return `<div class="fac-subrow">
+                          <span>${escapeHtml(line)}</span>
+                          ${getAssignmentDotHtml(r)}
+                        </div>`;
+              })()
             }
           </td>
           <td>${formatISOToMDY(r.dc_date)}</td>
