@@ -1247,6 +1247,7 @@
             <option value="LTC">LTC</option>
             <option value="Home Health">Home Health</option>
             <option value="Home Self-care">Home Self-care</option>
+            <option value="Hospice">Hospice</option>
             <option value="IRF">IRF</option>
             <option value="LTACH">LTACH</option>
             <option value="Other">Other</option>
@@ -1259,6 +1260,7 @@
         <div>
           <label for="edit-facility-select">Facility</label>
           <select id="edit-facility-select" style="width:100%;">
+            <option value="__unknown__">(unknown)</option>
             <option value="">(none)</option>
           </select>
         </div>
@@ -1499,7 +1501,20 @@
               <div class="email-log-card">
                 <div class="email-log-card-head">
                   <div class="email-log-card-title">Sent emails</div>
-                  <span id="email-log-left-status" class="message"></span>
+
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <span id="email-log-left-status" class="message"></span>
+
+                    <!-- Export CSV button (top-right of Sent emails card) -->
+                    <button class="pdf-btn" title="Export CSV" onclick="exportEmailLogCsv()">
+                      <!-- simple export/download icon -->
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M12 3v10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M8 11l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M4 21h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
                 <div id="email-log-list" class="email-log-scroll"></div>
               </div>
@@ -2753,7 +2768,7 @@
         const facilitySelect = document.getElementById("edit-facility-select");
         const facilityLabel =
           facilitySelect && facilitySelect.value
-            ? facilitySelect.options[facilitySelect.selectedIndex].text
+            ? stripMedrinaStarPrefix(facilitySelect.options[facilitySelect.selectedIndex].text)
             : "";
 
         const commentsVal = (document.getElementById("edit-comments")?.value || adm.review_comments || "");
@@ -2918,7 +2933,7 @@
         const facilitySelect = document.getElementById("edit-facility-select");
         const facilityLabel =
           facilitySelect && facilitySelect.value
-            ? facilitySelect.options[facilitySelect.selectedIndex].text
+            ? stripMedrinaStarPrefix(facilitySelect.options[facilitySelect.selectedIndex].text)
             : "";
 
         const commentsVal = (document.getElementById("edit-comments")?.value || adm.review_comments || "");
@@ -3054,7 +3069,7 @@
 
         const editSelect = document.getElementById("edit-facility-select");
         if (editSelect) {
-          editSelect.innerHTML = '<option value="">(none)</option>';
+          editSelect.innerHTML = '<option value="__unknown__">(unknown)</option><option value="">(none)</option>';
           snfFacilities.forEach(f => {
             const opt = document.createElement("option");
             opt.value = String(f.id);
@@ -3066,6 +3081,7 @@
             editSelect.appendChild(opt);
           });
         }
+
         // If a row is open, refresh the note so facility/alias highlighting updates immediately
         try {
           if (selectedId != null) await selectRow(selectedId);
@@ -3078,16 +3094,25 @@
       }
     }
 
+
     function setEditFacilityByLabel(label) {
       const select = document.getElementById("edit-facility-select");
       if (!select) return;
 
-      if (!label) {
+      const trimmed = (label || "").trim();
+
+      // NEW: allow manual override to "(unknown)"
+      if (trimmed.toLowerCase() === "(unknown)") {
+        select.value = "__unknown__";
+        return;
+      }
+
+      if (!trimmed) {
         select.value = "";
         return;
       }
 
-      const target = label.toLowerCase();
+      const target = trimmed.toLowerCase();
       let foundId = "";
 
       snfFacilities.forEach(f => {
@@ -3103,6 +3128,7 @@
 
       select.value = foundId || "";
     }
+
 
 
     function formatISOToMDY(iso) {
@@ -3904,6 +3930,37 @@
       }
     }
 
+    function exportEmailLogCsv() {
+      const token = getAdminToken();
+      if (!token) {
+        showToast("Please paste your ADMIN_TOKEN first.", "error");
+        return;
+      }
+
+      try {
+        const resp = await fetch(`/admin/snf/email-log/export.csv`, {
+          headers: { "X-Admin-Token": token }
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+
+        const stamp = new Date().toISOString().slice(0, 10);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `SNF_Email_Log_${stamp}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+      } catch (err) {
+        console.error("exportEmailLogCsv error", err);
+        showToast("Error exporting CSV: " + err, "error");
+      }
+    }
+
     async function downloadEmailLogPdf(secureLinkId) {
       const token = getAdminToken();
       if (!token) {
@@ -4257,6 +4314,12 @@
         return `<span class="assign-dot neg-accent" title="${label}" aria-label="${label}"></span>`;
       }
       return "";
+    }
+
+    function stripMedrinaStarPrefix(label) {
+      // Removes the Medrina star prefix ("★ ") that we add in dropdowns for medrina_snf facilities.
+      // Keeps the display pretty, but ensures we save clean facility text back to the DB.
+      return String(label || "").replace(/^\s*★\s*/g, "").trim();
     }
 
     function renderTable(rows) {
@@ -4645,7 +4708,7 @@
       const facilitySelect = document.getElementById("edit-facility-select");
       const facilityLabel =
         facilitySelect && facilitySelect.value
-          ? facilitySelect.options[facilitySelect.selectedIndex].text
+          ? stripMedrinaStarPrefix(facilitySelect.options[facilitySelect.selectedIndex].text)
           : "";
       const comments = document.getElementById("edit-comments").value;
 
