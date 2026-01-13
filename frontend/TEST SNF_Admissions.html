@@ -2753,7 +2753,7 @@
         const facilitySelect = document.getElementById("edit-facility-select");
         const facilityLabel =
           facilitySelect && facilitySelect.value
-            ? facilitySelect.options[facilitySelect.selectedIndex].text
+            ? stripMedrinaStarPrefix(facilitySelect.options[facilitySelect.selectedIndex].text)
             : "";
 
         const commentsVal = (document.getElementById("edit-comments")?.value || adm.review_comments || "");
@@ -2918,7 +2918,7 @@
         const facilitySelect = document.getElementById("edit-facility-select");
         const facilityLabel =
           facilitySelect && facilitySelect.value
-            ? facilitySelect.options[facilitySelect.selectedIndex].text
+            ? stripMedrinaStarPrefix(facilitySelect.options[facilitySelect.selectedIndex].text)
             : "";
 
         const commentsVal = (document.getElementById("edit-comments")?.value || adm.review_comments || "");
@@ -4247,6 +4247,12 @@
       return label.replace(/\s*\*$/, "").trim();
     }
 
+    // ✅ Prevent Medrina-star from being stored/displayed outside the dropdown
+    function stripMedrinaStarPrefix(label) {
+      const s = String(label || "");
+      return s.replace(/^★\s*/g, "").trim();
+    }
+
     function getAssignmentDotHtml(r) {
       const c = (r && r.assignment_confirmation ? String(r.assignment_confirmation) : "Unknown").trim();
       if (c === "Assigned") {
@@ -4271,7 +4277,7 @@
         let facLabel = "";
 
         if (r.final_snf_name_display) {
-          facLabel = r.final_snf_name_display;
+          facLabel = stripMedrinaStarPrefix(r.final_snf_name_display);
         } else {
           const facLabelParts = [];
           if (r.effective_facility_name) facLabelParts.push(r.effective_facility_name);
@@ -4645,7 +4651,7 @@
       const facilitySelect = document.getElementById("edit-facility-select");
       const facilityLabel =
         facilitySelect && facilitySelect.value
-          ? facilitySelect.options[facilitySelect.selectedIndex].text
+          ? stripMedrinaStarPrefix(facilitySelect.options[facilitySelect.selectedIndex].text)
           : "";
       const comments = document.getElementById("edit-comments").value;
 
