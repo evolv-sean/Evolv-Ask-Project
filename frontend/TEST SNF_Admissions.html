@@ -1260,6 +1260,7 @@
         <div>
           <label for="edit-facility-select">Facility</label>
           <select id="edit-facility-select" style="width:100%;">
+            <option value="__unknown__">(unknown)</option>
             <option value="">(none)</option>
           </select>
         </div>
@@ -3067,7 +3068,7 @@
 
         const editSelect = document.getElementById("edit-facility-select");
         if (editSelect) {
-          editSelect.innerHTML = '<option value="">(none)</option>';
+          editSelect.innerHTML = '<option value="__unknown__">(unknown)</option><option value="">(none)</option>';
           snfFacilities.forEach(f => {
             const opt = document.createElement("option");
             opt.value = String(f.id);
@@ -3095,12 +3096,20 @@
       const select = document.getElementById("edit-facility-select");
       if (!select) return;
 
-      if (!label) {
+      const trimmed = (label || "").trim();
+
+      // NEW: allow manual override to "(unknown)"
+      if (trimmed.toLowerCase() === "(unknown)") {
+        select.value = "__unknown__";
+        return;
+      }
+
+      if (!trimmed) {
         select.value = "";
         return;
       }
 
-      const target = label.toLowerCase();
+      const target = trimmed.toLowerCase();
       let foundId = "";
 
       snfFacilities.forEach(f => {
