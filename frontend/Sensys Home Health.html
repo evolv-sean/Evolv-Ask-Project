@@ -222,7 +222,7 @@
       return hay.includes(q);
     });
 
-    document.getElementById('count').textContent = `${items.length} admissions`;
+    document.getElementById('count').textContent = `${items.length} referrals`;
 
     items.forEach(r => {
       const tr = document.createElement('tr');
@@ -230,7 +230,7 @@
       tr.onmouseenter = () => tr.style.background = '#fbfdff';
       tr.onmouseleave = () => tr.style.background = '';
       tr.onclick = () => {
-        const id = Number(r.id);
+        const id = Number(r.admission_id);
         window.location.href = `/sensys/home-health/admission-details?admission_id=${encodeURIComponent(id)}`;
       };
 
@@ -241,7 +241,7 @@
         <td style="padding:10px;border-bottom:1px solid #f2f4f7;">${esc(r.dc_date||'')}</td>
         <td style="padding:10px;border-bottom:1px solid #f2f4f7;">${esc(r.referral_agency_name||'—')}</td>
         <td style="padding:10px;border-bottom:1px solid #f2f4f7;">${esc(r.agency_name||'—')}</td>
-        <td style="padding:10px;border-bottom:1px solid #f2f4f7;color:#667085;font-size:12px;">${esc(r.updated_at||'')}</td>
+        <td style="padding:10px;border-bottom:1px solid #f2f4f7;color:#667085;font-size:12px;">${esc(r.referral_updated_at||r.referral_created_at||'')}</td>
       `;
       tbody.appendChild(tr);
     });
@@ -255,8 +255,8 @@
       document.getElementById('subhead').textContent =
         `${u.display_name || u.email || ''} • Roles: ${(u.role_keys||[]).join(', ')}`;
 
-      const resp = await apiGet('/api/sensys/my-admissions');
-      ALL = (resp && resp.admissions) || [];
+      const resp = await apiGet('/api/sensys/my-referrals');
+      ALL = (resp && resp.referrals) || [];
       render();
     }catch(e){
       showMsg(e.message || String(e));
