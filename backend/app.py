@@ -6840,6 +6840,81 @@ def map_snf_name_to_facility_id(
         return best_id, best_label
     return None, None
 
+def infer_snf_facility_from_notes(
+    conn: sqlite3.Connection,
+    note_texts: list[str],
+) -> tuple[Optional[str], Optional[str], int]:
+    """
+    Scan recent CM note text for explicit mentions of any SNF Admission Facility
+    (facility_name or aliases). Returns: (facility_id, facility_label, score)
+    Score is "hit length" with facility_name bonus like map_snf_name_to_facility_id.
+    """
+    if not note_texts:
+        return None, None, 0
+
+    def _norm(s: str) -> str:
+        s = str(s or "").lower()
+        s = re.sub(r"[\.\,\(\)\[\]\{\}\-_/\\]+", " ", s)
+        s = re.sub(r"\s+", " ", s).strip()
+        return s
+
+    def _split_aliases(raw: str) -> list[str]:
+        return [a.strip() for a in re.split(r"[,|;]+", str(raw or "")) if a.strip()]
+
+    def _phrase_hit_len(hay: str, needle: str) -> int:
+        hay2 = f" {hay} "
+        ned2 = f" {needle} "
+        if needle and ned2 in hay2:
+            return len(needle)
+        if hay and hay2 in ned2:
+            return len(hay)
+        if needle and needle in hay:
+            return len(needle)
+        if hay and hay in needle:
+            return len(hay)
+        return 0
+
+    hay_norm = _norm("\n".join([t for t in note_texts if (t or "").strip()]))
+    if not hay_norm:
+        return None, None, 0
+
+    best_id: Optional[str] = None
+    best_label: Optional[str] = None
+    best_score: int = 0
+
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, facility_name, aliases
+        FROM snf_admission_facilities
+        ORDER BY facility_name COLLATE NOCASE
+        """
+    )
+    for row in cur.fetchall():
+        fac_id = str(row["id"])
+        fac_name = (row["facility_name"] or "").strip()
+        aliases = row["aliases"] or ""
+
+        name_norm = _norm(fac_name)
+        hit_len = _phrase_hit_len(hay_norm, name_norm)
+        if hit_len:
+            score = hit_len + 10_000
+            if score > best_score:
+                best_score = score
+                best_id = fac_id
+                best_label = fac_name
+
+        for a in _split_aliases(aliases):
+            a_norm = _norm(a)
+            hit_len = _phrase_hit_len(hay_norm, a_norm)
+            if hit_len:
+                score = hit_len
+                if score > best_score:
+                    best_score = score
+                    best_id = fac_id
+                    best_label = fac_name
+
+    return best_id, best_label, best_score
 
 
 def get_facility_label(fid: Optional[str], conn: sqlite3.Connection) -> str:
@@ -11548,7 +11623,19 @@ def snf_recompute_for_admission(visit_id: str = "", patient_mrn: str = "", retur
         snf_name_raw = result.get("snf_name")
         expected_date = result.get("expected_transfer_date")
         conf = result.get("confidence", 0.0)
+
+        # ✅ NEW: prefer explicit facility mentions from the CM notes text (more specific than "the Luxe")
+        note_texts = [(r["note_text"] or "") for r in notes]  # notes = cur.fetchall() above
+        infer_id, infer_label, infer_score = infer_snf_facility_from_notes(conn, note_texts)
+
         ai_facility_id, _ai_facility_label = map_snf_name_to_facility_id(conn, snf_name_raw)
+
+        # If notes contain a stronger/more-specific hit than the LLM name, prefer it
+        if infer_id and infer_score > 0:
+            # If LLM mapped to nothing OR inferred match is clearly more specific, override
+            if (not ai_facility_id) or (infer_label and len(infer_label) > len(_ai_facility_label or "")):
+                ai_facility_id = infer_id
+                _ai_facility_label = infer_label
 
         # Update the existing snf_admissions row for this admission group
         if visit_id_db:
@@ -13914,6 +14001,7 @@ async def admin_snf_update(
         else:
             raise HTTPException(status_code=400, detail="Invalid disposition value")
     facility_free_text = (payload.get("facility_free_text") or "").strip()
+    facility_free_text = re.sub(r"^★\s*", "", facility_free_text).strip()
 
     conn = get_db()
     try:
@@ -21475,3 +21563,4 @@ if __name__ == "__main__":
 
     port = int(os.getenv("PORT", "8000"))
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
+
