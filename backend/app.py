@@ -14761,9 +14761,10 @@ async def admin_snf_email_log_list(request: Request):
                 }
             )
 
-
         return {"ok": True, "items": items}
-        
+    finally:
+        conn.close() 
+ 
 @app.get("/admin/snf/email-log/export.csv")
 async def admin_snf_email_log_export_csv(request: Request):
     """
