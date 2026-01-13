@@ -129,7 +129,6 @@
           <div class="msg" id="msg"></div>
         </div>
       </div>
-
       <div class="card">
         <div class="hd">
           <div>
@@ -152,9 +151,27 @@
 
           <div style="height:12px"></div>
           <div class="muted" style="font-weight:900; letter-spacing:.10em; text-transform:uppercase;">Comments</div>
-          <div id="comments" style="padding:10px 12px; border:1px solid rgba(15,23,42,.10); border-radius:14px; min-height:54px;"></div>
+          <div id="comments" style="padding:10px 12px; border:1px solid rgba(15,23,42,10); border-radius:14px; min-height:54px;"></div>
         </div>
       </div>
+
+      <!-- ✅ NEW: Notifications -->
+      <div class="card">
+        <div class="hd">
+          <div>
+            <div class="h">Notifications <span class="mono" id="notifCount" style="margin-left:8px;">—</span></div>
+            <div class="sub">Your dashboard notifications</div>
+          </div>
+          <div class="row">
+            <button class="btn" id="notifRefreshBtn">Refresh</button>
+          </div>
+        </div>
+        <div class="bd">
+          <div class="msg" id="notifMsg" style="display:none;"></div>
+          <div id="notifList" style="display:flex;flex-direction:column;gap:10px;"></div>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -185,6 +202,91 @@
 
   let ESIGNS = [];
   let SELECTED = null;
+
+  // ✅ NEW: Notifications state
+  let NOTIFS = [];
+
+  function showNotifError(t){
+    const el = els('notifMsg');
+    if(!el) return;
+    if(!t){ el.style.display='none'; el.textContent=''; return; }
+    el.style.display='block';
+    el.textContent = String(t || 'Error');
+  }
+
+  function renderNotifs(){
+    const host = els('notifList');
+    const badge = els('notifCount');
+    if(!host) return;
+
+    const unread = (NOTIFS || []).filter(n => !n.read_at).length;
+    if(badge) badge.textContent = unread ? (`${unread} unread`) : ('0 unread');
+
+    if(!NOTIFS.length){
+      host.innerHTML = `<div class="muted">No notifications.</div>`;
+      return;
+    }
+
+    host.innerHTML = '';
+    NOTIFS.forEach(n => {
+      const card = document.createElement('div');
+      card.style.border = '1px solid rgba(15,23,42,10)';
+      card.style.borderRadius = '14px';
+      card.style.padding = '12px';
+      card.style.background = n.read_at ? '#fbfcfe' : '#ffffff';
+
+      const title = escapeHtml(n.title || n.notif_name || n.notif_key || 'Notification');
+      const body = escapeHtml(n.body || '');
+      const meta = escapeHtml(n.created_at || '');
+
+      card.innerHTML = `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+          <div>
+            <div style="font-size:13px;font-weight:900;color:#111827;">${title}</div>
+            <div style="margin-top:4px;font-size:12px;color:var(--muted);white-space:pre-wrap;">${body}</div>
+            <div style="margin-top:8px;font-size:11px;color:var(--muted);">${meta}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
+            ${n.read_at ? `<span class="mono" style="font-weight:900;">Read</span>` : `
+              <button class="btn" data-id="${escapeHtml(n.id)}" style="padding:9px 10px;">Mark read</button>
+            `}
+          </div>
+        </div>
+      `;
+
+      const btn = card.querySelector('button[data-id]');
+      if(btn){
+        btn.onclick = async () => {
+          try{
+            btn.disabled = true;
+            await api('/api/sensys/notifications/mark-read', {
+              method:'POST',
+              body: JSON.stringify({ id: Number(n.id) })
+            });
+            await loadNotifs();
+          }catch(e){
+            showNotifError(e.message || String(e));
+          }finally{
+            btn.disabled = false;
+          }
+        };
+      }
+
+      host.appendChild(card);
+    });
+  }
+
+  async function loadNotifs(){
+    try{
+      showNotifError('');
+      const resp = await api('/api/sensys/my-notifications', { method:'GET' });
+      NOTIFS = (resp && resp.notifications) ? resp.notifications : [];
+      renderNotifs();
+    }catch(e){
+      showNotifError(e.message || 'Failed to load notifications');
+    }
+  }
+
 
   function pill(status){
     const st = (status||'').toLowerCase();
@@ -313,6 +415,7 @@
       body: JSON.stringify({ esign_id: Number(SELECTED.id) })
     });
     await load();
+    await loadNotifs();
   }
 
   async function doDecline(){
@@ -326,7 +429,10 @@
   }
 
   els('q').addEventListener('input', renderTable);
-  els('refreshBtn').addEventListener('click', ()=>load().catch(e=>els('msg').textContent=e.message));
+  els('refreshBtn').addEventListener('click', ()=>{
+    load().catch(e=>els('msg').textContent=e.message);
+    loadNotifs();
+  });
   els('logoutBtn').addEventListener('click', ()=>{
     localStorage.removeItem('sensys_token');
     window.location.href = '/sensys/login';
@@ -336,6 +442,7 @@
   els('declineBtn').addEventListener('click', ()=>doDecline().catch(e=>els('msg').textContent=e.message));
 
   load().catch(e=>els('msg').textContent=e.message);
+  loadNotifs();
 </script>
 </body>
 </html>
