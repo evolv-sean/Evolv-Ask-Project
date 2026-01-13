@@ -1570,9 +1570,12 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
     # Example: "319-B SMITH" -> "SMITH"
     last_raw = re.sub(r"^\d{1,4}[A-Z]?(?:-[A-Za-z0-9]{1,6})\s+", "", last_raw, flags=re.IGNORECASE)
 
+    # ✅ NEW: strip honorifics that sometimes get glued into the last name
+    # Examples: "Mr SMITH" -> "SMITH", "Mrs. JONES" -> "JONES"
+    last_raw = re.sub(r"^(?:Mr|Mrs)\.?\s+", "", last_raw, flags=re.IGNORECASE)
+
     # Remove trailing suffix token if present (keep the full last name otherwise)
     suffixes = {"Jr", "Sr", "II", "III"}
-    last_tokens = [t for t in re.split(r"\s+", last_raw) if t]
 
     # Remove trailing suffix token if present (keep the full last name otherwise)
     suffixes = {"Jr", "Sr", "II", "III"}
@@ -11297,6 +11300,120 @@ def admin_hospital_discharge_visit_recompute(payload: Dict[str, Any] = Body(...)
                 "dispo_source_doc_id": (latest_doc_id if (has_meaningful_dispo and changed) else before_source_doc_id),
             },
         }
+    finally:
+        conn.close()
+
+def backfill_census_strip_mr_mrs_last_names_and_keys(cur, dry_run: bool = False) -> dict:
+    """
+    Backfill census_run_patients.last_name by stripping leading:
+      - "Mr " / "Mr. "
+      - "Mrs " / "Mrs. "
+
+    ALSO updates census_run_patients.patient_key so future PDFs do NOT cause existing patients
+    to look "new" due to key mismatch.
+    """
+    cur.execute(
+        """
+        SELECT id, last_name, patient_key
+        FROM census_run_patients
+        WHERE last_name IS NOT NULL
+          AND TRIM(last_name) <> ''
+          AND (
+            UPPER(TRIM(last_name)) LIKE 'MR %'
+            OR UPPER(TRIM(last_name)) LIKE 'MR.%'
+            OR UPPER(TRIM(last_name)) LIKE 'MRS %'
+            OR UPPER(TRIM(last_name)) LIKE 'MRS.%'
+          )
+        """
+    )
+    rows = cur.fetchall() or []
+    candidates = len(rows)
+
+    def _clean_last(s: str) -> str:
+        return re.sub(r"^(?:Mr|Mrs)\.?\s+", "", (s or "").strip(), flags=re.IGNORECASE).strip()
+
+    def _fix_patient_key(pkey: str, cleaned_last: str) -> str:
+        pkey = (pkey or "").strip()
+        if not pkey or "|" not in pkey:
+            return pkey
+
+        parts = pkey.split("|")
+
+        # Two formats exist in your codebase:
+        # A) facility|resident_num|last|first|dob   (from _patient_key in parser output)
+        # B) facility|last|first|dob|admissiondate (fallback if _patient_key missing)
+        #
+        # Heuristic:
+        # If parts[1] looks like a resident_num (4+ alnum, no spaces), treat last index as 2 else 1.
+        last_idx = 1
+        if len(parts) >= 5 and re.fullmatch(r"[A-Z0-9]{4,}", (parts[1] or "").strip(), flags=re.IGNORECASE):
+            last_idx = 2
+
+        if len(parts) > last_idx:
+            # patient_key pieces are typically uppercase already; keep that convention
+            parts[last_idx] = (cleaned_last or "").upper()
+
+        return "|".join(parts)
+
+    if dry_run:
+        sample = []
+        for r in rows[:25]:
+            row_id = int(r["id"] if isinstance(r, sqlite3.Row) else r[0])
+            old_ln = (r["last_name"] if isinstance(r, sqlite3.Row) else r[1]) or ""
+            old_pk = (r["patient_key"] if isinstance(r, sqlite3.Row) else r[2]) or ""
+
+            new_ln = _clean_last(old_ln)
+            new_pk = _fix_patient_key(old_pk, new_ln)
+
+            sample.append({
+                "id": row_id,
+                "last_before": old_ln,
+                "last_after": new_ln,
+                "key_before": old_pk,
+                "key_after": new_pk,
+            })
+
+        return {"ok": True, "dry_run": True, "candidates": candidates, "updated": 0, "sample": sample}
+
+    updated = 0
+    for r in rows:
+        row_id = int(r["id"] if isinstance(r, sqlite3.Row) else r[0])
+        old_ln = (r["last_name"] if isinstance(r, sqlite3.Row) else r[1]) or ""
+        old_pk = (r["patient_key"] if isinstance(r, sqlite3.Row) else r[2]) or ""
+
+        new_ln = _clean_last(old_ln)
+        new_pk = _fix_patient_key(old_pk, new_ln)
+
+        if new_ln != old_ln.strip() or new_pk != old_pk.strip():
+            cur.execute(
+                """
+                UPDATE census_run_patients
+                SET last_name = ?, patient_key = ?
+                WHERE id = ?
+                """,
+                (new_ln, new_pk, row_id),
+            )
+            updated += 1
+
+    return {"ok": True, "dry_run": False, "candidates": candidates, "updated": updated}
+
+@app.post("/admin/census/backfill-strip-mr-mrs-lastname")
+def admin_backfill_census_strip_mr_mrs_lastname(payload: Dict[str, Any] = Body(...), admin=Depends(require_admin)):
+    """
+    One-click admin backfill:
+    - Strips 'Mr/Mrs' prefixes from census_run_patients.last_name
+    - Updates census_run_patients.patient_key accordingly
+    So future PDF runs do NOT treat existing patients as new.
+    """
+    dry_run = bool(payload.get("dry_run", False))
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        result = backfill_census_strip_mr_mrs_last_names_and_keys(cur, dry_run=dry_run)
+        if not dry_run:
+            conn.commit()
+        return result
     finally:
         conn.close()
 
