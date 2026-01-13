@@ -19938,6 +19938,68 @@ def sensys_my_admissions(request: Request):
 
     return {"ok": True, "admissions": [dict(r) for r in rows]}
 
+@app.get("/api/sensys/my-referrals")
+def sensys_my_referrals(request: Request):
+    """
+    Home Health: return REFERRAL ROWS (not admission rows).
+    This powers the Home Health referrals list/table.
+    """
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    role_keys = u.get("role_keys") or []
+    user_id = int(u["user_id"])
+
+    # Only Home Health should use this endpoint
+    if "home_health" not in role_keys:
+        return {"ok": True, "referrals": []}
+
+    rows = conn.execute(
+        """
+        SELECT
+            ar.id AS referral_id,
+            ar.admission_id,
+
+            -- referral agency (the HH agency)
+            ar.agency_id AS referral_agency_id,
+            rag.agency_name AS referral_agency_name,
+
+            -- referral timestamps (THIS is what your table should show)
+            ar.created_at AS referral_created_at,
+            ar.updated_at AS referral_updated_at,
+
+            -- admission context (useful for display + click-through)
+            a.patient_id,
+            (p.last_name || ', ' || p.first_name) AS patient_name,
+            p.dob AS patient_dob,
+
+            a.agency_id AS admission_agency_id,
+            ag.agency_name AS admission_agency_name,
+
+            a.admit_date,
+            a.dc_date,
+            a.active
+        FROM sensys_user_agencies ua
+        JOIN sensys_admission_referrals ar
+             ON ar.agency_id = ua.agency_id
+            AND ar.deleted_at IS NULL
+        JOIN sensys_admissions a
+             ON a.id = ar.admission_id
+        JOIN sensys_patients p
+             ON p.id = a.patient_id
+        LEFT JOIN sensys_agencies ag
+             ON ag.id = a.agency_id
+        LEFT JOIN sensys_agencies rag
+             ON rag.id = ar.agency_id
+        WHERE ua.user_id = ?
+        ORDER BY
+            COALESCE(ar.updated_at, ar.created_at, '') DESC,
+            ar.id DESC
+        """,
+        (user_id,),
+    ).fetchall()
+
+    return {"ok": True, "referrals": [dict(r) for r in rows]}
 
 # -----------------------------
 # Sensys: Admission Details APIs (tasks / notes / dc submissions / services / care team)
