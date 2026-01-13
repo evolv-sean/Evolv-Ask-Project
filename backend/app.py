@@ -13619,6 +13619,9 @@ async def admin_snf_list(
                     # ✅ ADD THIS LINE (so the list can show DC Date)
                     "dc_date": r["dc_date"],
 
+                    # ✅ NEW: so Facility(AI) column can show "Disposition | Phone"
+                    "disposition": r["disposition"],
+
                     "final_snf_facility_id": r["final_snf_facility_id"],
                     "final_snf_name_display": r["final_snf_name_display"],
                     "final_expected_transfer_date": r["final_expected_transfer_date"],
