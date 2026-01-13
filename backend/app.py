@@ -1571,8 +1571,8 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
     last_raw = re.sub(r"^\d{1,4}[A-Z]?(?:-[A-Za-z0-9]{1,6})\s+", "", last_raw, flags=re.IGNORECASE)
 
     # ✅ NEW: strip honorifics that sometimes get glued into the last name
-    # Examples: "Mr SMITH" -> "SMITH", "Mrs. JONES" -> "JONES"
-    last_raw = re.sub(r"^(?:Mr|Mrs)\.?\s+", "", last_raw, flags=re.IGNORECASE)
+    # Examples: "Mr SMITH" -> "SMITH", "Mrs. JONES" -> "JONES", "Ms BROWN" -> "BROWN", "Dr. LEE" -> "LEE"
+    last_raw = re.sub(r"^(?:Mr|Mrs|Ms|Miss|Dr)\.?\s+", "", last_raw, flags=re.IGNORECASE)
 
     # Remove trailing suffix token if present (keep the full last name otherwise)
     suffixes = {"Jr", "Sr", "II", "III"}
@@ -11305,9 +11305,12 @@ def admin_hospital_discharge_visit_recompute(payload: Dict[str, Any] = Body(...)
 
 def backfill_census_strip_mr_mrs_last_names_and_keys(cur, dry_run: bool = False) -> dict:
     """
-    Backfill census_run_patients.last_name by stripping leading:
+    Backfill census_run_patients.last_name by stripping leading honorifics:
       - "Mr " / "Mr. "
       - "Mrs " / "Mrs. "
+      - "Ms " / "Ms. "
+      - "Miss " / "Miss. "
+      - "Dr " / "Dr. "
 
     ALSO updates census_run_patients.patient_key so future PDFs do NOT cause existing patients
     to look "new" due to key mismatch.
@@ -11323,6 +11326,12 @@ def backfill_census_strip_mr_mrs_last_names_and_keys(cur, dry_run: bool = False)
             OR UPPER(TRIM(last_name)) LIKE 'MR.%'
             OR UPPER(TRIM(last_name)) LIKE 'MRS %'
             OR UPPER(TRIM(last_name)) LIKE 'MRS.%'
+            OR UPPER(TRIM(last_name)) LIKE 'MS %'
+            OR UPPER(TRIM(last_name)) LIKE 'MS.%'
+            OR UPPER(TRIM(last_name)) LIKE 'MISS %'
+            OR UPPER(TRIM(last_name)) LIKE 'MISS.%'
+            OR UPPER(TRIM(last_name)) LIKE 'DR %'
+            OR UPPER(TRIM(last_name)) LIKE 'DR.%'
           )
         """
     )
@@ -11330,7 +11339,12 @@ def backfill_census_strip_mr_mrs_last_names_and_keys(cur, dry_run: bool = False)
     candidates = len(rows)
 
     def _clean_last(s: str) -> str:
-        return re.sub(r"^(?:Mr|Mrs)\.?\s+", "", (s or "").strip(), flags=re.IGNORECASE).strip()
+        return re.sub(
+            r"^(?:Mr|Mrs|Ms|Miss|Dr)\.?\s+",
+            "",
+            (s or "").strip(),
+            flags=re.IGNORECASE
+        ).strip()
 
     def _fix_patient_key(pkey: str, cleaned_last: str) -> str:
         pkey = (pkey or "").strip()
@@ -14749,6 +14763,88 @@ async def admin_snf_email_log_list(request: Request):
 
 
         return {"ok": True, "items": items}
+        
+@app.get("/admin/snf/email-log/export.csv")
+async def admin_snf_email_log_export_csv(request: Request):
+    """
+    Exports the sent email log as CSV (no PHI).
+    Columns: Facility Name, Patient count, Sent_at, Recipients, Facility opens, Universal opens
+    """
+    require_admin(request)
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+                l.id AS secure_link_id,
+                l.snf_facility_id,
+                l.sent_at,
+                l.sent_to,
+                l.admission_ids,
+                f.facility_name AS snf_facility_name,
+                COALESCE(o.facility_open_count, 0)  AS facility_open_count,
+                COALESCE(o.universal_open_count, 0) AS universal_open_count
+            FROM snf_secure_links l
+            LEFT JOIN snf_admission_facilities f
+              ON f.id = l.snf_facility_id
+            LEFT JOIN (
+                SELECT
+                    secure_link_id,
+                    SUM(CASE WHEN LOWER(COALESCE(pin_type,'')) = 'facility' THEN 1 ELSE 0 END)  AS facility_open_count,
+                    SUM(CASE WHEN LOWER(COALESCE(pin_type,'')) = 'universal' THEN 1 ELSE 0 END) AS universal_open_count
+                FROM snf_secure_link_access_log
+                GROUP BY secure_link_id
+            ) o
+              ON o.secure_link_id = l.id
+            WHERE l.sent_at IS NOT NULL AND l.sent_at <> ''
+            ORDER BY l.sent_at DESC
+            """
+        )
+        rows = cur.fetchall()
+
+        headers = [
+            "Facility Name",
+            "Patient count",
+            "Sent_at",
+            "Recipients",
+            "Facility opens",
+            "Universal opens",
+        ]
+
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=headers)
+        w.writeheader()
+
+        for r in rows:
+            # patient_count is derived the same way as the list endpoint
+            try:
+                ids = json.loads(r["admission_ids"] or "[]")
+                patient_count = len(ids) if isinstance(ids, list) else 0
+            except Exception:
+                patient_count = 0
+
+            sent_at = (r["sent_at"] or "").strip()
+            sent_at_et = utc_text_to_eastern_display(sent_at)
+
+            w.writerow(
+                {
+                    "Facility Name": (r["snf_facility_name"] or "").strip(),
+                    "Patient count": patient_count,
+                    "Sent_at": sent_at_et or sent_at,
+                    "Recipients": (r["sent_to"] or "").strip(),
+                    "Facility opens": int(r["facility_open_count"] or 0),
+                    "Universal opens": int(r["universal_open_count"] or 0),
+                }
+            )
+
+        filename = f"snf_email_log_{dt.date.today().isoformat()}.csv"
+        return Response(
+            content=buf.getvalue().encode("utf-8"),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
     finally:
         conn.close()
 
