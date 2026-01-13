@@ -14130,31 +14130,27 @@ async def admin_snf_update(
         if not facility_free_text:
             new_final_facility_id = None
             new_final_name_display = None
+        else:
+            # ✅ Manual facility should override the Facility(AI) column whenever it is selected,
+            # not only when disposition == "SNF".
+            mapped_id, mapped_label = map_snf_name_to_facility_id(conn, facility_free_text)
+            new_final_facility_id = mapped_id
+
+            # Prefer canonical facility name from snf_admission_facilities when available
+            if mapped_id and (mapped_label or "").strip():
+                new_final_name_display = (mapped_label or "").strip()
+            else:
+                new_final_name_display = facility_free_text
 
         # If the reviewer explicitly sets disposition = SNF,
         # treat this as an authoritative override:
         #  - ensure it is marked as a SNF candidate
-        #  - prefer the manual Facility free text as the SNF name
         if disposition == "SNF":
             new_ai_is_candidate = 1
 
-            if facility_free_text:
-                # Manual override ON
-                mapped_id, mapped_label = map_snf_name_to_facility_id(conn, facility_free_text)
-                new_final_facility_id = mapped_id
-
-                # ✅ Prefer the SNF library's canonical name for display when we have it
-                if mapped_id and (mapped_label or "").strip():
-                    new_final_name_display = (mapped_label or "").strip()
-                else:
-                    new_final_name_display = facility_free_text
-            else:
-                # Manual override OFF (user selected "(none)")
-                new_final_facility_id = None
-                new_final_name_display = None
-
         # NOTE: for non-SNF dispositions we leave ai_is_snf_candidate alone,
         # but still record disposition and facility_free_text for audit.
+
 
         # NEW: Notification fields
         notified_by_hospital = 1 if payload.get("notified_by_hospital") else 0
