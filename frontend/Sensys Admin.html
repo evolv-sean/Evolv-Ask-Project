@@ -2385,6 +2385,9 @@
 
   $("saveUser").onclick = async () => {
     try{
+      setMsg($("editMsg"), "Saving…", true);
+
+      // ✅ Single payload (includes notification_prefs so it persists)
       const payload = {
         user_id: selectedUserId,
         email: ($("email").value || "").trim(),
@@ -2394,13 +2397,21 @@
         cell_phone: ($("cell_phone").value || "").trim(),
         password: ($("password").value || "").trim(), // blank = keep unchanged (backend handles)
         account_locked: $("account_locked").value === "1",
-        npi: ($("provider_npi").value || "").trim()
+        npi: ($("provider_npi").value || "").trim(),
+
+        // ✅ persist notification prefs via /users/upsert
+        notification_prefs: (selectedUserNotifPrefs || []).map(p => ({
+          notif_key: p.notif_key,
+          deliver_email: Number(p.deliver_email ?? p.email ?? 0),
+          deliver_sms: Number(p.deliver_sms ?? p.sms ?? 0),
+          deliver_dashboard: Number(p.deliver_dashboard ?? p.dashboard ?? 0),
+        }))
       };
 
-      // 1) Save core user (backend will return user_id)
+      // 1) Save core user (backend returns user_id)
       const upsertResp = await apiPost("/api/sensys/admin/users/upsert", payload);
-      selectedUserId = upsertResp.user_id;              // important for "new user" flow
-      $("selId").textContent = String(selectedUserId);  // update modal header id
+      selectedUserId = upsertResp.user_id;
+      $("selId").textContent = String(selectedUserId);
 
       // 2) Save roles
       await apiPost("/api/sensys/admin/users/set-roles", {
@@ -2414,7 +2425,7 @@
         agency_ids: Array.from(selectedAgencyIds)
       });
 
-      // 4) ✅ Provider E-sign links (only if Provider role selected)
+      // 4) Provider E-sign links (only if Provider role selected)
       if(selectedRoleKeys.has("provider")){
         await apiPost("/api/sensys/admin/users/set-esign-links", {
           user_id: selectedUserId,
@@ -2422,36 +2433,16 @@
         });
       }
 
-      // 5) ✅ Notification prefs (save for this user)
-      const payload = {
-        user_id: selectedUserId,
-        email: ($("email").value || "").trim(),
-        display_name: ($("display_name").value || "").trim(),
-        is_active: parseInt($("is_active").value, 10),
+      setMsg($("editMsg"), "Saved.", true);
 
-        cell_phone: ($("cell_phone").value || "").trim(),
-        password: ($("password").value || "").trim(), // blank = keep unchanged (backend handles)
-        account_locked: $("account_locked").value === "1",
-        npi: ($("provider_npi").value || "").trim(),
+      // refresh the list so the table updates immediately
+      await refreshAll();
 
-        // ✅ ADD THIS (so /users/upsert saves it)
-        notification_prefs: (selectedUserNotifPrefs || []).map(p => ({
-          notif_key: p.notif_key,
-          deliver_email: Number(p.deliver_email ?? p.email ?? 0),
-          deliver_sms: Number(p.deliver_sms ?? p.sms ?? 0),
-          deliver_dashboard: Number(p.deliver_dashboard ?? p.dashboard ?? 0),
-        }))
-      };
-
-      // 1) Save core user (backend will return user_id)
-      const upsertResp = await apiPost("/api/sensys/admin/users/upsert", payload);
-      selectedUserId = upsertResp.user_id;
-      $("selId").textContent = String(selectedUserId);
-
-      // (keep steps 2-4 exactly as you have them)
-
-      // ❌ REMOVE the entire Step 5 call to /set-notification-prefs
-
+      closeUserModal();
+    }catch(e){
+      setMsg($("editMsg"), String(e.message || e), false);
+    }
+  };
 
   // load saved token on open
   $("token").value = localStorage.getItem("SENSYS_ADMIN_TOKEN") || "";
