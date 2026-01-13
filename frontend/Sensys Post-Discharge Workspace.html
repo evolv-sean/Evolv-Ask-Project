@@ -1,0 +1,263 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sensys — Post-Discharge Workspace</title>
+  <style>
+    body{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:0; background:#f6f7fb; color:#111; }
+    .topbar{ display:flex; align-items:center; justify-content:space-between; padding:14px 18px; background:#fff; border-bottom:1px solid #e6e7ee; }
+    .wrap{ padding:16px; }
+    .grid{ display:grid; grid-template-columns: 2fr 1fr; gap:14px; }
+    .card{ background:#fff; border:1px solid #e6e7ee; border-radius:14px; box-shadow: 0 1px 0 rgba(0,0,0,.03); }
+    .cardHd{ padding:12px 14px; border-bottom:1px solid #eef0f6; display:flex; align-items:center; justify-content:space-between; }
+    .cardBd{ padding:12px 14px; }
+    .tabs{ display:flex; gap:8px; }
+    .tab{ padding:8px 10px; border-radius:999px; border:1px solid #e6e7ee; background:#fff; cursor:pointer; font-size:13px; }
+    .tab.active{ background:#111; color:#fff; border-color:#111; }
+    table{ width:100%; border-collapse:collapse; font-size:13px; }
+    th, td{ padding:10px 8px; border-bottom:1px solid #eef0f6; text-align:left; vertical-align:top; }
+    th{ font-size:12px; color:#444; }
+    .muted{ color:#666; font-size:12px; }
+    .rowBtns button{ padding:6px 8px; border-radius:10px; border:1px solid #e6e7ee; background:#fff; cursor:pointer; font-size:12px; }
+    .rowBtns button:hover{ background:#f3f4f8; }
+    .pill{ display:inline-block; padding:4px 8px; border-radius:999px; border:1px solid #e6e7ee; font-size:12px; background:#fff; }
+    .rightPlaceholder{ min-height:240px; display:flex; align-items:center; justify-content:center; color:#777; }
+    .msg{ margin-top:10px; font-size:12px; color:#b00020; }
+    .ok{ color:#0a7a2f; }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <div style="font-weight:700;">Post-Discharge Workspace</div>
+    <div class="muted">PDW v1 — Work Items + Attempts Log</div>
+  </div>
+  <div>
+    <button onclick="logout()" style="padding:8px 10px;border-radius:10px;border:1px solid #e6e7ee;background:#fff;cursor:pointer;">Logout</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="grid">
+    <!-- LEFT: Work Items (2/3) -->
+    <div class="card">
+      <div class="cardHd">
+        <div style="font-weight:700;">Work Items</div>
+        <div class="tabs">
+          <button class="tab active" id="tabUnassigned" onclick="setBucket('unassigned')">Unassigned</button>
+          <button class="tab" id="tabIncomplete" onclick="setBucket('incomplete')">Incomplete</button>
+          <button class="tab" id="tabCompleted" onclick="setBucket('completed')">Completed</button>
+        </div>
+      </div>
+
+      <div class="cardBd">
+        <div class="muted" id="bucketHelp"></div>
+
+        <div style="overflow:auto; margin-top:10px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Due</th>
+                <th>Task</th>
+                <th>Patient</th>
+                <th>Admission</th>
+                <th>Assigned</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+
+        <div id="msg" class="msg"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Placeholder (1/3) -->
+    <div class="card">
+      <div class="cardHd">
+        <div style="font-weight:700;">Staff Availability</div>
+        <div class="muted">(coming soon)</div>
+      </div>
+      <div class="cardBd rightPlaceholder">
+        Future: workload / capacity card
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function getToken(){ return localStorage.getItem("sensys_token") || ""; }
+
+  function setMsg(text, ok){
+    const el = document.getElementById("msg");
+    el.textContent = text || "";
+    if(ok){ el.classList.add("ok"); } else { el.classList.remove("ok"); }
+  }
+
+  let currentBucket = "unassigned";
+
+  function setBucket(b){
+    currentBucket = b;
+    document.getElementById("tabUnassigned").classList.toggle("active", b==="unassigned");
+    document.getElementById("tabIncomplete").classList.toggle("active", b==="incomplete");
+    document.getElementById("tabCompleted").classList.toggle("active", b==="completed");
+
+    const help = document.getElementById("bucketHelp");
+    if(b==="unassigned") help.textContent = "Items due now that have not been assigned yet.";
+    if(b==="incomplete") help.textContent = "Assigned items not completed yet (end-of-day review).";
+    if(b==="completed") help.textContent = "Items completed by staff.";
+    loadItems();
+  }
+
+  async function apiGet(url){
+    const resp = await fetch(url, {
+      headers: { "Authorization": "Bearer " + getToken() }
+    });
+    const data = await resp.json().catch(()=>({}));
+    if(!resp.ok) throw new Error(data.detail || "Request failed");
+    return data;
+  }
+
+  async function apiPost(url, payload){
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + getToken(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload || {})
+    });
+    const data = await resp.json().catch(()=>({}));
+    if(!resp.ok) throw new Error(data.detail || "Request failed");
+    return data;
+  }
+
+  function fmt(s){
+    if(!s) return "";
+    return String(s).replace("T"," ").slice(0,16);
+  }
+
+  function esc(s){
+    return String(s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
+  }
+
+  async function loadItems(){
+    setMsg("", true);
+    const tbody = document.getElementById("tbody");
+    tbody.innerHTML = "<tr><td colspan='6' class='muted'>Loading…</td></tr>";
+
+    try{
+      const data = await apiGet("/api/sensys/postdc/work-items?bucket=" + encodeURIComponent(currentBucket));
+      const items = data.items || [];
+      if(items.length === 0){
+        tbody.innerHTML = "<tr><td colspan='6' class='muted'>No items.</td></tr>";
+        return;
+      }
+
+      tbody.innerHTML = "";
+      items.forEach(it => {
+        const patient = (it.patient_last_name||"") + ", " + (it.patient_first_name||"");
+        const adm = "Adm #" + (it.admission_id||"");
+        const assigned = it.assigned_to_name ? it.assigned_to_name : "—";
+
+        let btns = "";
+        if(currentBucket === "unassigned"){
+          btns = `<div class="rowBtns">
+                    <button onclick="quickAssign(${Number(it.id)})">Assign…</button>
+                  </div>`;
+        } else if(currentBucket === "incomplete"){
+          btns = `<div class="rowBtns">
+                    <button onclick="logAttempt(${Number(it.id)})">Log Attempt</button>
+                    <button onclick="markComplete(${Number(it.id)})">Complete</button>
+                  </div>`;
+        } else {
+          btns = `<span class="pill">${esc(it.last_outcome||"Done")}</span>`;
+        }
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${esc(fmt(it.due_at))}</td>
+          <td><b>${esc(it.task_label||it.task_type||"")}</b><div class="muted">Attempts: ${(it.attempt_count||0)}/${(it.max_attempts||2)}</div></td>
+          <td>${esc(patient)}</td>
+          <td class="muted">${esc(adm)}</td>
+          <td>${esc(assigned)}</td>
+          <td style="white-space:nowrap;">${btns}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+    }catch(e){
+      tbody.innerHTML = "<tr><td colspan='6' class='muted'>Error loading.</td></tr>";
+      setMsg(e.message || "Error", false);
+    }
+  }
+
+  async function quickAssign(workItemId){
+    // super minimal prompt for now (we’ll replace with a real picker later)
+    const staffId = prompt("Assign to staff user_id:");
+    if(!staffId) return;
+
+    try{
+      await apiPost("/api/sensys/postdc/work-items/assign", {
+        work_item_id: workItemId,
+        assigned_to_user_id: Number(staffId)
+      });
+      setMsg("Assigned.", true);
+      loadItems();
+    }catch(e){
+      setMsg(e.message || "Assign failed", false);
+    }
+  }
+
+  async function logAttempt(workItemId){
+    const outcome = prompt("Outcome (voicemail/no_answer/reached/etc):");
+    if(!outcome) return;
+    const note = prompt("Note (optional):") || "";
+    const nextDue = prompt("Next due datetime (optional, e.g. 2026-01-14 09:00:00). Leave blank to keep:", "") || "";
+
+    try{
+      await apiPost("/api/sensys/postdc/work-items/attempt", {
+        work_item_id: workItemId,
+        outcome: outcome,
+        note: note,
+        next_due_at: nextDue.trim() ? nextDue.trim() : null
+      });
+      setMsg("Attempt saved.", true);
+      loadItems();
+    }catch(e){
+      setMsg(e.message || "Attempt failed", false);
+    }
+  }
+
+  async function markComplete(workItemId){
+    const outcome = prompt("Completion outcome (reached/voicemail/no_answer/etc):");
+    if(!outcome) return;
+    const note = prompt("Completion note (optional):") || "";
+
+    try{
+      await apiPost("/api/sensys/postdc/work-items/complete", {
+        work_item_id: workItemId,
+        outcome: outcome,
+        note: note
+      });
+      setMsg("Completed.", true);
+      loadItems();
+    }catch(e){
+      setMsg(e.message || "Complete failed", false);
+    }
+  }
+
+  function logout(){
+    localStorage.removeItem("sensys_token");
+    window.location.href = "/sensys/login";
+  }
+
+  // init
+  setBucket("unassigned");
+</script>
+
+</body>
+</html>
