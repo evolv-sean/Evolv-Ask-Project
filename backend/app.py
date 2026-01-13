@@ -4935,6 +4935,10 @@ def init_db():
         """
     )
 
+    # NEW: cache invalidation metadata
+    ensure_column(conn, "snf_ai_summaries", "notes_limit", "notes_limit INTEGER DEFAULT 0")
+    ensure_column(conn, "snf_ai_summaries", "latest_note_id", "latest_note_id INTEGER DEFAULT 0")
+
     # Helpful index (fast lookups by snf_id)
     try:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_snf_ai_summaries_snf_id ON snf_ai_summaries(snf_id)")
@@ -7132,9 +7136,75 @@ def map_snf_name_to_facility_id(
         return best_id, best_label
     return None, None
 
+def infer_snf_facility_from_notes(
+    conn: sqlite3.Connection,
+    note_texts: list[str],
+) -> tuple[Optional[str], Optional[str], int]:
+    """
+    Scan recent CM note text for explicit mentions of any SNF Admission Facility
+    (facility_name or aliases). Returns: (facility_id, facility_label, score)
+    Score is "hit length" with facility_name bonus like map_snf_name_to_facility_id.
+    """
+    if not note_texts:
+        return None, None, 0
 
+    def _norm(s: str) -> str:
+        s = (s or "").lower()
+        s = re.sub(r"[^a-z0-9\s]+", " ", s)
+        s = re.sub(r"\s+", " ", s).strip()
+        return s
+
+    def _phrase_hit_len(hay: str, needle: str) -> int:
+        if not hay or not needle:
+            return 0
+        if needle in hay:
+            return len(needle)
+        return 0
+
+    hay_norm = _norm("\n".join([t or "" for t in note_texts]))
+
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, facility_name, COALESCE(aliases,'') AS aliases
+        FROM snf_admission_facilities
+        ORDER BY facility_name COLLATE NOCASE
+        """
+    )
+
+    best_id: Optional[str] = None
+    best_label: Optional[str] = None
+    best_score: int = 0
+
+    for row in cur.fetchall():
+        fac_id = str(row["id"])
+        fac_name = (row["facility_name"] or "").strip()
+        aliases = row["aliases"] or ""
+
+        name_norm = _norm(fac_name)
+        hit_len = _phrase_hit_len(hay_norm, name_norm)
+        if hit_len:
+            score = hit_len + 10_000
+            if score > best_score:
+                best_score = score
+                best_id = fac_id
+                best_label = fac_name
+
+        # aliases are pipe-delimited in this project ("a|b|c")
+        for alias in [a.strip() for a in (aliases or "").split("|") if a.strip()]:
+            alias_norm = _norm(alias)
+            hit_len = _phrase_hit_len(hay_norm, alias_norm)
+            if hit_len:
+                score = hit_len
+                if score > best_score:
+                    best_score = score
+                    best_id = fac_id
+                    best_label = fac_name
+
+    return best_id, best_label, best_score
 
 def get_facility_label(fid: Optional[str], conn: sqlite3.Connection) -> str:
+
     if not fid:
         return ""
     try:
@@ -11199,8 +11269,19 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
             expected_date = result.get("expected_transfer_date")
             conf = result.get("confidence", 0.0)
 
+            # ✅ NEW: prefer explicit facility mentions from the CM notes text (more specific than "the Luxe")
+            note_texts = [(r["note_text"] or "") for r in notes]  # notes = cur.fetchall() above
+            infer_id, infer_label, infer_score = infer_snf_facility_from_notes(conn, note_texts)
+
             # Map SNF name -> SNF Admission Facility (snf_admission_facilities only)
             ai_facility_id, _ai_facility_label = map_snf_name_to_facility_id(conn, snf_name_raw)
+
+            # If notes contain a stronger/more-specific hit than the LLM name, prefer it
+            if infer_id and infer_score > 0:
+                # If LLM mapped to nothing OR inferred match is clearly more specific, override
+                if (not ai_facility_id) or (infer_label and len(infer_label) > len(_ai_facility_label or "")):
+                    ai_facility_id = infer_id
+                    _ai_facility_label = infer_label
 
             # Upsert into snf_admissions: one row per visit_id (admission)
             cur.execute(
@@ -13427,17 +13508,31 @@ async def admin_snf_ai_summary_run(request: Request, payload: Dict[str, Any] = B
         if not visit_id:
             raise HTTPException(status_code=400, detail="this admission has no visit_id; cannot summarize notes")
 
-        # If not forcing, return latest cached
+        # Figure out the newest (non-ignored) CM note id for this visit_id
+        cur.execute(
+            """
+            SELECT COALESCE(MAX(id), 0) AS max_id
+            FROM cm_notes_raw
+            WHERE visit_id = ?
+              AND (ignored IS NULL OR ignored = 0)
+            """,
+            (visit_id,),
+        )
+        current_latest_note_id = int((cur.fetchone() or {}).get("max_id") or 0)
+
+        # If not forcing, return latest cached ONLY if it matches the newest note + same notes_limit
         if not force:
             cur.execute(
                 """
-                SELECT id, created_at, model, summary_json
+                SELECT id, created_at, model, summary_json, notes_limit, latest_note_id
                 FROM snf_ai_summaries
                 WHERE snf_id = ?
+                  AND notes_limit = ?
+                  AND latest_note_id = ?
                 ORDER BY id DESC
                 LIMIT 1
                 """,
-                (snf_id,),
+                (snf_id, notes_limit, current_latest_note_id),
             )
             row = cur.fetchone()
             if row:
@@ -13502,8 +13597,12 @@ async def admin_snf_ai_summary_run(request: Request, payload: Dict[str, Any] = B
         prompt_val = get_setting(cur, SNF_MAIN_SYSTEM_PROMPT_KEY) or DEFAULT_SNF_MAIN_SYSTEM_PROMPT
         cur.execute(
             """
-            INSERT INTO snf_ai_summaries(snf_id, visit_id, model, prompt_key, prompt_value, notes_count, summary_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO snf_ai_summaries(
+                snf_id, visit_id, model, prompt_key, prompt_value,
+                notes_count, notes_limit, latest_note_id,
+                summary_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 snf_id,
@@ -13512,6 +13611,8 @@ async def admin_snf_ai_summary_run(request: Request, payload: Dict[str, Any] = B
                 SNF_MAIN_SYSTEM_PROMPT_KEY,
                 prompt_val,
                 len(notes),
+                int(notes_limit),
+                int(current_latest_note_id),
                 json.dumps(summary_obj),
             ),
         )
@@ -13744,12 +13845,12 @@ async def admin_snf_list(
                 s.*,
                 COALESCE(s.final_expected_transfer_date, s.ai_expected_transfer_date) AS effective_date,
                 COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id) AS effective_facility_id,
-                f.facility_name AS effective_facility_name,
-                f.city AS effective_facility_city,
-                f.state AS effective_facility_state
+                sf.facility_name AS effective_facility_name,
+                NULL AS effective_facility_city,
+                NULL AS effective_facility_state
             FROM snf_admissions s
-            LEFT JOIN facilities f
-              ON f.facility_id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id)
+            LEFT JOIN snf_admission_facilities sf
+              ON sf.id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id)
             WHERE {" AND ".join(where) if where else "1=1"}
             ORDER BY s.dc_date IS NULL, s.dc_date, s.patient_name COLLATE NOCASE
         """
@@ -13823,6 +13924,9 @@ async def admin_snf_list(
 
                     # ✅ ADD THIS LINE (so the list can show DC Date)
                     "dc_date": r["dc_date"],
+
+                    # ✅ NEW: so Facility(AI) column can show "Disposition | Phone"
+                    "disposition": r["disposition"],
 
                     "final_snf_facility_id": r["final_snf_facility_id"],
                     "final_snf_name_display": r["final_snf_name_display"],
@@ -14200,6 +14304,7 @@ async def admin_snf_update(
             "ltach": "LTACH",
             "other": "Other",
             "unknown": "Unknown",
+            "hospice": "Hospice",
         }
         if disp_norm in allowed:
             disposition = allowed[disp_norm]
@@ -14338,17 +14443,21 @@ async def admin_snf_update(
         if disposition == "SNF":
             new_ai_is_candidate = 1
 
-            if facility_free_text:
-                # Manual override ON
-                mapped_id, mapped_label = map_snf_name_to_facility_id(conn, facility_free_text)
-                new_final_facility_id = mapped_id
-                # keep exactly what the user typed for display, but now the ID is SNF-library based
-                new_final_name_display = facility_free_text
+        # This ensures the UI falls back to AI (or Unknown) instead of snapping back to a previous manual choice.
+        if not facility_free_text:
+            new_final_facility_id = None
+            new_final_name_display = None
+        else:
+            # ✅ Manual facility should override the Facility(AI) column whenever it is selected,
+            # not only when disposition == "SNF".
+            mapped_id, mapped_label = map_snf_name_to_facility_id(conn, facility_free_text)
+            new_final_facility_id = mapped_id
+
+            # Prefer canonical facility name from snf_admission_facilities when available
+            if mapped_id and (mapped_label or "").strip():
+                new_final_name_display = (mapped_label or "").strip()
             else:
-                # Manual override OFF (user selected "(none)")
-                # Clear the final override so UI falls back to AI (or Unknown if AI is unknown).
-                new_final_facility_id = None
-                new_final_name_display = None
+                new_final_name_display = facility_free_text
 
         # NOTE: for non-SNF dispositions we leave ai_is_snf_candidate alone,
         # but still record disposition and facility_free_text for audit.
@@ -14811,7 +14920,84 @@ async def admin_snf_email_log_list(request: Request):
     finally:
         conn.close()
 
+@app.get("/admin/snf/email-log/export.csv")
+async def admin_snf_email_log_export_csv(request: Request):
+    """
+    Export SNF secure-link email log as CSV (no PHI).
+    Columns: Facility Name, Patient count, Sent at, Recipients, Sender, Hospital, SNF Facility (resolved), Token, Expires, Used, Used At.
+    """
+    conn = get_db()
+    try:
+        cur = conn.cursor()
 
+        cur.execute(
+            """
+            SELECT
+                l.created_at,
+                l.recipient_emails,
+                l.sender_email,
+                l.hospital_name,
+                l.snf_facility_id,
+                f.facility_name AS snf_facility_name,
+                l.token,
+                l.expires_at,
+                l.used,
+                l.used_at,
+                l.patient_count
+            FROM snf_secure_links l
+            LEFT JOIN snf_admission_facilities f
+              ON f.id = l.snf_facility_id
+            ORDER BY l.created_at DESC
+            """
+        )
+        rows = cur.fetchall()
+
+        import csv
+        import io
+
+        out = io.StringIO()
+        w = csv.writer(out)
+        w.writerow(
+            [
+                "Sent At",
+                "Recipients",
+                "Sender",
+                "Hospital",
+                "SNF Facility Name",
+                "SNF Facility ID",
+                "Token",
+                "Expires At",
+                "Used",
+                "Used At",
+                "Patient Count",
+            ]
+        )
+
+        for r in rows:
+            w.writerow(
+                [
+                    r["created_at"],
+                    r["recipient_emails"],
+                    r["sender_email"],
+                    r["hospital_name"],
+                    r["snf_facility_name"],
+                    r["snf_facility_id"],
+                    r["token"],
+                    r["expires_at"],
+                    r["used"],
+                    r["used_at"],
+                    r["patient_count"],
+                ]
+            )
+
+        return Response(
+            content=out.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": 'attachment; filename="snf_email_log.csv"'},
+        )
+    finally:
+        conn.close()
+        
 @app.get("/admin/snf/email-log/opens/{secure_link_id}")
 async def admin_snf_email_log_opens(request: Request, secure_link_id: int):
     """
