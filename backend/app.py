@@ -17220,15 +17220,16 @@ def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request:
         # recipients = all users linked to this admission (agency OR referral-agency)
         user_ids = _sensys_user_ids_linked_to_admission(conn, int(payload.admission_id))
 
-        _sensys_insert_dashboard_notifications(
+        _sensys_fire_notification(
             conn,
-            user_ids=user_ids,
             notif_key="new_referral",
+            user_ids=user_ids,
             admission_id=int(payload.admission_id),
             related_table="sensys_admission_referrals",
             related_id=int(new_id),
             title=title,
             body=body,
+            ctx={"patient": patient_name},
             payload_json="",
         )
 
@@ -20209,8 +20210,13 @@ def _sensys_send_notification_email(to_email: str, subject: str, text_body: str,
     """
     try:
         if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD):
+            logger.warning(
+                "[SENSYS][NOTIF][EMAIL][SKIP] missing SMTP config SMTP_HOST=%s SMTP_USER=%s SMTP_PASSWORD=%s",
+                bool(SMTP_HOST), bool(SMTP_USER), bool(SMTP_PASSWORD),
+            )
             return
         if not (to_email or "").strip():
+            logger.warning("[SENSYS][NOTIF][EMAIL][SKIP] missing recipient email")
             return
 
         msg = EmailMessage()
@@ -22302,15 +22308,16 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
     # recipients = all users linked to this admission (agency OR referral-agency)
     user_ids = _sensys_user_ids_linked_to_admission(conn, int(payload.admission_id))
 
-    _sensys_insert_dashboard_notifications(
+    _sensys_fire_notification(
         conn,
-        user_ids=user_ids,
         notif_key=notif_key,
+        user_ids=user_ids,
         admission_id=int(payload.admission_id),
         related_table="sensys_admission_dc_submissions",
         related_id=int(dc_submission_id),
         title=title,
         body=body,
+        ctx={"patient": patient_name},
         payload_json="",
     )
 
@@ -22398,7 +22405,7 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
         care_team_name = ((ct["name"] if ct else "") or "").strip()
 
         st = conn.execute(
-            "SELECT name, code FROM sensys_service_types WHERE id = ?",
+            "SELECT name, code FROM sensys_service_type WHERE id = ?",
             (int(payload.service_type_id),),
         ).fetchone()
         service_label = ""
