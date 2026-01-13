@@ -390,6 +390,8 @@ SENSYS_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Admission Details.html"
 SENSYS_HOME_HEALTH_HTML = FRONTEND_DIR / "Sensys Home Health.html"
 SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Home Health Admission Details.html"
 SENSYS_PROVIDER_ESIGN_HTML = FRONTEND_DIR / "Sensys Provider E-Sign.html"
+SENSYS_PROVIDER_ESIGN_HTML = FRONTEND_DIR / "Sensys Provider E-Sign.html"
+SENSYS_POST_DISCHARGE_WORKSPACE_HTML = FRONTEND_DIR / "Sensys Post-Discharge Workspace.html"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("evolv")
@@ -3441,6 +3443,92 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_agency ON sensys_admissions(agency_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_active ON sensys_admissions(active)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_dates ON sensys_admissions(admit_date, dc_date)")
+
+    # -------------------------------------------------------------------
+    # PDW v1 — Post-Discharge Workspace (Option B: Work Items + Attempts Log)
+    # -------------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_postdc_work_items (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            admission_id         INTEGER NOT NULL,
+
+            -- '48h' | '15d' | '30d'
+            task_type            TEXT NOT NULL,
+
+            -- When it should appear on the Unassigned list (or be due for the assignee)
+            due_at               TEXT NOT NULL,
+
+            -- Unassigned -> Assigned -> Completed
+            status               TEXT NOT NULL DEFAULT 'unassigned',
+
+            assigned_to_user_id  INTEGER,
+            assigned_at          TEXT,
+
+            completed_at         TEXT,
+            completed_by_user_id INTEGER,
+
+            -- attempt counters
+            attempt_count        INTEGER DEFAULT 0,
+            max_attempts         INTEGER DEFAULT 2,
+            last_attempt_at      TEXT,
+
+            -- outcome summary (optional convenience)
+            last_outcome         TEXT,
+            last_note            TEXT,
+
+            created_at           TEXT DEFAULT (datetime('now')),
+            updated_at           TEXT DEFAULT (datetime('now')),
+            deleted_at           TEXT,
+
+            FOREIGN KEY(admission_id) REFERENCES sensys_admissions(id),
+            FOREIGN KEY(assigned_to_user_id) REFERENCES sensys_users(id),
+            FOREIGN KEY(completed_by_user_id) REFERENCES sensys_users(id)
+        )
+        """
+    )
+
+    # One row per admission per stage (48h/15d/30d)
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_sensys_postdc_work_item_unique
+        ON sensys_postdc_work_items(admission_id, task_type)
+        WHERE deleted_at IS NULL
+        """
+    )
+
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_postdc_work_items_due ON sensys_postdc_work_items(due_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_postdc_work_items_status ON sensys_postdc_work_items(status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_postdc_work_items_assigned ON sensys_postdc_work_items(assigned_to_user_id)")
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_postdc_attempts (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            work_item_id     INTEGER NOT NULL,
+
+            attempt_no       INTEGER NOT NULL,   -- 1, 2, ...
+            outcome          TEXT NOT NULL,      -- voicemail/no_answer/reached/declined/etc
+            note             TEXT,
+
+            attempted_at     TEXT NOT NULL DEFAULT (datetime('now')),
+
+            -- if staff schedules a retry (e.g., tomorrow)
+            next_due_at      TEXT,
+
+            created_by_user_id INTEGER,
+
+            created_at       TEXT DEFAULT (datetime('now')),
+
+            FOREIGN KEY(work_item_id) REFERENCES sensys_postdc_work_items(id),
+            FOREIGN KEY(created_by_user_id) REFERENCES sensys_users(id)
+        )
+        """
+    )
+
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_postdc_attempts_work_item ON sensys_postdc_attempts(work_item_id)")
+
 
     # -----------------------------
     # Sensys: Service Types (NEW)
@@ -17080,6 +17168,8 @@ def sensys_admin_users_login_as(payload: SensysAdminLoginAsIn, token: str):
             redirect_url = "/sensys/snf-sw"
         elif "home_health" in role_keys:
             redirect_url = "/sensys/home-health"
+        elif "cm" in role_keys:
+            redirect_url = "/sensys/post-discharge"
         elif "provider" in role_keys:
             redirect_url = "/sensys/provider-esign"
 
@@ -19856,6 +19946,8 @@ def sensys_login(payload: SensysLoginIn):
         redirect_url = "/sensys/snf-sw"
     elif "home_health" in role_keys:
         redirect_url = "/sensys/home-health"
+    elif "cm" in role_keys:
+        redirect_url = "/sensys/post-discharge"
     elif "provider" in role_keys:
         redirect_url = "/sensys/provider-esign"
     elif "admin" in role_keys:
@@ -19875,6 +19967,318 @@ def sensys_login(payload: SensysLoginIn):
         "redirect_url": redirect_url,
     }
 
+# =========================================================
+# PDW v1 — Post-Discharge Workspace APIs
+# =========================================================
+
+def _pdw_seed_48h_items(conn):
+    """
+    Create 48h work items for any admission with a dc_date that doesn't already have one.
+    due_at = dc_date + 2 days (48 hours)
+    """
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status)
+        SELECT
+            a.id AS admission_id,
+            '48h' AS task_type,
+            datetime(a.dc_date, '+2 days') AS due_at,
+            'unassigned' AS status
+        FROM sensys_admissions a
+        WHERE a.dc_date IS NOT NULL
+          AND TRIM(a.dc_date) <> ''
+        """
+    )
+
+def _pdw_seed_next_items(conn):
+    """
+    Create 15d after 48h is completed; 30d after 15d is completed.
+    due_at = completed_at + 15 days
+    """
+    # 15d
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status)
+        SELECT
+            w.admission_id,
+            '15d',
+            datetime(w.completed_at, '+15 days'),
+            'unassigned'
+        FROM sensys_postdc_work_items w
+        WHERE w.task_type = '48h'
+          AND w.status = 'completed'
+          AND w.completed_at IS NOT NULL
+          AND w.deleted_at IS NULL
+        """
+    )
+
+    # 30d
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status)
+        SELECT
+            w.admission_id,
+            '30d',
+            datetime(w.completed_at, '+15 days'),
+            'unassigned'
+        FROM sensys_postdc_work_items w
+        WHERE w.task_type = '15d'
+          AND w.status = 'completed'
+          AND w.completed_at IS NOT NULL
+          AND w.deleted_at IS NULL
+        """
+    )
+
+def _pdw_seed_all(conn):
+    _pdw_seed_48h_items(conn)
+    _pdw_seed_next_items(conn)
+
+def _pdw_task_label(task_type: str) -> str:
+    t = (task_type or "").strip().lower()
+    if t == "48h":
+        return "48hr Call"
+    if t == "15d":
+        return "15 Day Call"
+    if t == "30d":
+        return "30 Day Call"
+    return task_type or "Task"
+
+class PdwAssignIn(BaseModel):
+    work_item_id: int
+    assigned_to_user_id: int
+
+class PdwAttemptIn(BaseModel):
+    work_item_id: int
+    outcome: str
+    note: Optional[str] = ""
+    next_due_at: Optional[str] = None  # allow staff to push to tomorrow, etc.
+
+class PdwCompleteIn(BaseModel):
+    work_item_id: int
+    outcome: str
+    note: Optional[str] = ""
+
+@app.get("/api/sensys/postdc/work-items")
+def sensys_postdc_work_items(bucket: str = "unassigned", request: Request = None):
+    """
+    bucket:
+      - unassigned  => status='unassigned' and due_at <= now
+      - incomplete  => status='assigned'
+      - completed   => status='completed'
+    """
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    # Always seed so the workspace stays up to date without cron jobs
+    _pdw_seed_all(conn)
+    conn.commit()
+
+    b = (bucket or "unassigned").strip().lower()
+
+    where = "1=1"
+    params = []
+
+    if b == "unassigned":
+        where = "w.status = 'unassigned' AND w.deleted_at IS NULL AND datetime(w.due_at) <= datetime('now')"
+    elif b == "incomplete":
+        where = "w.status = 'assigned' AND w.deleted_at IS NULL"
+    elif b == "completed":
+        where = "w.status = 'completed' AND w.deleted_at IS NULL"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid bucket")
+
+    rows = conn.execute(
+        f"""
+        SELECT
+            w.*,
+            a.dc_date,
+            a.admit_date,
+            a.mrn,
+            a.visit_id,
+            p.first_name AS patient_first_name,
+            p.last_name  AS patient_last_name,
+            ag.agency_name,
+            u2.display_name AS assigned_to_name
+        FROM sensys_postdc_work_items w
+        JOIN sensys_admissions a ON a.id = w.admission_id
+        JOIN sensys_patients p ON p.id = a.patient_id
+        LEFT JOIN sensys_agencies ag ON ag.id = a.agency_id
+        LEFT JOIN sensys_users u2 ON u2.id = w.assigned_to_user_id
+        WHERE {where}
+        ORDER BY datetime(w.due_at) ASC, w.id ASC
+        """,
+        tuple(params),
+    ).fetchall()
+
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["task_label"] = _pdw_task_label(d.get("task_type"))
+        out.append(d)
+
+    return {"ok": True, "bucket": b, "items": out}
+
+@app.post("/api/sensys/postdc/work-items/assign")
+def sensys_postdc_assign(payload: PdwAssignIn, request: Request):
+    u = _sensys_require_user(request)
+    role_keys = u.get("role_keys") or []
+    if ("cm" not in role_keys) and ("admin" not in role_keys):
+        raise HTTPException(status_code=403, detail="Manager role required")
+
+    conn = get_db()
+
+    row = conn.execute(
+        """
+        SELECT id, status
+        FROM sensys_postdc_work_items
+        WHERE id = ? AND deleted_at IS NULL
+        """,
+        (int(payload.work_item_id),),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Work item not found")
+
+    conn.execute(
+        """
+        UPDATE sensys_postdc_work_items
+           SET status = 'assigned',
+               assigned_to_user_id = ?,
+               assigned_at = datetime('now'),
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (int(payload.assigned_to_user_id), int(payload.work_item_id)),
+    )
+    conn.commit()
+    return {"ok": True}
+
+@app.post("/api/sensys/postdc/work-items/attempt")
+def sensys_postdc_attempt(payload: PdwAttemptIn, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    user_id = int(u["user_id"])
+
+    w = conn.execute(
+        """
+        SELECT *
+        FROM sensys_postdc_work_items
+        WHERE id = ? AND deleted_at IS NULL
+        """,
+        (int(payload.work_item_id),),
+    ).fetchone()
+    if not w:
+        raise HTTPException(status_code=404, detail="Work item not found")
+
+    # Staff can only log attempts if assigned to them (or admin/cm)
+    role_keys = u.get("role_keys") or []
+    if ("admin" not in role_keys) and ("cm" not in role_keys):
+        if int(w["assigned_to_user_id"] or 0) != user_id:
+            raise HTTPException(status_code=403, detail="Not assigned to you")
+
+    attempt_no = int(w["attempt_count"] or 0) + 1
+    if int(w["max_attempts"] or 2) > 0 and attempt_no > int(w["max_attempts"] or 2):
+        raise HTTPException(status_code=400, detail="Max attempts already reached")
+
+    outcome = (payload.outcome or "").strip()
+    if not outcome:
+        raise HTTPException(status_code=400, detail="outcome is required")
+
+    note = (payload.note or "").strip()
+
+    conn.execute(
+        """
+        INSERT INTO sensys_postdc_attempts (work_item_id, attempt_no, outcome, note, next_due_at, created_by_user_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            int(payload.work_item_id),
+            attempt_no,
+            outcome,
+            note,
+            (payload.next_due_at or None),
+            user_id,
+        ),
+    )
+
+    # Update the parent work item summary + optionally move due date
+    if payload.next_due_at and str(payload.next_due_at).strip():
+        conn.execute(
+            """
+            UPDATE sensys_postdc_work_items
+               SET attempt_count   = ?,
+                   last_attempt_at = datetime('now'),
+                   last_outcome    = ?,
+                   last_note       = ?,
+                   due_at          = ?,
+                   updated_at      = datetime('now')
+             WHERE id = ?
+            """,
+            (attempt_no, outcome, note, str(payload.next_due_at).strip(), int(payload.work_item_id)),
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE sensys_postdc_work_items
+               SET attempt_count   = ?,
+                   last_attempt_at = datetime('now'),
+                   last_outcome    = ?,
+                   last_note       = ?,
+                   updated_at      = datetime('now')
+             WHERE id = ?
+            """,
+            (attempt_no, outcome, note, int(payload.work_item_id)),
+        )
+
+    conn.commit()
+    return {"ok": True, "attempt_no": attempt_no}
+
+@app.post("/api/sensys/postdc/work-items/complete")
+def sensys_postdc_complete(payload: PdwCompleteIn, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    user_id = int(u["user_id"])
+
+    w = conn.execute(
+        """
+        SELECT *
+        FROM sensys_postdc_work_items
+        WHERE id = ? AND deleted_at IS NULL
+        """,
+        (int(payload.work_item_id),),
+    ).fetchone()
+    if not w:
+        raise HTTPException(status_code=404, detail="Work item not found")
+
+    # Staff can only complete if assigned to them (or admin/cm)
+    role_keys = u.get("role_keys") or []
+    if ("admin" not in role_keys) and ("cm" not in role_keys):
+        if int(w["assigned_to_user_id"] or 0) != user_id:
+            raise HTTPException(status_code=403, detail="Not assigned to you")
+
+    outcome = (payload.outcome or "").strip()
+    if not outcome:
+        raise HTTPException(status_code=400, detail="outcome is required")
+    note = (payload.note or "").strip()
+
+    conn.execute(
+        """
+        UPDATE sensys_postdc_work_items
+           SET status = 'completed',
+               completed_at = datetime('now'),
+               completed_by_user_id = ?,
+               last_outcome = ?,
+               last_note = ?,
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (user_id, outcome, note, int(payload.work_item_id)),
+    )
+
+    # After completing, seed next stage if needed
+    _pdw_seed_next_items(conn)
+
+    conn.commit()
+    return {"ok": True}
 
 @app.get("/api/sensys/me")
 def sensys_me(request: Request):
@@ -23514,6 +23918,12 @@ async def sensys_home_health_admission_details_ui():
 @app.get("/sensys/provider-esign", response_class=HTMLResponse)
 async def sensys_provider_esign_ui():
     return HTMLResponse(content=read_html(SENSYS_PROVIDER_ESIGN_HTML))
+
+# ✅ PDW v1 — Post-Discharge Workspace
+@app.get("/sensys/post-discharge", response_class=HTMLResponse)
+async def sensys_post_discharge_ui():
+    return HTMLResponse(content=read_html(SENSYS_POST_DISCHARGE_WORKSPACE_HTML))
+
 
 @app.get("/snf-admissions", response_class=HTMLResponse)
 async def snf_admissions_ui():
