@@ -13539,12 +13539,12 @@ async def admin_snf_list(
                 s.*,
                 COALESCE(s.final_expected_transfer_date, s.ai_expected_transfer_date) AS effective_date,
                 COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id) AS effective_facility_id,
-                f.facility_name AS effective_facility_name,
-                f.city AS effective_facility_city,
-                f.state AS effective_facility_state
+                sf.facility_name AS effective_facility_name,
+                NULL AS effective_facility_city,
+                NULL AS effective_facility_state
             FROM snf_admissions s
-            LEFT JOIN facilities f
-              ON f.facility_id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id)
+            LEFT JOIN snf_admission_facilities sf
+              ON sf.id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id)
             WHERE {" AND ".join(where) if where else "1=1"}
             ORDER BY s.dc_date IS NULL, s.dc_date, s.patient_name COLLATE NOCASE
         """
@@ -13991,6 +13991,7 @@ async def admin_snf_update(
             "home health": "Home Health",
             "home self-care": "Home Self-care",
             "home self care": "Home Self-care",
+            "hospice": "Hospice",
             "irf": "IRF",
             "ltach": "LTACH",
             "other": "Other",
@@ -14138,11 +14139,14 @@ async def admin_snf_update(
                 # Manual override ON
                 mapped_id, mapped_label = map_snf_name_to_facility_id(conn, facility_free_text)
                 new_final_facility_id = mapped_id
-                # keep exactly what the user typed for display, but now the ID is SNF-library based
-                new_final_name_display = facility_free_text
+
+                # ✅ Prefer the SNF library's canonical name for display when we have it
+                if mapped_id and (mapped_label or "").strip():
+                    new_final_name_display = (mapped_label or "").strip()
+                else:
+                    new_final_name_display = facility_free_text
             else:
                 # Manual override OFF (user selected "(none)")
-                # Clear the final override so UI falls back to AI (or Unknown if AI is unknown).
                 new_final_facility_id = None
                 new_final_name_display = None
 
