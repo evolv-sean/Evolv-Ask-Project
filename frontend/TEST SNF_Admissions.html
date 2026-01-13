@@ -3011,6 +3011,18 @@
 
         snfFacilities = data.items || [];
 
+        // ✅ NEW: facilities/aliases load AFTER the admissions list sometimes.
+        // Re-render so Facility(AI) mapping updates (e.g., "Hamlin Place" -> "Hamlin Place of Boynton Beach")
+        try {
+          if (Array.isArray(currentRows) && currentRows.length) {
+            renderTable(currentRows);
+          } else if (Array.isArray(admissions) && admissions.length) {
+            renderTable(admissions);
+          }
+        } catch (e) {
+          // non-fatal
+        }
+
         const filterSelect = document.getElementById("filter-facility");
         if (filterSelect) {
           filterSelect.innerHTML = '<option value="">(All facilities)</option>';
