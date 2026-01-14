@@ -2988,6 +2988,12 @@ def init_db():
         except sqlite3.Error:
             # duplicate column name → already migrated
             pass
+    # ✅ Users migration: CCC capacity + last login
+    u_cols = [r["name"] for r in conn.execute("PRAGMA table_info(sensys_users)").fetchall()]
+    if "calls_per_hour" not in u_cols:
+        conn.execute("ALTER TABLE sensys_users ADD COLUMN calls_per_hour REAL DEFAULT 0;")
+    if "last_login_at" not in u_cols:
+        conn.execute("ALTER TABLE sensys_users ADD COLUMN last_login_at TEXT;")
 
     # -------------------------------------------------------------------
     # Provider E-Sign Linking (User <-> Care Team)
@@ -3132,6 +3138,28 @@ def init_db():
         except sqlite3.Error:
             # duplicate column name → already exists
             pass
+
+    # -----------------------------
+    # PDW v2 — CCC Staff schedules / capacity
+    # -----------------------------
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_user_schedules (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL,
+            day_of_week INTEGER NOT NULL,       -- 0=Sun..6=Sat
+            start_time  TEXT NOT NULL,          -- "09:00"
+            end_time    TEXT NOT NULL,          -- "17:00"
+            created_at  TEXT DEFAULT (datetime('now')),
+            updated_at  TEXT DEFAULT (datetime('now')),
+            deleted_at  TEXT,
+            FOREIGN KEY(user_id) REFERENCES sensys_users(id)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_schedules_user ON sensys_user_schedules(user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_schedules_dow ON sensys_user_schedules(day_of_week)")
+
 
     # =========================================================
     # Provider Library (CMS Provider Data Catalog) - Home Health
@@ -3465,6 +3493,10 @@ def init_db():
             assigned_to_user_id  INTEGER,
             assigned_at          TEXT,
 
+            -- ✅ NEW (who assigned it + notes for staff)
+            assigned_by_user_id  INTEGER,
+            assignment_notes     TEXT,
+
             completed_at         TEXT,
             completed_by_user_id INTEGER,
 
@@ -3483,6 +3515,7 @@ def init_db():
 
             FOREIGN KEY(admission_id) REFERENCES sensys_admissions(id),
             FOREIGN KEY(assigned_to_user_id) REFERENCES sensys_users(id),
+            FOREIGN KEY(assigned_by_user_id) REFERENCES sensys_users(id),
             FOREIGN KEY(completed_by_user_id) REFERENCES sensys_users(id)
         )
         """
@@ -3500,6 +3533,14 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_postdc_work_items_due ON sensys_postdc_work_items(due_at)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_postdc_work_items_status ON sensys_postdc_work_items(status)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_postdc_work_items_assigned ON sensys_postdc_work_items(assigned_to_user_id)")
+    # ✅ PDW migration: add assignment notes + assigned_by
+    wi_cols = [r["name"] for r in conn.execute("PRAGMA table_info(sensys_postdc_work_items)").fetchall()]
+    if "assigned_by_user_id" not in wi_cols:
+        conn.execute("ALTER TABLE sensys_postdc_work_items ADD COLUMN assigned_by_user_id INTEGER;")
+    if "assignment_notes" not in wi_cols:
+        conn.execute("ALTER TABLE sensys_postdc_work_items ADD COLUMN assignment_notes TEXT;")
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sensys_postdc_work_items_assigned_by ON sensys_postdc_work_items(assigned_by_user_id)")
 
     cur.execute(
         """
@@ -17171,7 +17212,10 @@ def sensys_admin_users_login_as(payload: SensysAdminLoginAsIn, token: str):
             redirect_url = "/sensys/snf-sw"
         elif "home_health" in role_keys:
             redirect_url = "/sensys/home-health"
-        elif "cm" in role_keys:
+        elif "ccc_lead" in role_keys:
+            redirect_url = "/sensys/post-discharge"
+        elif "ccc_staff" in role_keys:
+            # staff page comes later, but for now land them here too
             redirect_url = "/sensys/post-discharge"
         elif "provider" in role_keys:
             redirect_url = "/sensys/provider-esign"
@@ -19963,6 +20007,16 @@ def sensys_login(payload: SensysLoginIn):
     elif "admin" in role_keys:
         redirect_url = "/admin/sensys"
 
+    # ✅ Track last login (PDW)
+    try:
+        conn.execute(
+            "UPDATE sensys_users SET last_login_at = datetime('now') WHERE id = ?",
+            (user_id,),
+        )
+        conn.commit()
+    except Exception:
+        pass
+
     token = _sensys_create_session(conn, user_id=user_id, ttl_hours=24)
 
     return {
@@ -19977,318 +20031,6 @@ def sensys_login(payload: SensysLoginIn):
         "redirect_url": redirect_url,
     }
 
-# =========================================================
-# PDW v1 — Post-Discharge Workspace APIs
-# =========================================================
-
-def _pdw_seed_48h_items(conn):
-    """
-    Create 48h work items for any admission with a dc_date that doesn't already have one.
-    due_at = dc_date + 2 days (48 hours)
-    """
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status)
-        SELECT
-            a.id AS admission_id,
-            '48h' AS task_type,
-            datetime(a.dc_date, '+2 days') AS due_at,
-            'unassigned' AS status
-        FROM sensys_admissions a
-        WHERE a.dc_date IS NOT NULL
-          AND TRIM(a.dc_date) <> ''
-        """
-    )
-
-def _pdw_seed_next_items(conn):
-    """
-    Create 15d after 48h is completed; 30d after 15d is completed.
-    due_at = completed_at + 15 days
-    """
-    # 15d
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status)
-        SELECT
-            w.admission_id,
-            '15d',
-            datetime(w.completed_at, '+15 days'),
-            'unassigned'
-        FROM sensys_postdc_work_items w
-        WHERE w.task_type = '48h'
-          AND w.status = 'completed'
-          AND w.completed_at IS NOT NULL
-          AND w.deleted_at IS NULL
-        """
-    )
-
-    # 30d
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status)
-        SELECT
-            w.admission_id,
-            '30d',
-            datetime(w.completed_at, '+15 days'),
-            'unassigned'
-        FROM sensys_postdc_work_items w
-        WHERE w.task_type = '15d'
-          AND w.status = 'completed'
-          AND w.completed_at IS NOT NULL
-          AND w.deleted_at IS NULL
-        """
-    )
-
-def _pdw_seed_all(conn):
-    _pdw_seed_48h_items(conn)
-    _pdw_seed_next_items(conn)
-
-def _pdw_task_label(task_type: str) -> str:
-    t = (task_type or "").strip().lower()
-    if t == "48h":
-        return "48hr Call"
-    if t == "15d":
-        return "15 Day Call"
-    if t == "30d":
-        return "30 Day Call"
-    return task_type or "Task"
-
-class PdwAssignIn(BaseModel):
-    work_item_id: int
-    assigned_to_user_id: int
-
-class PdwAttemptIn(BaseModel):
-    work_item_id: int
-    outcome: str
-    note: Optional[str] = ""
-    next_due_at: Optional[str] = None  # allow staff to push to tomorrow, etc.
-
-class PdwCompleteIn(BaseModel):
-    work_item_id: int
-    outcome: str
-    note: Optional[str] = ""
-
-@app.get("/api/sensys/postdc/work-items")
-def sensys_postdc_work_items(bucket: str = "unassigned", request: Request = None):
-    """
-    bucket:
-      - unassigned  => status='unassigned' and due_at <= now
-      - incomplete  => status='assigned'
-      - completed   => status='completed'
-    """
-    u = _sensys_require_user(request)
-    conn = get_db()
-
-    # Always seed so the workspace stays up to date without cron jobs
-    _pdw_seed_all(conn)
-    conn.commit()
-
-    b = (bucket or "unassigned").strip().lower()
-
-    where = "1=1"
-    params = []
-
-    if b == "unassigned":
-        where = "w.status = 'unassigned' AND w.deleted_at IS NULL AND datetime(w.due_at) <= datetime('now')"
-    elif b == "incomplete":
-        where = "w.status = 'assigned' AND w.deleted_at IS NULL"
-    elif b == "completed":
-        where = "w.status = 'completed' AND w.deleted_at IS NULL"
-    else:
-        raise HTTPException(status_code=400, detail="Invalid bucket")
-
-    rows = conn.execute(
-        f"""
-        SELECT
-            w.*,
-            a.dc_date,
-            a.admit_date,
-            a.mrn,
-            a.visit_id,
-            p.first_name AS patient_first_name,
-            p.last_name  AS patient_last_name,
-            ag.agency_name,
-            u2.display_name AS assigned_to_name
-        FROM sensys_postdc_work_items w
-        JOIN sensys_admissions a ON a.id = w.admission_id
-        JOIN sensys_patients p ON p.id = a.patient_id
-        LEFT JOIN sensys_agencies ag ON ag.id = a.agency_id
-        LEFT JOIN sensys_users u2 ON u2.id = w.assigned_to_user_id
-        WHERE {where}
-        ORDER BY datetime(w.due_at) ASC, w.id ASC
-        """,
-        tuple(params),
-    ).fetchall()
-
-    out = []
-    for r in rows:
-        d = dict(r)
-        d["task_label"] = _pdw_task_label(d.get("task_type"))
-        out.append(d)
-
-    return {"ok": True, "bucket": b, "items": out}
-
-@app.post("/api/sensys/postdc/work-items/assign")
-def sensys_postdc_assign(payload: PdwAssignIn, request: Request):
-    u = _sensys_require_user(request)
-    role_keys = u.get("role_keys") or []
-    if ("cm" not in role_keys) and ("admin" not in role_keys):
-        raise HTTPException(status_code=403, detail="Manager role required")
-
-    conn = get_db()
-
-    row = conn.execute(
-        """
-        SELECT id, status
-        FROM sensys_postdc_work_items
-        WHERE id = ? AND deleted_at IS NULL
-        """,
-        (int(payload.work_item_id),),
-    ).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Work item not found")
-
-    conn.execute(
-        """
-        UPDATE sensys_postdc_work_items
-           SET status = 'assigned',
-               assigned_to_user_id = ?,
-               assigned_at = datetime('now'),
-               updated_at = datetime('now')
-         WHERE id = ?
-        """,
-        (int(payload.assigned_to_user_id), int(payload.work_item_id)),
-    )
-    conn.commit()
-    return {"ok": True}
-
-@app.post("/api/sensys/postdc/work-items/attempt")
-def sensys_postdc_attempt(payload: PdwAttemptIn, request: Request):
-    u = _sensys_require_user(request)
-    conn = get_db()
-    user_id = int(u["user_id"])
-
-    w = conn.execute(
-        """
-        SELECT *
-        FROM sensys_postdc_work_items
-        WHERE id = ? AND deleted_at IS NULL
-        """,
-        (int(payload.work_item_id),),
-    ).fetchone()
-    if not w:
-        raise HTTPException(status_code=404, detail="Work item not found")
-
-    # Staff can only log attempts if assigned to them (or admin/cm)
-    role_keys = u.get("role_keys") or []
-    if ("admin" not in role_keys) and ("cm" not in role_keys):
-        if int(w["assigned_to_user_id"] or 0) != user_id:
-            raise HTTPException(status_code=403, detail="Not assigned to you")
-
-    attempt_no = int(w["attempt_count"] or 0) + 1
-    if int(w["max_attempts"] or 2) > 0 and attempt_no > int(w["max_attempts"] or 2):
-        raise HTTPException(status_code=400, detail="Max attempts already reached")
-
-    outcome = (payload.outcome or "").strip()
-    if not outcome:
-        raise HTTPException(status_code=400, detail="outcome is required")
-
-    note = (payload.note or "").strip()
-
-    conn.execute(
-        """
-        INSERT INTO sensys_postdc_attempts (work_item_id, attempt_no, outcome, note, next_due_at, created_by_user_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            int(payload.work_item_id),
-            attempt_no,
-            outcome,
-            note,
-            (payload.next_due_at or None),
-            user_id,
-        ),
-    )
-
-    # Update the parent work item summary + optionally move due date
-    if payload.next_due_at and str(payload.next_due_at).strip():
-        conn.execute(
-            """
-            UPDATE sensys_postdc_work_items
-               SET attempt_count   = ?,
-                   last_attempt_at = datetime('now'),
-                   last_outcome    = ?,
-                   last_note       = ?,
-                   due_at          = ?,
-                   updated_at      = datetime('now')
-             WHERE id = ?
-            """,
-            (attempt_no, outcome, note, str(payload.next_due_at).strip(), int(payload.work_item_id)),
-        )
-    else:
-        conn.execute(
-            """
-            UPDATE sensys_postdc_work_items
-               SET attempt_count   = ?,
-                   last_attempt_at = datetime('now'),
-                   last_outcome    = ?,
-                   last_note       = ?,
-                   updated_at      = datetime('now')
-             WHERE id = ?
-            """,
-            (attempt_no, outcome, note, int(payload.work_item_id)),
-        )
-
-    conn.commit()
-    return {"ok": True, "attempt_no": attempt_no}
-
-@app.post("/api/sensys/postdc/work-items/complete")
-def sensys_postdc_complete(payload: PdwCompleteIn, request: Request):
-    u = _sensys_require_user(request)
-    conn = get_db()
-    user_id = int(u["user_id"])
-
-    w = conn.execute(
-        """
-        SELECT *
-        FROM sensys_postdc_work_items
-        WHERE id = ? AND deleted_at IS NULL
-        """,
-        (int(payload.work_item_id),),
-    ).fetchone()
-    if not w:
-        raise HTTPException(status_code=404, detail="Work item not found")
-
-    # Staff can only complete if assigned to them (or admin/cm)
-    role_keys = u.get("role_keys") or []
-    if ("admin" not in role_keys) and ("cm" not in role_keys):
-        if int(w["assigned_to_user_id"] or 0) != user_id:
-            raise HTTPException(status_code=403, detail="Not assigned to you")
-
-    outcome = (payload.outcome or "").strip()
-    if not outcome:
-        raise HTTPException(status_code=400, detail="outcome is required")
-    note = (payload.note or "").strip()
-
-    conn.execute(
-        """
-        UPDATE sensys_postdc_work_items
-           SET status = 'completed',
-               completed_at = datetime('now'),
-               completed_by_user_id = ?,
-               last_outcome = ?,
-               last_note = ?,
-               updated_at = datetime('now')
-         WHERE id = ?
-        """,
-        (user_id, outcome, note, int(payload.work_item_id)),
-    )
-
-    # After completing, seed next stage if needed
-    _pdw_seed_next_items(conn)
-
-    conn.commit()
-    return {"ok": True}
 
 @app.get("/api/sensys/me")
 def sensys_me(request: Request):
@@ -20507,6 +20249,7 @@ def _pdw_seed_all_for_user(conn, user_id: int):
 class PdwAssignIn(BaseModel):
     work_item_id: int
     assigned_to_user_id: int
+    assignment_notes: Optional[str] = ""
 
 class PdwAttemptIn(BaseModel):
     work_item_id: int
@@ -20551,6 +20294,273 @@ def sensys_postdc_staff(request: Request):
 
     return {"ok": True, "staff": [dict(r) for r in rows]}
 
+def _hhmm_to_minutes(s: str) -> int:
+    s = (s or "").strip()
+    if not s or ":" not in s:
+        return 0
+    hh, mm = s.split(":", 1)
+    return int(hh) * 60 + int(mm)
+
+def _minutes_to_hhmm(m: int) -> str:
+    m = max(0, int(m))
+    hh = m // 60
+    mm = m % 60
+    return f"{hh:02d}:{mm:02d}"
+
+def _date_bounds_for_offset(day_offset: int):
+    # uses SQLite datetime('now') at server TZ; good enough for v1
+    # day start/end strings to use in queries
+    # start = today + offset at 00:00, end = +1 day at 00:00
+    return (
+        f"datetime(date('now', '{int(day_offset)} day'))",
+        f"datetime(date('now', '{int(day_offset)+1} day'))",
+    )
+
+@app.get("/api/sensys/postdc/staff/overview")
+def sensys_postdc_staff_overview(day_offset: int = 0, request: Request = None):
+    """
+    CCC Lead: staff list + availability window for selected day + caseload %
+    day_offset: 0=Today, 2=2 days out, ...
+    """
+    u = _sensys_require_user(request)
+    _pdw_require_lead_or_admin(u)
+
+    conn = get_db()
+    my_user_id = int(u["user_id"])
+
+    # same staff scope rule you already use (shared agencies)
+    staff_rows = conn.execute(
+        """
+        SELECT DISTINCT
+            su.id AS user_id,
+            su.email,
+            su.display_name,
+            COALESCE(su.calls_per_hour, 0) AS calls_per_hour,
+            su.last_login_at
+        FROM sensys_users su
+        JOIN sensys_user_roles ur ON ur.user_id = su.id
+        JOIN sensys_roles r ON r.id = ur.role_id AND r.role_key = 'ccc_staff'
+        JOIN sensys_user_agencies ua_staff ON ua_staff.user_id = su.id
+        JOIN sensys_user_agencies ua_me ON ua_me.agency_id = ua_staff.agency_id AND ua_me.user_id = ?
+        WHERE su.is_active = 1
+          AND COALESCE(su.account_locked, 0) = 0
+        ORDER BY COALESCE(su.display_name, su.email) COLLATE NOCASE
+        """,
+        (my_user_id,),
+    ).fetchall()
+
+    # compute selected day_of_week in SQLite (0=Sun..6=Sat)
+    dow = conn.execute(
+        "SELECT CAST(strftime('%w', date('now', ?)) AS INTEGER) AS dow",
+        (f"{int(day_offset)} day",),
+    ).fetchone()["dow"]
+
+    day_start_sql, day_end_sql = _date_bounds_for_offset(day_offset)
+
+    out = []
+    for s in staff_rows:
+        sid = int(s["user_id"])
+
+        # schedule blocks for that day
+        blocks = conn.execute(
+            """
+            SELECT id, day_of_week, start_time, end_time
+            FROM sensys_user_schedules
+            WHERE deleted_at IS NULL
+              AND user_id = ?
+              AND day_of_week = ?
+            ORDER BY start_time
+            """,
+            (sid, int(dow)),
+        ).fetchall()
+
+        # compute total scheduled minutes + first window for display
+        total_minutes = 0
+        window_start = None
+        window_end = None
+        for b in blocks:
+            st = _hhmm_to_minutes(b["start_time"])
+            en = _hhmm_to_minutes(b["end_time"])
+            if en > st:
+                total_minutes += (en - st)
+                if window_start is None:
+                    window_start = st
+                window_end = en
+
+        scheduled_hours = total_minutes / 60.0
+        cph = float(s["calls_per_hour"] or 0)
+        capacity_calls = max(0.0, scheduled_hours * cph)
+
+        # workload = incomplete assigned items due on/before end of selected day (due or overdue relative to that day)
+        open_calls = conn.execute(
+            f"""
+            SELECT COUNT(1) AS c
+            FROM sensys_postdc_work_items w
+            JOIN sensys_admissions a ON a.id = w.admission_id
+            JOIN sensys_user_agencies ua ON ua.agency_id = a.agency_id AND ua.user_id = ?
+            WHERE w.deleted_at IS NULL
+              AND w.status = 'assigned'
+              AND w.assigned_to_user_id = ?
+              AND datetime(w.due_at) < {day_end_sql}
+            """,
+            (my_user_id, sid),
+        ).fetchone()["c"]
+
+        caseload_pct = 0
+        if capacity_calls > 0:
+            caseload_pct = int(round(min(100.0, (float(open_calls) / float(capacity_calls)) * 100.0)))
+
+        out.append({
+            "user_id": sid,
+            "email": s["email"],
+            "display_name": s["display_name"],
+            "calls_per_hour": cph,
+            "last_login_at": s["last_login_at"],
+
+            "day_offset": int(day_offset),
+            "dow": int(dow),
+
+            "available_start": (_minutes_to_hhmm(window_start) if window_start is not None else None),
+            "available_end": (_minutes_to_hhmm(window_end) if window_end is not None else None),
+            "scheduled_hours": round(scheduled_hours, 2),
+
+            "capacity_calls": round(capacity_calls, 2),
+            "open_calls": int(open_calls),
+            "caseload_pct": int(caseload_pct),
+        })
+
+    return {"ok": True, "day_offset": int(day_offset), "staff": out}
+
+class StaffScheduleRowIn(BaseModel):
+    day_of_week: int  # 0..6
+    start_time: str   # "HH:MM"
+    end_time: str     # "HH:MM"
+
+class StaffScheduleUpsertIn(BaseModel):
+    user_id: int
+    calls_per_hour: float = 0
+    schedules: List[StaffScheduleRowIn] = []
+
+@app.get("/api/sensys/postdc/staff/schedules")
+def sensys_postdc_staff_schedules(request: Request):
+    u = _sensys_require_user(request)
+    _pdw_require_lead_or_admin(u)
+
+    conn = get_db()
+    my_user_id = int(u["user_id"])
+
+    staff = conn.execute(
+        """
+        SELECT DISTINCT
+            su.id AS user_id,
+            su.email,
+            su.display_name,
+            COALESCE(su.calls_per_hour, 0) AS calls_per_hour,
+            su.last_login_at
+        FROM sensys_users su
+        JOIN sensys_user_roles ur ON ur.user_id = su.id
+        JOIN sensys_roles r ON r.id = ur.role_id AND r.role_key = 'ccc_staff'
+        JOIN sensys_user_agencies ua_staff ON ua_staff.user_id = su.id
+        JOIN sensys_user_agencies ua_me ON ua_me.agency_id = ua_staff.agency_id AND ua_me.user_id = ?
+        WHERE su.is_active = 1
+          AND COALESCE(su.account_locked, 0) = 0
+        ORDER BY COALESCE(su.display_name, su.email) COLLATE NOCASE
+        """,
+        (my_user_id,),
+    ).fetchall()
+
+    ids = [int(r["user_id"]) for r in staff]
+    sched = []
+    if ids:
+        q = "SELECT * FROM sensys_user_schedules WHERE deleted_at IS NULL AND user_id IN (%s) ORDER BY user_id, day_of_week, start_time" % (
+            ",".join(["?"] * len(ids))
+        )
+        sched = conn.execute(q, tuple(ids)).fetchall()
+
+    by_user = {}
+    for row in sched:
+        by_user.setdefault(int(row["user_id"]), []).append({
+            "id": row["id"],
+            "day_of_week": row["day_of_week"],
+            "start_time": row["start_time"],
+            "end_time": row["end_time"],
+        })
+
+    out = []
+    for s in staff:
+        d = dict(s)
+        d["schedules"] = by_user.get(int(s["user_id"]), [])
+        out.append(d)
+
+    return {"ok": True, "staff": out}
+
+@app.post("/api/sensys/postdc/staff/schedules/upsert")
+def sensys_postdc_staff_schedules_upsert(payload: StaffScheduleUpsertIn, request: Request):
+    u = _sensys_require_user(request)
+    _pdw_require_lead_or_admin(u)
+
+    conn = get_db()
+    my_user_id = int(u["user_id"])
+    target_user_id = int(payload.user_id)
+
+    # safety: must be CCC Staff AND share agencies with lead
+    staff_ok = conn.execute(
+        """
+        SELECT 1
+        FROM sensys_user_roles ur
+        JOIN sensys_roles r ON r.id = ur.role_id
+        WHERE ur.user_id = ?
+          AND r.role_key = 'ccc_staff'
+        """,
+        (target_user_id,),
+    ).fetchone()
+    if not staff_ok:
+        raise HTTPException(status_code=400, detail="Target must be CCC Staff")
+
+    shared = conn.execute(
+        """
+        SELECT 1
+        FROM sensys_user_agencies ua_staff
+        JOIN sensys_user_agencies ua_me ON ua_me.agency_id = ua_staff.agency_id
+        WHERE ua_staff.user_id = ?
+          AND ua_me.user_id = ?
+        LIMIT 1
+        """,
+        (target_user_id, my_user_id),
+    ).fetchone()
+    if not shared:
+        raise HTTPException(status_code=403, detail="Staff user does not share your agencies")
+
+    # update calls/hr on user
+    conn.execute(
+        "UPDATE sensys_users SET calls_per_hour = ?, updated_at = datetime('now') WHERE id = ?",
+        (float(payload.calls_per_hour or 0), target_user_id),
+    )
+
+    # replace schedule blocks: soft delete existing, insert new
+    conn.execute(
+        "UPDATE sensys_user_schedules SET deleted_at = datetime('now'), updated_at = datetime('now') WHERE user_id = ? AND deleted_at IS NULL",
+        (target_user_id,),
+    )
+
+    for r in (payload.schedules or []):
+        dow = int(r.day_of_week)
+        if dow < 0 or dow > 6:
+            continue
+        st = (r.start_time or "").strip()
+        en = (r.end_time or "").strip()
+        if not st or not en:
+            continue
+        conn.execute(
+            """
+            INSERT INTO sensys_user_schedules (user_id, day_of_week, start_time, end_time)
+            VALUES (?, ?, ?, ?)
+            """,
+            (target_user_id, dow, st, en),
+        )
+
+    conn.commit()
+    return {"ok": True}
 
 @app.get("/api/sensys/postdc/work-items")
 def sensys_postdc_work_items(bucket: str = "unassigned", request: Request = None):
@@ -20681,10 +20691,20 @@ def sensys_postdc_assign(payload: PdwAssignIn, request: Request):
            SET status = 'assigned',
                assigned_to_user_id = ?,
                assigned_at = datetime('now'),
+
+               -- ✅ NEW
+               assigned_by_user_id = ?,
+               assignment_notes = ?,
+
                updated_at = datetime('now')
          WHERE id = ?
         """,
-        (int(payload.assigned_to_user_id), int(payload.work_item_id)),
+        (
+            int(payload.assigned_to_user_id),
+            my_user_id,
+            (payload.assignment_notes or "").strip(),
+            int(payload.work_item_id),
+        ),
     )
     conn.commit()
     return {"ok": True}
@@ -20830,6 +20850,82 @@ def sensys_postdc_complete(payload: PdwCompleteIn, request: Request):
 
     conn.commit()
     return {"ok": True}
+
+@app.get("/api/sensys/postdc/summary")
+def sensys_postdc_summary(request: Request):
+    u = _sensys_require_user(request)
+    _pdw_require_staff_or_admin(u)
+
+    conn = get_db()
+    my_user_id = int(u["user_id"])
+
+    # scope to user agencies
+    # today bounds
+    day_start = "datetime(date('now'))"
+    day_end = "datetime(date('now','+1 day'))"
+
+    unassigned = conn.execute(
+        f"""
+        SELECT COUNT(1) AS c
+        FROM sensys_postdc_work_items w
+        JOIN sensys_admissions a ON a.id = w.admission_id
+        JOIN sensys_user_agencies ua ON ua.agency_id = a.agency_id AND ua.user_id = ?
+        WHERE w.deleted_at IS NULL
+          AND w.status = 'unassigned'
+          AND datetime(w.due_at) <= datetime('now')
+        """,
+        (my_user_id,),
+    ).fetchone()["c"]
+
+    due_today = conn.execute(
+        f"""
+        SELECT COUNT(1) AS c
+        FROM sensys_postdc_work_items w
+        JOIN sensys_admissions a ON a.id = w.admission_id
+        JOIN sensys_user_agencies ua ON ua.agency_id = a.agency_id AND ua.user_id = ?
+        WHERE w.deleted_at IS NULL
+          AND datetime(w.due_at) >= {day_start}
+          AND datetime(w.due_at) <  {day_end}
+        """,
+        (my_user_id,),
+    ).fetchone()["c"]
+
+    completed_today = conn.execute(
+        f"""
+        SELECT COUNT(1) AS c
+        FROM sensys_postdc_work_items w
+        JOIN sensys_admissions a ON a.id = w.admission_id
+        JOIN sensys_user_agencies ua ON ua.agency_id = a.agency_id AND ua.user_id = ?
+        WHERE w.deleted_at IS NULL
+          AND w.status = 'completed'
+          AND w.completed_at IS NOT NULL
+          AND datetime(w.completed_at) >= {day_start}
+          AND datetime(w.completed_at) <  {day_end}
+        """,
+        (my_user_id,),
+    ).fetchone()["c"]
+
+    incomplete_today = conn.execute(
+        f"""
+        SELECT COUNT(1) AS c
+        FROM sensys_postdc_work_items w
+        JOIN sensys_admissions a ON a.id = w.admission_id
+        JOIN sensys_user_agencies ua ON ua.agency_id = a.agency_id AND ua.user_id = ?
+        WHERE w.deleted_at IS NULL
+          AND w.status = 'assigned'
+          AND datetime(w.due_at) >= {day_start}
+          AND datetime(w.due_at) <  {day_end}
+        """,
+        (my_user_id,),
+    ).fetchone()["c"]
+
+    return {
+        "ok": True,
+        "unassigned_calls": int(unassigned),
+        "total_due_today": int(due_today),
+        "completed_today": int(completed_today),
+        "incomplete_today": int(incomplete_today),
+    }
 
 @app.get("/api/sensys/my-referrals")
 def sensys_my_referrals(request: Request):
