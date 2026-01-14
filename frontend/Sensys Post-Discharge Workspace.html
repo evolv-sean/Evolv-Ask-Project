@@ -49,6 +49,7 @@
       <div class="cardHd">
         <div style="font-weight:700;">Work Items</div>
         <div class="tabs">
+          <button class="pill" style="margin-left:8px;" onclick="openSortFilter()">Sort / Filter</button>
           <button class="tab active" id="tabUnassigned" onclick="setBucket('unassigned')">Unassigned</button>
           <button class="tab" id="tabIncomplete" onclick="setBucket('incomplete')">Incomplete</button>
           <button class="tab" id="tabCompleted" onclick="setBucket('completed')">Completed</button>
@@ -107,6 +108,7 @@
           <span class="muted">Available Day</span>
           <select id="availDay" onchange="loadStaffAvailability()" style="padding:8px 10px;border-radius:10px;border:1px solid #e6e7ee;background:#fff;">
             <option value="0">Today</option>
+            <option value="1">1 day out</option>
             <option value="2">2 days out</option>
             <option value="3">3 days out</option>
             <option value="4">4 days out</option>
@@ -190,6 +192,59 @@
     </div>
   </div>
 </div>
+<!-- ✅ Sort/Filter Modal -->
+<div id="sfBg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,35); align-items:center; justify-content:center; padding:18px; z-index:55;">
+  <div style="width:min(720px, 96vw); background:#fff; border:1px solid #e6e7ee; border-radius:14px; overflow:hidden;">
+    <div class="cardHd" style="display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <div style="font-weight:800;">Sort &amp; Filter</div>
+        <div class="muted" style="margin-top:2px;">Affects the current tab list only.</div>
+      </div>
+      <button class="pill" onclick="closeSortFilter()">Close</button>
+    </div>
+
+    <div class="cardBd" style="display:grid; gap:12px;">
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+        <div>
+          <div class="muted" style="margin-bottom:6px;">Sort</div>
+          <select id="sfSort" style="width:100%; padding:10px; border-radius:12px; border:1px solid #e6e7ee;">
+            <option value="due_at">Due Date</option>
+            <option value="patient">Patient</option>
+            <option value="agency">Agency</option>
+            <option value="dc_date">DC Date</option>
+          </select>
+        </div>
+
+        <div>
+          <div class="muted" style="margin-bottom:6px;">Assigned Staff</div>
+          <select id="sfStaff" style="width:100%; padding:10px; border-radius:12px; border:1px solid #e6e7ee;">
+            <option value="">All</option>
+          </select>
+        </div>
+
+        <div>
+          <div class="muted" style="margin-bottom:6px;">Agency</div>
+          <select id="sfAgency" style="width:100%; padding:10px; border-radius:12px; border:1px solid #e6e7ee;">
+            <option value="">All</option>
+          </select>
+        </div>
+
+        <div>
+          <div class="muted" style="margin-bottom:6px;">Task Type</div>
+          <select id="sfTask" style="width:100%; padding:10px; border-radius:12px; border:1px solid #e6e7ee;">
+            <option value="">All</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px;">
+        <button class="pill" onclick="clearSortFilter()">Clear</button>
+        <button class="pill" style="border-color:#111; background:#111; color:#fff;" onclick="applySortFilter()">Apply</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
   function getToken(){ return localStorage.getItem("sensys_token") || ""; }
 
@@ -209,6 +264,14 @@
   }
 
   let currentBucket = "unassigned";
+  let itemsCache = []; // raw items from API for the current bucket
+
+  let sfState = {
+    sort: "due_at",
+    agency: "",
+    task: "",
+    staff: ""
+  };
 
   function setBucket(b){
     currentBucket = b;
@@ -250,6 +313,12 @@
     if(!s) return "";
     return String(s).replace("T"," ").slice(0,16);
   }
+  function fmtDateOnly(s){
+    if(!s) return "";
+    // expects "YYYY-MM-DD ..." → keep only the date
+    return String(s).replace("T"," ").slice(0,10);
+  }
+
 
   function esc(s){
     return String(s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
@@ -287,6 +356,7 @@
                   </div>`;
         } else if(currentBucket === "incomplete"){
           btns = `<div class="rowBtns">
+                    <button onclick="openAssignModal(${Number(it.id)}, '${esc(patientLabel)}')">Re-assign…</button>
                     <button onclick="logAttempt(${Number(it.id)})">Log Attempt</button>
                     <button onclick="markComplete(${Number(it.id)})">Complete</button>
                   </div>`;
@@ -304,7 +374,10 @@
             <b>${esc(it.task_label||it.task_type||"")}</b>
             <div class="muted">Attempts: ${(it.attempt_count||0)}/${(it.max_attempts||2)}</div>
           </td>
-          <td>${esc(fmt(it.due_at))}</td>
+          <td>
+            <div class="muted" style="margin-bottom:2px;">Assigned To: ${esc(it.assigned_to_name || "—")}</div>
+            <div><b>${esc(fmtDateOnly(it.due_at))}</b></div>
+          </td>
           <td style="white-space:nowrap;">${btns}</td>
           <td style="white-space:nowrap;" id="rowIcons_${Number(it.id)}"></td>
         `;
@@ -328,6 +401,22 @@
     document.getElementById("assignSub").textContent = patientLabel || "—";
     document.getElementById("assignModalBg").style.display = "flex";
     loadAssignStaff();
+  }
+
+  function renderItemsFromCache(){
+    const tbody = document.getElementById("workItemsTbody"); // use your real tbody id
+    const items = getFilteredSortedItems();
+
+    if(!items.length){
+      tbody.innerHTML = "<tr><td colspan='6' class='muted'>No items.</td></tr>";
+      return;
+    }
+
+    tbody.innerHTML = "";
+    items.forEach(it => {
+      // KEEP your existing row-building logic here
+      // (the next sections below give you exact edits inside that row HTML)
+    });
   }
 
   function closeAssignModal(){
@@ -386,6 +475,85 @@
     }catch(e){
       box.innerHTML = `<div class="muted">Error loading staff.</div>`;
     }
+  }
+
+  function openSortFilter(){
+    document.getElementById("sfBg").style.display = "flex";
+    rebuildSortFilterOptions();
+    // set current UI values
+    document.getElementById("sfSort").value = sfState.sort || "due_at";
+    document.getElementById("sfAgency").value = sfState.agency || "";
+    document.getElementById("sfTask").value = sfState.task || "";
+    document.getElementById("sfStaff").value = sfState.staff || "";
+  }
+  function closeSortFilter(){
+    document.getElementById("sfBg").style.display = "none";
+  }
+
+  function clearSortFilter(){
+    sfState = { sort:"due_at", agency:"", task:"", staff:"" };
+    closeSortFilter();
+    renderItemsFromCache();
+  }
+
+  function applySortFilter(){
+    sfState.sort = document.getElementById("sfSort").value || "due_at";
+    sfState.agency = document.getElementById("sfAgency").value || "";
+    sfState.task = document.getElementById("sfTask").value || "";
+    sfState.staff = document.getElementById("sfStaff").value || "";
+    closeSortFilter();
+    renderItemsFromCache();
+  }
+
+  function rebuildSortFilterOptions(){
+    const ag = document.getElementById("sfAgency");
+    const tk = document.getElementById("sfTask");
+    const st = document.getElementById("sfStaff");
+
+    const uniq = (arr) => Array.from(new Set(arr.filter(Boolean).map(x => String(x).trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+
+    const agencies = uniq(itemsCache.map(it => it.agency_name));
+    const tasks = uniq(itemsCache.map(it => it.task_label || it.task_type));
+    const staff = uniq(itemsCache.map(it => it.assigned_to_name));
+
+    ag.innerHTML = `<option value="">All</option>` + agencies.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join("");
+    tk.innerHTML = `<option value="">All</option>` + tasks.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join("");
+    st.innerHTML = `<option value="">All</option>` + staff.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
+  }
+
+  function getFilteredSortedItems(){
+    let list = (itemsCache || []).slice();
+
+    if(sfState.agency){
+      list = list.filter(it => String(it.agency_name||"") === sfState.agency);
+    }
+    if(sfState.task){
+      list = list.filter(it => String(it.task_label||it.task_type||"") === sfState.task);
+    }
+    if(sfState.staff){
+      list = list.filter(it => String(it.assigned_to_name||"") === sfState.staff);
+    }
+
+    const key = sfState.sort || "due_at";
+    const safe = (v) => (v==null ? "" : String(v));
+
+    list.sort((a,b)=>{
+      if(key === "patient"){
+        const ap = (safe(a.patient_last_name) + ", " + safe(a.patient_first_name)).toLowerCase();
+        const bp = (safe(b.patient_last_name) + ", " + safe(b.patient_first_name)).toLowerCase();
+        return ap.localeCompare(bp);
+      }
+      if(key === "agency"){
+        return safe(a.agency_name).toLowerCase().localeCompare(safe(b.agency_name).toLowerCase());
+      }
+      if(key === "dc_date"){
+        return safe(a.dc_date).localeCompare(safe(b.dc_date));
+      }
+      // default: due_at
+      return safe(a.due_at).localeCompare(safe(b.due_at));
+    });
+
+    return list;
   }
 
   async function submitAssign(){
