@@ -507,7 +507,7 @@ app = FastAPI(title="Evolv Copilot (Fresh Backend)")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # internal app; okay to be open
-    allow_credentials=True,
+    allow_credentials=False,  # ✅ IMPORTANT: prevents browser CORS "NetworkError"/"Failed to fetch" with wildcard origin
     allow_methods=["*"],
     allow_headers=["*"],
 )
