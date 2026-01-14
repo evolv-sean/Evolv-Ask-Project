@@ -403,7 +403,9 @@
   }
 
   function renderItemsFromCache(){
-    const tbody = document.getElementById("workItemsTbody"); // use your real tbody id
+    const tbody = document.getElementById("tbody"); // ✅ matches <tbody id="tbody"></tbody>
+    if(!tbody) return;
+
     const items = getFilteredSortedItems();
 
     if(!items.length){
@@ -411,10 +413,50 @@
       return;
     }
 
+    // ✅ Use your EXISTING row rendering that already builds <tr> and tbody.appendChild(tr)
     tbody.innerHTML = "";
     items.forEach(it => {
-      // KEEP your existing row-building logic here
-      // (the next sections below give you exact edits inside that row HTML)
+      const patient = (it.patient_last_name||"") + ", " + (it.patient_first_name||"");
+      const tr = document.createElement("tr");
+      const agency = it.agency_name || "—";
+      const dc = it.dc_date ? String(it.dc_date).slice(0,10) : "";
+      const daysSinceDc = (it.dc_date ? Math.max(0, Math.floor((Date.now() - new Date(it.dc_date).getTime()) / 86400000)) : "—");
+
+      let btns = "";
+      const patientLabel = `${patient} (${agency})`;
+
+      if(currentBucket === "unassigned"){
+        btns = `<div class="rowBtns">
+                  <button onclick="openAssignModal(${Number(it.id)}, '${esc(patientLabel)}')">Assign…</button>
+                </div>`;
+      } else if(currentBucket === "incomplete"){
+        btns = `<div class="rowBtns">
+                  <button onclick="openAssignModal(${Number(it.id)}, '${esc(patientLabel)}')">Re-assign…</button>
+                  <button onclick="logAttempt(${Number(it.id)})">Log Attempt</button>
+                  <button onclick="markComplete(${Number(it.id)})">Complete</button>
+                </div>`;
+      } else {
+        btns = `<span class="pill">${esc(it.last_outcome||"Done")}</span>`;
+      }
+
+      tr.innerHTML = `
+        <td>
+          <b>${esc(patient)}</b>
+          <div class="muted">${esc(agency)}${dc ? " • DC " + esc(dc) : ""}</div>
+        </td>
+        <td>${esc(daysSinceDc)}</td>
+        <td>
+          <b>${esc(it.task_label||it.task_type||"")}</b>
+          <div class="muted">Attempts: ${(it.attempt_count||0)}/${(it.max_attempts||2)}</div>
+        </td>
+        <td>
+          <div class="muted" style="margin-bottom:2px;">Assigned To: ${esc(it.assigned_to_name || "—")}</div>
+          <div><b>${esc(fmtDateOnly(it.due_at))}</b></div>
+        </td>
+        <td style="white-space:nowrap;">${btns}</td>
+        <td style="white-space:nowrap;" id="rowIcons_${Number(it.id)}"></td>
+      `;
+      tbody.appendChild(tr);
     });
   }
 
