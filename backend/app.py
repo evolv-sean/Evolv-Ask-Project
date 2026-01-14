@@ -20387,6 +20387,11 @@ def sensys_postdc_staff_overview(day_offset: int = 0, request: Request = None):
                     window_start = st
                 window_end = en
 
+        # ✅ NEW: Only include staff who are actually scheduled this day
+        # (If no valid schedule blocks exist for the selected day, do not show them.)
+        if total_minutes <= 0 or window_start is None or window_end is None:
+            continue
+
         scheduled_hours = total_minutes / 60.0
         cph = float(s["calls_per_hour"] or 0)
         capacity_calls = max(0.0, scheduled_hours * cph)
