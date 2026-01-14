@@ -18581,7 +18581,6 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
                 int(payload.patient_id),
                 int(payload.agency_id),
 
-                # ✅ NEW
                 (payload.mrn or "").strip(),
                 (payload.visit_id or "").strip(),
                 (payload.facility_code or "").strip(),
@@ -18600,6 +18599,22 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
                 int(payload.id),
             ),
         )
+
+        # ✅ PDW SYNC — keep existing 48h task aligned to dc_date edits
+        dc_date_clean = (payload.dc_date or "").strip()
+        if dc_date_clean:
+            conn.execute(
+                """
+                UPDATE sensys_postdc_work_items
+                   SET due_at = datetime(?, '+1 day'),
+                       updated_at = datetime('now')
+                 WHERE admission_id = ?
+                   AND task_type = '48h'
+                   AND deleted_at IS NULL
+                   AND status IN ('unassigned','assigned')
+                """,
+                (dc_date_clean, int(payload.id)),
+            )
     else:
         conn.execute(
             """
