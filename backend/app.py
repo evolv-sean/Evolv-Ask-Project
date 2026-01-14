@@ -75,6 +75,35 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# =============================================================================
+# FILE INDEX (ANCHOR: FILE_INDEX)
+#
+#  01) Imports + constants
+#  02) PDF / OpenAI / Email / SMS config
+#  03) FastAPI app + middleware
+#  04) DB path + HTML file wiring
+#  05) Utilities (date/time normalize, hashing, etc.)
+#  06) init_db() (schema + safe/idempotent migrations)
+#
+#  SENSYS FEATURES (API):
+#    - Admin: Users / Roles / Agencies / Care Team / Notifications templates & prefs
+#    - Admissions / Discharge / Referrals / Documents / PDFs
+#    - PDW (Post-Discharge Workspace) — CCC Lead / CCC Staff
+#
+#  UI ROUTES (HTML):
+#    - /sensys/*, /admin*, /ask*
+#
+#  SPECIAL:
+#    - SNF Secure Links
+#    - Hospital extraction profiles
+#
+# =============================================================================
+
+
 BASE_DIR = Path(__file__).resolve().parent   # this is your /backend folder
 
 # Where the HTML files actually live, same as old app.py
@@ -357,8 +386,9 @@ def log_pad_request_debug(request: Request, raw_text: str, payload: dict):
 
 
 # ---------------------------------------------------------------------------
-# DB PATH – Render-only (no local fallback)
+# DB PATH – Render-only (no local fallback) (ANCHOR: DB_PATH_SECTION)
 # ---------------------------------------------------------------------------
+
 RENDER_DEFAULT_DB = "/opt/render/project/data/evolv.db"
 
 # Allow explicit override (mainly for local dev/testing), but NEVER auto-fallback.
@@ -500,8 +530,9 @@ except Exception:
 
 
 # ---------------------------------------------------------------------------
-# FastAPI app
+# FastAPI app (ANCHOR: FASTAPI_APP_SECTION)
 # ---------------------------------------------------------------------------
+
 app = FastAPI(title="Evolv Copilot (Fresh Backend)")
 
 app.add_middleware(
@@ -3105,6 +3136,12 @@ def init_db():
             fax           TEXT DEFAULT '',
 
             evolv_client  INTEGER DEFAULT 0,
+            
+            pdw_attempts_expected INTEGER DEFAULT 2,
+            pdw_pref_details      TEXT DEFAULT '',
+            pdw_enable_48h        INTEGER DEFAULT 1,
+            pdw_enable_15d        INTEGER DEFAULT 1,
+            pdw_enable_30d        INTEGER DEFAULT 1,
 
             created_at    TEXT DEFAULT (datetime('now')),
             updated_at    TEXT DEFAULT (datetime('now')),
@@ -3132,6 +3169,11 @@ def init_db():
         "ALTER TABLE sensys_agencies ADD COLUMN evolv_client INTEGER DEFAULT 0",
         "ALTER TABLE sensys_agencies ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))",
         "ALTER TABLE sensys_agencies ADD COLUMN deleted_at TEXT",
+        "ALTER TABLE sensys_agencies ADD COLUMN pdw_attempts_expected INTEGER DEFAULT 2",
+        "ALTER TABLE sensys_agencies ADD COLUMN pdw_pref_details TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN pdw_enable_48h INTEGER DEFAULT 1",
+        "ALTER TABLE sensys_agencies ADD COLUMN pdw_enable_15d INTEGER DEFAULT 1",
+        "ALTER TABLE sensys_agencies ADD COLUMN pdw_enable_30d INTEGER DEFAULT 1",
     ]:
         try:
             cur.execute(ddl)
@@ -15861,9 +15903,11 @@ def build_snf_pdf_html(
 """
     return html_doc
 
-# ============================
-# SNF Secure Link routes
-# ============================
+# ---------------------------------------------------------------------------
+# SNF Secure Link routes (ANCHOR: SNF_SECURE_LINK_ROUTES)
+# ---------------------------------------------------------------------------
+
+
 
 def _parse_utc_iso(s: str) -> Optional[dt.datetime]:
     if not s:
@@ -15996,8 +16040,9 @@ async def snf_secure_link_get(token: str, request: Request):
         conn.close()
 
 # ---------------------------------------------------------------------------
-# Hospital extraction profiles CRUD (Admin)
+# Hospital extraction profiles CRUD (Admin) (ANCHOR: HOSPITAL_EXTRACTION_PROFILES_ADMIN)
 # ---------------------------------------------------------------------------
+
 
 @app.get("/api/hospital-extraction-profiles/list")
 def api_hex_profiles_list():
@@ -16910,7 +16955,15 @@ class SensysAgencyUpsert(BaseModel):
     fax: Optional[str] = ""
 
     evolv_client: Optional[bool] = False
-    preferred_provider_ids: Optional[List[int]] = []
+    # Preferred Providers (if omitted, do NOT change existing)
+    preferred_provider_ids: Optional[List[int]] = None
+
+    # ✅ PDW Prefs (if omitted, do NOT change existing)
+    pdw_attempts_expected: Optional[int] = None
+    pdw_pref_details: Optional[str] = None
+    pdw_enable_48h: Optional[int] = None
+    pdw_enable_15d: Optional[int] = None
+    pdw_enable_30d: Optional[int] = None
 
 class SensysUserAgencyAssign(BaseModel):
     user_id: int
@@ -17066,7 +17119,8 @@ def sensys_admin_users(token: str):
             u.is_active,
             u.cell_phone,
             u.account_locked,
-            u.npi
+            u.npi,
+            u.last_login_at
         FROM sensys_users u
         ORDER BY u.email
         """
@@ -17327,11 +17381,8 @@ def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request:
             DB_PATH,
         )
         raise
-    # ------------------------------------------
-    # -----------------------------
-    # 🔔 AUTOMATED NOTIFICATION TRIGGER:
-    # New Referral (insert only)
-    # -----------------------------
+        
+    # ---- 🔔 AUTOMATED NOTIFICATION TRIGGER: New Referral (insert only) ----
     if op == "insert":
         adm = conn.execute(
             """
@@ -17416,6 +17467,10 @@ class AdmissionAppointmentUpsert(BaseModel):
     care_team_id: Optional[int] = None
     appt_status: str = "New"            # New, Attended, Missed, Rescheduled
 
+
+# -----------------------------
+# Admission Details — Appointments: upsert (ANCHOR: ADMISSION_APPOINTMENTS_UPSERT)
+# -----------------------------
 @app.post("/api/sensys/admission-appointments/upsert")
 def sensys_admission_appointments_upsert(payload: AdmissionAppointmentUpsert, request: Request):
     u = _sensys_require_user(request)
@@ -17464,6 +17519,9 @@ def sensys_admission_appointments_upsert(payload: AdmissionAppointmentUpsert, re
     conn.commit()
     return {"ok": True, "id": int(new_id)}
 
+# -----------------------------
+# Admission Details — Appointments: delete (ANCHOR: ADMISSION_APPOINTMENTS_DELETE)
+# -----------------------------
 @app.post("/api/sensys/admission-appointments/delete")
 def sensys_admission_appointments_delete(payload: IdOnly, request: Request):
     u = _sensys_require_user(request)
@@ -17670,9 +17728,10 @@ def sensys_admin_users_set_esign_links(payload: SensysUserEsignLinkAssign, token
     conn.commit()
     return {"ok": True}
 
-# -----------------------------
-# Notifications (Admin): list templates
-# -----------------------------
+# ---------------------------------------------------------------------------
+# Notifications (Admin): list templates (ANCHOR: NOTIF_ADMIN_LIST_TEMPLATES)
+# ---------------------------------------------------------------------------
+
 @app.get("/api/sensys/admin/notifications")
 def sensys_admin_notifications(token: str):
     _require_admin_token(token)
@@ -17700,9 +17759,10 @@ def sensys_admin_notifications(token: str):
 
     return {"ok": True, "notifications": [dict(r) for r in rows]}
 
-# -----------------------------
-# Notifications (Admin): upsert template
-# -----------------------------
+# ---------------------------------------------------------------------------
+# Notifications (Admin): upsert template (ANCHOR: NOTIF_ADMIN_UPSERT_TEMPLATE)
+# ---------------------------------------------------------------------------
+
 @app.post("/api/sensys/admin/notifications/upsert")
 def sensys_admin_notifications_upsert(payload: SensysNotificationTemplateUpsert, token: str):
     _require_admin_token(token)
@@ -17769,9 +17829,10 @@ def sensys_admin_notifications_upsert(payload: SensysNotificationTemplateUpsert,
     conn.commit()
     return {"ok": True, "id": new_id}
 
-# -----------------------------
-# Notifications (Admin): set delivery prefs for a user (replace)
-# -----------------------------
+# ---------------------------------------------------------------------------
+# Notifications (Admin): set delivery prefs for a user (replace) (ANCHOR: NOTIF_ADMIN_SET_USER_PREFS)
+# ---------------------------------------------------------------------------
+
 @app.post("/api/sensys/admin/users/set-notification-prefs")
 def sensys_admin_users_set_notification_prefs(payload: SensysUserNotificationPrefsSet, token: str):
     _require_admin_token(token)
@@ -17842,7 +17903,12 @@ def sensys_admin_agencies(token: str):
             fax,
             evolv_client,
             created_at,
-            updated_at
+            updated_at,
+            COALESCE(pdw_attempts_expected, 2) AS pdw_attempts_expected,
+            COALESCE(pdw_pref_details, '') AS pdw_pref_details,
+            COALESCE(pdw_enable_48h, 1) AS pdw_enable_48h,
+            COALESCE(pdw_enable_15d, 1) AS pdw_enable_15d,
+            COALESCE(pdw_enable_30d, 1) AS pdw_enable_30d
         FROM sensys_agencies
         ORDER BY agency_name COLLATE NOCASE
         """
@@ -17906,6 +17972,12 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                    email            = ?,
                    fax              = ?,
                    evolv_client     = ?,
+                   -- ✅ PDW Prefs (only overwrite when payload sends them)
+                   pdw_attempts_expected = COALESCE(?, pdw_attempts_expected),
+                   pdw_pref_details      = COALESCE(?, pdw_pref_details),
+                   pdw_enable_48h        = COALESCE(?, pdw_enable_48h),
+                   pdw_enable_15d        = COALESCE(?, pdw_enable_15d),
+                   pdw_enable_30d        = COALESCE(?, pdw_enable_30d),
                    updated_at       = datetime('now')
              WHERE id = ?
             """,
@@ -17926,6 +17998,11 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                 (payload.email or "").strip(),
                 (payload.fax or "").strip(),
                 evolv_client,
+                payload.pdw_attempts_expected,
+                payload.pdw_pref_details,
+                payload.pdw_enable_48h,
+                payload.pdw_enable_15d,
+                payload.pdw_enable_30d,
                 int(payload.id),
             ),
         )
@@ -17938,10 +18015,14 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                     notes, notes2,
                     address, city, state, zip,
                     phone1, phone2, email, fax,
-                    evolv_client
+                    evolv_client,
+
+                    -- ✅ PDW Prefs
+                    pdw_attempts_expected, pdw_pref_details,
+                    pdw_enable_48h, pdw_enable_15d, pdw_enable_30d
                 )
             VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
@@ -17960,6 +18041,11 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                 (payload.email or "").strip(),
                 (payload.fax or "").strip(),
                 evolv_client,
+                int(payload.pdw_attempts_expected or 2),
+                (payload.pdw_pref_details or ""),
+                1 if int(payload.pdw_enable_48h or 1) else 0,
+                1 if int(payload.pdw_enable_15d or 1) else 0,
+                1 if int(payload.pdw_enable_30d or 1) else 0,
             ),
         )
 
@@ -18404,8 +18490,9 @@ def sensys_admin_patients_upsert(payload: SensysPatientUpsert, token: str):
 
 
 # -----------------------------
-# Sensys Admin: list admissions (with joins for easy admin view)
+# Admin — Admissions: list (ANCHOR: ADMIN_ADMISSIONS_LIST)
 # -----------------------------
+
 @app.get("/api/sensys/admin/admissions")
 def sensys_admin_admissions(token: str):
     _require_admin_token(token)
@@ -18456,8 +18543,9 @@ def sensys_admin_admissions(token: str):
 
 
 # -----------------------------
-# Sensys Admin: upsert admission
+# Admin — Admissions: upsert (ANCHOR: ADMIN_ADMISSIONS_UPSERT)
 # -----------------------------
+
 @app.post("/api/sensys/admin/admissions/upsert")
 def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
     _require_admin_token(token)
@@ -20139,11 +20227,12 @@ def sensys_my_admissions(request: Request):
     return {"ok": True, "admissions": [dict(r) for r in rows]}
 
 # =========================================================
-# CCC-PDW v1 — Post-Discharge Workspace (postdc)
+# CCC-PDW v1 — Post-Discharge Workspace (postdc) (ANCHOR: PDW_SECTION)
 #   - CCC Lead assigns tasks
 #   - CCC Staff completes tasks
 #   - Agency linking enforced via sensys_user_agencies
 # =========================================================
+
 
 def _pdw_user_agency_ids(conn, user_id: int) -> list[int]:
     rows = conn.execute(
@@ -20174,72 +20263,116 @@ def _pdw_task_label(task_type: str) -> str:
 def _pdw_seed_48h_items_for_user(conn, user_id: int):
     """
     Create 48h work items for admissions (within this user's agencies) that have dc_date and no existing 48h.
-    due_at = dc_date + 2 days
+    due_at = dc_date + 1 day
+    Obeys agency PDW prefs:
+      - pdw_enable_48h (default 1)
+      - pdw_attempts_expected (default 2) -> sets max_attempts
     """
     conn.execute(
         """
-        INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status)
+        INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status, max_attempts)
         SELECT
             a.id,
             '48h',
-            datetime(a.dc_date, '+2 days'),
-            'unassigned'
+            datetime(a.dc_date, '+1 day'),
+            'unassigned',
+            COALESCE(NULLIF(ag.pdw_attempts_expected, 0), 2)
         FROM sensys_user_agencies ua
-        JOIN sensys_admissions a
-             ON a.agency_id = ua.agency_id
+        JOIN sensys_admissions a ON a.agency_id = ua.agency_id
+        JOIN sensys_agencies ag  ON ag.id = a.agency_id
         WHERE ua.user_id = ?
           AND a.dc_date IS NOT NULL
           AND TRIM(a.dc_date) <> ''
+          AND COALESCE(ag.pdw_enable_48h, 1) = 1
         """,
         (int(user_id),),
     )
 
 def _pdw_seed_next_items_for_user(conn, user_id: int):
     """
-    Create 15d after 48h completed; 30d after 15d completed
-    Only for admissions in this user's agencies.
+    Create next-stage items after completion, obeying agency PDW prefs.
+
+    Rules:
+      - If pdw_enable_15d=1: create 15d after 48h completed (due = completed_at + 15 days)
+      - If pdw_enable_30d=1:
+          - normally: create 30d after 15d completed (due = completed_at + 15 days)
+          - if 15d disabled: create 30d after 48h completed (due = completed_at + 30 days)
+      - max_attempts comes from pdw_attempts_expected (default 2)
     """
-    # 15d
+    # 15d (only if enabled)
     conn.execute(
         """
-        INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status)
+        INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status, max_attempts)
         SELECT
             w.admission_id,
             '15d',
             datetime(w.completed_at, '+15 days'),
-            'unassigned'
+            'unassigned',
+            COALESCE(NULLIF(ag.pdw_attempts_expected, 0), 2)
         FROM sensys_postdc_work_items w
         JOIN sensys_admissions a ON a.id = w.admission_id
+        JOIN sensys_agencies ag  ON ag.id = a.agency_id
         JOIN sensys_user_agencies ua ON ua.agency_id = a.agency_id
         WHERE ua.user_id = ?
           AND w.task_type = '48h'
           AND w.status = 'completed'
           AND w.completed_at IS NOT NULL
           AND w.deleted_at IS NULL
+          AND COALESCE(ag.pdw_enable_15d, 1) = 1
         """,
         (int(user_id),),
     )
 
-    # 30d
+    # 30d (enabled) — after 15d completed (when 15d enabled)
     conn.execute(
         """
-        INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status)
+        INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status, max_attempts)
         SELECT
             w.admission_id,
             '30d',
             datetime(w.completed_at, '+15 days'),
-            'unassigned'
+            'unassigned',
+            COALESCE(NULLIF(ag.pdw_attempts_expected, 0), 2)
         FROM sensys_postdc_work_items w
         JOIN sensys_admissions a ON a.id = w.admission_id
+        JOIN sensys_agencies ag  ON ag.id = a.agency_id
         JOIN sensys_user_agencies ua ON ua.agency_id = a.agency_id
         WHERE ua.user_id = ?
           AND w.task_type = '15d'
           AND w.status = 'completed'
           AND w.completed_at IS NOT NULL
           AND w.deleted_at IS NULL
+          AND COALESCE(ag.pdw_enable_30d, 1) = 1
+          AND COALESCE(ag.pdw_enable_15d, 1) = 1
         """,
         (int(user_id),),
     )
+
+    # 30d (enabled) — after 48h completed (when 15d disabled)
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status, max_attempts)
+        SELECT
+            w.admission_id,
+            '30d',
+            datetime(w.completed_at, '+30 days'),
+            'unassigned',
+            COALESCE(NULLIF(ag.pdw_attempts_expected, 0), 2)
+        FROM sensys_postdc_work_items w
+        JOIN sensys_admissions a ON a.id = w.admission_id
+        JOIN sensys_agencies ag  ON ag.id = a.agency_id
+        JOIN sensys_user_agencies ua ON ua.agency_id = a.agency_id
+        WHERE ua.user_id = ?
+          AND w.task_type = '48h'
+          AND w.status = 'completed'
+          AND w.completed_at IS NOT NULL
+          AND w.deleted_at IS NULL
+          AND COALESCE(ag.pdw_enable_30d, 1) = 1
+          AND COALESCE(ag.pdw_enable_15d, 1) = 0
+        """,
+        (int(user_id),),
+    )
+
 
 def _pdw_seed_all_for_user(conn, user_id: int):
     _pdw_seed_48h_items_for_user(conn, user_id)
@@ -20924,14 +21057,31 @@ def sensys_postdc_summary(request: Request):
         (my_user_id,),
     ).fetchone()["c"]
 
+    dcs_tomorrow = conn.execute(
+        """
+        SELECT COUNT(1) AS c
+        FROM sensys_admissions a
+        JOIN sensys_user_agencies ua ON ua.agency_id = a.agency_id AND ua.user_id = ?
+        WHERE a.active = 1
+          AND a.dc_date IS NOT NULL
+          AND TRIM(a.dc_date) <> ''
+          AND date(a.dc_date) = date('now','+1 day')
+        """,
+        (my_user_id,),
+    ).fetchone()["c"]
+
     return {
         "ok": True,
         "unassigned_calls": int(unassigned),
         "total_due_today": int(due_today),
         "completed_today": int(completed_today),
         "incomplete_today": int(incomplete_today),
+        "dcs_tomorrow": int(dcs_tomorrow),
     }
 
+# -----------------------------------------------------------------------------
+# Home Health — Referrals List (ANCHOR: HOME_HEALTH_REFERRALS)
+# -----------------------------------------------------------------------------
 @app.get("/api/sensys/my-referrals")
 def sensys_my_referrals(request: Request):
     """
@@ -20995,9 +21145,11 @@ def sensys_my_referrals(request: Request):
 
     return {"ok": True, "referrals": [dict(r) for r in rows]}
 
-# -----------------------------
-# Sensys: Admission Details APIs (tasks / notes / dc submissions / services / care team)
-# -----------------------------
+# -----------------------------------------------------------------------------
+# Admission Details APIs (ANCHOR: ADMISSION_DETAILS_API_SECTION)
+#   tasks / notes / dc submissions / services / care team / appointments / e-sign
+# -----------------------------------------------------------------------------
+
 from pydantic import BaseModel
 from typing import Optional, List
 
@@ -21435,6 +21587,9 @@ def sensys_notifications_mark_read(payload: SensysNotificationMarkRead, request:
     )
     conn.commit()
 
+# -----------------------------------------------------------------------------
+# PDFs — Upload / List / Download (ANCHOR: PDF_FEATURE)
+# -----------------------------------------------------------------------------
     return {"ok": True}
 
 @app.get("/api/sensys/admissions/{admission_id}/pdfs")
@@ -21578,6 +21733,9 @@ async def sensys_admission_pdf_upload(
     finally:
         conn.close()
 
+# -----------------------------------------------------------------------------
+# Communications — SMS / Fax (RingCentral) (ANCHOR: COMM_SMS_FAX)
+# -----------------------------------------------------------------------------
 @app.get("/api/sensys/admission-sms/{admission_id}")
 def sensys_admission_sms_list(admission_id: int, request: Request):
     u = _sensys_require_user(request)
@@ -21602,6 +21760,9 @@ def sensys_admission_sms_list(admission_id: int, request: Request):
     finally:
         conn.close()
 
+# -----------------------------
+# Communications — Fax: list by admission (ANCHOR: COMM_FAX_LIST)
+# -----------------------------
 @app.get("/api/sensys/admission-fax/{admission_id}")
 def sensys_admission_fax_list(admission_id: int, request: Request):
     u = _sensys_require_user(request)
@@ -21627,7 +21788,9 @@ def sensys_admission_fax_list(admission_id: int, request: Request):
     finally:
         conn.close()
 
-
+# -----------------------------
+# Communications — Fax: send (ANCHOR: COMM_FAX_SEND)
+# -----------------------------
 @app.post("/api/sensys/admission-fax/send")
 def sensys_admission_fax_send(payload: SensysAdmissionFaxSend, request: Request):
     u = _sensys_require_user(request)
@@ -21890,7 +22053,9 @@ def sensys_admission_fax_refresh_recent(admission_id: int, payload: SensysFaxRef
     finally:
         conn.close()
 
-
+# -----------------------------
+# Communications — SMS: send (ANCHOR: COMM_SMS_SEND)
+# -----------------------------
 @app.post("/api/sensys/admission-sms/send")
 def sensys_admission_sms_send(payload: SensysAdmissionSmsSend, request: Request):
     u = _sensys_require_user(request)
@@ -21999,7 +22164,9 @@ def sensys_admission_sms_send(payload: SensysAdmissionSmsSend, request: Request)
     finally:
         conn.close()
 
-
+# -----------------------------
+# Communications — SMS: refresh one status (ANCHOR: COMM_SMS_REFRESH_ONE)
+# -----------------------------
 @app.post("/api/sensys/admission-sms/refresh-status/{sms_log_id}")
 def sensys_admission_sms_refresh_status(sms_log_id: int, request: Request):
     u = _sensys_require_user(request)
@@ -22061,7 +22228,7 @@ def sensys_admission_sms_refresh_status(sms_log_id: int, request: Request):
 
 
 # -----------------------------
-# ✅ NEW: light “refresh recent statuses” endpoint
+# Communications — SMS: refresh recent statuses (ANCHOR: COMM_SMS_REFRESH_RECENT)
 # -----------------------------
 class SensysSmsRefreshRecent(BaseModel):
     max_age_minutes: int = 120   # only look at recent rows
@@ -22615,7 +22782,9 @@ def sensys_debug_db_state(request: Request):
         },
     }
 
-
+# -----------------------------
+# Admission Details — Tasks: upsert (ANCHOR: ADMISSION_TASKS_UPSERT)
+# -----------------------------
 @app.post("/api/sensys/admission-tasks/upsert")
 def sensys_admission_tasks_upsert(payload: AdmissionTaskUpsert, request: Request):
     u = _sensys_require_user(request)
@@ -22732,6 +22901,9 @@ def sensys_admission_tasks_upsert(payload: AdmissionTaskUpsert, request: Request
 class IdOnly(BaseModel):
     id: int
 
+# -----------------------------
+# Admission Details — Tasks: delete (ANCHOR: ADMISSION_TASKS_DELETE)
+# -----------------------------
 @app.post("/api/sensys/admission-tasks/delete")
 def sensys_admission_tasks_delete(payload: IdOnly, request: Request):
     _sensys_require_user(request)
@@ -22764,6 +22936,9 @@ class AdmissionNoteUpsert(BaseModel):
     # LEGACY (keep so older UI still works)
     note_comments: Optional[str] = ""
 
+# -----------------------------
+# Admission Details — Notes: upsert (ANCHOR: ADMISSION_NOTES_UPSERT)
+# -----------------------------
 @app.post("/api/sensys/admission-notes/upsert")
 def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request):
     u = _sensys_require_user(request)
@@ -22824,7 +22999,9 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
     conn.commit()
     return {"ok": True}
 
-
+# -----------------------------
+# Admission Details — Notes: delete (ANCHOR: ADMISSION_NOTES_DELETE)
+# -----------------------------
 @app.post("/api/sensys/admission-notes/delete")
 def sensys_admission_notes_delete(payload: IdOnly, request: Request):
     _sensys_require_user(request)
@@ -22997,6 +23174,9 @@ def sensys_dc_note_render(dc_submission_id: int, request: Request):
         "ctx": ctx,  # helpful for debugging; remove later if you want
     }
 
+# -----------------------------------------------------------------------------
+# Discharge Submissions — DC Plan (ANCHOR: DC_SUBMISSIONS_FEATURE)
+# -----------------------------------------------------------------------------
 @app.post("/api/sensys/admission-dc-submissions/upsert")
 def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request: Request):
     u = _sensys_require_user(request)
@@ -23088,10 +23268,9 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                 int(payload.admission_id),
             ),
         )
-        # -----------------------------
-        # 🔔 AUTOMATED NOTIFICATION TRIGGER:
-        # Updated Discharge (update path)
-        # -----------------------------
+        
+        
+        # ---- 🔔 AUTOMATED NOTIFICATION TRIGGER: Updated Discharge (update path) ----
         adm = conn.execute(
             """
             SELECT
@@ -23232,11 +23411,10 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                 """,
                 (dc_date_clean, int(payload.admission_id)),
             )
+            
+            
+    # ---- 🔔 AUTOMATED NOTIFICATION TRIGGER: New Discharge vs Updated Discharge ----
 
-    # -----------------------------
-    # 🔔 AUTOMATED NOTIFICATION TRIGGER:
-    # New Discharge vs Updated Discharge
-    # -----------------------------
     dc_count = conn.execute(
         """
         SELECT COUNT(1) AS c
@@ -23309,6 +23487,10 @@ class AdmissionEsignUpsert(BaseModel):
     service_type_id: int
     comments: Optional[str] = ""
     status: Optional[str] = "Pending"
+
+# -----------------------------
+# Discharge Submissions — upsert (ANCHOR: DC_SUBMISSIONS_UPSERT)
+# -----------------------------
 
 @app.post("/api/sensys/admission-esigns/upsert")
 def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Request):
@@ -23423,6 +23605,10 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
     return {"ok": True, "id": esign_id}
 
 
+# -----------------------------
+# Discharge Submissions — delete (ANCHOR: DC_SUBMISSIONS_DELETE)
+# -----------------------------
+
 @app.post("/api/sensys/admission-esigns/delete")
 def sensys_admission_esigns_delete(payload: IdOnly, request: Request):
     u = _sensys_require_user(request)
@@ -23445,6 +23631,11 @@ def sensys_admission_esigns_delete(payload: IdOnly, request: Request):
 class EsignServicesSet(BaseModel):
     esign_id: int
     services_ids: List[int] = []
+
+
+# -----------------------------
+# Discharge Submissions — set services (ANCHOR: DC_SUBMISSION_SERVICES_SET)
+# -----------------------------
 
 @app.post("/api/sensys/esign-services/set")
 def sensys_esign_services_set(payload: EsignServicesSet, request: Request):
@@ -24370,8 +24561,9 @@ def sensys_care_compare_hha_search(
 
 
 # ---------------------------------------------------------------------------
-# HTML routes & health check
+# HTML routes & health check (ANCHOR: HTML_ROUTES_SECTION)
 # ---------------------------------------------------------------------------
+
 
 def read_html(path: Path) -> str:
     """
