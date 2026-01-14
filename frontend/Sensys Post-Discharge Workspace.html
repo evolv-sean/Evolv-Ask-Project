@@ -34,7 +34,10 @@
     <div style="font-weight:700;">Post-Discharge Workspace</div>
     <div class="muted">PDW v1 — Work Items + Attempts Log</div>
   </div>
-  <div>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <button onclick="openStaffSchedules()" style="padding:8px 10px;border-radius:10px;border:1px solid #e6e7ee;background:#fff;cursor:pointer;">
+      Staff Schedules
+    </button>
     <button onclick="logout()" style="padding:8px 10px;border-radius:10px;border:1px solid #e6e7ee;background:#fff;cursor:pointer;">Logout</button>
   </div>
 </div>
@@ -53,18 +56,39 @@
       </div>
 
       <div class="cardBd">
+
+        <!-- ✅ Top summary mini cards -->
+        <div id="summaryRow" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; margin-bottom:10px;">
+          <div class="pill" style="padding:10px 12px; border-radius:14px;">
+            <div class="muted" style="font-size:11px;">Unassigned Calls</div>
+            <div style="font-weight:800; font-size:16px;" id="sumUnassigned">—</div>
+          </div>
+          <div class="pill" style="padding:10px 12px; border-radius:14px;">
+            <div class="muted" style="font-size:11px;">Total Due Today</div>
+            <div style="font-weight:800; font-size:16px;" id="sumDueToday">—</div>
+          </div>
+          <div class="pill" style="padding:10px 12px; border-radius:14px;">
+            <div class="muted" style="font-size:11px;">Completed Today</div>
+            <div style="font-weight:800; font-size:16px;" id="sumCompleted">—</div>
+          </div>
+          <div class="pill" style="padding:10px 12px; border-radius:14px;">
+            <div class="muted" style="font-size:11px;">Incomplete Today</div>
+            <div style="font-weight:800; font-size:16px;" id="sumIncomplete">—</div>
+          </div>
+        </div>
+
         <div class="muted" id="bucketHelp"></div>
 
         <div style="overflow:auto; margin-top:10px;">
           <table>
             <thead>
               <tr>
-                <th>Due</th>
-                <th>Task</th>
                 <th>Patient</th>
-                <th>Admission</th>
-                <th>Assigned</th>
-                <th></th>
+                <th>Days Since DC</th>
+                <th>Task</th>
+                <th>Due</th>
+                <th>Assign</th>
+                <th></th> <!-- ✅ reserved for future icon buttons -->
               </tr>
             </thead>
             <tbody id="tbody"></tbody>
@@ -79,15 +103,93 @@
     <div class="card">
       <div class="cardHd">
         <div style="font-weight:700;">Staff Availability</div>
-        <div class="muted">(coming soon)</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span class="muted">Available Day</span>
+          <select id="availDay" onchange="loadStaffAvailability()" style="padding:8px 10px;border-radius:10px;border:1px solid #e6e7ee;background:#fff;">
+            <option value="0">Today</option>
+            <option value="2">2 days out</option>
+            <option value="3">3 days out</option>
+            <option value="4">4 days out</option>
+            <option value="5">5 days out</option>
+          </select>
+        </div>
       </div>
-      <div class="cardBd rightPlaceholder">
-        Future: workload / capacity card
+      <div class="cardBd">
+        <div id="staffAvailList" style="display:grid; gap:10px;"></div>
       </div>
     </div>
   </div>
 </div>
+<!-- ✅ Assign Modal -->
+<div id="assignModalBg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); align-items:center; justify-content:center; padding:18px; z-index:50;">
+  <div style="width:min(860px, 96vw); background:#fff; border:1px solid #e6e7ee; border-radius:14px; overflow:hidden;">
+    <div class="cardHd">
+      <div>
+        <div style="font-weight:800;">Assign Work Item</div>
+        <div class="muted" id="assignSub">—</div>
+      </div>
+      <button class="pill" onclick="closeAssignModal()">Close</button>
+    </div>
 
+    <div class="cardBd">
+      <div style="display:grid; grid-template-columns: 1.2fr .8fr; gap:14px;">
+        <div>
+          <div class="muted" style="margin-bottom:8px;">CCC Staff</div>
+          <div id="assignStaffList" style="display:grid; gap:8px;"></div>
+        </div>
+
+        <div>
+          <div class="muted" style="margin-bottom:8px;">Assignment Notes</div>
+          <textarea id="assignNotes" placeholder="Add notes for staff…" style="width:100%; min-height:160px; border-radius:12px; border:1px solid #e6e7ee; padding:10px; font-size:13px;"></textarea>
+
+          <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:10px;">
+            <button class="pill" onclick="closeAssignModal()">Cancel</button>
+            <button class="pill" style="border-color:#111; background:#111; color:#fff;" onclick="submitAssign()">Assign</button>
+          </div>
+
+          <div class="msg" id="assignMsg" style="margin-top:8px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ✅ Staff Schedules Modal -->
+<div id="staffSchedBg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,35); align-items:center; justify-content:center; padding:18px; z-index:60;">
+  <div style="width:min(980px, 96vw); background:#fff; border:1px solid #e6e7ee; border-radius:14px; overflow:hidden;">
+    <div class="cardHd">
+      <div>
+        <div style="font-weight:800;">Staff Schedules</div>
+        <div class="muted" style="margin-top:2px;">Edit CCC Staff capacity + schedules (days / start-stop). Last login is displayed.</div>
+      </div>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <button onclick="closeStaffSchedules()" style="padding:8px 10px;border-radius:10px;border:1px solid #e6e7ee;background:#fff;cursor:pointer;">Close</button>
+      </div>
+    </div>
+
+    <div class="cardBd">
+      <div class="muted" id="staffSchedMsg" style="margin-bottom:10px;"></div>
+
+      <div style="overflow:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>CCC Staff</th>
+              <th>Last Login</th>
+              <th>Calls / Hr</th>
+              <th>Schedules</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="staffSchedTbody"></tbody>
+        </table>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:12px;">
+        <button onclick="saveStaffSchedules()" style="padding:10px 12px;border-radius:12px;border:1px solid #111;background:#111;color:#fff;cursor:pointer;">Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
 <script>
   function getToken(){ return localStorage.getItem("sensys_token") || ""; }
 
@@ -174,8 +276,9 @@
 
         let btns = "";
         if(currentBucket === "unassigned"){
+          const patientLabel = `${patient} (${agency})`;
           btns = `<div class="rowBtns">
-                    <button onclick="quickAssign(${Number(it.id)})">Assign…</button>
+                    <button onclick="openAssignModal(${Number(it.id)}, '${esc(patientLabel)}')">Assign…</button>
                   </div>`;
         } else if(currentBucket === "incomplete"){
           btns = `<div class="rowBtns">
@@ -187,13 +290,23 @@
         }
 
         const tr = document.createElement("tr");
+        const agency = it.agency_name || "—";
+        const dc = it.dc_date ? String(it.dc_date).slice(0,10) : "";
+        const daysSinceDc = (it.dc_date ? Math.max(0, Math.floor((Date.now() - new Date(it.dc_date).getTime()) / 86400000)) : "—");
+
         tr.innerHTML = `
+          <td>
+            <b>${esc(patient)}</b>
+            <div class="muted">${esc(agency)}${dc ? " • DC " + esc(dc) : ""}</div>
+          </td>
+          <td>${esc(daysSinceDc)}</td>
+          <td>
+            <b>${esc(it.task_label||it.task_type||"")}</b>
+            <div class="muted">Attempts: ${(it.attempt_count||0)}/${(it.max_attempts||2)}</div>
+          </td>
           <td>${esc(fmt(it.due_at))}</td>
-          <td><b>${esc(it.task_label||it.task_type||"")}</b><div class="muted">Attempts: ${(it.attempt_count||0)}/${(it.max_attempts||2)}</div></td>
-          <td>${esc(patient)}</td>
-          <td class="muted">${esc(adm)}</td>
-          <td>${esc(assigned)}</td>
           <td style="white-space:nowrap;">${btns}</td>
+          <td style="white-space:nowrap;" id="rowIcons_${Number(it.id)}"></td>
         `;
         tbody.appendChild(tr);
       });
@@ -204,20 +317,302 @@
     }
   }
 
-  async function quickAssign(workItemId){
-    // super minimal prompt for now (we’ll replace with a real picker later)
-    const staffId = prompt("Assign to staff user_id:");
-    if(!staffId) return;
+  let assignWorkItemId = null;
+  let assignSelectedStaffId = null;
+
+  function openAssignModal(workItemId, patientLabel){
+    assignWorkItemId = Number(workItemId);
+    assignSelectedStaffId = null;
+    document.getElementById("assignNotes").value = "";
+    document.getElementById("assignMsg").textContent = "";
+    document.getElementById("assignSub").textContent = patientLabel || "—";
+    document.getElementById("assignModalBg").style.display = "flex";
+    loadAssignStaff();
+  }
+
+  function closeAssignModal(){
+    document.getElementById("assignModalBg").style.display = "none";
+  }
+
+  async function loadAssignStaff(){
+    const box = document.getElementById("assignStaffList");
+    box.innerHTML = `<div class="muted">Loading staff…</div>`;
+
+    try{
+      const data = await apiGet("/api/sensys/postdc/staff/overview?day_offset=0");
+      const staff = data.staff || [];
+      if(staff.length === 0){
+        box.innerHTML = `<div class="muted">No CCC Staff found.</div>`;
+        return;
+      }
+
+      box.innerHTML = "";
+      staff.forEach(s => {
+        const pct = Number(s.caseload_pct||0);
+        const start = s.available_start ? s.available_start : "—";
+        const end = s.available_end ? s.available_end : "—";
+        const cph = (s.calls_per_hour!=null) ? s.calls_per_hour : 0;
+
+        const row = document.createElement("div");
+        row.className = "pill";
+        row.style.padding = "10px 12px";
+        row.style.borderRadius = "14px";
+        row.style.cursor = "pointer";
+        row.onclick = () => {
+          assignSelectedStaffId = Number(s.user_id);
+          [...box.children].forEach(ch => ch.style.boxShadow = "");
+          row.style.boxShadow = "0 0 0 3px rgba(0,0,0,.10)";
+        };
+
+        row.innerHTML = `
+          <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+            <div>
+              <div style="font-weight:800;">${esc(s.display_name || s.email || "")}</div>
+              <div class="muted">Next availability: ${esc(start)}–${esc(end)}</div>
+              <div class="muted">Calls/hr: ${esc(String(cph))}</div>
+            </div>
+            <div style="min-width:150px;">
+              <div class="muted" style="text-align:right;">Caseload</div>
+              <div style="height:10px; border:1px solid #e6e7ee; border-radius:999px; overflow:hidden; margin-top:6px;">
+                <div style="height:10px; width:${pct}%; background:#111;"></div>
+              </div>
+              <div class="muted" style="text-align:right; margin-top:6px;">${pct}%</div>
+            </div>
+          </div>
+        `;
+        box.appendChild(row);
+      });
+
+    }catch(e){
+      box.innerHTML = `<div class="muted">Error loading staff.</div>`;
+    }
+  }
+
+  async function submitAssign(){
+    const msg = document.getElementById("assignMsg");
+    msg.textContent = "";
+    if(!assignWorkItemId || !assignSelectedStaffId){
+      msg.textContent = "Pick a CCC Staff member first.";
+      return;
+    }
+    const notes = (document.getElementById("assignNotes").value || "").trim();
 
     try{
       await apiPost("/api/sensys/postdc/work-items/assign", {
-        work_item_id: workItemId,
-        assigned_to_user_id: Number(staffId)
+        work_item_id: assignWorkItemId,
+        assigned_to_user_id: assignSelectedStaffId,
+        assignment_notes: notes
       });
+      closeAssignModal();
       setMsg("Assigned.", true);
       loadItems();
+      loadSummary();
+      loadStaffAvailability();
     }catch(e){
-      setMsg(e.message || "Assign failed", false);
+      msg.textContent = e.message || "Assign failed";
+    }
+  }
+
+  async function loadStaffAvailability(){
+    const dayOffset = Number(document.getElementById("availDay").value || 0);
+    const box = document.getElementById("staffAvailList");
+    box.innerHTML = `<div class="muted">Loading…</div>`;
+
+    try{
+      const data = await apiGet("/api/sensys/postdc/staff/overview?day_offset=" + encodeURIComponent(dayOffset));
+      const staff = data.staff || [];
+      if(staff.length === 0){
+        box.innerHTML = `<div class="muted">No CCC Staff found for your agencies.</div>`;
+        return;
+      }
+
+      box.innerHTML = "";
+      staff.forEach(s => {
+        const pct = Number(s.caseload_pct||0);
+        const start = s.available_start ? s.available_start : "—";
+        const end = s.available_end ? s.available_end : "—";
+        const cph = (s.calls_per_hour!=null) ? s.calls_per_hour : 0;
+
+        const row = document.createElement("div");
+        row.className = "pill";
+        row.style.padding = "10px 12px";
+        row.style.borderRadius = "14px";
+
+        row.innerHTML = `
+          <div style="display:flex; justify-content:space-between; gap:10px;">
+            <div>
+              <div style="font-weight:800;">${esc(s.display_name || s.email || "")}</div>
+              <div class="muted">${esc(start)}–${esc(end)} • Calls/hr: ${esc(String(cph))}</div>
+            </div>
+            <div style="min-width:160px;">
+              <div class="muted" style="text-align:right;">Caseload %</div>
+              <div style="height:10px; border:1px solid #e6e7ee; border-radius:999px; overflow:hidden; margin-top:6px;">
+                <div style="height:10px; width:${pct}%; background:#111;"></div>
+              </div>
+              <div class="muted" style="text-align:right; margin-top:6px;">${pct}%</div>
+            </div>
+          </div>
+        `;
+        box.appendChild(row);
+      });
+
+    }catch(e){
+      box.innerHTML = `<div class="muted">Error loading staff availability.</div>`;
+    }
+  }
+
+  function staffSchedSetMsg(text, ok){
+    const el = document.getElementById("staffSchedMsg");
+    el.textContent = text || "";
+    el.style.color = ok ? "#0a7a2f" : "#b00020";
+  }
+
+  function openStaffSchedules(){
+    document.getElementById("staffSchedBg").style.display = "flex";
+    staffSchedSetMsg("", true);
+    loadStaffSchedules();
+  }
+
+  function closeStaffSchedules(){
+    document.getElementById("staffSchedBg").style.display = "none";
+  }
+
+  async function loadStaffSchedules(){
+    const tbody = document.getElementById("staffSchedTbody");
+    tbody.innerHTML = `<tr><td colspan="5" class="muted">Loading…</td></tr>`;
+
+    try{
+      // ✅ You need a backend route that returns CCC Staff + their schedules
+      // Expected shape:
+      // { ok:true, staff:[ { user_id, display_name, last_login_at, calls_per_hour, schedules:[{id, day_of_week, start_time, end_time}] } ] }
+      const d = await apiGet("/api/sensys/postdc/staff/schedules");
+
+      const staff = d.staff || [];
+      if(!staff.length){
+        tbody.innerHTML = `<tr><td colspan="5" class="muted">No CCC Staff found.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = "";
+      staff.forEach(u => {
+        const tr = document.createElement("tr");
+
+        const schedRows = (u.schedules || []).map(s => scheduleRowHtml(u.user_id, s)).join("");
+        const schedBox = `
+          <div style="display:grid; gap:8px;">
+            <div data-schedwrap="${u.user_id}" style="display:grid; gap:8px;">
+              ${schedRows || `<div class="muted">No schedules yet.</div>`}
+            </div>
+            <div>
+              <button class="pill" style="cursor:pointer;" onclick="addScheduleRow(${Number(u.user_id)})">+ Add schedule</button>
+            </div>
+          </div>
+        `;
+
+        tr.innerHTML = `
+          <td><b>${esc(u.display_name || "")}</b></td>
+          <td class="muted">${fmt(u.last_login_at) || "—"}</td>
+          <td>
+            <input data-cph="${u.user_id}"
+                   type="number"
+                   step="0.1"
+                   min="0"
+                   value="${Number(u.calls_per_hour || 0)}"
+                   style="width:110px; padding:8px 10px; border:1px solid #e6e7ee; border-radius:10px;">
+          </td>
+          <td>${schedBox}</td>
+          <td></td>
+        `;
+
+        tbody.appendChild(tr);
+      });
+
+    }catch(e){
+      tbody.innerHTML = `<tr><td colspan="5" class="muted">Error loading staff schedules.</td></tr>`;
+      staffSchedSetMsg(e.message || "Error", false);
+    }
+  }
+
+  function scheduleRowHtml(userId, s){
+    const sid = s.id ? Number(s.id) : 0;
+    const day = (s.day_of_week ?? "");
+    const start = (s.start_time ?? "");
+    const end = (s.end_time ?? "");
+    return `
+      <div data-schedrow="${userId}" data-scheduleid="${sid}" style="display:grid; grid-template-columns: 160px 140px 140px auto; gap:8px; align-items:center;">
+        <select data-day style="padding:8px 10px;border-radius:10px;border:1px solid #e6e7ee;background:#fff;">
+          ${dayOpt(1, day)}${dayOpt(2, day)}${dayOpt(3, day)}${dayOpt(4, day)}${dayOpt(5, day)}${dayOpt(6, day)}${dayOpt(0, day)}
+        </select>
+        <input data-start type="time" value="${esc(start)}" style="padding:8px 10px;border-radius:10px;border:1px solid #e6e7ee;">
+        <input data-end type="time" value="${esc(end)}" style="padding:8px 10px;border-radius:10px;border:1px solid #e6e7ee;">
+        <button class="pill" style="cursor:pointer; width:max-content;" onclick="removeScheduleRow(this)">Remove</button>
+      </div>
+    `;
+  }
+
+  function dayOpt(val, current){
+    // Backend uses 0=Sun..6=Sat
+    const label = ({
+      1:"Mon", 2:"Tue", 3:"Wed", 4:"Thu", 5:"Fri", 6:"Sat", 0:"Sun"
+    })[val] || String(val);
+
+    const sel = (String(current) === String(val)) ? "selected" : "";
+    return `<option value="${val}" ${sel}>${label}</option>`;
+  }
+
+  function addScheduleRow(userId){
+    const wrap = document.querySelector(`[data-schedwrap="${userId}"]`);
+    if(!wrap) return;
+
+    // if the wrap currently has the "No schedules yet." line, remove it
+    if(wrap.querySelector(".muted")) wrap.innerHTML = "";
+
+    wrap.insertAdjacentHTML("beforeend", scheduleRowHtml(userId, { id: 0, day_of_week: 1, start_time: "09:00", end_time: "17:00" }));
+  }
+
+  function removeScheduleRow(btn){
+    const row = btn.closest("[data-schedrow]");
+    if(row) row.remove();
+  }
+
+  async function saveStaffSchedules(){
+    staffSchedSetMsg("Saving…", true);
+
+    try{
+      // Build payload: calls/hr + schedules per user
+      const tbody = document.getElementById("staffSchedTbody");
+      const userIds = Array.from(tbody.querySelectorAll("[data-cph]")).map(i => Number(i.getAttribute("data-cph")));
+      const uniqUserIds = Array.from(new Set(userIds));
+
+      const payload = uniqUserIds.map(uid => {
+        const cphEl = tbody.querySelector(`[data-cph="${uid}"]`);
+        const cph = Number(cphEl ? cphEl.value : 0);
+
+        const schedRows = Array.from(tbody.querySelectorAll(`[data-schedrow="${uid}"]`)).map(r => {
+          return {
+            id: Number(r.getAttribute("data-scheduleid") || 0) || 0,
+            day_of_week: (r.querySelector("[data-day]")?.value || "").trim(),
+            start_time: (r.querySelector("[data-start]")?.value || "").trim(),
+            end_time: (r.querySelector("[data-end]")?.value || "").trim(),
+          };
+        });
+
+        return { user_id: uid, calls_per_hour: cph, schedules: schedRows };
+      });
+
+      // ✅ You need a backend route that upserts schedules + saves capacity
+      // Expected: POST /api/sensys/postdc/staff/schedules/upsert
+      // Backend expects ONE StaffScheduleUpsertIn per call.
+      // So we upsert each staff member separately.
+      await Promise.all((payload || []).map(row =>
+        apiPost("/api/sensys/postdc/staff/schedules/upsert", row)
+      ));
+
+      staffSchedSetMsg("Saved.", true);
+      loadStaffSchedules();      // refresh view
+      loadStaffAvailability();   // refresh right-side availability too
+    }catch(e){
+      staffSchedSetMsg(e.message || "Save failed", false);
     }
   }
 
@@ -238,6 +633,18 @@
       loadItems();
     }catch(e){
       setMsg(e.message || "Attempt failed", false);
+    }
+  }
+
+  async function loadSummary(){
+    try{
+      const d = await apiGet("/api/sensys/postdc/summary");
+      document.getElementById("sumUnassigned").textContent = d.unassigned_calls ?? "—";
+      document.getElementById("sumDueToday").textContent = d.total_due_today ?? "—";
+      document.getElementById("sumCompleted").textContent = d.completed_today ?? "—";
+      document.getElementById("sumIncomplete").textContent = d.incomplete_today ?? "—";
+    }catch(e){
+      // ignore
     }
   }
 
@@ -266,6 +673,8 @@
 
   // init
   setBucket("unassigned");
+  loadSummary();
+  loadStaffAvailability();
 </script>
 
 </body>
