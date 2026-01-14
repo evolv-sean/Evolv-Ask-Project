@@ -23111,6 +23111,20 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
         dc_time = (payload.dc_time or "").strip()
         dest = (payload.dc_destination or "").strip()
 
+        # ✅ PDW: if confirmed, push dc_date into sensys_admissions.dc_date
+        if int(payload.dc_confirmed or 0) == 1:
+            dc_date_clean = (payload.dc_date or "").strip()
+            if dc_date_clean:
+                conn.execute(
+                    """
+                    UPDATE sensys_admissions
+                       SET dc_date = ?,
+                           updated_at = datetime('now')
+                     WHERE id = ?
+                    """,
+                    (dc_date_clean, int(payload.admission_id)),
+                )
+
         title = "Updated Discharge"
         if patient_name:
             title = f"Updated Discharge — {patient_name}"
@@ -23205,6 +23219,19 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
     )
 
     dc_submission_id = int(cur.lastrowid)
+    # ✅ PDW: if confirmed, push dc_date into sensys_admissions.dc_date
+    if int(payload.dc_confirmed or 0) == 1:
+        dc_date_clean = (payload.dc_date or "").strip()
+        if dc_date_clean:
+            conn.execute(
+                """
+                UPDATE sensys_admissions
+                   SET dc_date = ?,
+                       updated_at = datetime('now')
+                 WHERE id = ?
+                """,
+                (dc_date_clean, int(payload.admission_id)),
+            )
 
     # -----------------------------
     # 🔔 AUTOMATED NOTIFICATION TRIGGER:
