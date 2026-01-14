@@ -422,9 +422,10 @@
       const data = await apiGet("/api/sensys/postdc/staff/overview?day_offset=" + encodeURIComponent(dayOffset));
       const staff = data.staff || [];
       if(staff.length === 0){
-        box.innerHTML = `<div class="muted">No CCC Staff found for your agencies.</div>`;
+        box.innerHTML = `<div class="muted">No CCC Staff scheduled for the selected day.</div>`;
         return;
       }
+
 
       box.innerHTML = "";
       staff.forEach(s => {
