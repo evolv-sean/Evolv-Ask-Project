@@ -59,7 +59,7 @@
       <div class="cardBd">
 
         <!-- ✅ Top summary mini cards -->
-        <div id="summaryRow" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; margin-bottom:10px;">
+        <div id="summaryRow" style="display:grid; grid-template-columns: repeat(5, 1fr); gap:10px; margin-bottom:10px;">
           <div class="pill" style="padding:10px 12px; border-radius:14px;">
             <div class="muted" style="font-size:11px;">Unassigned Calls</div>
             <div style="font-weight:800; font-size:16px;" id="sumUnassigned">—</div>
@@ -75,6 +75,10 @@
           <div class="pill" style="padding:10px 12px; border-radius:14px;">
             <div class="muted" style="font-size:11px;">Incomplete Today</div>
             <div style="font-weight:800; font-size:16px;" id="sumIncomplete">—</div>
+          </div>
+          <div class="pill" style="padding:10px 12px; border-radius:14px;">
+            <div class="muted" style="font-size:11px;">DC’s Tomorrow</div>
+            <div style="font-weight:800; font-size:16px;" id="sumDcTomorrow">—</div>
           </div>
         </div>
 
@@ -374,7 +378,7 @@
             <div class="muted">Attempts: ${(it.attempt_count||0)}/${(it.max_attempts||2)}</div>
           </td>
           <td>
-            <div class="muted" style="margin-bottom:2px;">Assigned To: ${esc(it.assigned_to_name || "—")}</div>
+            <div class="muted" style="margin-bottom:2px;">${esc(it.assigned_to_name || "—")}</div>
             <div><b>${esc(fmtDateOnly(it.due_at))}</b></div>
           </td>
           <td style="white-space:nowrap;">${btns}</td>
@@ -450,7 +454,7 @@
           <div class="muted">Attempts: ${(it.attempt_count||0)}/${(it.max_attempts||2)}</div>
         </td>
         <td>
-          <div class="muted" style="margin-bottom:2px;">Assigned To: ${esc(it.assigned_to_name || "—")}</div>
+          <div class="muted" style="margin-bottom:2px;">${esc(it.assigned_to_name || "—")}</div>
           <div><b>${esc(fmtDateOnly(it.due_at))}</b></div>
         </td>
         <td style="white-space:nowrap;">${btns}</td>
@@ -622,6 +626,19 @@
     }
   }
 
+  function fmtTime12(hhmm){
+    // hhmm: "HH:MM"
+    const parts = String(hhmm || "").split(":");
+    if(parts.length < 2) return String(hhmm || "—");
+    let h = parseInt(parts[0], 10);
+    const m = parts[1];
+    if(isNaN(h)) return String(hhmm || "—");
+    const ampm = (h >= 12) ? "PM" : "AM";
+    h = h % 12;
+    if(h === 0) h = 12;
+    return `${h}:${m}${ampm}`;
+  }
+
   async function loadStaffAvailability(){
     const dayOffset = Number(document.getElementById("availDay").value || 0);
     const box = document.getElementById("staffAvailList");
@@ -639,9 +656,17 @@
       box.innerHTML = "";
       staff.forEach(s => {
         const pct = Number(s.caseload_pct||0);
-        const start = s.available_start ? s.available_start : "—";
-        const end = s.available_end ? s.available_end : "—";
+        const start = s.available_start ? s.available_start : null; // "HH:MM"
+        const end = s.available_end ? s.available_end : null;       // "HH:MM"
         const cph = (s.calls_per_hour!=null) ? s.calls_per_hour : 0;
+
+        const timeLine = (start && end)
+          ? `${fmtTime12(start)} - ${fmtTime12(end)} • Calls/hr: ${esc(String(cph))}`
+          : `— • Calls/hr: ${esc(String(cph))}`;
+
+        const lastLoginLine = s.last_login_at
+          ? `Last Login: ${new Date(s.last_login_at.replace(" ", "T") + "Z").toLocaleString()}`
+          : `Last Login: —`;
 
         const row = document.createElement("div");
         row.className = "pill";
@@ -652,7 +677,8 @@
           <div style="display:flex; justify-content:space-between; gap:10px;">
             <div>
               <div style="font-weight:800;">${esc(s.display_name || s.email || "")}</div>
-              <div class="muted">${esc(start)}–${esc(end)} • Calls/hr: ${esc(String(cph))}</div>
+              <div class="muted">${esc(timeLine)}</div>
+              <div class="muted" style="margin-top:2px;">${esc(lastLoginLine)}</div>
             </div>
             <div style="min-width:160px;">
               <div class="muted" style="text-align:right;">Caseload %</div>
@@ -853,6 +879,7 @@
       document.getElementById("sumDueToday").textContent = d.total_due_today ?? "—";
       document.getElementById("sumCompleted").textContent = d.completed_today ?? "—";
       document.getElementById("sumIncomplete").textContent = d.incomplete_today ?? "—";
+      document.getElementById("sumDcTomorrow").textContent = d.dcs_tomorrow ?? "—";
     }catch(e){
       // ignore
     }
