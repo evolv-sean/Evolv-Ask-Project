@@ -331,11 +331,10 @@
 
     try{
       const data = await apiGet("/api/sensys/postdc/work-items?bucket=" + encodeURIComponent(currentBucket));
-      const items = data.items || [];
-      if(items.length === 0){
-        tbody.innerHTML = "<tr><td colspan='6' class='muted'>No items.</td></tr>";
-        return;
-      }
+      itemsCache = data.items || [];
+
+      renderItemsFromCache();
+      return;
 
       tbody.innerHTML = "";
       items.forEach(it => {
