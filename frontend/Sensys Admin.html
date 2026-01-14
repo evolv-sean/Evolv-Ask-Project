@@ -524,7 +524,7 @@
                     <th>Name</th>
                     <th>Active</th>
                     <th>Roles</th>
-                    <th>Agencies</th>
+                    <th>Last Login</th>
                     <th>Locked</th>
                   </tr>
                 </thead>
@@ -570,6 +570,7 @@
                     <th>Name</th>
                     <th>Type</th>
                     <th>Evolv Client</th>
+                    <th style="text-align:right;">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="agencyTbody"></tbody>
@@ -1767,6 +1768,58 @@
     </div>
   </div>
 </div>
+<!-- =========================
+     PDW Prefs Modal (Agency)
+========================= -->
+<div class="modal-backdrop" id="pdwPrefsModalBackdrop">
+  <div class="modal" style="max-width:720px;width:calc(100% - 28px);">
+    <div class="modal-hd" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+      <div>
+        <div style="font-weight:1000;font-size:16px;">PDW Preferences</div>
+        <div class="hint" id="pdwPrefsSub" style="margin-top:4px;">—</div>
+      </div>
+      <button class="iconbtn" onclick="closePdwPrefsModal()">✕</button>
+    </div>
+
+    <div class="modal-bd">
+      <div class="grid" style="grid-template-columns: 1fr 1fr; gap:12px;">
+        <div>
+          <label class="lbl">Attempts Expected (default 2)</label>
+          <input class="input" id="pdw_attempts_expected" type="number" min="1" step="1" />
+          <div class="hint">Used to set “Attempts: x / y” on PDW work items.</div>
+        </div>
+
+        <div style="padding:10px;border:1px solid #eef0f5;border-radius:14px;background:#fafbff;">
+          <div style="font-weight:900;font-size:12px;margin-bottom:8px;">Task Logic (per agency)</div>
+          <label style="display:flex;gap:8px;align-items:center;font-size:12px;">
+            <input type="checkbox" id="pdw_enable_48h" /> Enable 48hr Call
+          </label>
+          <label style="display:flex;gap:8px;align-items:center;font-size:12px;margin-top:6px;">
+            <input type="checkbox" id="pdw_enable_15d" /> Enable 15 Day Call
+          </label>
+          <label style="display:flex;gap:8px;align-items:center;font-size:12px;margin-top:6px;">
+            <input type="checkbox" id="pdw_enable_30d" /> Enable 30 Day Call
+          </label>
+          <div class="hint" style="margin-top:8px;">
+            Example: 48h + 30d only → uncheck 15d, keep 30d checked.
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <label class="lbl">Agency Preference Details</label>
+        <textarea class="input" id="pdw_pref_details" rows="5" placeholder="Multiline notes for this agency’s PDW preferences…"></textarea>
+      </div>
+
+      <div id="pdwPrefsMsg" class="toast" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="modal-ft" style="display:flex;justify-content:flex-end;gap:10px;">
+      <button class="btn" onclick="closePdwPrefsModal()">Cancel</button>
+      <button class="btn primary" id="savePdwPrefsBtn">Save PDW Prefs</button>
+    </div>
+  </div>
+</div>
 
 <script>
   const $ = (id) => document.getElementById(id);
@@ -1891,6 +1944,83 @@
     closeCareTeamModal();
     closeBulkModal();
   });
+
+  // -----------------------------
+  // Agency PDW Prefs modal
+  // -----------------------------
+  let pdwPrefsAgencyId = null;
+
+  function openPdwPrefsModal(agencyId){
+    pdwPrefsAgencyId = Number(agencyId);
+
+    const a = (agenciesCache || []).find(x => Number(x.id) === pdwPrefsAgencyId);
+    $("pdwPrefsSub").textContent = a ? `${a.agency_name || "—"} (Agency #${a.id})` : `Agency #${pdwPrefsAgencyId}`;
+    setMsg($("pdwPrefsMsg"), "", true);
+
+    $("pdw_attempts_expected").value = String(a?.pdw_attempts_expected ?? 2);
+    $("pdw_pref_details").value = a?.pdw_pref_details ?? "";
+
+    $("pdw_enable_48h").checked = String(a?.pdw_enable_48h ?? 1) === "1";
+    $("pdw_enable_15d").checked = String(a?.pdw_enable_15d ?? 1) === "1";
+    $("pdw_enable_30d").checked = String(a?.pdw_enable_30d ?? 1) === "1";
+
+    $("pdwPrefsModalBackdrop").classList.add("on");
+  }
+
+  function closePdwPrefsModal(){
+    $("pdwPrefsModalBackdrop").classList.remove("on");
+  }
+
+  $("pdwPrefsModalBackdrop").addEventListener("click", (e) => {
+    if(e.target.id === "pdwPrefsModalBackdrop") closePdwPrefsModal();
+  });
+
+  $("savePdwPrefsBtn").onclick = async () => {
+    try{
+      const a = (agenciesCache || []).find(x => Number(x.id) === Number(pdwPrefsAgencyId));
+      if(!a) throw new Error("Agency not found in cache.");
+
+      const attempts = parseInt(($("pdw_attempts_expected").value || "2"), 10) || 2;
+
+      // ✅ send ONLY PDW fields + required agency fields; do NOT touch preferred providers
+      const payload = {
+        id: Number(a.id),
+        agency_name: a.agency_name,
+        agency_type: a.agency_type,
+        aliases: a.aliases || "",
+        facility_code: a.facility_code || "",
+        carecompare_ccn: a.carecompare_ccn || "",
+        address: a.address || "",
+        city: a.city || "",
+        state: a.state || "",
+        zip: a.zip || "",
+        phone1: a.phone1 || "",
+        phone2: a.phone2 || "",
+        email: a.email || "",
+        fax: a.fax || "",
+        notes: a.notes || "",
+        notes2: a.notes2 || "",
+        evolv_client: !!a.evolv_client,
+
+        preferred_provider_ids: null, // ✅ critical: do not clear preferred providers
+
+        pdw_attempts_expected: attempts,
+        pdw_pref_details: ($("pdw_pref_details").value || ""),
+        pdw_enable_48h: $("pdw_enable_48h").checked ? 1 : 0,
+        pdw_enable_15d: $("pdw_enable_15d").checked ? 1 : 0,
+        pdw_enable_30d: $("pdw_enable_30d").checked ? 1 : 0,
+      };
+
+      await apiPost("/api/sensys/admin/agencies/upsert", payload);
+
+      setMsg($("pdwPrefsMsg"), "Saved.", true);
+      await refreshAgenciesList();  // reload so the cache includes new prefs
+      closePdwPrefsModal();
+
+    }catch(e){
+      setMsg($("pdwPrefsMsg"), String(e.message || e), false);
+    }
+  };
 
   function getToken(){
     return ($("token").value || localStorage.getItem("SENSYS_ADMIN_TOKEN") || "").trim();
@@ -2252,23 +2382,32 @@
       tr.onclick = () => selectUser(u);
 
       const roles = (u.role_keys || []).join(", ");
-      const ags = (u.agency_names || []).join(", ");
+
+      const lastLogin = u.last_login_at
+        ? new Date(u.last_login_at.replace(" ", "T") + "Z").toLocaleString()
+        : "—";
 
       tr.innerHTML = `
-        <td style="width:48px;">
+        <td style="width:78px;">
           <button class="miniIconBtn"
                   title="Login as this user"
                   onclick="event.stopPropagation(); loginAsUser(${Number(u.user_id)})">
             🔑
+          </button>
+          <button class="miniIconBtn"
+                  title="Copy this user"
+                  onclick="event.stopPropagation(); startCopyUser(usersCache.find(x => Number(x.user_id)===${Number(u.user_id)}))">
+            📄
           </button>
         </td>
         <td><b>${escapeHtml(u.email || "")}</b></td>
         <td>${escapeHtml(u.display_name || "")}</td>
         <td>${u.is_active ? "Yes" : "No"}</td>
         <td>${escapeHtml(roles)}</td>
-        <td>${escapeHtml(ags)}</td>
+        <td>${escapeHtml(lastLogin)}</td>
         <td>${u.account_locked ? "Yes" : "No"}</td>
       `;
+
       tbody.appendChild(tr);
     });
   }
@@ -2368,6 +2507,60 @@
       renderUserNotifPrefs();
     });
 
+    openUserModal();
+  }
+
+  // ✅ NEW: copy an existing user into “new user” mode (blank email/name/phone)
+  function startCopyUser(u){
+    selectedUserId = null;
+    $("selId").textContent = "—";
+
+    // blank these 3 fields
+    $("email").value = "";
+    $("display_name").value = "";
+    $("cell_phone").value = "";
+
+    // keep active + locked the same as source
+    $("is_active").value = String(u.is_active ? 1 : 0);
+    $("account_locked").value = String(u.account_locked ? 1 : 0);
+
+    // password always blank
+    $("password").value = "";
+
+    // copy roles
+    selectedRoleKeys = new Set(u.role_keys || []);
+    renderRolesPills();
+
+    // copy agencies
+    selectedAgencyIds = new Set(u.agency_ids || []);
+    renderAgencyChecklist();
+
+    // copy provider e-sign settings (keep NPI + link ids)
+    $("provider_npi").value = u.npi || "";
+    selectedEsignLinkIds = new Set(u.esign_link_ids || []);
+    refreshProviderFieldsVisibility();
+
+    // copy notifications
+    selectedUserNotifPrefs = Array.isArray(u.notification_prefs)
+      ? (u.notification_prefs || []).map(p => ({
+          notif_key: p.notif_key,
+          deliver_email: Number(p.deliver_email ?? p.email ?? 0),
+          deliver_sms: Number(p.deliver_sms ?? p.sms ?? 0),
+          deliver_dashboard: Number(p.deliver_dashboard ?? p.dashboard ?? 0),
+        }))
+      : [];
+
+    // preload + render UI bits that depend on caches
+    const wrap = $("esignLinkChecklist");
+    if(wrap) wrap.innerHTML = `<div class="hint">Loading care team…</div>`;
+    ensureCareTeamCacheLoaded().then(() => renderEsignLinkChecklist());
+
+    ensureNotificationsMasterLoaded().then(() => {
+      renderUserNotifSelectOptions();
+      renderUserNotifPrefs();
+    });
+
+    setMsg($("editMsg"), "Copy mode: fill Email + Name (and optionally phone), then Save User.", true);
     openUserModal();
   }
 
@@ -2599,10 +2792,17 @@
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
       tr.onclick = () => selectAgency(a);
+
       tr.innerHTML = `
         <td><b>${escapeHtml(a.agency_name||"")}</b></td>
         <td>${escapeHtml(a.agency_type||"")}</td>
         <td>${a.evolv_client ? "Yes" : "No"}</td>
+        <td style="text-align:right;">
+          <button class="mini"
+                  onclick="event.stopPropagation(); openPdwPrefsModal(${Number(a.id)})">
+            PDW Prefs
+          </button>
+        </td>
       `;
       tbody.appendChild(tr);
     });
