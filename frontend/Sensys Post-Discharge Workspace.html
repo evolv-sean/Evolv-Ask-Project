@@ -274,9 +274,14 @@
         const adm = "Adm #" + (it.admission_id||"");
         const assigned = it.assigned_to_name ? it.assigned_to_name : "—";
 
+        const tr = document.createElement("tr");
+        const agency = it.agency_name || "—"; // ✅ moved up BEFORE patientLabel uses it
+        const dc = it.dc_date ? String(it.dc_date).slice(0,10) : "";
+        const daysSinceDc = (it.dc_date ? Math.max(0, Math.floor((Date.now() - new Date(it.dc_date).getTime()) / 86400000)) : "—");
+
         let btns = "";
         if(currentBucket === "unassigned"){
-          const patientLabel = `${patient} (${agency})`;
+          const patientLabel = `${patient} (${agency})`; // ✅ now safe
           btns = `<div class="rowBtns">
                     <button onclick="openAssignModal(${Number(it.id)}, '${esc(patientLabel)}')">Assign…</button>
                   </div>`;
@@ -288,11 +293,6 @@
         } else {
           btns = `<span class="pill">${esc(it.last_outcome||"Done")}</span>`;
         }
-
-        const tr = document.createElement("tr");
-        const agency = it.agency_name || "—";
-        const dc = it.dc_date ? String(it.dc_date).slice(0,10) : "";
-        const daysSinceDc = (it.dc_date ? Math.max(0, Math.floor((Date.now() - new Date(it.dc_date).getTime()) / 86400000)) : "—");
 
         tr.innerHTML = `
           <td>
