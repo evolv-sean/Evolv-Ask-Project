@@ -1068,12 +1068,22 @@
     const sel = document.getElementById('esignCareTeamSelect');
     if(!sel) return;
 
-    sel.innerHTML = '<option value="">Select care team…</option>' + (CARE_TEAM || []).map(ct => {
-      const id = ct.id;
-      const name = ct.name || ct.full_name || ct.display_name || ('Care Team #' + id);
-      const role = ct.role ? (' • ' + ct.role) : '';
-      return `<option value="${id}">${name}${role}</option>`;
-    }).join('');
+    // ✅ ONLY care team linked to THIS admission (DETAILS.care_team)
+    const linked = ((DETAILS && DETAILS.care_team) || []);
+
+    if(linked.length === 0){
+      sel.innerHTML = '<option value="">No linked care team yet…</option>';
+      return;
+    }
+
+    sel.innerHTML =
+      '<option value="">Select care team…</option>' +
+      linked.map(r => {
+        // IMPORTANT: backend returns care_team_id (the real sensys_care_team.id)
+        const id = Number(r.care_team_id || 0);
+        const label = `${(r.name || 'Care Team #' + id)} — ${(r.type || '')}`.trim();
+        return `<option value="${id}">${escapeHtml(label)}</option>`;
+      }).join('');
   }
 
   function renderEsignServiceTypes(){
