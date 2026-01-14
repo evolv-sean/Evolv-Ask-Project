@@ -390,7 +390,6 @@ SENSYS_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Admission Details.html"
 SENSYS_HOME_HEALTH_HTML = FRONTEND_DIR / "Sensys Home Health.html"
 SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Home Health Admission Details.html"
 SENSYS_PROVIDER_ESIGN_HTML = FRONTEND_DIR / "Sensys Provider E-Sign.html"
-SENSYS_PROVIDER_ESIGN_HTML = FRONTEND_DIR / "Sensys Provider E-Sign.html"
 SENSYS_POST_DISCHARGE_WORKSPACE_HTML = FRONTEND_DIR / "Sensys Post-Discharge Workspace.html"
 
 logging.basicConfig(level=logging.INFO)
@@ -16957,6 +16956,10 @@ def _sensys_seed_roles(conn: sqlite3.Connection):
         ("ccm", "CCM"),
         ("hospital", "Hospital"),
         ("snf_sw", "SNF SW"),
+
+        # ✅ CCC Post-Discharge Workspace (CCC-PDW v1)
+        ("ccc_lead", "CCC Lead"),
+        ("ccc_staff", "CCC Staff"),
     ]
     conn.executemany(
         """
@@ -19942,12 +19945,19 @@ def sensys_login(payload: SensysLoginIn):
     # Decide which page to open based on role
     # (first page requested: SNF SW)
     redirect_url = "/sensys/login"
-    if "snf_sw" in role_keys:
+
+    # ✅ CCC Post-Discharge Workspace (CCC-PDW v1)
+    if "ccc_lead" in role_keys:
+        redirect_url = "/sensys/post-discharge"
+    elif "ccc_staff" in role_keys:
+        # staff page comes later, but for now land them here too
+        redirect_url = "/sensys/post-discharge"
+
+    # existing role landing pages
+    elif "snf_sw" in role_keys:
         redirect_url = "/sensys/snf-sw"
     elif "home_health" in role_keys:
         redirect_url = "/sensys/home-health"
-    elif "cm" in role_keys:
-        redirect_url = "/sensys/post-discharge"
     elif "provider" in role_keys:
         redirect_url = "/sensys/provider-esign"
     elif "admin" in role_keys:
@@ -23918,6 +23928,12 @@ async def sensys_home_health_admission_details_ui():
 @app.get("/sensys/provider-esign", response_class=HTMLResponse)
 async def sensys_provider_esign_ui():
     return HTMLResponse(content=read_html(SENSYS_PROVIDER_ESIGN_HTML))
+    
+# ✅ NEW: CCC Post-Discharge Workspace (CCC-PDW v1)
+@app.get("/sensys/post-discharge", response_class=HTMLResponse)
+async def sensys_post_discharge_ui():
+    # file must exist alongside your other HTML assets
+    return HTMLResponse(content=read_html("Sensys Post-Discharge Workspace.html"))
 
 # ✅ PDW v1 — Post-Discharge Workspace
 @app.get("/sensys/post-discharge", response_class=HTMLResponse)
