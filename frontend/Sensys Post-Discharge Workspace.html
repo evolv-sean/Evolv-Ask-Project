@@ -91,6 +91,15 @@
 <script>
   function getToken(){ return localStorage.getItem("sensys_token") || ""; }
 
+  // ✅ CCC-PDW v1: force login if token missing
+  (function guard(){
+    const t = getToken();
+    if(!t){
+      window.location.href = "/sensys/login";
+      return;
+    }
+  })();
+
   function setMsg(text, ok){
     const el = document.getElementById("msg");
     el.textContent = text || "";
