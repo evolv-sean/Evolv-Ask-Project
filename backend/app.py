@@ -390,7 +390,7 @@ SENSYS_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Admission Details.html"
 SENSYS_HOME_HEALTH_HTML = FRONTEND_DIR / "Sensys Home Health.html"
 SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Home Health Admission Details.html"
 SENSYS_PROVIDER_ESIGN_HTML = FRONTEND_DIR / "Sensys Provider E-Sign.html"
-SENSYS_POST_DISCHARGE_WORKSPACE_HTML = FRONTEND_DIR / "Sensys Post-Discharge Workspace.html"
+SENSYS_POST_DISCHARGE_HTML = FRONTEND_DIR / "Sensys Post-Discharge Workspace.html"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("evolv")
@@ -20396,6 +20396,441 @@ def sensys_my_admissions(request: Request):
 
     return {"ok": True, "admissions": [dict(r) for r in rows]}
 
+# =========================================================
+# CCC-PDW v1 — Post-Discharge Workspace (postdc)
+#   - CCC Lead assigns tasks
+#   - CCC Staff completes tasks
+#   - Agency linking enforced via sensys_user_agencies
+# =========================================================
+
+def _pdw_user_agency_ids(conn, user_id: int) -> list[int]:
+    rows = conn.execute(
+        "SELECT agency_id FROM sensys_user_agencies WHERE user_id = ?",
+        (int(user_id),),
+    ).fetchall()
+    return [int(r["agency_id"]) for r in rows]
+
+def _pdw_user_has_role(u: dict, role_key: str) -> bool:
+    return role_key in (u.get("role_keys") or [])
+
+def _pdw_require_lead_or_admin(u: dict):
+    if ("admin" not in (u.get("role_keys") or [])) and ("ccc_lead" not in (u.get("role_keys") or [])):
+        raise HTTPException(status_code=403, detail="CCC Lead access required")
+
+def _pdw_require_staff_or_admin(u: dict):
+    if ("admin" not in (u.get("role_keys") or [])) and ("ccc_staff" not in (u.get("role_keys") or [])) and ("ccc_lead" not in (u.get("role_keys") or [])):
+        # lead is allowed to act too (for testing / coverage)
+        raise HTTPException(status_code=403, detail="CCC Staff access required")
+
+def _pdw_task_label(task_type: str) -> str:
+    t = (task_type or "").strip().lower()
+    if t == "48h": return "48hr Call"
+    if t == "15d": return "15 Day Call"
+    if t == "30d": return "30 Day Call"
+    return task_type or "Task"
+
+def _pdw_seed_48h_items_for_user(conn, user_id: int):
+    """
+    Create 48h work items for admissions (within this user's agencies) that have dc_date and no existing 48h.
+    due_at = dc_date + 2 days
+    """
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status)
+        SELECT
+            a.id,
+            '48h',
+            datetime(a.dc_date, '+2 days'),
+            'unassigned'
+        FROM sensys_user_agencies ua
+        JOIN sensys_admissions a
+             ON a.agency_id = ua.agency_id
+        WHERE ua.user_id = ?
+          AND a.dc_date IS NOT NULL
+          AND TRIM(a.dc_date) <> ''
+        """,
+        (int(user_id),),
+    )
+
+def _pdw_seed_next_items_for_user(conn, user_id: int):
+    """
+    Create 15d after 48h completed; 30d after 15d completed
+    Only for admissions in this user's agencies.
+    """
+    # 15d
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status)
+        SELECT
+            w.admission_id,
+            '15d',
+            datetime(w.completed_at, '+15 days'),
+            'unassigned'
+        FROM sensys_postdc_work_items w
+        JOIN sensys_admissions a ON a.id = w.admission_id
+        JOIN sensys_user_agencies ua ON ua.agency_id = a.agency_id
+        WHERE ua.user_id = ?
+          AND w.task_type = '48h'
+          AND w.status = 'completed'
+          AND w.completed_at IS NOT NULL
+          AND w.deleted_at IS NULL
+        """,
+        (int(user_id),),
+    )
+
+    # 30d
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status)
+        SELECT
+            w.admission_id,
+            '30d',
+            datetime(w.completed_at, '+15 days'),
+            'unassigned'
+        FROM sensys_postdc_work_items w
+        JOIN sensys_admissions a ON a.id = w.admission_id
+        JOIN sensys_user_agencies ua ON ua.agency_id = a.agency_id
+        WHERE ua.user_id = ?
+          AND w.task_type = '15d'
+          AND w.status = 'completed'
+          AND w.completed_at IS NOT NULL
+          AND w.deleted_at IS NULL
+        """,
+        (int(user_id),),
+    )
+
+def _pdw_seed_all_for_user(conn, user_id: int):
+    _pdw_seed_48h_items_for_user(conn, user_id)
+    _pdw_seed_next_items_for_user(conn, user_id)
+
+
+class PdwAssignIn(BaseModel):
+    work_item_id: int
+    assigned_to_user_id: int
+
+class PdwAttemptIn(BaseModel):
+    work_item_id: int
+    outcome: str
+    note: Optional[str] = ""
+    next_due_at: Optional[str] = None
+
+class PdwCompleteIn(BaseModel):
+    work_item_id: int
+    outcome: str
+    note: Optional[str] = ""
+
+
+@app.get("/api/sensys/postdc/staff")
+def sensys_postdc_staff(request: Request):
+    """
+    CCC Lead helper: list CCC Staff users who share at least one agency with the current user.
+    """
+    u = _sensys_require_user(request)
+    _pdw_require_lead_or_admin(u)
+
+    conn = get_db()
+    my_user_id = int(u["user_id"])
+
+    rows = conn.execute(
+        """
+        SELECT DISTINCT
+            su.id AS user_id,
+            su.email,
+            su.display_name
+        FROM sensys_users su
+        JOIN sensys_user_roles ur ON ur.user_id = su.id
+        JOIN sensys_roles r ON r.id = ur.role_id AND r.role_key = 'ccc_staff'
+        JOIN sensys_user_agencies ua_staff ON ua_staff.user_id = su.id
+        JOIN sensys_user_agencies ua_me ON ua_me.agency_id = ua_staff.agency_id AND ua_me.user_id = ?
+        WHERE su.is_active = 1
+          AND COALESCE(su.account_locked, 0) = 0
+        ORDER BY COALESCE(su.display_name, su.email) COLLATE NOCASE
+        """,
+        (my_user_id,),
+    ).fetchall()
+
+    return {"ok": True, "staff": [dict(r) for r in rows]}
+
+
+@app.get("/api/sensys/postdc/work-items")
+def sensys_postdc_work_items(bucket: str = "unassigned", request: Request = None):
+    """
+    Buckets:
+      - unassigned  => status='unassigned' AND due_at <= now
+      - incomplete  => status='assigned'
+      - completed   => status='completed'
+    Agency linking enforced by joining sensys_user_agencies to sensys_admissions.agency_id
+    """
+    u = _sensys_require_user(request)
+    _pdw_require_staff_or_admin(u)
+
+    conn = get_db()
+    my_user_id = int(u["user_id"])
+
+    # Seed only within user's agencies (so each org stays scoped)
+    _pdw_seed_all_for_user(conn, my_user_id)
+    conn.commit()
+
+    b = (bucket or "unassigned").strip().lower()
+
+    if b == "unassigned":
+        where = "w.status='unassigned' AND w.deleted_at IS NULL AND datetime(w.due_at) <= datetime('now')"
+    elif b == "incomplete":
+        where = "w.status='assigned' AND w.deleted_at IS NULL"
+    elif b == "completed":
+        where = "w.status='completed' AND w.deleted_at IS NULL"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid bucket")
+
+    rows = conn.execute(
+        f"""
+        SELECT
+            w.*,
+            a.dc_date,
+            a.admit_date,
+            a.mrn,
+            a.visit_id,
+            p.first_name AS patient_first_name,
+            p.last_name  AS patient_last_name,
+            ag.agency_name,
+            u2.display_name AS assigned_to_name
+        FROM sensys_postdc_work_items w
+        JOIN sensys_admissions a ON a.id = w.admission_id
+        JOIN sensys_user_agencies ua ON ua.agency_id = a.agency_id AND ua.user_id = ?
+        JOIN sensys_patients p ON p.id = a.patient_id
+        LEFT JOIN sensys_agencies ag ON ag.id = a.agency_id
+        LEFT JOIN sensys_users u2 ON u2.id = w.assigned_to_user_id
+        WHERE {where}
+        ORDER BY datetime(w.due_at) ASC, w.id ASC
+        """,
+        (my_user_id,),
+    ).fetchall()
+
+    items = []
+    for r in rows:
+        d = dict(r)
+        d["task_label"] = _pdw_task_label(d.get("task_type"))
+        items.append(d)
+
+    return {"ok": True, "bucket": b, "items": items}
+
+
+@app.post("/api/sensys/postdc/work-items/assign")
+def sensys_postdc_assign(payload: PdwAssignIn, request: Request):
+    """
+    Only CCC Lead (or admin) assigns.
+    Enforces:
+      - Lead can only assign items in THEIR agencies
+      - assigned_to_user_id must be CCC Staff
+      - staff must share at least one agency with lead
+    """
+    u = _sensys_require_user(request)
+    _pdw_require_lead_or_admin(u)
+
+    conn = get_db()
+    my_user_id = int(u["user_id"])
+
+    # Ensure item exists AND is in lead agencies
+    w = conn.execute(
+        """
+        SELECT w.id, w.status, w.admission_id
+        FROM sensys_postdc_work_items w
+        JOIN sensys_admissions a ON a.id = w.admission_id
+        JOIN sensys_user_agencies ua ON ua.agency_id = a.agency_id AND ua.user_id = ?
+        WHERE w.id = ?
+          AND w.deleted_at IS NULL
+        """,
+        (my_user_id, int(payload.work_item_id)),
+    ).fetchone()
+    if not w:
+        raise HTTPException(status_code=404, detail="Work item not found")
+
+    # Ensure assigned_to is CCC Staff
+    staff_ok = conn.execute(
+        """
+        SELECT 1
+        FROM sensys_user_roles ur
+        JOIN sensys_roles r ON r.id = ur.role_id
+        WHERE ur.user_id = ?
+          AND r.role_key = 'ccc_staff'
+        """,
+        (int(payload.assigned_to_user_id),),
+    ).fetchone()
+    if not staff_ok:
+        raise HTTPException(status_code=400, detail="Assigned user must be CCC Staff")
+
+    # Ensure staff shares at least one agency with the lead
+    shared = conn.execute(
+        """
+        SELECT 1
+        FROM sensys_user_agencies ua_staff
+        JOIN sensys_user_agencies ua_me
+          ON ua_me.agency_id = ua_staff.agency_id
+        WHERE ua_staff.user_id = ?
+          AND ua_me.user_id = ?
+        LIMIT 1
+        """,
+        (int(payload.assigned_to_user_id), my_user_id),
+    ).fetchone()
+    if not shared:
+        raise HTTPException(status_code=403, detail="Staff user does not share your agencies")
+
+    conn.execute(
+        """
+        UPDATE sensys_postdc_work_items
+           SET status = 'assigned',
+               assigned_to_user_id = ?,
+               assigned_at = datetime('now'),
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (int(payload.assigned_to_user_id), int(payload.work_item_id)),
+    )
+    conn.commit()
+    return {"ok": True}
+
+
+@app.post("/api/sensys/postdc/work-items/attempt")
+def sensys_postdc_attempt(payload: PdwAttemptIn, request: Request):
+    """
+    CCC Staff logs attempts on items assigned to them.
+    Lead/admin can also log attempts (coverage).
+    """
+    u = _sensys_require_user(request)
+    _pdw_require_staff_or_admin(u)
+
+    conn = get_db()
+    my_user_id = int(u["user_id"])
+    role_keys = u.get("role_keys") or []
+
+    w = conn.execute(
+        """
+        SELECT w.*
+        FROM sensys_postdc_work_items w
+        WHERE w.id = ?
+          AND w.deleted_at IS NULL
+        """,
+        (int(payload.work_item_id),),
+    ).fetchone()
+    if not w:
+        raise HTTPException(status_code=404, detail="Work item not found")
+
+    # Staff restriction (unless lead/admin)
+    if ("admin" not in role_keys) and ("ccc_lead" not in role_keys):
+        if int(w["assigned_to_user_id"] or 0) != my_user_id:
+            raise HTTPException(status_code=403, detail="Not assigned to you")
+
+    attempt_no = int(w["attempt_count"] or 0) + 1
+    if int(w["max_attempts"] or 2) > 0 and attempt_no > int(w["max_attempts"] or 2):
+        raise HTTPException(status_code=400, detail="Max attempts already reached")
+
+    outcome = (payload.outcome or "").strip()
+    if not outcome:
+        raise HTTPException(status_code=400, detail="outcome is required")
+    note = (payload.note or "").strip()
+
+    conn.execute(
+        """
+        INSERT INTO sensys_postdc_attempts (work_item_id, attempt_no, outcome, note, next_due_at, created_by_user_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            int(payload.work_item_id),
+            attempt_no,
+            outcome,
+            note,
+            (payload.next_due_at.strip() if (payload.next_due_at or "").strip() else None),
+            my_user_id,
+        ),
+    )
+
+    # Update work item summary + optionally move due_at
+    if (payload.next_due_at or "").strip():
+        conn.execute(
+            """
+            UPDATE sensys_postdc_work_items
+               SET attempt_count   = ?,
+                   last_attempt_at = datetime('now'),
+                   last_outcome    = ?,
+                   last_note       = ?,
+                   due_at          = ?,
+                   updated_at      = datetime('now')
+             WHERE id = ?
+            """,
+            (attempt_no, outcome, note, payload.next_due_at.strip(), int(payload.work_item_id)),
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE sensys_postdc_work_items
+               SET attempt_count   = ?,
+                   last_attempt_at = datetime('now'),
+                   last_outcome    = ?,
+                   last_note       = ?,
+                   updated_at      = datetime('now')
+             WHERE id = ?
+            """,
+            (attempt_no, outcome, note, int(payload.work_item_id)),
+        )
+
+    conn.commit()
+    return {"ok": True, "attempt_no": attempt_no}
+
+
+@app.post("/api/sensys/postdc/work-items/complete")
+def sensys_postdc_complete(payload: PdwCompleteIn, request: Request):
+    """
+    CCC Staff completes items assigned to them.
+    Completion triggers seeding the next stage (15d/30d) within the user's agencies.
+    """
+    u = _sensys_require_user(request)
+    _pdw_require_staff_or_admin(u)
+
+    conn = get_db()
+    my_user_id = int(u["user_id"])
+    role_keys = u.get("role_keys") or []
+
+    w = conn.execute(
+        """
+        SELECT w.*
+        FROM sensys_postdc_work_items w
+        WHERE w.id = ?
+          AND w.deleted_at IS NULL
+        """,
+        (int(payload.work_item_id),),
+    ).fetchone()
+    if not w:
+        raise HTTPException(status_code=404, detail="Work item not found")
+
+    if ("admin" not in role_keys) and ("ccc_lead" not in role_keys):
+        if int(w["assigned_to_user_id"] or 0) != my_user_id:
+            raise HTTPException(status_code=403, detail="Not assigned to you")
+
+    outcome = (payload.outcome or "").strip()
+    if not outcome:
+        raise HTTPException(status_code=400, detail="outcome is required")
+    note = (payload.note or "").strip()
+
+    conn.execute(
+        """
+        UPDATE sensys_postdc_work_items
+           SET status = 'completed',
+               completed_at = datetime('now'),
+               completed_by_user_id = ?,
+               last_outcome = ?,
+               last_note = ?,
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (my_user_id, outcome, note, int(payload.work_item_id)),
+    )
+
+    # Seed next stage (only for admissions in THIS user's agencies)
+    _pdw_seed_next_items_for_user(conn, my_user_id)
+
+    conn.commit()
+    return {"ok": True}
+
 @app.get("/api/sensys/my-referrals")
 def sensys_my_referrals(request: Request):
     """
@@ -23929,16 +24364,10 @@ async def sensys_home_health_admission_details_ui():
 async def sensys_provider_esign_ui():
     return HTMLResponse(content=read_html(SENSYS_PROVIDER_ESIGN_HTML))
     
-# ✅ NEW: CCC Post-Discharge Workspace (CCC-PDW v1)
+# ✅ CCC-PDW v1
 @app.get("/sensys/post-discharge", response_class=HTMLResponse)
 async def sensys_post_discharge_ui():
-    # file must exist alongside your other HTML assets
-    return HTMLResponse(content=read_html("Sensys Post-Discharge Workspace.html"))
-
-# ✅ PDW v1 — Post-Discharge Workspace
-@app.get("/sensys/post-discharge", response_class=HTMLResponse)
-async def sensys_post_discharge_ui():
-    return HTMLResponse(content=read_html(SENSYS_POST_DISCHARGE_WORKSPACE_HTML))
+    return HTMLResponse(content=read_html(SENSYS_POST_DISCHARGE_HTML))
 
 
 @app.get("/snf-admissions", response_class=HTMLResponse)
