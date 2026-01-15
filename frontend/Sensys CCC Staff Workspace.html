@@ -1,0 +1,474 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sensys — CCC Staff Workspace</title>
+  <style>
+    body{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:0; background:#f6f7fb; color:#111; }
+    .topbar{ display:flex; align-items:center; justify-content:space-between; padding:14px 18px; background:#fff; border-bottom:1px solid #e6e7ee; }
+    .wrap{ padding:16px; }
+    .grid{ display:grid; grid-template-columns: 1.35fr .85fr; gap:14px; align-items:start; }
+    .card{ background:#fff; border:1px solid #e6e7ee; border-radius:14px; box-shadow: 0 1px 0 rgba(0,0,0,.03); overflow:hidden; }
+    .cardHd{ padding:12px 14px; border-bottom:1px solid #eef0f6; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .cardBd{ padding:12px 14px; }
+    .muted{ color:#666; font-size:12px; }
+    .tabs{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .tab{ padding:8px 10px; border-radius:999px; border:1px solid #e6e7ee; background:#fff; cursor:pointer; font-size:13px; }
+    .tab.active{ background:#111; color:#fff; border-color:#111; }
+    .pill{ display:inline-block; padding:6px 10px; border-radius:999px; border:1px solid #e6e7ee; font-size:12px; background:#fff; }
+    .btn{ padding:8px 10px; border-radius:10px; border:1px solid #e6e7ee; background:#fff; cursor:pointer; font-size:13px; }
+    .btn:hover{ background:#f3f4f8; }
+    .btnPrimary{ border-color:#111; background:#111; color:#fff; }
+    .btnPrimary:hover{ background:#000; }
+    .input{ width:100%; padding:10px 12px; border-radius:12px; border:1px solid #e6e7ee; background:#fff; font-size:13px; }
+    .sel{ width:100%; padding:10px 12px; border-radius:12px; border:1px solid #e6e7ee; background:#fff; font-size:13px; }
+
+    table{ width:100%; border-collapse:collapse; font-size:13px; }
+    th, td{ padding:10px 8px; border-bottom:1px solid #eef0f6; text-align:left; vertical-align:top; }
+    th{ font-size:12px; color:#444; }
+    tr.clickable{ cursor:pointer; }
+    tr.clickable:hover td{ background:#fafbff; }
+    tr.selected td{ background:#f0f3ff; }
+
+    .stats{ display:grid; grid-template-columns: repeat(2, 1fr); gap:10px; margin-bottom:10px; }
+    .statBox{ border:1px solid #e6e7ee; border-radius:14px; padding:10px 12px; background:#fff; }
+    .statNum{ font-weight:900; font-size:18px; }
+
+    .msg{ margin-top:10px; font-size:12px; color:#b00020; }
+    .ok{ color:#0a7a2f; }
+
+    .detailTitle{ font-weight:900; font-size:14px; }
+    .detailBlock{ border:1px solid #eef0f6; border-radius:12px; padding:10px 12px; background:#fff; }
+    .detailRow{ display:flex; justify-content:space-between; gap:10px; }
+    .divider{ height:1px; background:#eef0f6; margin:10px 0; }
+
+    .attempt{ border:1px solid #eef0f6; border-radius:12px; padding:10px 12px; background:#fff; }
+  </style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div>
+      <div style="font-weight:900;">CCC Staff Workspace</div>
+      <div class="muted">My assigned calls • Due + Attempt Log + Completion</div>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center;">
+      <button class="btn" onclick="goPDW()">PDW (Lead)</button>
+      <button class="btn" onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="grid">
+
+      <!-- LEFT: My Work List -->
+      <div class="card">
+        <div class="cardHd" style="align-items:flex-start;">
+          <div style="display:flex; flex-direction:column; gap:6px; min-width:240px;">
+            <div style="font-weight:900;">My Work Items</div>
+            <div class="muted" id="bucketHelp">Items assigned to me.</div>
+          </div>
+
+          <div class="tabs">
+            <button class="tab active" id="tabDue" onclick="setBucket('due')">Due</button>
+            <button class="tab" id="tabInc" onclick="setBucket('incomplete')">Incomplete</button>
+            <button class="tab" id="tabDone" onclick="setBucket('completed')">Completed</button>
+          </div>
+        </div>
+
+        <div class="cardBd">
+
+          <!-- Stat pills row -->
+          <div class="stats">
+            <div class="statBox">
+              <div class="muted">Total Due</div>
+              <div class="statNum" id="statDue">—</div>
+            </div>
+            <div class="statBox">
+              <div class="muted">Completed Today</div>
+              <div class="statNum" id="statCompletedToday">—</div>
+            </div>
+          </div>
+
+          <!-- Search + Sort -->
+          <div style="display:grid; grid-template-columns: 1fr 220px; gap:10px; margin-bottom:10px;">
+            <input class="input" id="q" placeholder="Search patient, agency, phone, task…" oninput="debouncedReload()" />
+            <select class="sel" id="sort" onchange="loadItems()">
+              <option value="due_at">Sort: Due Date</option>
+              <option value="patient">Sort: Patient</option>
+              <option value="agency">Sort: Agency</option>
+              <option value="dc_date">Sort: DC Date</option>
+              <option value="task_type">Sort: Task Type</option>
+            </select>
+          </div>
+
+          <div style="overflow:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Patient</th>
+                  <th>Task</th>
+                  <th>Due</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+
+          <div id="msg" class="msg"></div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Details Panel -->
+      <div class="card">
+        <div class="cardHd">
+          <div>
+            <div class="detailTitle">Details</div>
+            <div class="muted" id="detailSub">Select a row to view details.</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn" onclick="refreshSelected()">Refresh</button>
+          </div>
+        </div>
+
+        <div class="cardBd" id="detailBody">
+          <div class="muted">No item selected.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+<script>
+  function getToken(){ return localStorage.getItem("sensys_token") || ""; }
+
+  (function guard(){
+    const t = getToken();
+    if(!t){
+      window.location.href = "/sensys/login";
+      return;
+    }
+  })();
+
+  async function apiGet(url){
+    const resp = await fetch(url, { headers: { "Authorization": "Bearer " + getToken() }});
+    const data = await resp.json().catch(()=>({}));
+    if(!resp.ok) throw new Error(data.detail || "Request failed");
+    return data;
+  }
+
+  async function apiPost(url, payload){
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + getToken(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload || {})
+    });
+    const data = await resp.json().catch(()=>({}));
+    if(!resp.ok) throw new Error(data.detail || "Request failed");
+    return data;
+  }
+
+  function esc(s){
+    return String(s||"")
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;");
+  }
+
+  function fmtDateOnly(s){
+    if(!s) return "";
+    return String(s).replace("T"," ").slice(0,10);
+  }
+
+  function fmtDateTime(s){
+    if(!s) return "";
+    return String(s).replace("T"," ").slice(0,16);
+  }
+
+  function setMsg(text, ok){
+    const el = document.getElementById("msg");
+    el.textContent = text || "";
+    if(ok){ el.classList.add("ok"); } else { el.classList.remove("ok"); }
+  }
+
+  let currentBucket = "due";
+  let itemsCache = [];
+  let selectedWorkItemId = null;
+  let reloadTimer = null;
+
+  function setBucket(b){
+    currentBucket = b;
+    document.getElementById("tabDue").classList.toggle("active", b==="due");
+    document.getElementById("tabInc").classList.toggle("active", b==="incomplete");
+    document.getElementById("tabDone").classList.toggle("active", b==="completed");
+
+    const help = document.getElementById("bucketHelp");
+    if(b==="due") help.textContent = "Items assigned to me that are due now (due_at <= now).";
+    if(b==="incomplete") help.textContent = "My assigned items not completed yet.";
+    if(b==="completed") help.textContent = "Items I completed.";
+
+    // clear selection when switching buckets
+    selectedWorkItemId = null;
+    document.getElementById("detailSub").textContent = "Select a row to view details.";
+    document.getElementById("detailBody").innerHTML = `<div class="muted">No item selected.</div>`;
+
+    loadItems();
+  }
+
+  function debouncedReload(){
+    if(reloadTimer) clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(()=>loadItems(), 250);
+  }
+
+  async function loadStats(){
+    try{
+      const d = await apiGet("/api/sensys/ccc-staff/summary");
+      document.getElementById("statDue").textContent = (d.total_due ?? "—");
+      document.getElementById("statCompletedToday").textContent = (d.completed_today ?? "—");
+    }catch(e){
+      // ignore
+    }
+  }
+
+  async function loadItems(){
+    setMsg("", true);
+    const tbody = document.getElementById("tbody");
+    tbody.innerHTML = `<tr><td colspan="4" class="muted">Loading…</td></tr>`;
+
+    const q = (document.getElementById("q").value || "").trim();
+    const sort = (document.getElementById("sort").value || "due_at").trim();
+
+    try{
+      const url =
+        "/api/sensys/ccc-staff/work-items"
+        + "?bucket=" + encodeURIComponent(currentBucket)
+        + "&q=" + encodeURIComponent(q)
+        + "&sort=" + encodeURIComponent(sort);
+
+      const d = await apiGet(url);
+      itemsCache = d.items || [];
+
+      if(!itemsCache.length){
+        tbody.innerHTML = `<tr><td colspan="4" class="muted">No items.</td></tr>`;
+        loadStats();
+        return;
+      }
+
+      tbody.innerHTML = "";
+      itemsCache.forEach(it => {
+        const id = Number(it.id);
+        const patient = (it.patient_last_name||"") + ", " + (it.patient_first_name||"");
+        const agency = it.agency_name || "—";
+        const dc = it.dc_date ? String(it.dc_date).slice(0,10) : "";
+        const task = it.task_label || it.task_type || "";
+        const due = fmtDateOnly(it.due_at);
+        const status = it.status || "—";
+
+        const tr = document.createElement("tr");
+        tr.className = "clickable" + (selectedWorkItemId===id ? " selected" : "");
+        tr.onclick = () => selectItem(id);
+
+        tr.innerHTML = `
+          <td>
+            <b>${esc(patient)}</b>
+            <div class="muted">${esc(agency)}${dc ? " • DC " + esc(dc) : ""}</div>
+          </td>
+          <td>
+            <b>${esc(task)}</b>
+            <div class="muted">Attempts: ${(it.attempt_count||0)}/${(it.max_attempts||2)}</div>
+          </td>
+          <td>
+            <b>${esc(due || "—")}</b>
+            <div class="muted">${esc(fmtDateTime(it.due_at) || "")}</div>
+          </td>
+          <td>
+            <span class="pill">${esc(status)}</span>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      loadStats();
+
+    }catch(e){
+      tbody.innerHTML = `<tr><td colspan="4" class="muted">Error loading.</td></tr>`;
+      setMsg(e.message || "Error", false);
+    }
+  }
+
+  async function selectItem(id){
+    selectedWorkItemId = Number(id);
+    // re-render selection highlight
+    const tbody = document.getElementById("tbody");
+    Array.from(tbody.querySelectorAll("tr")).forEach(tr => tr.classList.remove("selected"));
+    const idx = (itemsCache||[]).findIndex(x => Number(x.id)===selectedWorkItemId);
+    if(idx >= 0 && tbody.children[idx]) tbody.children[idx].classList.add("selected");
+
+    await loadDetails(selectedWorkItemId);
+  }
+
+  async function refreshSelected(){
+    if(!selectedWorkItemId) return;
+    await loadDetails(selectedWorkItemId);
+    await loadItems();
+  }
+
+  async function loadDetails(workItemId){
+    document.getElementById("detailSub").textContent = "Loading…";
+    const box = document.getElementById("detailBody");
+    box.innerHTML = `<div class="muted">Loading details…</div>`;
+
+    try{
+      const d = await apiGet("/api/sensys/ccc-staff/work-items/" + encodeURIComponent(String(workItemId)));
+      const wi = d.work_item || {};
+      const attempts = d.attempts || [];
+
+      const patient = (wi.patient_last_name||"") + ", " + (wi.patient_first_name||"");
+      const agency = wi.agency_name || "—";
+      const dc = wi.dc_date ? String(wi.dc_date).slice(0,10) : "";
+      const task = wi.task_label || wi.task_type || "";
+      const dueAt = wi.due_at || "";
+      const status = wi.status || "—";
+
+      document.getElementById("detailSub").textContent = patient ? (patient + " • " + agency) : "—";
+
+      const assignmentNotes = (wi.assignment_notes || "").trim();
+
+      box.innerHTML = `
+        <div class="detailBlock">
+          <div style="font-weight:900; font-size:14px;">${esc(task)}</div>
+          <div class="muted" style="margin-top:4px;">
+            ${esc(agency)}${dc ? " • DC " + esc(dc) : ""}<br/>
+            Due: <b>${esc(fmtDateTime(dueAt) || "—")}</b> • Status: <b>${esc(status)}</b>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="detailBlock">
+          <div class="detailRow">
+            <div>
+              <div class="muted">Assignment Notes</div>
+              <div style="font-weight:700; margin-top:4px;">${assignmentNotes ? esc(assignmentNotes) : "<span class='muted'>—</span>"}</div>
+            </div>
+            <div style="min-width:140px; text-align:right;">
+              <div class="muted">Attempts</div>
+              <div style="font-weight:900; font-size:16px;">${esc(String(wi.attempt_count||0))}/${esc(String(wi.max_attempts||2))}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="detailBlock">
+          <div style="font-weight:900; margin-bottom:8px;">Quick Actions</div>
+          <div style="display:grid; gap:10px;">
+            <button class="btn" onclick="logAttempt(${Number(workItemId)})">Log Attempt…</button>
+            <button class="btn btnPrimary" onclick="markComplete(${Number(workItemId)})">Mark Complete…</button>
+          </div>
+          <div class="msg" id="detailMsg" style="margin-top:10px;"></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div>
+          <div style="font-weight:900; margin-bottom:8px;">Attempts Log</div>
+          <div style="display:grid; gap:10px;">
+            ${
+              attempts.length
+              ? attempts.map(a => `
+                  <div class="attempt">
+                    <div style="display:flex; justify-content:space-between; gap:10px;">
+                      <div style="font-weight:900;">Attempt #${esc(a.attempt_no)}</div>
+                      <div class="muted">${esc(fmtDateTime(a.created_at) || "")}</div>
+                    </div>
+                    <div class="muted" style="margin-top:4px;">Outcome: <b>${esc(a.outcome || "—")}</b></div>
+                    ${a.note ? `<div class="muted" style="margin-top:4px;">Note: ${esc(a.note)}</div>` : ""}
+                    ${a.next_due_at ? `<div class="muted" style="margin-top:4px;">Next Due: <b>${esc(fmtDateTime(a.next_due_at))}</b></div>` : ""}
+                  </div>
+                `).join("")
+              : `<div class="muted">No attempts logged yet.</div>`
+            }
+          </div>
+        </div>
+      `;
+
+    }catch(e){
+      document.getElementById("detailSub").textContent = "Error";
+      box.innerHTML = `<div class="muted">Error loading details.</div>`;
+    }
+  }
+
+  async function logAttempt(workItemId){
+    const msg = document.getElementById("detailMsg");
+    if(msg){ msg.textContent = ""; msg.classList.remove("ok"); }
+
+    const outcome = prompt("Outcome (voicemail/no_answer/reached/etc):");
+    if(!outcome) return;
+    const note = prompt("Note (optional):") || "";
+    const nextDue = prompt("Next due datetime (optional, e.g. 2026-01-14 09:00:00). Leave blank to keep:", "") || "";
+
+    try{
+      await apiPost("/api/sensys/postdc/work-items/attempt", {
+        work_item_id: workItemId,
+        outcome: outcome,
+        note: note,
+        next_due_at: nextDue.trim() ? nextDue.trim() : null
+      });
+
+      if(msg){ msg.textContent = "Attempt saved."; msg.classList.add("ok"); }
+      await refreshSelected();
+      await loadStats();
+    }catch(e){
+      if(msg){ msg.textContent = e.message || "Attempt failed"; msg.classList.remove("ok"); }
+    }
+  }
+
+  async function markComplete(workItemId){
+    const msg = document.getElementById("detailMsg");
+    if(msg){ msg.textContent = ""; msg.classList.remove("ok"); }
+
+    const outcome = prompt("Completion outcome (reached/voicemail/no_answer/etc):");
+    if(!outcome) return;
+    const note = prompt("Completion note (optional):") || "";
+
+    try{
+      await apiPost("/api/sensys/postdc/work-items/complete", {
+        work_item_id: workItemId,
+        outcome: outcome,
+        note: note
+      });
+
+      if(msg){ msg.textContent = "Completed."; msg.classList.add("ok"); }
+      selectedWorkItemId = null;
+      document.getElementById("detailSub").textContent = "Select a row to view details.";
+      document.getElementById("detailBody").innerHTML = `<div class="muted">No item selected.</div>`;
+      await loadItems();
+      await loadStats();
+    }catch(e){
+      if(msg){ msg.textContent = e.message || "Complete failed"; msg.classList.remove("ok"); }
+    }
+  }
+
+  function logout(){
+    localStorage.removeItem("sensys_token");
+    window.location.href = "/sensys/login";
+  }
+
+  function goPDW(){
+    window.location.href = "/sensys/postdc";
+  }
+
+  // init
+  setBucket("due");
+  loadStats();
+</script>
+
+</body>
+</html>
