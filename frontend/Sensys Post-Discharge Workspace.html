@@ -127,18 +127,30 @@
   </div>
 </div>
 <!-- ✅ Assign Modal -->
-<div id="assignModalBg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); align-items:center; justify-content:center; padding:18px; z-index:50;">
-  <div style="width:min(860px, 96vw); background:#fff; border:1px solid #e6e7ee; border-radius:14px; overflow:hidden;">
+<div id="assignModalBg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.06); align-items:center; justify-content:center; padding:18px; z-index:50;">
+  <div style="width:min(920px, 96vw); background:#fff; border:1px solid #e6e7ee; border-radius:14px; overflow:hidden;">
     <div class="cardHd">
       <div>
         <div style="font-weight:800;">Assign Work Item</div>
         <div class="muted" id="assignSub">—</div>
       </div>
-      <button class="pill" onclick="closeAssignModal()">Close</button>
+
+      <!-- ✅ Available Day dropdown (replaces top-right Close button) -->
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div class="muted" style="font-weight:700;">Available Day</div>
+        <select id="assignAvailDay" class="sel" style="min-width:170px;" onchange="onAssignAvailDayChanged()">
+          <option value="0">Today</option>
+          <option value="1">1 day out</option>
+          <option value="2">2 days out</option>
+          <option value="3">3 days out</option>
+          <option value="4">4 days out</option>
+          <option value="5">5 days out</option>
+        </select>
+      </div>
     </div>
 
     <div class="cardBd">
-      <div style="display:grid; grid-template-columns: 1.2fr .8fr; gap:14px;">
+      <div style="display:grid; grid-template-columns: 1.2fr .8fr; gap:18px;">
         <div>
           <div class="muted" style="margin-bottom:8px;">CCC Staff</div>
           <div id="assignStaffList" style="display:grid; gap:8px;"></div>
@@ -399,11 +411,25 @@
   function openAssignModal(workItemId, patientLabel){
     assignWorkItemId = Number(workItemId);
     assignSelectedStaffId = null;
+
     document.getElementById("assignNotes").value = "";
     document.getElementById("assignMsg").textContent = "";
     document.getElementById("assignSub").textContent = patientLabel || "—";
+
+    // ✅ reset “Available Day” to Today each time modal opens
+    const sel = document.getElementById("assignAvailDay");
+    if(sel) sel.value = "0";
+
     document.getElementById("assignModalBg").style.display = "flex";
-    loadAssignStaff();
+
+    // ✅ load staff for selected day
+    loadAssignStaff(Number((sel && sel.value) || 0));
+  }
+
+  // ✅ called by dropdown onchange
+  function onAssignAvailDayChanged(){
+    const sel = document.getElementById("assignAvailDay");
+    loadAssignStaff(Number((sel && sel.value) || 0));
   }
 
   function renderItemsFromCache(){
@@ -468,13 +494,13 @@
     document.getElementById("assignModalBg").style.display = "none";
   }
 
-  async function loadAssignStaff(){
+  async function loadAssignStaff(dayOffset){
     const box = document.getElementById("assignStaffList");
     box.innerHTML = `<div class="muted">Loading staff…</div>`;
 
     try{
-      const data = await apiGet("/api/sensys/postdc/staff/overview?day_offset=0");
-      const staff = data.staff || [];
+      const off = Number(dayOffset || 0);
+      const data = await apiGet("/api/sensys/postdc/staff/overview?day_offset=" + encodeURIComponent(String(off)));
       if(staff.length === 0){
         box.innerHTML = `<div class="muted">No CCC Staff found.</div>`;
         return;
