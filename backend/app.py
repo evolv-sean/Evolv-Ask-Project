@@ -3061,6 +3061,18 @@ def init_db():
       deleted_at TEXT NULL
     )
     """)
+    # ✅ NEW: DC note template targeting (many-to-many)
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sensys_dc_note_template_agencies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_id INTEGER NOT NULL,
+      agency_id INTEGER NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      deleted_at TEXT,
+      UNIQUE(template_id, agency_id),
+      FOREIGN KEY(template_id) REFERENCES sensys_dc_note_templates(id)
+    )
+    """)
 
 
     # Roles (Admin / Care Manager / Viewer / etc.)
@@ -4031,6 +4043,30 @@ def init_db():
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
       deleted_at TEXT
+    )
+    """)
+    # ✅ NEW: Note template targeting (many-to-many)
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sensys_note_template_agencies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_id INTEGER NOT NULL,
+      agency_id INTEGER NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      deleted_at TEXT,
+      UNIQUE(template_id, agency_id),
+      FOREIGN KEY(template_id) REFERENCES sensys_note_templates(id)
+    )
+    """)
+
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sensys_note_template_roles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_id INTEGER NOT NULL,
+      role_key TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      deleted_at TEXT,
+      UNIQUE(template_id, role_key),
+      FOREIGN KEY(template_id) REFERENCES sensys_note_templates(id)
     )
     """)
 
@@ -19124,9 +19160,13 @@ async def sensys_admin_care_team_bulk(token: str, file: UploadFile = File(...)):
 # -----------------------------
 class SensysNoteTemplateUpsert(BaseModel):
     id: Optional[int] = None
-    agency_id: Optional[int] = None   # NULL = global template
     template_name: str
     active: int = 1
+
+    # ✅ NEW targeting (blank/empty = global)
+    agency_ids: List[int] = []
+    role_keys: List[str] = []
+
 
 class SensysNoteTemplateDelete(BaseModel):
     id: int
@@ -19134,9 +19174,12 @@ class SensysNoteTemplateDelete(BaseModel):
 class DcNoteTemplateUpsert(BaseModel):
     id: Optional[int] = None
     template_name: str
-    agency_id: Optional[int] = None  # NULL = global default
     active: int = 1
     template_body: str
+
+    # ✅ NEW targeting (blank/empty = global)
+    agency_ids: List[int] = []
+
     
 @app.get("/api/sensys/admin/dc-note-templates")
 def sensys_admin_dc_note_templates(token: str):
@@ -19150,7 +19193,31 @@ def sensys_admin_dc_note_templates(token: str):
         ORDER BY COALESCE(agency_id, 0) ASC, template_name ASC
         """
     ).fetchall()
-    return {"templates": [dict(r) for r in rows]}
+
+    tpls = [dict(r) for r in rows]
+    if not tpls:
+        return {"templates": []}
+
+    tpl_ids = [int(t["id"]) for t in tpls]
+    ag_rows = conn.execute(
+        f"""
+        SELECT template_id, agency_id
+        FROM sensys_dc_note_template_agencies
+        WHERE deleted_at IS NULL
+          AND template_id IN ({",".join(["?"] * len(tpl_ids))})
+        """,
+        tuple(tpl_ids),
+    ).fetchall()
+
+    by_tpl_ag = {}
+    for r in ag_rows:
+        by_tpl_ag.setdefault(int(r["template_id"]), []).append(int(r["agency_id"]))
+
+    for t in tpls:
+        tid = int(t["id"])
+        t["agency_ids"] = by_tpl_ag.get(tid, [])
+    return {"templates": tpls}
+
 
 
 @app.post("/api/sensys/admin/dc-note-templates/upsert")
@@ -19166,12 +19233,16 @@ def sensys_admin_dc_note_templates_upsert(
     if not (payload.template_body or "").strip():
         raise HTTPException(status_code=400, detail="template_body is required")
 
+    # ✅ normalize arrays (empty = global)
+    agency_ids = sorted({int(x) for x in (payload.agency_ids or []) if str(x).strip()})
+
     if payload.id:
+        tpl_id = int(payload.id)
         conn.execute(
             """
             UPDATE sensys_dc_note_templates
                SET template_name = ?,
-                   agency_id = ?,
+                   agency_id = NULL,
                    active = ?,
                    template_body = ?,
                    updated_at = datetime('now')
@@ -19180,29 +19251,36 @@ def sensys_admin_dc_note_templates_upsert(
             """,
             (
                 payload.template_name.strip(),
-                payload.agency_id,
                 int(payload.active or 0),
                 payload.template_body,
-                int(payload.id),
+                tpl_id,
             ),
         )
-        conn.commit()
-        return {"ok": True, "id": int(payload.id)}
     else:
         cur = conn.execute(
             """
             INSERT INTO sensys_dc_note_templates (template_name, agency_id, active, template_body)
-            VALUES (?, ?, ?, ?)
+            VALUES (?, NULL, ?, ?)
             """,
             (
                 payload.template_name.strip(),
-                payload.agency_id,
                 int(payload.active or 0),
                 payload.template_body,
             ),
         )
-        conn.commit()
-        return {"ok": True, "id": int(cur.lastrowid)}
+        tpl_id = int(cur.lastrowid)
+
+    # ✅ replace agency links
+    conn.execute("DELETE FROM sensys_dc_note_template_agencies WHERE template_id = ?", (tpl_id,))
+    for aid in agency_ids:
+        conn.execute(
+            "INSERT OR IGNORE INTO sensys_dc_note_template_agencies (template_id, agency_id) VALUES (?, ?)",
+            (tpl_id, int(aid)),
+        )
+
+    conn.commit()
+    return {"ok": True, "id": tpl_id}
+
 
 
 @app.post("/api/sensys/admin/dc-note-templates/delete")
@@ -19246,6 +19324,42 @@ def sensys_admin_note_templates(token: str):
         return {"ok": True, "templates": []}
 
     tpl_ids = [int(t["id"]) for t in tpl_list]
+
+    # ✅ NEW: load agency_ids + role_keys for each template
+    ag_rows = conn.execute(
+        f"""
+        SELECT template_id, agency_id
+        FROM sensys_note_template_agencies
+        WHERE deleted_at IS NULL
+          AND template_id IN ({",".join(["?"] * len(tpl_ids))})
+        """,
+        tuple(tpl_ids),
+    ).fetchall()
+
+    rl_rows = conn.execute(
+        f"""
+        SELECT template_id, role_key
+        FROM sensys_note_template_roles
+        WHERE deleted_at IS NULL
+          AND template_id IN ({",".join(["?"] * len(tpl_ids))})
+        """,
+        tuple(tpl_ids),
+    ).fetchall()
+
+    by_tpl_ag = {}
+    for r in ag_rows:
+        by_tpl_ag.setdefault(int(r["template_id"]), []).append(int(r["agency_id"]))
+
+    by_tpl_rl = {}
+    for r in rl_rows:
+        by_tpl_rl.setdefault(int(r["template_id"]), []).append(str(r["role_key"]))
+
+    for t in tpl_list:
+        tid = int(t["id"])
+        t["agency_ids"] = by_tpl_ag.get(tid, [])
+        t["role_keys"] = by_tpl_rl.get(tid, [])
+
+    # ✅ existing: load fields for templates
     fields = conn.execute(
         f"""
         SELECT
@@ -19258,6 +19372,7 @@ def sensys_admin_note_templates(token: str):
         """,
         tuple(tpl_ids),
     ).fetchall()
+
 
     by_tpl = {}
     for f in fields:
@@ -19279,31 +19394,53 @@ def sensys_admin_note_templates_upsert(payload: SensysNoteTemplateUpsert, token:
         raise HTTPException(status_code=400, detail="template_name is required")
 
     active = 1 if int(payload.active or 0) == 1 else 0
-    agency_id = int(payload.agency_id) if payload.agency_id else None
+
+    # normalize arrays (empty = global)
+    agency_ids = sorted({int(x) for x in (payload.agency_ids or []) if str(x).strip()})
+    role_keys = sorted({str(x).strip() for x in (payload.role_keys or []) if str(x).strip()})
 
     if payload.id:
+        tpl_id = int(payload.id)
         conn.execute(
             """
             UPDATE sensys_note_templates
-               SET agency_id = ?,
+               SET agency_id = NULL,
                    template_name = ?,
                    active = ?,
                    updated_at = datetime('now')
              WHERE id = ?
             """,
-            (agency_id, name, active, int(payload.id)),
+            (name, active, tpl_id),
         )
     else:
-        conn.execute(
+        cur = conn.execute(
             """
             INSERT INTO sensys_note_templates (agency_id, template_name, active)
-            VALUES (?, ?, ?)
+            VALUES (NULL, ?, ?)
             """,
-            (agency_id, name, active),
+            (name, active),
+        )
+        tpl_id = int(cur.lastrowid)
+
+    # ✅ replace agency links
+    conn.execute("DELETE FROM sensys_note_template_agencies WHERE template_id = ?", (tpl_id,))
+    for aid in agency_ids:
+        conn.execute(
+            "INSERT OR IGNORE INTO sensys_note_template_agencies (template_id, agency_id) VALUES (?, ?)",
+            (tpl_id, int(aid)),
+        )
+
+    # ✅ replace role links
+    conn.execute("DELETE FROM sensys_note_template_roles WHERE template_id = ?", (tpl_id,))
+    for rk in role_keys:
+        conn.execute(
+            "INSERT OR IGNORE INTO sensys_note_template_roles (template_id, role_key) VALUES (?, ?)",
+            (tpl_id, rk),
         )
 
     conn.commit()
     return {"ok": True}
+
 
 @app.post("/api/sensys/admin/note-templates/delete")
 def sensys_admin_note_templates_delete(payload: SensysNoteTemplateDelete, token: str):
