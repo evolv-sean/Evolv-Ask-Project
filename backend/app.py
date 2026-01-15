@@ -23307,14 +23307,50 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
 
         # ✅ PDW: if confirmed, push dc_date into sensys_admissions.dc_date
         if int(payload.dc_confirmed or 0) == 1:
-            dc_date_clean = (payload.dc_date or "").strip()
+            # IMPORTANT: normalize to ISO so SQLite datetime() works (MM/DD/YYYY -> YYYY-MM-DD)
+            dc_date_clean = normalize_date_to_iso(payload.dc_date)
+
             if dc_date_clean:
+                # 1) Push into sensys_admissions
                 conn.execute(
                     """
                     UPDATE sensys_admissions
                        SET dc_date = ?,
                            updated_at = datetime('now')
                      WHERE id = ?
+                    """,
+                    (dc_date_clean, int(payload.admission_id)),
+                )
+
+                # 2) PDW sync A) update existing 48h due_at
+                conn.execute(
+                    """
+                    UPDATE sensys_postdc_work_items
+                       SET due_at = datetime(?, '+1 day'),
+                           updated_at = datetime('now')
+                     WHERE admission_id = ?
+                       AND task_type = '48h'
+                       AND deleted_at IS NULL
+                       AND status <> 'completed'
+                    """,
+                    (dc_date_clean, int(payload.admission_id)),
+                )
+
+                # 3) PDW sync B) seed 48h if missing
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO sensys_postdc_work_items
+                        (admission_id, task_type, due_at, status, max_attempts)
+                    SELECT
+                        a.id,
+                        '48h',
+                        datetime(?, '+1 day'),
+                        'unassigned',
+                        COALESCE(NULLIF(ag.pdw_attempts_expected, 0), 2)
+                    FROM sensys_admissions a
+                    JOIN sensys_agencies ag ON ag.id = a.agency_id
+                    WHERE a.id = ?
+                      AND COALESCE(ag.pdw_enable_48h, 1) = 1
                     """,
                     (dc_date_clean, int(payload.admission_id)),
                 )
