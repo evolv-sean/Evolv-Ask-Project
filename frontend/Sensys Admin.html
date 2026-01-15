@@ -4013,6 +4013,7 @@
   // ✅ Multi-select state (Agencies + Roles)
   let noteTplSelectedAgencyIds = new Set();
   let noteTplSelectedRoleKeys = new Set();
+  let noteTplSelectedShareRoleKeys = new Set();
 
   function renderNoteTplAgencyChecklist(){
     const box = $("noteTplAgencyChecklist");
@@ -4087,12 +4088,21 @@
     noteTplSelectedAgencyIds = new Set((t && t.agency_ids) ? (t.agency_ids || []).map(Number) : []);
     noteTplSelectedRoleKeys = new Set((t && t.role_keys) ? (t.role_keys || []).map(x => String(x||"").trim()).filter(Boolean) : []);
 
+    // ✅ NEW: Share With Roles (from backend array t.share_with_role_keys)
+    noteTplSelectedShareRoleKeys = new Set(
+      (t && t.share_with_role_keys)
+        ? (t.share_with_role_keys || []).map(x => String(x||"").trim()).filter(Boolean)
+        : []
+    );
+
     // clear searches so full lists show on open
     $("noteTplAgencySearch") && ($("noteTplAgencySearch").value = "");
     $("noteTplRoleSearch") && ($("noteTplRoleSearch").value = "");
+    $("noteTplShareRoleSearch") && ($("noteTplShareRoleSearch").value = "");
 
     renderNoteTplAgencyChecklist();
     renderNoteTplRoleChecklist();
+    window.renderNoteTplShareRoleChecklist && renderNoteTplShareRoleChecklist();
 
     $("noteTplModalBackdrop").classList.add("on");
   }
@@ -4115,8 +4125,11 @@
         // ✅ new targeting
         agency_ids: Array.from(noteTplSelectedAgencyIds || []).map(Number),
         role_keys: Array.from(noteTplSelectedRoleKeys || []).map(x => String(x||"").trim()).filter(Boolean),
-      };
 
+        // ✅ NEW: Share With Roles (controls Share With dropdown options on notes)
+        share_with_role_keys: Array.from(noteTplSelectedShareRoleKeys || []).map(x => String(x||"").trim()).filter(Boolean),
+      };
+      
       await apiPost("/api/sensys/admin/note-templates/upsert", payload);
       setMsg($("noteTplMsg"), "Saved.", true);
       closeNoteTemplateModal();
