@@ -172,7 +172,7 @@
   </div>
 </div>
 <!-- ✅ Staff Schedules Modal -->
-<div id="staffSchedBg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,35); align-items:center; justify-content:center; padding:18px; z-index:60;">
+<div id="staffSchedBg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.06); align-items:center; justify-content:center; padding:18px; z-index:60;">
   <div style="width:min(980px, 96vw); background:#fff; border:1px solid #e6e7ee; border-radius:14px; overflow:hidden;">
     <div class="cardHd">
       <div>
@@ -209,7 +209,7 @@
   </div>
 </div>
 <!-- ✅ Sort/Filter Modal -->
-<div id="sfBg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,35); align-items:center; justify-content:center; padding:18px; z-index:55;">
+<div id="sfBg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.06); align-items:center; justify-content:center; padding:18px; z-index:55;">
   <div style="width:min(720px, 96vw); background:#fff; border:1px solid #e6e7ee; border-radius:14px; overflow:hidden;">
     <div class="cardHd" style="display:flex; justify-content:space-between; align-items:center;">
       <div>
@@ -501,8 +501,10 @@
     try{
       const off = Number(dayOffset || 0);
       const data = await apiGet("/api/sensys/postdc/staff/overview?day_offset=" + encodeURIComponent(String(off)));
+
+      const staff = data.staff || [];
       if(staff.length === 0){
-        box.innerHTML = `<div class="muted">No CCC Staff found.</div>`;
+        box.innerHTML = `<div class="muted">No CCC Staff scheduled for the selected day.</div>`;
         return;
       }
 
@@ -520,7 +522,9 @@
         row.style.cursor = "pointer";
         row.onclick = () => {
           assignSelectedStaffId = Number(s.user_id);
-          [...box.children].forEach(ch => ch.style.boxShadow = "");
+
+          // clear previous selection styling
+          Array.from(box.children).forEach(ch => ch.style.boxShadow = "");
           row.style.boxShadow = "0 0 0 3px rgba(0,0,0,.10)";
         };
 
