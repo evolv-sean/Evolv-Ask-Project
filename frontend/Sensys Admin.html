@@ -1135,8 +1135,12 @@
           <input id="dcNoteTplName" placeholder="e.g. Social Service DC Note" />
         </div>
         <div>
-          <label>Agency ID (optional)</label>
-          <input id="dcNoteTplAgencyId" placeholder="(blank = global)" />
+          <label>Agencies (optional)</label>
+          <div class="checkwrap">
+            <input id="dcNoteTplAgencySearch" class="checksearch" placeholder="Search agencies…" />
+            <div id="dcNoteTplAgencyChecklist" class="checklist"></div>
+            <div class="muted" style="margin-top:6px;">Leave blank = Global (all agencies)</div>
+          </div>
         </div>
       </div>
 
@@ -1615,9 +1619,23 @@
           <label>Template Name</label>
           <input id="noteTplName" placeholder="e.g., DC Planning Note" />
         </div>
+
         <div>
-          <label>Agency ID (optional)</label>
-          <input id="noteTplAgencyId" placeholder="(blank = global)" />
+          <label>Agencies (optional)</label>
+          <div class="checkwrap">
+            <input id="noteTplAgencySearch" class="checksearch" placeholder="Search agencies…" />
+            <div id="noteTplAgencyChecklist" class="checklist"></div>
+            <div class="muted" style="margin-top:6px;">Leave blank = Global (all agencies)</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:10px;">
+        <label>User Roles (optional)</label>
+        <div class="checkwrap">
+          <input id="noteTplRoleSearch" class="checksearch" placeholder="Search roles…" />
+          <div id="noteTplRoleChecklist" class="checklist"></div>
+          <div class="muted" style="margin-top:6px;">Leave blank = Global (all roles)</div>
         </div>
       </div>
 
@@ -1772,8 +1790,8 @@
      PDW Prefs Modal (Agency)
 ========================= -->
 <div class="modal-backdrop" id="pdwPrefsModalBackdrop">
-  <div class="modal" style="max-width:720px;width:calc(100% - 28px);">
-    <div class="modal-hd" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+  <div class="modal" style="max-width:820px;width:calc(100% - 28px);">
+    <div class="modal-hd" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px; padding:14px 16px 10px 16px;">
       <div>
         <div style="font-weight:1000;font-size:16px;">PDW Preferences</div>
         <div class="hint" id="pdwPrefsSub" style="margin-top:4px;">—</div>
@@ -1781,7 +1799,7 @@
       <button class="iconbtn" onclick="closePdwPrefsModal()">✕</button>
     </div>
 
-    <div class="modal-bd">
+    <div class="modal-bd" style="padding:16px 16px 14px 16px;">
       <div class="grid" style="grid-template-columns: 1fr 1fr; gap:12px;">
         <div>
           <label class="lbl">Attempts Expected (default 2)</label>
@@ -3751,7 +3769,7 @@
         <td>${t.agency_id ? escapeHtml(String(t.agency_id)) : "Global"}</td>
         <td>${(String(t.active||0)==="1") ? "Yes" : "No"}</td>
         <td style="text-align:right;">
-          <button class="mini" onclick="event.stopPropagation(); openNoteTemplateModal(t)">Edit</button>
+          <button class="mini" onclick='event.stopPropagation(); openNoteTemplateModal(${JSON.stringify(t)})'>Edit</button>
           <button class="mini danger" onclick="event.stopPropagation(); deleteNoteTemplate(${t.id})">Delete</button>
         </td>
       `;
@@ -3793,7 +3811,7 @@
   // DC Note Templates (Admin)
   // -----------------------------
   let dcNoteTemplatesCache = [];
-  let editingDcNoteTemplate = null;
+  let dcNoteTplSelectedAgencyIds = new Set();
 
   function renderDcNoteTemplatesAdminTable(){
     const tbody = $("dcNotesTemplatesTbody");
@@ -3821,6 +3839,37 @@
     });
   }
 
+  function renderDcNoteTplAgencyChecklist(){
+    const box = $("dcNoteTplAgencyChecklist");
+    if(!box) return;
+
+    const q = ($("dcNoteTplAgencySearch").value || "").trim().toLowerCase();
+    const list = (agenciesMaster || []).filter(a => {
+      const hay = `${a.name||""} ${a.id||""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+
+    box.innerHTML = list.map(a => {
+      const id = Number(a.id);
+      const checked = dcNoteTplSelectedAgencyIds.has(id) ? "checked" : "";
+      return `
+        <label class="checkrow">
+          <input type="checkbox" ${checked} onchange="toggleDcNoteTplAgency(${id}, this.checked)" />
+          <span>${escapeHtml(a.name || ("Agency " + id))}</span>
+        </label>
+      `;
+    }).join("");
+  }
+
+  function toggleDcNoteTplAgency(id, isOn){
+    const n = Number(id);
+    if(isOn) dcNoteTplSelectedAgencyIds.add(n);
+    else dcNoteTplSelectedAgencyIds.delete(n);
+  }
+
+  $("dcNoteTplAgencySearch") && $("dcNoteTplAgencySearch").addEventListener("input", renderDcNoteTplAgencyChecklist);
+
+
   async function refreshDcNoteTemplatesAdmin(){
     setMsg($("dcNotesListMsg"), "Loading…", true);
     try{
@@ -3840,7 +3889,9 @@
     setMsg($("dcNoteTplMsg"), "", true);
 
     $("dcNoteTplName").value = (t && t.template_name) ? t.template_name : "";
-    $("dcNoteTplAgencyId").value = (t && t.agency_id) ? String(t.agency_id) : "";
+    dcNoteTplSelectedAgencyIds = new Set((t && t.agency_ids) ? (t.agency_ids || []).map(Number) : []);
+    $("dcNoteTplAgencySearch") && ($("dcNoteTplAgencySearch").value = "");
+    renderDcNoteTplAgencyChecklist();
     $("dcNoteTplActive").value = (t && String(t.active||0)) ? String(t.active||0) : "1";
     $("dcNoteTplBody").value = (t && t.template_body) ? t.template_body : "";
 
@@ -3859,7 +3910,7 @@
       const payload = {
         id: editingDcNoteTemplate ? Number(editingDcNoteTemplate.id) : null,
         template_name: ($("dcNoteTplName").value || "").trim(),
-        agency_id: ($("dcNoteTplAgencyId").value || "").trim() ? Number(($("dcNoteTplAgencyId").value||"").trim()) : null,
+        agency_ids: Array.from(dcNoteTplSelectedAgencyIds || []).map(Number),
         active: Number($("dcNoteTplActive").value || "1"),
         template_body: ($("dcNoteTplBody").value || "")
       };
@@ -3902,16 +3953,93 @@
   // ---- Template modal ----
   let editingNoteTemplate = null;
 
+  // ✅ Multi-select state (Agencies + Roles)
+  let noteTplSelectedAgencyIds = new Set();
+  let noteTplSelectedRoleKeys = new Set();
+
+  function renderNoteTplAgencyChecklist(){
+    const box = $("noteTplAgencyChecklist");
+    if(!box) return;
+
+    const q = ($("noteTplAgencySearch").value || "").trim().toLowerCase();
+    const list = (agenciesMaster || []).filter(a => {
+      const hay = `${a.name||""} ${a.id||""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+
+    box.innerHTML = list.map(a => {
+      const id = Number(a.id);
+      const checked = noteTplSelectedAgencyIds.has(id) ? "checked" : "";
+      return `
+        <label class="checkrow">
+          <input type="checkbox" ${checked} onchange="toggleNoteTplAgency(${id}, this.checked)" />
+          <span>${escapeHtml(a.name || ("Agency " + id))}</span>
+        </label>
+      `;
+    }).join("");
+  }
+
+  function toggleNoteTplAgency(id, isOn){
+    const n = Number(id);
+    if(isOn) noteTplSelectedAgencyIds.add(n);
+    else noteTplSelectedAgencyIds.delete(n);
+  }
+
+  function renderNoteTplRoleChecklist(){
+    const box = $("noteTplRoleChecklist");
+    if(!box) return;
+
+    const q = ($("noteTplRoleSearch").value || "").trim().toLowerCase();
+    const list = (rolesMaster || []).filter(r => {
+      const hay = `${r.role_name||""} ${r.role_key||""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+
+    box.innerHTML = list.map(r => {
+      const key = String(r.role_key || "").trim();
+      const checked = noteTplSelectedRoleKeys.has(key) ? "checked" : "";
+      return `
+        <label class="checkrow">
+          <input type="checkbox" ${checked} onchange="toggleNoteTplRole('${escapeHtml(key)}', this.checked)" />
+          <span>${escapeHtml(r.role_name || key)}</span>
+        </label>
+      `;
+    }).join("");
+  }
+
+  function toggleNoteTplRole(roleKey, isOn){
+    const k = String(roleKey || "").trim();
+    if(!k) return;
+    if(isOn) noteTplSelectedRoleKeys.add(k);
+    else noteTplSelectedRoleKeys.delete(k);
+  }
+
+  // wire search inputs (safe if elements exist)
+  $("noteTplAgencySearch") && $("noteTplAgencySearch").addEventListener("input", renderNoteTplAgencyChecklist);
+  $("noteTplRoleSearch") && $("noteTplRoleSearch").addEventListener("input", renderNoteTplRoleChecklist);
+
+
   function openNoteTemplateModal(t){
     editingNoteTemplate = t || null;
     setMsg($("noteTplMsg"), "", true);
 
     $("noteTplName").value = (t && t.template_name) ? t.template_name : "";
-    $("noteTplAgencyId").value = (t && t.agency_id) ? String(t.agency_id) : "";
     $("noteTplActive").value = (t && String(t.active||0)) ? String(t.active||0) : "1";
+
+    // ✅ initialize multi-selects from backend arrays
+    noteTplSelectedAgencyIds = new Set((t && t.agency_ids) ? (t.agency_ids || []).map(Number) : []);
+    noteTplSelectedRoleKeys = new Set((t && t.role_keys) ? (t.role_keys || []).map(x => String(x||"").trim()).filter(Boolean) : []);
+
+    // clear searches so full lists show on open
+    $("noteTplAgencySearch") && ($("noteTplAgencySearch").value = "");
+    $("noteTplRoleSearch") && ($("noteTplRoleSearch").value = "");
+
+    renderNoteTplAgencyChecklist();
+    renderNoteTplRoleChecklist();
 
     $("noteTplModalBackdrop").classList.add("on");
   }
+
   function closeNoteTemplateModal(){
     $("noteTplModalBackdrop").classList.remove("on");
   }
@@ -3925,9 +4053,13 @@
       const payload = {
         id: editingNoteTemplate ? Number(editingNoteTemplate.id) : null,
         template_name: ($("noteTplName").value || "").trim(),
-        agency_id: ($("noteTplAgencyId").value || "").trim() ? Number(($("noteTplAgencyId").value||"").trim()) : null,
-        active: Number($("noteTplActive").value || "1")
+        active: Number($("noteTplActive").value || "1"),
+
+        // ✅ new targeting
+        agency_ids: Array.from(noteTplSelectedAgencyIds || []).map(Number),
+        role_keys: Array.from(noteTplSelectedRoleKeys || []).map(x => String(x||"").trim()).filter(Boolean),
       };
+
       await apiPost("/api/sensys/admin/note-templates/upsert", payload);
       setMsg($("noteTplMsg"), "Saved.", true);
       closeNoteTemplateModal();
