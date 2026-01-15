@@ -1128,7 +1128,7 @@
       <button class="xbtn" id="closeDcNoteTplModal" aria-label="Close">✕</button>
     </div>
 
-    <div class="modal-body">
+    <div class="modal-body" style="max-height:78vh; overflow:auto; padding-bottom:16px;">
       <div class="grid2">
         <div>
           <label>Template Name</label>
@@ -1138,7 +1138,7 @@
           <label>Agencies (optional)</label>
           <div class="checkwrap">
             <input id="dcNoteTplAgencySearch" class="checksearch" placeholder="Search agencies…" />
-            <div id="dcNoteTplAgencyChecklist" class="checklist"></div>
+            <div id="dcNoteTplAgencyChecklist" class="checklist" style="max-height:220px; overflow:auto;"></div>
             <div class="muted" style="margin-top:6px;">Leave blank = Global (all agencies)</div>
           </div>
         </div>
@@ -1166,7 +1166,7 @@
 
       <div id="dcNoteTplMsg" class="msg ok" style="margin-top:10px;"></div>
 
-      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;">
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(15,23,42,.08);">
         <button class="btn2" onclick="closeDcNoteTemplateModal()">Cancel</button>
         <button class="btn" onclick="saveDcNoteTemplate()">Save</button>
       </div>
@@ -1602,6 +1602,7 @@
     </div>
   </div>
 </div>
+<!-----------------------Note Template modal------------------------------->
 <div id="noteTplModalBackdrop" class="modal-backdrop">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="noteTplModalTitle">
     <div class="modal-hd">
@@ -1612,7 +1613,7 @@
       <button class="xbtn" id="closeNoteTplModal" aria-label="Close">✕</button>
     </div>
 
-    <div class="modal-body">
+    <div class="modal-body" style="max-height:78vh; overflow:auto; padding-bottom:16px;">
       <!-- (keep your existing body contents exactly as-is) -->
       <div class="grid2">
         <div>
@@ -1624,7 +1625,7 @@
           <label>Agencies (optional)</label>
           <div class="checkwrap">
             <input id="noteTplAgencySearch" class="checksearch" placeholder="Search agencies…" />
-            <div id="noteTplAgencyChecklist" class="checklist"></div>
+            <div id="noteTplAgencyChecklist" class="checklist" style="max-height:220px; overflow:auto;"></div>
             <div class="muted" style="margin-top:6px;">Leave blank = Global (all agencies)</div>
           </div>
         </div>
@@ -1634,7 +1635,7 @@
         <label>User Roles (optional)</label>
         <div class="checkwrap">
           <input id="noteTplRoleSearch" class="checksearch" placeholder="Search roles…" />
-          <div id="noteTplRoleChecklist" class="checklist"></div>
+          <div id="noteTplRoleChecklist" class="checklist" style="max-height:220px; overflow:auto;"></div>
           <div class="muted" style="margin-top:6px;">Leave blank = Global (all roles)</div>
         </div>
       </div>
@@ -1652,7 +1653,7 @@
 
       <div id="noteTplMsg" class="msg ok" style="margin-top:10px;"></div>
 
-      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;">
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(15,23,42,.08);">
         <button class="btn2" onclick="closeNoteTemplateModal()">Cancel</button>
         <button class="btn" onclick="saveNoteTemplate()">Save</button>
       </div>
@@ -1832,7 +1833,7 @@
       <div id="pdwPrefsMsg" class="toast" style="margin-top:10px;"></div>
     </div>
 
-    <div class="modal-ft" style="display:flex;justify-content:flex-end;gap:10px;">
+    <div class="modal-ft" style="display:flex;justify-content:flex-end;gap:10px; padding:0 16px 16px 16px; border-top:1px solid rgba(15,23,42,.06);">
       <button class="btn" onclick="closePdwPrefsModal()">Cancel</button>
       <button class="btn primary" id="savePdwPrefsBtn">Save PDW Prefs</button>
     </div>
@@ -3857,6 +3858,18 @@
   let dcNoteTemplatesCache = [];
   let dcNoteTplSelectedAgencyIds = new Set();
 
+  function _agencyNameById(id){
+    const n = Number(id);
+    const a = (agenciesMaster || []).find(x => Number(x.id) === n);
+    return (a && (a.agency_name || a.name)) ? (a.agency_name || a.name) : ("Agency " + n);
+  }
+
+  function _agencyNamesForIds(ids){
+    const arr = (ids || []).map(Number).filter(n => !Number.isNaN(n));
+    if(arr.length === 0) return "Global";
+    return arr.map(_agencyNameById).join(", ");
+  }
+
   function renderDcNoteTemplatesAdminTable(){
     const tbody = $("dcNotesTemplatesTbody");
     if(!tbody) return;
@@ -3872,7 +3885,7 @@
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td><b>${escapeHtml(t.template_name||"")}</b></td>
-        <td>${t.agency_id ? escapeHtml(String(t.agency_id)) : "Global"}</td>
+        <td>${escapeHtml(_agencyNamesForIds(t.agency_ids || []))}</td>
         <td>${String(t.active||0)==="1" ? "Yes" : "No"}</td>
         <td style="text-align:right;">
           <button class="mini" onclick='openDcNoteTemplateModal(${JSON.stringify(t)})'>Edit</button>
@@ -3889,7 +3902,7 @@
 
     const q = ($("dcNoteTplAgencySearch").value || "").trim().toLowerCase();
     const list = (agenciesMaster || []).filter(a => {
-      const hay = `${a.name||""} ${a.id||""}`.toLowerCase();
+      const hay = `${a.agency_name||a.name||""} ${a.id||""}`.toLowerCase();
       return !q || hay.includes(q);
     });
 
@@ -3899,7 +3912,7 @@
       return `
         <label class="checkrow">
           <input type="checkbox" ${checked} onchange="toggleDcNoteTplAgency(${id}, this.checked)" />
-          <span>${escapeHtml(a.name || ("Agency " + id))}</span>
+          <span>${escapeHtml(a.agency_name || a.name || ("Agency " + id))}</span>
         </label>
       `;
     }).join("");
@@ -4007,7 +4020,7 @@
 
     const q = ($("noteTplAgencySearch").value || "").trim().toLowerCase();
     const list = (agenciesMaster || []).filter(a => {
-      const hay = `${a.name||""} ${a.id||""}`.toLowerCase();
+      const hay = `${a.agency_name||a.name||""} ${a.id||""}`.toLowerCase();
       return !q || hay.includes(q);
     });
 
@@ -4017,7 +4030,7 @@
       return `
         <label class="checkrow">
           <input type="checkbox" ${checked} onchange="toggleNoteTplAgency(${id}, this.checked)" />
-          <span>${escapeHtml(a.name || ("Agency " + id))}</span>
+          <span>${escapeHtml(a.agency_name || a.name || ("Agency " + id))}</span>
         </label>
       `;
     }).join("");
