@@ -2655,20 +2655,40 @@
     }
   };
 
-  // Save token
-  $("saveToken").onclick = () => {
+  // Save token + immediately refresh
+  $("saveToken").onclick = async () => {
     const t = ($("token").value || "").trim();
     if(!t){
       alert("Paste ADMIN_TOKEN first, then click Save.");
       return;
     }
+
     localStorage.setItem("SENSYS_ADMIN_TOKEN", t);
-    // (optional) quick visual confirmation without adding new UI
     $("token").value = t;
+
+    // optional: give visual feedback in the existing Users list toast
+    setMsg($("listMsg"), "Token saved. Refreshing…", true);
+
+    try{
+      await refreshAll();
+    }catch(e){
+      setMsg($("listMsg"), String(e.message || e), false);
+    }
+  };
+
+  // Refresh button (top-right) — was missing, so it did nothing
+  $("refresh").onclick = async () => {
+    try{
+      setMsg($("listMsg"), "Refreshing…", true);
+      await refreshAll();
+    }catch(e){
+      setMsg($("listMsg"), String(e.message || e), false);
+    }
   };
 
   // load saved token on open
   $("token").value = localStorage.getItem("SENSYS_ADMIN_TOKEN") || "";
+
 
   $("agencySearch").addEventListener("input", renderAgencyChecklist);
   $("preferredProviderSearch").addEventListener("input", renderPreferredProvidersChecklist);
