@@ -4007,6 +4007,11 @@ def init_db():
     if "response2" not in existing_cols:
         cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN response2 TEXT")
 
+    # ✅ NEW: optional Share With user (for “note shared” notifications)
+    if "share_with_user_id" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN share_with_user_id INTEGER")
+
+
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_adm ON sensys_admission_notes(admission_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_deleted ON sensys_admission_notes(deleted_at)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_status ON sensys_admission_notes(status)")
@@ -4060,6 +4065,18 @@ def init_db():
 
     conn.execute("""
     CREATE TABLE IF NOT EXISTS sensys_note_template_roles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_id INTEGER NOT NULL,
+      role_key TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      deleted_at TEXT,
+      UNIQUE(template_id, role_key),
+      FOREIGN KEY(template_id) REFERENCES sensys_note_templates(id)
+    )
+    """)
+
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sensys_note_template_share_roles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       template_id INTEGER NOT NULL,
       role_key TEXT NOT NULL,
@@ -19164,9 +19181,12 @@ class SensysNoteTemplateUpsert(BaseModel):
     template_name: str
     active: int = 1
 
-    # ✅ NEW targeting (blank/empty = global)
+    # ✅ targeting (blank/empty = global)
     agency_ids: List[int] = []
     role_keys: List[str] = []
+
+    # ✅ NEW: “Share With” roles (controls who appears in the note’s Share With dropdown)
+    share_with_role_keys: List[str] = []
 
 
 class SensysNoteTemplateDelete(BaseModel):
@@ -19347,6 +19367,17 @@ def sensys_admin_note_templates(token: str):
         tuple(tpl_ids),
     ).fetchall()
 
+    # ✅ NEW: Share With Roles
+    sw_rows = conn.execute(
+        f"""
+        SELECT template_id, role_key
+        FROM sensys_note_template_share_roles
+        WHERE deleted_at IS NULL
+          AND template_id IN ({",".join(["?"] * len(tpl_ids))})
+        """,
+        tuple(tpl_ids),
+    ).fetchall()
+
     by_tpl_ag = {}
     for r in ag_rows:
         by_tpl_ag.setdefault(int(r["template_id"]), []).append(int(r["agency_id"]))
@@ -19355,10 +19386,17 @@ def sensys_admin_note_templates(token: str):
     for r in rl_rows:
         by_tpl_rl.setdefault(int(r["template_id"]), []).append(str(r["role_key"]))
 
+    # ✅ NEW: Share With Roles mapping
+    by_tpl_sw = {}
+    for r in sw_rows:
+        by_tpl_sw.setdefault(int(r["template_id"]), []).append(str(r["role_key"]))
+
     for t in tpl_list:
         tid = int(t["id"])
         t["agency_ids"] = by_tpl_ag.get(tid, [])
         t["role_keys"] = by_tpl_rl.get(tid, [])
+        t["share_with_role_keys"] = by_tpl_sw.get(tid, [])
+
 
     # ✅ existing: load fields for templates
     fields = conn.execute(
@@ -19400,6 +19438,9 @@ def sensys_admin_note_templates_upsert(payload: SensysNoteTemplateUpsert, token:
     agency_ids = sorted({int(x) for x in (payload.agency_ids or []) if str(x).strip()})
     role_keys = sorted({str(x).strip() for x in (payload.role_keys or []) if str(x).strip()})
 
+    # ✅ NEW: Share With roles
+    share_with_role_keys = sorted({str(x).strip() for x in (payload.share_with_role_keys or []) if str(x).strip()})
+
     if payload.id:
         tpl_id = int(payload.id)
         conn.execute(
@@ -19423,19 +19464,19 @@ def sensys_admin_note_templates_upsert(payload: SensysNoteTemplateUpsert, token:
         )
         tpl_id = int(cur.lastrowid)
 
-    # ✅ replace agency links
-    conn.execute("DELETE FROM sensys_note_template_agencies WHERE template_id = ?", (tpl_id,))
-    for aid in agency_ids:
-        conn.execute(
-            "INSERT OR IGNORE INTO sensys_note_template_agencies (template_id, agency_id) VALUES (?, ?)",
-            (tpl_id, int(aid)),
-        )
-
     # ✅ replace role links
     conn.execute("DELETE FROM sensys_note_template_roles WHERE template_id = ?", (tpl_id,))
     for rk in role_keys:
         conn.execute(
             "INSERT OR IGNORE INTO sensys_note_template_roles (template_id, role_key) VALUES (?, ?)",
+            (tpl_id, rk),
+        )
+
+    # ✅ NEW: replace Share With role links
+    conn.execute("DELETE FROM sensys_note_template_share_roles WHERE template_id = ?", (tpl_id,))
+    for rk in share_with_role_keys:
+        conn.execute(
+            "INSERT OR IGNORE INTO sensys_note_template_share_roles (template_id, role_key) VALUES (?, ?)",
             (tpl_id, rk),
         )
 
@@ -21231,6 +21272,128 @@ def sensys_postdc_summary(request: Request):
         "incomplete_today": int(incomplete_today),
         "dcs_tomorrow": int(dcs_tomorrow),
     }
+
+@app.get("/api/sensys/ccc-staff/work-items")
+def sensys_ccc_staff_work_items(
+    bucket: str = Query("due"),
+    q: str = Query(""),
+    sort: str = Query("due_at"),
+    token_user: dict = Depends(_sensys_require_user),
+):
+    conn = get_db()
+    _pdw_require_staff_or_admin(token_user)
+
+    user_id = int(token_user["user_id"])
+    bucket = (bucket or "due").strip().lower()
+    q = (q or "").strip().lower()
+    sort = (sort or "due_at").strip().lower()
+
+    where = ["wi.deleted_at IS NULL", "wi.assigned_to_user_id = ?"]
+    params = [user_id]
+
+    if bucket == "completed":
+        where.append("wi.status = 'completed'")
+    elif bucket == "incomplete":
+        where.append("wi.status IN ('assigned','incomplete','unassigned') AND (wi.completed_at IS NULL OR TRIM(wi.completed_at)='')")
+        # but assigned_to filter makes it truly “mine”
+    else:
+        # due
+        where.append("wi.status IN ('assigned','incomplete','unassigned') AND (wi.completed_at IS NULL OR TRIM(wi.completed_at)='')")
+        where.append("datetime(wi.due_at) <= datetime('now')")
+
+    # Search: patient name / agency / phone / task label
+    if q:
+        where.append("""
+        (
+          LOWER(p.first_name) LIKE ?
+          OR LOWER(p.last_name) LIKE ?
+          OR LOWER(ag.agency_name) LIKE ?
+          OR LOWER(COALESCE(p.phone1,'')) LIKE ?
+          OR LOWER(COALESCE(wi.task_type,'')) LIKE ?
+        )
+        """)
+        like = f"%{q}%"
+        params += [like, like, like, like, like]
+
+    order_sql = "datetime(wi.due_at) ASC"
+    if sort == "patient":
+        order_sql = "LOWER(p.last_name) ASC, LOWER(p.first_name) ASC"
+    elif sort == "agency":
+        order_sql = "LOWER(ag.agency_name) ASC"
+    elif sort == "dc_date":
+        order_sql = "COALESCE(a.dc_date,'') ASC"
+    elif sort == "task_type":
+        order_sql = "LOWER(wi.task_type) ASC"
+    elif sort == "due_at":
+        order_sql = "datetime(wi.due_at) ASC"
+
+    rows = conn.execute(
+        f"""
+        SELECT
+          wi.id,
+          wi.admission_id,
+          wi.task_type,
+          wi.status,
+          wi.due_at,
+          wi.completed_at,
+          wi.assignment_notes,
+          wi.max_attempts,
+
+          a.dc_date,
+          ag.agency_name,
+
+          p.first_name AS patient_first_name,
+          p.last_name  AS patient_last_name,
+          p.phone1     AS patient_phone
+        FROM sensys_postdc_work_items wi
+        JOIN sensys_admissions a ON a.id = wi.admission_id
+        JOIN sensys_patients p ON p.id = a.patient_id
+        JOIN sensys_agencies ag ON ag.id = a.agency_id
+        WHERE {" AND ".join(where)}
+        ORDER BY {order_sql}
+        """,
+        tuple(params),
+    ).fetchall()
+
+    items = [dict(r) for r in rows]
+    for it in items:
+        it["task_label"] = _pdw_task_label(it.get("task_type") or "")
+
+    return {"ok": True, "items": items}
+
+
+@app.get("/api/sensys/ccc-staff/summary")
+def sensys_ccc_staff_summary(token_user: dict = Depends(_sensys_require_user)):
+    conn = get_db()
+    _pdw_require_staff_or_admin(token_user)
+    user_id = int(token_user["user_id"])
+
+    due = conn.execute(
+        """
+        SELECT COUNT(*) AS n
+        FROM sensys_postdc_work_items
+        WHERE deleted_at IS NULL
+          AND assigned_to_user_id = ?
+          AND status IN ('assigned','incomplete','unassigned')
+          AND (completed_at IS NULL OR TRIM(completed_at)='')
+          AND datetime(due_at) <= datetime('now')
+        """,
+        (user_id,),
+    ).fetchone()["n"]
+
+    completed_today = conn.execute(
+        """
+        SELECT COUNT(*) AS n
+        FROM sensys_postdc_work_items
+        WHERE deleted_at IS NULL
+          AND assigned_to_user_id = ?
+          AND status = 'completed'
+          AND date(completed_at) = date('now')
+        """,
+        (user_id,),
+    ).fetchone()["n"]
+
+    return {"ok": True, "total_due": int(due or 0), "completed_today": int(completed_today or 0)}
 
 # -----------------------------------------------------------------------------
 # Home Health — Referrals List (ANCHOR: HOME_HEALTH_REFERRALS)
@@ -23086,8 +23249,12 @@ class AdmissionNoteUpsert(BaseModel):
     response1: Optional[str] = ""
     response2: Optional[str] = ""
 
+    # ✅ NEW: Share With user
+    share_with_user_id: Optional[int] = None
+
     # LEGACY (keep so older UI still works)
     note_comments: Optional[str] = ""
+
 
 # -----------------------------
 # Admission Details — Notes: upsert (ANCHOR: ADMISSION_NOTES_UPSERT)
@@ -23106,7 +23273,10 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
     if not effective_response1 and (payload.note_comments or "").strip():
         effective_response1 = (payload.note_comments or "").strip()
 
+    note_id = None
+
     if payload.id:
+        note_id = int(payload.id)
         conn.execute(
             """
             UPDATE sensys_admission_notes
@@ -23116,6 +23286,7 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
                    response1 = ?,
                    response2 = ?,
                    note_comments = ?,
+                   share_with_user_id = ?,
                    updated_at = datetime('now')
              WHERE id = ?
             """,
@@ -23126,16 +23297,17 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
                 effective_response1,
                 (payload.response2 or "").strip(),
                 (payload.note_comments or "").strip(),
-                int(payload.id),
+                int(payload.share_with_user_id) if payload.share_with_user_id else None,
+                note_id,
             ),
         )
     else:
-        conn.execute(
+        cur = conn.execute(
             """
             INSERT INTO sensys_admission_notes
-                (admission_id, note_name, note_title, status, response1, response2, note_comments, created_by)
+                (admission_id, note_name, note_title, status, response1, response2, note_comments, created_by, share_with_user_id)
             VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 int(payload.admission_id),
@@ -23146,11 +23318,44 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
                 (payload.response2 or "").strip(),
                 (payload.note_comments or "").strip(),
                 int(u["user_id"]),
+                int(payload.share_with_user_id) if payload.share_with_user_id else None,
             ),
         )
+        note_id = int(cur.lastrowid)
+
+    # ✅ NEW: fire "note_shared" notification if Share With was selected
+    share_uid = int(payload.share_with_user_id) if payload.share_with_user_id else None
+    if share_uid:
+        # Only allow if the target user is linked to this admission (your existing linking logic)
+        linked_uids = set(_sensys_user_ids_linked_to_admission(conn, int(payload.admission_id)))
+        if share_uid in linked_uids:
+            patient_name = _sensys_patient_name_for_admission(conn, int(payload.admission_id))
+
+            title = "Note Shared"
+            if patient_name:
+                title = f"{title} — {patient_name}"
+
+            body = "A note was shared with you."
+            note_title = (payload.note_title or "").strip()
+            if note_title:
+                body = f"Note: {note_title}"
+
+            _sensys_fire_notification(
+                conn,
+                notif_key="note_shared",
+                user_ids=[share_uid],
+                admission_id=int(payload.admission_id),
+                related_table="sensys_admission_notes",
+                related_id=int(note_id) if note_id else None,
+                title=title,
+                body=body,
+                ctx={"patient": patient_name, "note": note_title},
+                payload_json="",
+            )
 
     conn.commit()
-    return {"ok": True}
+    return {"ok": True, "id": int(note_id) if note_id else None}
+
 
 # -----------------------------
 # Admission Details — Notes: delete (ANCHOR: ADMISSION_NOTES_DELETE)
@@ -24878,6 +25083,11 @@ async def sensys_provider_esign_ui():
 async def sensys_post_discharge_ui():
     return HTMLResponse(content=read_html(SENSYS_POST_DISCHARGE_HTML))
 
+@app.get("/sensys/ccc-staff")
+def sensys_ccc_staff_page():
+    # Serve a dedicated CCC Staff workspace page (assigned-only)
+    html = open("Sensys CCC Staff Workspace.html", "r", encoding="utf-8").read()
+    return HTMLResponse(html)
 
 @app.get("/snf-admissions", response_class=HTMLResponse)
 async def snf_admissions_ui():
