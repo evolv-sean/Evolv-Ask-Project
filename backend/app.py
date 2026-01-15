@@ -18662,7 +18662,9 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
                  notes1, notes2, active,
                  next_location, next_agency_id)
             VALUES
-                (?, ?, ?, ?, ?,
+                (?, ?,
+                 ?, ?, ?,
+                 ?, ?, ?,
                  ?, ?, ?,
                  ?, ?, ?,
                  ?, ?)
@@ -18689,7 +18691,6 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
                 int(payload.next_agency_id) if payload.next_agency_id else None,
             ),
         )
-
     conn.commit()
     return {"ok": True}
 
