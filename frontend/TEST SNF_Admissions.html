@@ -4782,6 +4782,121 @@
         return;
       }
 
+      // Helper: post to the existing endpoint
+      async function postEmailPdf(payload) {
+        const resp = await fetch("/admin/snf/email-pdf", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Token": token
+          },
+          body: JSON.stringify(payload)
+        });
+
+        let data = null;
+        if (!resp.ok) {
+          try { data = await resp.json(); } catch (e) {}
+          const detail = data && (data.detail || data.message);
+          throw new Error("HTTP " + resp.status + (detail ? " – " + detail : ""));
+        }
+
+        data = data || await resp.json();
+        if (!data.ok && data.ok !== undefined) throw new Error(data.detail || "ok=false");
+        return data;
+      }
+
+      // ✅ SPECIAL CASE: "(All Medrina SNF ★)" => send one email per Medrina facility automatically
+      if (facilityId === "__starred__") {
+        document.getElementById("list-message").textContent = "Sending emails (All Medrina SNFs)…";
+
+        // Build groups: { facility_id:number => admission_ids:number[] }
+        const medrinaFacilities = (snfFacilities || []).filter(f => !!f.medrina_snf);
+
+        // map row -> matching Medrina facility id using the SAME text-matching approach as your filter
+        function rowToMedrinaFacilityId(r) {
+          const rowText = normFacilityStr(
+            (r.effective_facility_name || "") + " " +
+            (r.final_snf_name_display || "") + " " +
+            (r.ai_snf_name_raw || "")
+          );
+
+          for (const f of medrinaFacilities) {
+            const tokens = [];
+            if (f.facility_name) tokens.push(f.facility_name);
+            splitAliases(f.aliases).forEach(a => tokens.push(a));
+
+            const hit = tokens
+              .map(t => normFacilityStr(t))
+              .filter(Boolean)
+              .some(tn => rowText.includes(tn));
+
+            if (hit) return parseInt(f.id, 10);
+          }
+          return null;
+        }
+
+        const groups = {}; // fid -> [admission ids]
+        const unmapped = [];
+
+        for (const r of currentRows) {
+          const fid = rowToMedrinaFacilityId(r);
+          if (!fid || !Number.isFinite(fid)) {
+            unmapped.push(r.id);
+            continue;
+          }
+          groups[fid] = groups[fid] || [];
+          groups[fid].push(r.id);
+        }
+
+        const fids = Object.keys(groups).map(x => parseInt(x, 10)).filter(Number.isFinite);
+
+        if (!fids.length) {
+          document.getElementById("list-message").textContent =
+            "No Medrina facility matches found in the current list (nothing sent).";
+          return;
+        }
+
+        // Send sequentially (safer + avoids spikes)
+        let totalEmailsSent = 0;
+        let totalAdmissionsTagged = 0;
+
+        for (let i = 0; i < fids.length; i++) {
+          const fid = fids[i];
+          const ids = groups[fid] || [];
+
+          document.getElementById("list-message").textContent =
+            `Sending ${i + 1}/${fids.length}… (facility_id=${fid}, patients=${ids.length})`;
+
+          const payload = {
+            snf_facility_id: fid,
+            for_date: date || "",
+            admission_ids: ids,
+            test_only: !!testOnly,
+            test_email_to: testOnly ? testTo : ""
+          };
+
+          const data = await postEmailPdf(payload);
+          if (data?.emails_sent != null) totalEmailsSent += Number(data.emails_sent) || 0;
+          if (data?.admissions_tagged != null) totalAdmissionsTagged += Number(data.admissions_tagged) || 0;
+        }
+
+        const parts = [];
+        parts.push(testOnly ? "Test emails sent (All Medrina)." : "Emails sent (All Medrina).");
+        parts.push(`facilities=${fids.length}`);
+        parts.push(`emails_sent=${totalEmailsSent}`);
+        parts.push(`admissions_tagged=${totalAdmissionsTagged}`);
+        if (unmapped.length) parts.push(`unmapped_rows=${unmapped.length}`);
+
+        document.getElementById("list-message").textContent = parts.join(" ");
+
+        if (!testOnly) {
+          // Refresh list so emailed rows show emailed_at
+          loadAdmissions();
+        }
+        return;
+      }
+
+      // ✅ Normal single-facility behavior (unchanged)
       const admissionIds = currentRows.map(r => r.id);
 
       const payload = {
@@ -4794,31 +4909,7 @@
 
       document.getElementById("list-message").textContent = "Sending email with PDF...";
       try {
-        const resp = await fetch("/admin/snf/email-pdf", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Admin-Token": token
-          },
-          body: JSON.stringify(payload)
-        });
-
-        let data = null;
-        if (!resp.ok) {
-          try {
-            data = await resp.json();
-          } catch (e) {
-            // ignore JSON parse errors
-          }
-          const detail = data && (data.detail || data.message);
-          throw new Error("HTTP " + resp.status + (detail ? " – " + detail : ""));
-        }
-
-        data = data || await resp.json();
-        if (!data.ok && data.ok !== undefined) {
-          throw new Error(data.detail || "ok=false");
-        }
-
+        const data = await postEmailPdf(payload);
 
         const msgParts = [];
         msgParts.push(testOnly ? "Test email sent." : "Email with PDF sent.");
@@ -4827,7 +4918,6 @@
         document.getElementById("list-message").textContent = msgParts.join(" ");
 
         if (!testOnly) {
-          // Refresh list so emailed rows show emailed_at
           loadAdmissions();
         }
       } catch (err) {
