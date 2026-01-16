@@ -17322,7 +17322,7 @@ def sensys_admin_users_login_as(payload: SensysAdminLoginAsIn, token: str):
         elif "ccc_lead" in role_keys:
             redirect_url = "/sensys/post-discharge"
         elif "ccc_staff" in role_keys:
-            # staff page comes later, but for now land them here too
+            redirect_url = "/sensys/ccc-staff"
             redirect_url = "/sensys/post-discharge"
         elif "provider" in role_keys:
             redirect_url = "/sensys/provider-esign"
@@ -20276,9 +20276,7 @@ def sensys_login(payload: SensysLoginIn):
     if "ccc_lead" in role_keys:
         redirect_url = "/sensys/post-discharge"
     elif "ccc_staff" in role_keys:
-        # staff page comes later, but for now land them here too
-        redirect_url = "/sensys/post-discharge"
-
+        redirect_url = "/sensys/ccc-staff"
     # existing role landing pages
     elif "snf_sw" in role_keys:
         redirect_url = "/sensys/snf-sw"
@@ -21294,11 +21292,11 @@ def sensys_ccc_staff_work_items(
     if bucket == "completed":
         where.append("wi.status = 'completed'")
     elif bucket == "incomplete":
-        where.append("wi.status IN ('assigned','incomplete','unassigned') AND (wi.completed_at IS NULL OR TRIM(wi.completed_at)='')")
+        where.append("wi.status IN ('assigned','incomplete') AND (wi.completed_at IS NULL OR TRIM(wi.completed_at)='')")
         # but assigned_to filter makes it truly “mine”
     else:
         # due
-        where.append("wi.status IN ('assigned','incomplete','unassigned') AND (wi.completed_at IS NULL OR TRIM(wi.completed_at)='')")
+        where.append("wi.status IN ('assigned','incomplete') AND (wi.completed_at IS NULL OR TRIM(wi.completed_at)='')")
         where.append("datetime(wi.due_at) <= datetime('now')")
 
     # Search: patient name / agency / phone / task label
@@ -21361,39 +21359,191 @@ def sensys_ccc_staff_work_items(
 
     return {"ok": True, "items": items}
 
+@app.get("/api/sensys/ccc-staff/work-items/{work_item_id}")
+def sensys_ccc_staff_work_item_detail(
+    work_item_id: int,
+    token_user: dict = Depends(_sensys_require_user),
+):
+    conn = get_db()
+    _pdw_require_staff_or_admin(token_user)
+
+    user_id = int(token_user["user_id"])
+
+    wi = conn.execute(
+        """
+        SELECT
+          wi.*,
+          a.dc_date,
+          ag.agency_name,
+          p.first_name AS patient_first_name,
+          p.last_name  AS patient_last_name,
+          p.phone1     AS patient_phone
+        FROM sensys_postdc_work_items wi
+        JOIN sensys_admissions a ON a.id = wi.admission_id
+        JOIN sensys_patients p ON p.id = a.patient_id
+        JOIN sensys_agencies ag ON ag.id = a.agency_id
+        WHERE wi.id = ?
+          AND wi.deleted_at IS NULL
+          AND wi.assigned_to_user_id = ?
+        """,
+        (int(work_item_id), user_id),
+    ).fetchone()
+
+    if not wi:
+        raise HTTPException(status_code=404, detail="Work item not found")
+
+    wi_dict = dict(wi)
+    wi_dict["task_label"] = _pdw_task_label(wi_dict.get("task_type"))
+
+    attempts = conn.execute(
+        """
+        SELECT
+          a.id,
+          a.work_item_id,
+          a.attempt_no,
+          a.outcome,
+          a.note,
+          a.next_due_at,
+          a.created_at,
+          u.display_name AS created_by_name
+        FROM sensys_postdc_attempts a
+        LEFT JOIN sensys_users u ON u.id = a.created_by_user_id
+        WHERE a.work_item_id = ?
+        ORDER BY a.attempt_no DESC, datetime(a.created_at) DESC
+        """,
+        (int(work_item_id),),
+    ).fetchall()
+
+    return {"ok": True, "work_item": wi_dict, "attempts": [dict(r) for r in attempts]}
+
+@app.get("/api/sensys/admissions/{admission_id}/note-templates/{template_id}/share-with-users")
+def sensys_note_template_share_with_users(
+    admission_id: int,
+    template_id: int,
+    exclude_me: int = Query(1),
+    request: Request = None,
+):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    my_user_id = int(u["user_id"])
+
+    # 1) Must be linked to the admission (reuse your existing admission access rule)
+    # If you already have a helper like _sensys_assert_admission_access(conn, my_user_id, admission_id),
+    # use it here. If not, enforce via agency-link (same pattern used across PDW):
+    allowed = conn.execute(
+        """
+        SELECT 1
+        FROM sensys_admissions a
+        JOIN sensys_user_agencies ua ON ua.agency_id = a.agency_id
+        WHERE a.id = ?
+          AND ua.user_id = ?
+        LIMIT 1
+        """,
+        (int(admission_id), my_user_id),
+    ).fetchone()
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+    # 2) Get allowed role_keys for this template (stored as role_key TEXT)
+    role_rows = conn.execute(
+        """
+        SELECT tsr.role_key
+        FROM sensys_note_template_share_roles tsr
+        WHERE tsr.template_id = ?
+          AND tsr.deleted_at IS NULL
+        """,
+        (int(template_id),),
+    ).fetchall()
+    allowed_role_keys = [str(x["role_key"]) for x in role_rows if x and x["role_key"]]
+
+
+    if not allowed_role_keys:
+        return {"ok": True, "users": []}
+
+    # 3) Users linked to the same admission scope (same agency as the admission),
+    #    AND role_key allowed by template
+    #    (Optional) exclude current user
+    q_excl = ""
+    params = [int(admission_id)]
+    if int(exclude_me or 0) == 1:
+        q_excl = " AND u.id <> ? "
+        params.append(my_user_id)
+
+    # role_key IN (...)
+    in_sql = ",".join(["?"] * len(allowed_role_keys))
+    params.extend(allowed_role_keys)
+
+    rows = conn.execute(
+        f"""
+        SELECT DISTINCT
+          u.id AS user_id,
+          u.display_name,
+          u.email,
+          GROUP_CONCAT(DISTINCT r.role_key) AS role_keys
+        FROM sensys_admissions a
+        JOIN sensys_user_agencies ua ON ua.agency_id = a.agency_id
+        JOIN sensys_users u ON u.id = ua.user_id
+        JOIN sensys_user_roles ur ON ur.user_id = u.id
+        JOIN sensys_roles r ON r.id = ur.role_id
+        WHERE a.id = ?
+          AND u.is_active = 1
+          {q_excl}
+          AND r.role_key IN ({in_sql})
+        GROUP BY u.id, u.display_name, u.email
+        ORDER BY LOWER(COALESCE(u.display_name,u.email)) ASC
+        """,
+        tuple(params),
+    ).fetchall()
+
+    users = []
+    for rr in rows:
+        d = dict(rr)
+        d["role_keys"] = (d.get("role_keys") or "").split(",") if d.get("role_keys") else []
+        users.append(d)
+
+    return {"ok": True, "users": users}
 
 @app.get("/api/sensys/ccc-staff/summary")
 def sensys_ccc_staff_summary(token_user: dict = Depends(_sensys_require_user)):
     conn = get_db()
     _pdw_require_staff_or_admin(token_user)
+
     user_id = int(token_user["user_id"])
 
-    due = conn.execute(
+    # today bounds
+    day_start = "datetime(date('now'))"
+    day_end   = "datetime(date('now','+1 day'))"
+
+    # Total Due now (due_at <= now), assigned to me, not completed
+    total_due = conn.execute(
         """
-        SELECT COUNT(*) AS n
-        FROM sensys_postdc_work_items
-        WHERE deleted_at IS NULL
-          AND assigned_to_user_id = ?
-          AND status IN ('assigned','incomplete','unassigned')
-          AND (completed_at IS NULL OR TRIM(completed_at)='')
-          AND datetime(due_at) <= datetime('now')
+        SELECT COUNT(1) AS c
+        FROM sensys_postdc_work_items wi
+        WHERE wi.deleted_at IS NULL
+          AND wi.assigned_to_user_id = ?
+          AND wi.status IN ('assigned','incomplete')
+          AND (wi.completed_at IS NULL OR TRIM(wi.completed_at)='')
+          AND datetime(wi.due_at) <= datetime('now')
         """,
         (user_id,),
-    ).fetchone()["n"]
+    ).fetchone()["c"]
 
+    # Completed today, assigned to me
     completed_today = conn.execute(
-        """
-        SELECT COUNT(*) AS n
-        FROM sensys_postdc_work_items
-        WHERE deleted_at IS NULL
-          AND assigned_to_user_id = ?
-          AND status = 'completed'
-          AND date(completed_at) = date('now')
+        f"""
+        SELECT COUNT(1) AS c
+        FROM sensys_postdc_work_items wi
+        WHERE wi.deleted_at IS NULL
+          AND wi.assigned_to_user_id = ?
+          AND wi.status = 'completed'
+          AND wi.completed_at IS NOT NULL
+          AND datetime(wi.completed_at) >= {day_start}
+          AND datetime(wi.completed_at) <  {day_end}
         """,
         (user_id,),
-    ).fetchone()["n"]
+    ).fetchone()["c"]
 
-    return {"ok": True, "total_due": int(due or 0), "completed_today": int(completed_today or 0)}
+    return {"ok": True, "total_due": int(total_due), "completed_today": int(completed_today)}
 
 # -----------------------------------------------------------------------------
 # Home Health — Referrals List (ANCHOR: HOME_HEALTH_REFERRALS)
@@ -22722,15 +22872,78 @@ def sensys_note_templates(request: Request):
     ).fetchall()
     agency_ids = [int(r["agency_id"]) for r in ag_rows]
 
-    # templates user can see:
-    # - global (agency_id IS NULL)
-    # - OR templates for their agencies
-    where = "t.deleted_at IS NULL AND t.active = 1 AND (t.agency_id IS NULL"
+    # roles the user has (role_key)
+    role_rows = conn.execute(
+        """
+        SELECT DISTINCT r.role_key
+        FROM sensys_user_roles ur
+        JOIN sensys_roles r ON r.id = ur.role_id
+        WHERE ur.user_id = ?
+        """,
+        (int(u["user_id"]),),
+    ).fetchall()
+    my_role_keys = [str(r["role_key"]).strip().lower() for r in role_rows if r and r["role_key"]]
+
+    # templates user can see (NEW):
+    # - ACTIVE + not deleted
+    # - Agency targeting:
+    #     * if template has NO rows in sensys_note_template_agencies => global (everyone)
+    #     * else must intersect user agency_ids
+    # - Role targeting:
+    #     * if template has NO rows in sensys_note_template_roles => global (everyone)
+    #     * else must intersect user my_role_keys
+    where_parts = ["t.deleted_at IS NULL", "t.active = 1"]
     params = []
+
+    # --- agency targeting (many-to-many) ---
+    agency_clause = """
+    (
+      NOT EXISTS (
+        SELECT 1
+        FROM sensys_note_template_agencies ta
+        WHERE ta.template_id = t.id
+          AND ta.deleted_at IS NULL
+      )
+    """
     if agency_ids:
-        where += " OR t.agency_id IN (" + ",".join(["?"] * len(agency_ids)) + ")"
-        params.extend(agency_ids)
-    where += ")"
+        agency_clause += f"""
+      OR EXISTS (
+        SELECT 1
+        FROM sensys_note_template_agencies ta
+        WHERE ta.template_id = t.id
+          AND ta.deleted_at IS NULL
+          AND ta.agency_id IN ({",".join(["?"] * len(agency_ids))})
+      )
+    """
+        params.extend([int(x) for x in agency_ids])
+    agency_clause += ")"
+    where_parts.append(agency_clause)
+
+    # --- role targeting (many-to-many) ---
+    role_clause = """
+    (
+      NOT EXISTS (
+        SELECT 1
+        FROM sensys_note_template_roles tr
+        WHERE tr.template_id = t.id
+          AND tr.deleted_at IS NULL
+      )
+    """
+    if my_role_keys:
+        role_clause += f"""
+      OR EXISTS (
+        SELECT 1
+        FROM sensys_note_template_roles tr
+        WHERE tr.template_id = t.id
+          AND tr.deleted_at IS NULL
+          AND LOWER(tr.role_key) IN ({",".join(["?"] * len(my_role_keys))})
+      )
+    """
+        params.extend([str(x).strip().lower() for x in my_role_keys])
+    role_clause += ")"
+    where_parts.append(role_clause)
+
+    where = " AND ".join(where_parts)
 
     templates = conn.execute(
         f"""
@@ -22739,11 +22952,11 @@ def sensys_note_templates(request: Request):
         FROM sensys_note_templates t
         WHERE {where}
         ORDER BY
-            CASE WHEN t.agency_id IS NULL THEN 0 ELSE 1 END,
             t.template_name COLLATE NOCASE
         """,
         tuple(params),
     ).fetchall()
+
 
     tpl_list = [dict(r) for r in templates]
     if not tpl_list:
