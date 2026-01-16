@@ -318,6 +318,91 @@
       .replaceAll('"',"&quot;");
   }
 
+  function safeJsonArray(s){
+    try{
+      const v = JSON.parse(String(s || "[]"));
+      return Array.isArray(v) ? v : [];
+    }catch(e){
+      return [];
+    }
+  }
+
+  function renderTplFieldHtml(f){
+    const id = Number(f.id);
+    const label = esc(f.field_label || ("Field " + id));
+    const rawType = String(f.field_type || "text").toLowerCase();
+    const type = (rawType === "int" || rawType === "float") ? "number" : rawType;
+    const required = (String(f.required || 0) === "1");
+    const reqStar = required ? ` <span style="color:#b91c1c">*</span>` : "";
+    const reqAttr = required ? "required" : "";
+
+    // NOTE: we store by field.id to match your existing save logic
+    // (selectedTemplateResponses[fieldId])
+    let inputHtml = "";
+
+    if(type === "textarea"){
+      inputHtml = `
+        <textarea class="input" id="tplField_${id}" ${reqAttr}
+                  style="min-height:90px;"
+                  oninput="selectedTemplateResponses[${id}] = this.value"></textarea>
+      `;
+    }
+    else if(type === "number"){
+      inputHtml = `
+        <input class="input" id="tplField_${id}" ${reqAttr}
+               type="number"
+               oninput="selectedTemplateResponses[${id}] = this.value" />
+      `;
+    }
+    else if(type === "date"){
+      inputHtml = `
+        <input class="input" id="tplField_${id}" ${reqAttr}
+               type="date"
+               oninput="selectedTemplateResponses[${id}] = this.value" />
+      `;
+    }
+    else if(type === "boolean" || type === "checkbox"){
+      // dropdown Yes/No as requested
+      inputHtml = `
+        <select class="sel" id="tplField_${id}" ${reqAttr}
+                onchange="selectedTemplateResponses[${id}] = this.value">
+          <option value="">Select…</option>
+          <option value="Yes">Yes</option>
+          <option value="No">No</option>
+        </select>
+      `;
+    }
+    else if(type === "select"){
+      const opts = safeJsonArray(f.options_json);
+      inputHtml = `
+        <select class="sel" id="tplField_${id}" ${reqAttr}
+                onchange="selectedTemplateResponses[${id}] = this.value">
+          <option value="">Select…</option>
+          ${opts.map(o => {
+            const v = String(o ?? "");
+            return `<option value="${esc(v)}">${esc(v)}</option>`;
+          }).join("")}
+        </select>
+      `;
+    }
+    else {
+      // default: text
+      inputHtml = `
+        <input class="input" id="tplField_${id}" ${reqAttr}
+               type="text"
+               oninput="selectedTemplateResponses[${id}] = this.value" />
+      `;
+    }
+
+    return `
+      <div style="margin-bottom:10px;">
+        <div class="muted" style="margin-bottom:6px;">${label}${reqStar}</div>
+        ${inputHtml}
+      </div>
+    `;
+  }
+
+
   function fmtDateOnly(s){
     if(!s) return "";
     return String(s).replace("T"," ").slice(0,10);
@@ -769,18 +854,12 @@
     document.getElementById("noteTplHint").textContent =
       "Template ID: " + String(t.id) + (Number(t.id)===2 ? " • (Log Call Attempts)" : "");
 
-    // render fields (supports any number; we store by field.id)
+    // render fields (uses Admin Field Label + Type)
     const fields = Array.isArray(t.fields) ? t.fields : [];
     document.getElementById("noteTplFields").innerHTML = fields.length
-      ? fields.map(f => `
-          <div style="margin-bottom:10px;">
-            <div class="muted" style="margin-bottom:6px;">${esc(f.question || ("Field " + f.id))}</div>
-            <input class="input" id="tplField_${Number(f.id)}"
-                   placeholder="Enter..."
-                   oninput="selectedTemplateResponses[${Number(f.id)}] = this.value" />
-          </div>
-        `).join("")
+      ? fields.map(f => renderTplFieldHtml(f)).join("")
       : `<div class="muted">No fields configured for this template.</div>`;
+
 
     // load Share With users for this admission + template
     await loadShareWithUsersForTemplate(Number(t.id));
