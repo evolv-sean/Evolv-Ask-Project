@@ -1516,6 +1516,7 @@
                     </button>
                   </div>
                 </div>
+
                 <div id="email-log-list" class="email-log-scroll"></div>
               </div>
 
@@ -3025,6 +3026,18 @@
 
         snfFacilities = data.items || [];
 
+        // ✅ NEW: facilities/aliases load AFTER the admissions list sometimes.
+        // Re-render so Facility(AI) mapping updates (e.g., "Hamlin Place" -> "Hamlin Place of Boynton Beach")
+        try {
+          if (Array.isArray(currentRows) && currentRows.length) {
+            renderTable(currentRows);
+          } else if (Array.isArray(admissions) && admissions.length) {
+            renderTable(admissions);
+          }
+        } catch (e) {
+          // non-fatal
+        }
+
         const filterSelect = document.getElementById("filter-facility");
         if (filterSelect) {
           filterSelect.innerHTML = '<option value="">(All facilities)</option>';
@@ -3081,7 +3094,6 @@
             editSelect.appendChild(opt);
           });
         }
-
         // If a row is open, refresh the note so facility/alias highlighting updates immediately
         try {
           if (selectedId != null) await selectRow(selectedId);
@@ -3093,7 +3105,6 @@
         console.error("loadSnfFacilities error", err);
       }
     }
-
 
     function setEditFacilityByLabel(label) {
       const select = document.getElementById("edit-facility-select");
@@ -3128,7 +3139,6 @@
 
       select.value = foundId || "";
     }
-
 
 
     function formatISOToMDY(iso) {
@@ -3930,37 +3940,6 @@
       }
     }
 
-    function exportEmailLogCsv() {
-      const token = getAdminToken();
-      if (!token) {
-        showToast("Please paste your ADMIN_TOKEN first.", "error");
-        return;
-      }
-
-      try {
-        const resp = await fetch(`/admin/snf/email-log/export.csv`, {
-          headers: { "X-Admin-Token": token }
-        });
-        if (!resp.ok) throw new Error("HTTP " + resp.status);
-
-        const blob = await resp.blob();
-        const url = URL.createObjectURL(blob);
-
-        const stamp = new Date().toISOString().slice(0, 10);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `SNF_Email_Log_${stamp}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-
-        setTimeout(() => URL.revokeObjectURL(url), 1500);
-      } catch (err) {
-        console.error("exportEmailLogCsv error", err);
-        showToast("Error exporting CSV: " + err, "error");
-      }
-    }
-
     async function downloadEmailLogPdf(secureLinkId) {
       const token = getAdminToken();
       if (!token) {
@@ -3988,6 +3967,37 @@
       } catch (err) {
         console.error("downloadEmailLogPdf error", err);
         showToast("Error downloading PDF: " + err, "error");
+      }
+    }
+
+    async function exportEmailLogCsv() {
+      const token = getAdminToken();
+      if (!token) {
+        showToast("Please paste your ADMIN_TOKEN first.", "error");
+        return;
+      }
+
+      try {
+        const resp = await fetch(`/admin/snf/email-log/export.csv`, {
+          headers: { "X-Admin-Token": token }
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+
+        const stamp = new Date().toISOString().slice(0, 10);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `SNF_Email_Log_${stamp}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+      } catch (err) {
+        console.error("exportEmailLogCsv error", err);
+        showToast("Error exporting CSV: " + err, "error");
       }
     }
 
@@ -4283,25 +4293,31 @@
 
 
     function getDisplayFacilityLabel(r) {
-      // 1) Manual override always wins
+      // 1) Manual override always wins (strip Medrina star if present)
       if (r.final_snf_name_display) {
-        return r.final_snf_name_display;
+        return stripMedrinaStarPrefix(r.final_snf_name_display);
       }
 
       // 2) System facility name if AI matches name or aliases
       const aiDisplay = getFacilityAiDisplayName(r);
       if (aiDisplay) {
-        return aiDisplay;
+        return stripMedrinaStarPrefix(aiDisplay);
       }
 
       // 3) Absolute fallback
       return "";
     }
 
-    // Sort-safe facility label (don’t let the " *" change ordering)
+    // Sort-safe facility label (don’t let the "★ " or " *" change ordering)
     function getSortFacilityLabel(r) {
-      const label = (getDisplayFacilityLabel(r) || "").trim();
+      const label = stripMedrinaStarPrefix((getDisplayFacilityLabel(r) || "").trim());
       return label.replace(/\s*\*$/, "").trim();
+    }
+
+    // ✅ Prevent Medrina-star from being stored/displayed outside the dropdown
+    function stripMedrinaStarPrefix(label) {
+      const s = String(label || "");
+      return s.replace(/^★\s*/g, "").trim();
     }
 
     function getAssignmentDotHtml(r) {
@@ -4316,12 +4332,6 @@
       return "";
     }
 
-    function stripMedrinaStarPrefix(label) {
-      // Removes the Medrina star prefix ("★ ") that we add in dropdowns for medrina_snf facilities.
-      // Keeps the display pretty, but ensures we save clean facility text back to the DB.
-      return String(label || "").replace(/^\s*★\s*/g, "").trim();
-    }
-
     function renderTable(rows) {
       const tbody = document.getElementById("snf-body");
       tbody.innerHTML = "";
@@ -4334,7 +4344,7 @@
         let facLabel = "";
 
         if (r.final_snf_name_display) {
-          facLabel = r.final_snf_name_display;
+          facLabel = stripMedrinaStarPrefix(r.final_snf_name_display);
         } else {
           const facLabelParts = [];
           if (r.effective_facility_name) facLabelParts.push(r.effective_facility_name);
@@ -4409,12 +4419,18 @@
             }
 
             ${
-              (getFacilityAiPhone(r) || "").trim()
-                ? `<div class="fac-subrow">
-                     <span>${escapeHtml(getFacilityAiPhone(r))}</span>
-                     ${getAssignmentDotHtml(r)}
-                   </div>`
-                : ""
+              (() => {
+                const dispo = (r.disposition || "").toString().trim();
+                const phone = (getFacilityAiPhone(r) || "").toString().trim();
+
+                const line = [dispo, phone].filter(Boolean).join(" | ");
+                if (!line) return "";
+
+                return `<div class="fac-subrow">
+                          <span>${escapeHtml(line)}</span>
+                          ${getAssignmentDotHtml(r)}
+                        </div>`;
+              })()
             }
           </td>
           <td>${formatISOToMDY(r.dc_date)}</td>
@@ -4766,6 +4782,121 @@
         return;
       }
 
+      // Helper: post to the existing endpoint
+      async function postEmailPdf(payload) {
+        const resp = await fetch("/admin/snf/email-pdf", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Token": token
+          },
+          body: JSON.stringify(payload)
+        });
+
+        let data = null;
+        if (!resp.ok) {
+          try { data = await resp.json(); } catch (e) {}
+          const detail = data && (data.detail || data.message);
+          throw new Error("HTTP " + resp.status + (detail ? " – " + detail : ""));
+        }
+
+        data = data || await resp.json();
+        if (!data.ok && data.ok !== undefined) throw new Error(data.detail || "ok=false");
+        return data;
+      }
+
+      // ✅ SPECIAL CASE: "(All Medrina SNF ★)" => send one email per Medrina facility automatically
+      if (facilityId === "__starred__") {
+        document.getElementById("list-message").textContent = "Sending emails (All Medrina SNFs)…";
+
+        // Build groups: { facility_id:number => admission_ids:number[] }
+        const medrinaFacilities = (snfFacilities || []).filter(f => !!f.medrina_snf);
+
+        // map row -> matching Medrina facility id using the SAME text-matching approach as your filter
+        function rowToMedrinaFacilityId(r) {
+          const rowText = normFacilityStr(
+            (r.effective_facility_name || "") + " " +
+            (r.final_snf_name_display || "") + " " +
+            (r.ai_snf_name_raw || "")
+          );
+
+          for (const f of medrinaFacilities) {
+            const tokens = [];
+            if (f.facility_name) tokens.push(f.facility_name);
+            splitAliases(f.aliases).forEach(a => tokens.push(a));
+
+            const hit = tokens
+              .map(t => normFacilityStr(t))
+              .filter(Boolean)
+              .some(tn => rowText.includes(tn));
+
+            if (hit) return parseInt(f.id, 10);
+          }
+          return null;
+        }
+
+        const groups = {}; // fid -> [admission ids]
+        const unmapped = [];
+
+        for (const r of currentRows) {
+          const fid = rowToMedrinaFacilityId(r);
+          if (!fid || !Number.isFinite(fid)) {
+            unmapped.push(r.id);
+            continue;
+          }
+          groups[fid] = groups[fid] || [];
+          groups[fid].push(r.id);
+        }
+
+        const fids = Object.keys(groups).map(x => parseInt(x, 10)).filter(Number.isFinite);
+
+        if (!fids.length) {
+          document.getElementById("list-message").textContent =
+            "No Medrina facility matches found in the current list (nothing sent).";
+          return;
+        }
+
+        // Send sequentially (safer + avoids spikes)
+        let totalEmailsSent = 0;
+        let totalAdmissionsTagged = 0;
+
+        for (let i = 0; i < fids.length; i++) {
+          const fid = fids[i];
+          const ids = groups[fid] || [];
+
+          document.getElementById("list-message").textContent =
+            `Sending ${i + 1}/${fids.length}… (facility_id=${fid}, patients=${ids.length})`;
+
+          const payload = {
+            snf_facility_id: fid,
+            for_date: date || "",
+            admission_ids: ids,
+            test_only: !!testOnly,
+            test_email_to: testOnly ? testTo : ""
+          };
+
+          const data = await postEmailPdf(payload);
+          if (data?.emails_sent != null) totalEmailsSent += Number(data.emails_sent) || 0;
+          if (data?.admissions_tagged != null) totalAdmissionsTagged += Number(data.admissions_tagged) || 0;
+        }
+
+        const parts = [];
+        parts.push(testOnly ? "Test emails sent (All Medrina)." : "Emails sent (All Medrina).");
+        parts.push(`facilities=${fids.length}`);
+        parts.push(`emails_sent=${totalEmailsSent}`);
+        parts.push(`admissions_tagged=${totalAdmissionsTagged}`);
+        if (unmapped.length) parts.push(`unmapped_rows=${unmapped.length}`);
+
+        document.getElementById("list-message").textContent = parts.join(" ");
+
+        if (!testOnly) {
+          // Refresh list so emailed rows show emailed_at
+          loadAdmissions();
+        }
+        return;
+      }
+
+      // ✅ Normal single-facility behavior (unchanged)
       const admissionIds = currentRows.map(r => r.id);
 
       const payload = {
@@ -4778,31 +4909,7 @@
 
       document.getElementById("list-message").textContent = "Sending email with PDF...";
       try {
-        const resp = await fetch("/admin/snf/email-pdf", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Admin-Token": token
-          },
-          body: JSON.stringify(payload)
-        });
-
-        let data = null;
-        if (!resp.ok) {
-          try {
-            data = await resp.json();
-          } catch (e) {
-            // ignore JSON parse errors
-          }
-          const detail = data && (data.detail || data.message);
-          throw new Error("HTTP " + resp.status + (detail ? " – " + detail : ""));
-        }
-
-        data = data || await resp.json();
-        if (!data.ok && data.ok !== undefined) {
-          throw new Error(data.detail || "ok=false");
-        }
-
+        const data = await postEmailPdf(payload);
 
         const msgParts = [];
         msgParts.push(testOnly ? "Test email sent." : "Email with PDF sent.");
@@ -4811,7 +4918,6 @@
         document.getElementById("list-message").textContent = msgParts.join(" ");
 
         if (!testOnly) {
-          // Refresh list so emailed rows show emailed_at
           loadAdmissions();
         }
       } catch (err) {
