@@ -421,6 +421,8 @@ SENSYS_HOME_HEALTH_HTML = FRONTEND_DIR / "Sensys Home Health.html"
 SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Home Health Admission Details.html"
 SENSYS_PROVIDER_ESIGN_HTML = FRONTEND_DIR / "Sensys Provider E-Sign.html"
 SENSYS_POST_DISCHARGE_HTML = FRONTEND_DIR / "Sensys Post-Discharge Workspace.html"
+SENSYS_CCC_STAFF_HTML = FRONTEND_DIR / "Sensys CCC Staff Workspace.html"
+SENSYS_IMPERSONATE_HTML = FRONTEND_DIR / "Sensys Impersonate.html"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("evolv")
@@ -25295,11 +25297,9 @@ async def sensys_provider_esign_ui():
 async def sensys_post_discharge_ui():
     return HTMLResponse(content=read_html(SENSYS_POST_DISCHARGE_HTML))
 
-@app.get("/sensys/ccc-staff")
+@app.get("/sensys/ccc-staff", response_class=HTMLResponse)
 def sensys_ccc_staff_page():
-    # Serve a dedicated CCC Staff workspace page (assigned-only)
-    html = open("Sensys CCC Staff Workspace.html", "r", encoding="utf-8").read()
-    return HTMLResponse(html)
+    return HTMLResponse(read_html(SENSYS_CCC_STAFF_HTML))
 
 @app.get("/snf-admissions", response_class=HTMLResponse)
 async def snf_admissions_ui():
