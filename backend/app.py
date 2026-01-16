@@ -23001,6 +23001,15 @@ def sensys_admission_details(admission_id: int, request: Request):
             (p.last_name || ', ' || p.first_name) AS patient_name,
             p.dob AS patient_dob,
 
+            -- patient contact
+            p.phone1   AS patient_phone1,
+            p.phone2   AS patient_phone2,
+            p.address1 AS patient_address1,
+            p.address2 AS patient_address2,
+            p.city     AS patient_city,
+            p.state    AS patient_state,
+            p.zip      AS patient_zip,
+
             a.agency_id,
             ag.agency_name AS agency_name,
 
@@ -23091,9 +23100,25 @@ def sensys_admission_details(admission_id: int, request: Request):
         qmarks = ",".join(["?"] * len(dc_ids))
         svc_rows = conn.execute(
             f"""
-            SELECT id, services_id, admission_dc_submission_id, created_at
-            FROM sensys_dc_submission_services
-            WHERE admission_dc_submission_id IN ({qmarks})
+            SELECT
+                j.id,
+                j.services_id,
+                j.admission_dc_submission_id,
+                j.created_at,
+
+                s.name AS service_name,
+                s.service_type_id,
+                st.name AS service_type_name,
+                st.code AS service_type_code
+            FROM sensys_dc_submission_services j
+            LEFT JOIN sensys_services s
+                   ON s.id = j.services_id
+                  AND s.deleted_at IS NULL
+            LEFT JOIN sensys_service_type st
+                   ON st.id = s.service_type_id
+                  AND st.deleted_at IS NULL
+            WHERE j.admission_dc_submission_id IN ({qmarks})
+            ORDER BY COALESCE(st.name, '') COLLATE NOCASE, COALESCE(s.name, '') COLLATE NOCASE
             """,
             tuple(dc_ids),
         ).fetchall()
