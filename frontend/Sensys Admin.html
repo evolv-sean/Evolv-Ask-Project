@@ -1640,6 +1640,18 @@
         </div>
       </div>
 
+      <!-- ✅ NEW: Share With Roles (controls Share With dropdown options) -->
+      <div style="margin-top:10px;">
+        <label>Share With Roles (optional)</label>
+        <div class="checkwrap">
+          <input id="noteTplShareRoleSearch" class="checksearch" placeholder="Search roles for Share With…" />
+          <div id="noteTplShareRoleChecklist" class="checklist" style="max-height:220px; overflow:auto;"></div>
+          <div class="muted" style="margin-top:6px;">
+            Leave blank = nobody appears in “Share With” dropdown.
+          </div>
+        </div>
+      </div>
+
       <div class="grid2" style="margin-top:10px;">
         <div>
           <label>Active</label>
@@ -4075,6 +4087,38 @@
   // wire search inputs (safe if elements exist)
   $("noteTplAgencySearch") && $("noteTplAgencySearch").addEventListener("input", renderNoteTplAgencyChecklist);
   $("noteTplRoleSearch") && $("noteTplRoleSearch").addEventListener("input", renderNoteTplRoleChecklist);
+
+  // ✅ Share With Roles checklist (uses rolesMaster)
+  function renderNoteTplShareRoleChecklist(){
+    const box = $("noteTplShareRoleChecklist");
+    if(!box) return;
+
+    const q = ($("noteTplShareRoleSearch").value || "").trim().toLowerCase();
+    const list = (rolesMaster || []).filter(r => {
+      const hay = `${r.role_name||""} ${r.role_key||""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+
+    box.innerHTML = list.map(r => {
+      const key = String(r.role_key || "").trim();
+      const checked = noteTplSelectedShareRoleKeys.has(key) ? "checked" : "";
+      return `
+        <label class="checkrow">
+          <input type="checkbox" ${checked} onchange="toggleNoteTplShareRole('${escapeHtml(key)}', this.checked)" />
+          <span>${escapeHtml(r.role_name || key)}</span>
+        </label>
+      `;
+    }).join("");
+  }
+
+  function toggleNoteTplShareRole(roleKey, isOn){
+    const k = String(roleKey || "").trim();
+    if(!k) return;
+    if(isOn) noteTplSelectedShareRoleKeys.add(k);
+    else noteTplSelectedShareRoleKeys.delete(k);
+  }
+
+  $("noteTplShareRoleSearch") && $("noteTplShareRoleSearch").addEventListener("input", renderNoteTplShareRoleChecklist);
 
 
   function openNoteTemplateModal(t){
