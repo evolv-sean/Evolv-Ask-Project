@@ -44,6 +44,57 @@
     .divider{ height:1px; background:#eef0f6; margin:10px 0; }
 
     .attempt{ border:1px solid #eef0f6; border-radius:12px; padding:10px 12px; background:#fff; }
+    /* Mint highlight for Mark Complete toggle */
+    .btnMintOn{
+      background:#33d6c6;     /* mint */
+      border-color:#33d6c6;
+      color:#062b27;
+      font-weight:900;
+    }
+    .btnMintOn:hover{ background:#2ec7b8; }
+
+    /* Simple modal */
+    .modal-backdrop{
+      position:fixed; inset:0;
+      background:rgba(0,0,0,.35);
+      display:none;
+      align-items:center; justify-content:center;
+      padding:18px;
+      z-index:9999;
+    }
+    .modal{
+      width: min(920px, calc(100% - 18px));
+      background:#fff;
+      border:1px solid #e6e7ee;
+      border-radius:14px;
+      box-shadow: 0 12px 30px rgba(0,0,0,.20);
+      overflow:hidden;
+    }
+    .modalHd{
+      padding:12px 14px;
+      border-bottom:1px solid #eef0f6;
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .modalBd{ padding:12px 14px; }
+    .iconbtn{
+      border:1px solid #e6e7ee;
+      background:#fff;
+      border-radius:10px;
+      padding:6px 10px;
+      cursor:pointer;
+    }
+    .iconbtn:hover{ background:#f3f4f8; }
+
+    .noteCard{
+      border:1px solid #eef0f6;
+      border-radius:12px;
+      padding:10px 12px;
+      background:#fff;
+    }
+
   </style>
 </head>
 <body>
@@ -71,8 +122,7 @@
           </div>
 
           <div class="tabs">
-            <button class="tab active" id="tabDue" onclick="setBucket('due')">Due</button>
-            <button class="tab" id="tabInc" onclick="setBucket('incomplete')">Incomplete</button>
+            <button class="tab active" id="tabInc" onclick="setBucket('incomplete')">Incomplete</button>
             <button class="tab" id="tabDone" onclick="setBucket('completed')">Completed</button>
           </div>
         </div>
@@ -128,8 +178,17 @@
             <div class="detailTitle">Details</div>
             <div class="muted" id="detailSub">Select a row to view details.</div>
           </div>
-          <div style="display:flex; gap:8px;">
-            <button class="btn" onclick="refreshSelected()">Refresh</button>
+
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button class="btn" id="btnViewAllNotes" onclick="openAllNotesModal()" disabled>All Notes</button>
+            <button class="btn" id="btnAddNote" onclick="openAddNoteModal()" disabled>Add Note</button>
+
+            <button class="btn" id="btnCompleteToggle"
+                    onclick="toggleCompleteFromHeader()"
+                    aria-pressed="false"
+                    title="Mark Complete">
+              ✓ Complete
+            </button>
           </div>
         </div>
 
@@ -140,6 +199,84 @@
 
     </div>
   </div>
+<!-- =========================
+     Add Note Modal
+========================= -->
+<div class="modal-backdrop" id="addNoteModalBackdrop">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modalHd">
+      <div>
+        <div style="font-weight:1000;font-size:16px;">Add Note</div>
+        <div class="muted" id="addNoteSub">—</div>
+      </div>
+      <button class="iconbtn" onclick="closeAddNoteModal()">✕</button>
+    </div>
+
+    <div class="modalBd">
+      <div style="display:grid; grid-template-columns: 320px 1fr; gap:12px; align-items:start;">
+
+        <!-- templates list -->
+        <div class="detailBlock">
+          <div style="font-weight:900; margin-bottom:8px;">Note Templates</div>
+          <input class="input" id="noteTplSearch" placeholder="Search templates…" oninput="renderNoteTemplateList()" />
+          <div style="height:10px;"></div>
+          <div id="noteTplList" style="display:grid; gap:8px; max-height:420px; overflow:auto;"></div>
+        </div>
+
+        <!-- template form -->
+        <div class="detailBlock">
+          <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+            <div>
+              <div style="font-weight:900;" id="noteTplTitle">Select a template</div>
+              <div class="muted" id="noteTplHint">—</div>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn" onclick="closeAddNoteModal()">Cancel</button>
+              <button class="btn btnPrimary" id="btnSaveNote" onclick="saveNoteFromTemplate()" disabled>Save Note</button>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div id="noteTplFields"></div>
+
+          <div class="divider"></div>
+
+          <div>
+            <div class="muted" style="margin-bottom:6px;">Share With</div>
+            <select class="sel" id="shareWithSel" disabled>
+              <option value="">Loading…</option>
+            </select>
+            <div class="muted" style="margin-top:6px; font-size:12px;">
+              (Only users with the allowed role(s) for this template and same admission agency.)
+            </div>
+          </div>
+
+          <div id="addNoteMsg" class="msg" style="margin-top:10px;"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+<!-- =========================
+     All Notes Modal
+========================= -->
+<div class="modal-backdrop" id="allNotesModalBackdrop">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modalHd">
+      <div>
+        <div style="font-weight:1000;font-size:16px;">All Admission Notes</div>
+        <div class="muted" id="allNotesSub">—</div>
+      </div>
+      <button class="iconbtn" onclick="closeAllNotesModal()">✕</button>
+    </div>
+
+    <div class="modalBd">
+      <div id="allNotesList" style="display:grid; gap:10px; max-height:560px; overflow:auto;"></div>
+    </div>
+  </div>
+</div>
 
 <script>
   function getToken(){ return localStorage.getItem("sensys_token") || ""; }
@@ -197,26 +334,30 @@
     if(ok){ el.classList.add("ok"); } else { el.classList.remove("ok"); }
   }
 
-  let currentBucket = "due";
+  let currentBucket = "incomplete";
   let itemsCache = [];
   let selectedWorkItemId = null;
   let reloadTimer = null;
 
   function setBucket(b){
     currentBucket = b;
-    document.getElementById("tabDue").classList.toggle("active", b==="due");
     document.getElementById("tabInc").classList.toggle("active", b==="incomplete");
     document.getElementById("tabDone").classList.toggle("active", b==="completed");
 
     const help = document.getElementById("bucketHelp");
-    if(b==="due") help.textContent = "Items assigned to me that are due now (due_at <= now).";
     if(b==="incomplete") help.textContent = "My assigned items not completed yet.";
     if(b==="completed") help.textContent = "Items I completed.";
 
     // clear selection when switching buckets
     selectedWorkItemId = null;
+    selectedAdmissionId = null;
     document.getElementById("detailSub").textContent = "Select a row to view details.";
     document.getElementById("detailBody").innerHTML = `<div class="muted">No item selected.</div>`;
+
+    // reset header controls
+    syncCompleteToggle(false);
+    document.getElementById("btnAddNote").disabled = true;
+    document.getElementById("btnViewAllNotes").disabled = true;
 
     loadItems();
   }
@@ -319,6 +460,21 @@
     await loadItems();
   }
 
+  let selectedAdmissionId = null;
+
+  // cache for modals
+  let admissionDetailsCache = null;     // /admission-details/{id}
+  let noteTemplatesCache = [];          // /note-templates
+  let selectedTemplate = null;
+  let selectedTemplateResponses = {};   // field_id -> value
+
+  function syncCompleteToggle(isCompleted){
+    const btn = document.getElementById("btnCompleteToggle");
+    if(!btn) return;
+    btn.setAttribute("aria-pressed", isCompleted ? "true" : "false");
+    btn.classList.toggle("btnMintOn", !!isCompleted);
+  }
+
   async function loadDetails(workItemId){
     document.getElementById("detailSub").textContent = "Loading…";
     const box = document.getElementById("detailBody");
@@ -329,37 +485,61 @@
       const wi = d.work_item || {};
       const attempts = d.attempts || [];
 
+      selectedAdmissionId = Number(wi.admission_id || 0) || null;
+
+      // Enable header buttons once we have an admission
+      document.getElementById("btnAddNote").disabled = !selectedAdmissionId;
+      document.getElementById("btnViewAllNotes").disabled = !selectedAdmissionId;
+
+      // Pull admission details (DC submissions + notes + patient contact)
+      admissionDetailsCache = selectedAdmissionId
+        ? await apiGet("/api/sensys/admission-details/" + encodeURIComponent(String(selectedAdmissionId)))
+        : null;
+
+      const adm = (admissionDetailsCache && admissionDetailsCache.admission) ? admissionDetailsCache.admission : {};
+      const notes = (admissionDetailsCache && admissionDetailsCache.notes) ? admissionDetailsCache.notes : [];
+      const dcSubs = (admissionDetailsCache && admissionDetailsCache.dc_submissions) ? admissionDetailsCache.dc_submissions : [];
+
       const patient = (wi.patient_last_name||"") + ", " + (wi.patient_first_name||"");
-      const agency = wi.agency_name || "—";
-      const dc = wi.dc_date ? String(wi.dc_date).slice(0,10) : "";
-      const task = wi.task_label || wi.task_type || "";
-      const dueAt = wi.due_at || "";
-      const status = wi.status || "—";
+      const agency = wi.agency_name || adm.agency_name || "—";
+      const dc = wi.dc_date ? String(wi.dc_date).slice(0,10) : (adm.dc_date ? String(adm.dc_date).slice(0,10) : "");
 
       document.getElementById("detailSub").textContent = patient ? (patient + " • " + agency) : "—";
+
+      // completed toggle state
+      const isCompleted = String(wi.status || "").toLowerCase() === "completed";
+      syncCompleteToggle(isCompleted);
+
+      // patient contact (requires backend select additions - see step 7)
+      const phone1 = adm.patient_phone1 || wi.patient_phone || "";
+      const phone2 = adm.patient_phone2 || "";
+      const addr = [
+        adm.patient_address1 || "",
+        adm.patient_address2 || "",
+        [adm.patient_city || "", adm.patient_state || "", adm.patient_zip || ""].filter(Boolean).join(" ")
+      ].filter(Boolean).join(", ");
+
+      // DC submission: latest
+      const dcLatest = (dcSubs && dcSubs.length) ? dcSubs[0] : null;
+
+      // Notes: latest 4
+      const latest4 = (notes || []).slice(0, 4);
 
       const assignmentNotes = (wi.assignment_notes || "").trim();
 
       box.innerHTML = `
         <div class="detailBlock">
-          <div style="font-weight:900; font-size:14px;">${esc(task)}</div>
-          <div class="muted" style="margin-top:4px;">
-            ${esc(agency)}${dc ? " • DC " + esc(dc) : ""}<br/>
-            Due: <b>${esc(fmtDateTime(dueAt) || "—")}</b> • Status: <b>${esc(status)}</b>
-          </div>
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="detailBlock">
-          <div class="detailRow">
+          <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
             <div>
-              <div class="muted">Assignment Notes</div>
-              <div style="font-weight:700; margin-top:4px;">${assignmentNotes ? esc(assignmentNotes) : "<span class='muted'>—</span>"}</div>
+              <div style="font-weight:1000; font-size:14px;">Patient</div>
+              <div style="font-weight:900; font-size:14px; margin-top:4px;">${esc(patient || "—")}</div>
+              <div class="muted" style="margin-top:4px;">
+                ${esc(agency)}${dc ? " • DC " + esc(dc) : ""}
+              </div>
             </div>
-            <div style="min-width:140px; text-align:right;">
+            <div style="text-align:right; min-width:160px;">
               <div class="muted">Attempts</div>
-              <div style="font-weight:900; font-size:16px;">${esc(String(wi.attempt_count||0))}/${esc(String(wi.max_attempts||2))}</div>
+              <div style="font-weight:1000; font-size:16px;">${esc(String(wi.attempt_count||0))}/${esc(String(wi.max_attempts||2))}</div>
             </div>
           </div>
         </div>
@@ -367,18 +547,85 @@
         <div class="divider"></div>
 
         <div class="detailBlock">
-          <div style="font-weight:900; margin-bottom:8px;">Quick Actions</div>
-          <div style="display:grid; gap:10px;">
-            <button class="btn" onclick="logAttempt(${Number(workItemId)})">Log Attempt…</button>
-            <button class="btn btnPrimary" onclick="markComplete(${Number(workItemId)})">Mark Complete…</button>
+          <div style="font-weight:1000;">Patient Contact</div>
+          <div class="muted" style="margin-top:6px;">
+            Phone: <b>${esc(phone1 || "—")}</b>${phone2 ? " • Alt: <b>"+esc(phone2)+"</b>" : ""}<br/>
+            Address: <b>${esc(addr || "—")}</b>
           </div>
-          <div class="msg" id="detailMsg" style="margin-top:10px;"></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="detailBlock">
+          <div style="display:flex; justify-content:space-between; gap:10px; align-items:center;">
+            <div style="font-weight:1000;">DC Submission</div>
+            <div class="muted">${dcLatest ? ("Last updated: " + esc(fmtDateTime(dcLatest.updated_at || dcLatest.created_at || ""))) : "—"}</div>
+          </div>
+
+          ${
+            dcLatest
+            ? `
+              <div class="muted" style="margin-top:8px;">
+                Disposition: <b>${esc(dcLatest.dc_destination || "—")}</b>
+                ${dcLatest.destination_comments ? " • " + esc(dcLatest.destination_comments) : ""}
+                <br/>
+                DC With: <b>${esc(dcLatest.dc_with || "—")}</b>
+                <br/>
+                Home Health: <b>${esc(dcLatest.hh_carecompare_name || dcLatest.hh_carecompare_dba || dcLatest.hh_carecompare_ccn || "—")}</b>
+                ${dcLatest.hh_carecompare_city || dcLatest.hh_carecompare_state ? " • " + esc((dcLatest.hh_carecompare_city||"") + (dcLatest.hh_carecompare_state ? ", "+dcLatest.hh_carecompare_state : "")) : ""}
+                <br/>
+                Services: <b>${
+                  (dcLatest.services && dcLatest.services.length)
+                  ? esc(dcLatest.services.map(s => (s.service_name || s.services_id)).join(", "))
+                  : "—"
+                }</b>
+              </div>
+            `
+            : `<div class="muted" style="margin-top:8px;">No DC Submission on file.</div>`
+          }
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="detailBlock">
+          <div style="display:flex; justify-content:space-between; gap:10px; align-items:center;">
+            <div style="font-weight:1000;">Latest Notes (4)</div>
+            <div class="muted">${notes.length ? esc(notes.length + " total") : "0 total"}</div>
+          </div>
+
+          <div style="display:grid; gap:10px; margin-top:10px;">
+            ${
+              latest4.length
+              ? latest4.map(n => `
+                <div class="noteCard">
+                  <div style="display:flex; justify-content:space-between; gap:10px;">
+                    <div style="font-weight:900;">${esc(n.note_title || n.note_name || "Note")}</div>
+                    <div class="muted">${esc(fmtDateTime(n.created_at || ""))}</div>
+                  </div>
+                  <div class="muted" style="margin-top:6px;">
+                    ${n.response1 ? ("• " + esc(n.response1) + "<br/>") : ""}
+                    ${n.response2 ? ("• " + esc(n.response2) + "<br/>") : ""}
+                    ${n.note_comments ? ("<span class='muted'>" + esc(n.note_comments) + "</span>") : ""}
+                  </div>
+                  <div class="muted" style="margin-top:6px;">By: <b>${esc(n.created_by_name || "—")}</b></div>
+                </div>
+              `).join("")
+              : `<div class="muted">No notes yet.</div>`
+            }
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="detailBlock">
+          <div class="muted">Assignment Notes</div>
+          <div style="font-weight:700; margin-top:6px;">${assignmentNotes ? esc(assignmentNotes) : "<span class='muted'>—</span>"}</div>
         </div>
 
         <div class="divider"></div>
 
         <div>
-          <div style="font-weight:900; margin-bottom:8px;">Attempts Log</div>
+          <div style="font-weight:1000; margin-bottom:8px;">Attempt Log</div>
           <div style="display:grid; gap:10px;">
             ${
               attempts.length
@@ -397,6 +644,8 @@
             }
           </div>
         </div>
+
+        <div class="msg" id="detailMsg" style="margin-top:12px;"></div>
       `;
 
     }catch(e){
@@ -405,50 +654,31 @@
     }
   }
 
-  async function logAttempt(workItemId){
+  async function toggleCompleteFromHeader(){
     const msg = document.getElementById("detailMsg");
     if(msg){ msg.textContent = ""; msg.classList.remove("ok"); }
 
-    const outcome = prompt("Outcome (voicemail/no_answer/reached/etc):");
-    if(!outcome) return;
-    const note = prompt("Note (optional):") || "";
-    const nextDue = prompt("Next due datetime (optional, e.g. 2026-01-14 09:00:00). Leave blank to keep:", "") || "";
+    if(!selectedWorkItemId) return;
 
-    try{
-      await apiPost("/api/sensys/postdc/work-items/attempt", {
-        work_item_id: workItemId,
-        outcome: outcome,
-        note: note,
-        next_due_at: nextDue.trim() ? nextDue.trim() : null
-      });
-
-      if(msg){ msg.textContent = "Attempt saved."; msg.classList.add("ok"); }
-      await refreshSelected();
-      await loadStats();
-    }catch(e){
-      if(msg){ msg.textContent = e.message || "Attempt failed"; msg.classList.remove("ok"); }
+    // If already completed, do nothing (your backend does not support "un-complete")
+    const cur = (itemsCache || []).find(x => Number(x.id) === Number(selectedWorkItemId));
+    const already = cur && String(cur.status||"").toLowerCase() === "completed";
+    if(already){
+      if(msg){ msg.textContent = "Already completed."; msg.classList.add("ok"); }
+      return;
     }
-  }
-
-  async function markComplete(workItemId){
-    const msg = document.getElementById("detailMsg");
-    if(msg){ msg.textContent = ""; msg.classList.remove("ok"); }
-
-    const outcome = prompt("Completion outcome (reached/voicemail/no_answer/etc):");
-    if(!outcome) return;
-    const note = prompt("Completion note (optional):") || "";
 
     try{
+      // Minimal required payload: backend requires outcome
       await apiPost("/api/sensys/postdc/work-items/complete", {
-        work_item_id: workItemId,
-        outcome: outcome,
-        note: note
+        work_item_id: Number(selectedWorkItemId),
+        outcome: "completed",
+        note: ""
       });
 
-      if(msg){ msg.textContent = "Completed."; msg.classList.add("ok"); }
-      selectedWorkItemId = null;
-      document.getElementById("detailSub").textContent = "Select a row to view details.";
-      document.getElementById("detailBody").innerHTML = `<div class="muted">No item selected.</div>`;
+      syncCompleteToggle(true);
+      if(msg){ msg.textContent = "Marked complete."; msg.classList.add("ok"); }
+
       await loadItems();
       await loadStats();
     }catch(e){
@@ -456,17 +686,263 @@
     }
   }
 
+  /* -------------------------
+     Add Note modal logic
+  ------------------------- */
+
+  function openAddNoteModal(){
+    if(!selectedAdmissionId) return;
+    document.getElementById("addNoteMsg").textContent = "";
+    document.getElementById("addNoteMsg").classList.remove("ok");
+
+    document.getElementById("addNoteSub").textContent =
+      "Admission ID: " + String(selectedAdmissionId) + " • Work Item ID: " + String(selectedWorkItemId || "—");
+
+    selectedTemplate = null;
+    selectedTemplateResponses = {};
+    document.getElementById("noteTplTitle").textContent = "Select a template";
+    document.getElementById("noteTplHint").textContent = "—";
+    document.getElementById("noteTplFields").innerHTML = "";
+    document.getElementById("btnSaveNote").disabled = true;
+
+    // reset share-with
+    const sw = document.getElementById("shareWithSel");
+    sw.disabled = true;
+    sw.innerHTML = `<option value="">Select template first…</option>`;
+
+    document.getElementById("addNoteModalBackdrop").style.display = "flex";
+
+    ensureNoteTemplatesLoaded();
+  }
+
+  function closeAddNoteModal(){
+    document.getElementById("addNoteModalBackdrop").style.display = "none";
+  }
+
+  async function ensureNoteTemplatesLoaded(){
+    try{
+      if(Array.isArray(noteTemplatesCache) && noteTemplatesCache.length){
+        renderNoteTemplateList();
+        return;
+      }
+      const d = await apiGet("/api/sensys/note-templates");
+      noteTemplatesCache = d.templates || [];
+      renderNoteTemplateList();
+    }catch(e){
+      document.getElementById("noteTplList").innerHTML =
+        `<div class="muted">Failed to load templates.</div>`;
+    }
+  }
+
+  function renderNoteTemplateList(){
+    const box = document.getElementById("noteTplList");
+    const q = (document.getElementById("noteTplSearch").value || "").trim().toLowerCase();
+
+    const list = (noteTemplatesCache || []).filter(t => {
+      const hay = `${t.template_name||""} ${t.note_name||""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+
+    if(!list.length){
+      box.innerHTML = `<div class="muted">No templates.</div>`;
+      return;
+    }
+
+    box.innerHTML = list.map(t => {
+      const on = (selectedTemplate && Number(selectedTemplate.id)===Number(t.id));
+      return `
+        <button class="btn" style="text-align:left; width:100%; ${on ? "border-color:#111;" : ""}"
+                onclick='selectTemplate(${JSON.stringify(t).replaceAll("'","&#39;")})'>
+          <div style="font-weight:900;">${esc(t.template_name || t.note_name || ("Template " + t.id))}</div>
+          <div class="muted">${esc(t.note_name || "")}</div>
+        </button>
+      `;
+    }).join("");
+  }
+
+  async function selectTemplate(t){
+    selectedTemplate = t;
+    selectedTemplateResponses = {};
+
+    document.getElementById("btnSaveNote").disabled = false;
+    document.getElementById("noteTplTitle").textContent = t.template_name || t.note_name || "Template";
+    document.getElementById("noteTplHint").textContent =
+      "Template ID: " + String(t.id) + (Number(t.id)===2 ? " • (Log Call Attempts)" : "");
+
+    // render fields (supports any number; we store by field.id)
+    const fields = Array.isArray(t.fields) ? t.fields : [];
+    document.getElementById("noteTplFields").innerHTML = fields.length
+      ? fields.map(f => `
+          <div style="margin-bottom:10px;">
+            <div class="muted" style="margin-bottom:6px;">${esc(f.question || ("Field " + f.id))}</div>
+            <input class="input" id="tplField_${Number(f.id)}"
+                   placeholder="Enter..."
+                   oninput="selectedTemplateResponses[${Number(f.id)}] = this.value" />
+          </div>
+        `).join("")
+      : `<div class="muted">No fields configured for this template.</div>`;
+
+    // load Share With users for this admission + template
+    await loadShareWithUsersForTemplate(Number(t.id));
+    renderNoteTemplateList();
+  }
+
+  async function loadShareWithUsersForTemplate(templateId){
+    const sw = document.getElementById("shareWithSel");
+    sw.disabled = true;
+    sw.innerHTML = `<option value="">Loading…</option>`;
+
+    try{
+      const d = await apiGet(
+        "/api/sensys/admissions/" + encodeURIComponent(String(selectedAdmissionId)) +
+        "/note-templates/" + encodeURIComponent(String(templateId)) +
+        "/share-with-users?exclude_me=1"
+      );
+
+      const users = d.users || [];
+      if(!users.length){
+        sw.innerHTML = `<option value="">(No eligible users)</option>`;
+        sw.disabled = true;
+        return;
+      }
+
+      sw.innerHTML =
+        `<option value="">(Don’t share)</option>` +
+        users.map(u => `<option value="${Number(u.user_id)}">${esc(u.display_name || u.email || ("User " + u.user_id))}</option>`).join("");
+      sw.disabled = false;
+
+    }catch(e){
+      sw.innerHTML = `<option value="">(Failed to load)</option>`;
+      sw.disabled = true;
+    }
+  }
+
+  async function saveNoteFromTemplate(){
+    const msg = document.getElementById("addNoteMsg");
+    msg.textContent = "";
+    msg.classList.remove("ok");
+
+    if(!selectedAdmissionId || !selectedTemplate){
+      msg.textContent = "Select a template.";
+      return;
+    }
+
+    const templateId = Number(selectedTemplate.id);
+    const fields = Array.isArray(selectedTemplate.fields) ? selectedTemplate.fields : [];
+
+    // collect responses in field order
+    const orderedVals = fields.map(f => (selectedTemplateResponses[Number(f.id)] || "").trim());
+
+    // required mapping rule you gave:
+    // - Template ID 2 (Log Call Attempts)
+    //   - Field ID 2 = Outcome
+    //   - Field ID 3 = free text Note
+    const outcome = (selectedTemplateResponses[2] || "").trim();
+    const noteTxt = (selectedTemplateResponses[3] || "").trim();
+
+    const shareWithUserId = (document.getElementById("shareWithSel").value || "").trim();
+    const shareVal = shareWithUserId ? Number(shareWithUserId) : null;
+
+    try{
+      // Always create an admission note record (keeps it consistent with your "notes" area)
+      // Map first two ordered responses into response1/response2. Anything extra goes into note_comments.
+      const response1 = orderedVals[0] || null;
+      const response2 = orderedVals[1] || null;
+      const extra = orderedVals.slice(2).filter(Boolean);
+      const noteComments = extra.length ? extra.join(" | ") : null;
+
+      await apiPost("/api/sensys/admission-notes/upsert", {
+        id: null,
+        admission_id: Number(selectedAdmissionId),
+        note_name: (selectedTemplate.note_name || selectedTemplate.template_name || "Note"),
+        note_title: (selectedTemplate.template_name || selectedTemplate.note_name || "Note"),
+        status: "New",
+        response1: response1,
+        response2: response2,
+        note_comments: noteComments,
+        share_with_user_id: shareVal
+      });
+
+      // Special behavior: Template ID 2 increments Attempt Log
+      if(templateId === 2){
+        if(!selectedWorkItemId) throw new Error("No work item selected.");
+
+        if(!outcome) throw new Error("Outcome is required for Log Call Attempts (Field ID 2).");
+
+        await apiPost("/api/sensys/postdc/work-items/attempt", {
+          work_item_id: Number(selectedWorkItemId),
+          outcome: outcome,
+          note: noteTxt,
+          next_due_at: null
+        });
+      }
+
+      msg.textContent = "Saved.";
+      msg.classList.add("ok");
+
+      // refresh right panel
+      await loadDetails(Number(selectedWorkItemId));
+      await loadItems();
+      await loadStats();
+
+      // keep modal open for rapid note entry, but you can close if you want
+      // closeAddNoteModal();
+
+    }catch(e){
+      msg.textContent = e.message || "Save failed";
+      msg.classList.remove("ok");
+    }
+  }
+
+  /* -------------------------
+     All Notes modal logic
+  ------------------------- */
+
+  function openAllNotesModal(){
+    if(!admissionDetailsCache) return;
+    const adm = admissionDetailsCache.admission || {};
+    document.getElementById("allNotesSub").textContent =
+      (adm.patient_name ? adm.patient_name : "Admission") + " • Admission ID: " + String(selectedAdmissionId || "—");
+
+    const notes = admissionDetailsCache.notes || [];
+    const box = document.getElementById("allNotesList");
+
+    box.innerHTML = notes.length
+      ? notes.map(n => `
+          <div class="noteCard">
+            <div style="display:flex; justify-content:space-between; gap:10px;">
+              <div style="font-weight:900;">${esc(n.note_title || n.note_name || "Note")}</div>
+              <div class="muted">${esc(fmtDateTime(n.created_at || ""))}</div>
+            </div>
+            <div class="muted" style="margin-top:6px;">
+              ${n.response1 ? ("• " + esc(n.response1) + "<br/>") : ""}
+              ${n.response2 ? ("• " + esc(n.response2) + "<br/>") : ""}
+              ${n.note_comments ? ("<span class='muted'>" + esc(n.note_comments) + "</span>") : ""}
+            </div>
+            <div class="muted" style="margin-top:6px;">By: <b>${esc(n.created_by_name || "—")}</b></div>
+          </div>
+        `).join("")
+      : `<div class="muted">No notes yet.</div>`;
+
+    document.getElementById("allNotesModalBackdrop").style.display = "flex";
+  }
+
+  function closeAllNotesModal(){
+    document.getElementById("allNotesModalBackdrop").style.display = "none";
+  }
+
+
   function logout(){
     localStorage.removeItem("sensys_token");
     window.location.href = "/sensys/login";
   }
 
   function goPDW(){
-    window.location.href = "/sensys/postdc";
+    window.location.href = "/sensys/post-discharge";
   }
 
   // init
-  setBucket("due");
+  setBucket("incomplete");
   loadStats();
 </script>
 
