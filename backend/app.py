@@ -67,7 +67,7 @@ from fastapi import FastAPI, HTTPException, Request, Form, Query, Body, Depends
 import csv
 import io
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, Response, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from openai import OpenAI
@@ -154,6 +154,43 @@ async def _render_snf_pdf_throttled(html_doc: str, *, label: str = "snf-pdf") ->
         return pdf_bytes
 
 
+def _snf_ids_compact(ids: list, max_chars: int = 220) -> str:
+    try:
+        s = ",".join(str(x) for x in (ids or []))
+    except Exception:
+        s = str(ids)
+    if len(s) > max_chars:
+        return s[:max_chars] + "...(trunc)"
+    return s
+
+
+class _SnfStage:
+    def __init__(self, run_id: str, stage: str, **meta):
+        self.run_id = run_id
+        self.stage = stage
+        self.meta = meta or {}
+        self.t0 = None
+
+    def __enter__(self):
+        self.t0 = time.perf_counter()
+        logger.info("[SNF-EMAIL-PDF][STAGE][START] run_id=%s stage=%s meta=%s", self.run_id, self.stage, self.meta)
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        ms = int((time.perf_counter() - (self.t0 or time.perf_counter())) * 1000)
+        if exc:
+            logger.exception(
+                "[SNF-EMAIL-PDF][STAGE][ERR] run_id=%s stage=%s ms=%s meta=%s",
+                self.run_id, self.stage, ms, self.meta
+            )
+        else:
+            logger.info(
+                "[SNF-EMAIL-PDF][STAGE][DONE] run_id=%s stage=%s ms=%s meta=%s",
+                self.run_id, self.stage, ms, self.meta
+            )
+        return False  # don't suppress
+
+
 def log_db_write(action, table, details=None):
     try:
         logging.info(
@@ -165,6 +202,7 @@ def log_db_write(action, table, details=None):
         )
     except Exception as e:
         logging.error("[DB-WRITE-LOG-ERROR] %s", e)
+
 
 def require_admin(request: Request):
     """Simple header-based admin guard via ADMIN_TOKEN env var."""
@@ -2336,6 +2374,8 @@ def split_document_into_sections(source_text: str, heading_map_override: Optiona
     # NOTE: Default profile removed.
     # We only split into sections if a Hospital Extraction Profile exists for (hospital_name + document_type).
     heading_map = heading_map_override
+    # NEW: reset per-call (per document) dedupe tracking
+    split_document_into_sections._seen_keys = set()
 
     # If no profile is provided, treat the entire note as full_text (no section splitting).
     if not heading_map:
@@ -2352,15 +2392,60 @@ def split_document_into_sections(source_text: str, heading_map_override: Optiona
         return re.sub(r"\s+", " ", (s or "").strip().lower())
 
     # Find heading line indexes
+    # Support BOTH:
+    #  - exact heading lines (e.g., "Follow Up Appointments:")
+    #  - headings with inline content (e.g., "Documented By: John Doe 01/01/26")
     heading_hits: List[Dict[str, Any]] = []
+    heading_keys = sorted(list(heading_map.keys()), key=len, reverse=True)  # prefer longer matches
+
     for i, ln in enumerate(lines):
-        key = norm(ln)
-        if key in heading_map:
+        ln_norm = norm(ln)
+
+        matched_heading = None
+        inline_remainder = ""
+
+        # 1) exact match
+        if ln_norm in heading_map:
+            matched_heading = ln_norm
+        else:
+            # 2) prefix match (heading + inline content)
+            for hk in heading_keys:
+                if ln_norm.startswith(hk):
+                    matched_heading = hk
+                    # try to capture what comes after the heading text in the original line
+                    # (best-effort; keeps provider/date on same line as "Documented By:")
+                    inline_remainder = ln.strip()[len(ln.strip()[:len(ln.strip())]) - (len(ln.strip()) - len(ln.strip())):]  # no-op safety
+                    # simpler: derive remainder from normalized string
+                    inline_remainder = (ln.strip()[len(ln.strip()):] or "").strip()
+                    break
+
+        if matched_heading:
+            section_key = heading_map[matched_heading]
+
+            # NEW: only allow the first instance of a section_key in a note
+            # (prevents duplicate "Assessment and Plan", etc.)
+            if not hasattr(split_document_into_sections, "_seen_keys"):
+                split_document_into_sections._seen_keys = set()
+            seen_keys = split_document_into_sections._seen_keys
+            if section_key in seen_keys:
+                continue
+            seen_keys.add(section_key)
+
+            # If the original line contains more text after the heading, capture it.
+            # We'll also do a safer split on ":" since your headings often end with ":".
+            remainder = ""
+            if ":" in ln:
+                left, right = ln.split(":", 1)
+                # only treat it as inline remainder if left side matches the heading-ish text
+                if norm(left + ":") == matched_heading or norm(left) == matched_heading.rstrip(":"):
+                    remainder = right.strip()
+
             heading_hits.append(
                 {
                     "line_index": i,
-                    "section_key": heading_map[key],
-                    "section_title": ln.strip(),
+                    "section_key": section_key,
+                    "section_title": (ln.split(":", 1)[0].strip() + ":") if ":" in ln else ln.strip(),
+                    "inline_text": remainder,
                 }
             )
 
@@ -2393,7 +2478,15 @@ def split_document_into_sections(source_text: str, heading_map_override: Optiona
     for idx, hit in enumerate(heading_hits):
         start = hit["line_index"] + 1
         end = heading_hits[idx + 1]["line_index"] if idx + 1 < len(heading_hits) else len(lines)
-        body = "\n".join(lines[start:end]).strip()
+
+        body_lines: List[str] = []
+        inline_text = (hit.get("inline_text") or "").strip()
+        if inline_text:
+            body_lines.append(inline_text)
+
+        body_lines.extend(lines[start:end])
+        body = "\n".join([x for x in body_lines if (x or "").strip()]).strip()
+
 
         # skip empty sections
         if not body:
@@ -2409,8 +2502,6 @@ def split_document_into_sections(source_text: str, heading_map_override: Optiona
         )
 
     return sections
-
-
 
 def extract_facility_code_from_filename(filename: str) -> str:
     """
@@ -15544,6 +15635,7 @@ def build_snf_pdf_html(
     for_date: str,
     rows: List[sqlite3.Row],
     attending: str = "",
+    details_base_path: str = "",
 ) -> str:
     """
     Build the HTML for the SNF admissions PDF, styled like the
@@ -15569,10 +15661,21 @@ def build_snf_pdf_html(
     # Build table body rows
     body_rows: List[str] = []
     for r in rows:
+        admission_id = str(r["id"] or "")
         name = html.escape(r["patient_name"] or "")
         dob = html.escape(r["dob"] or "")
         hosp = html.escape(r["hospital_name"] or "")
         md = html.escape(r["hospitalist"] or "")
+
+        # Optional view link (only if details_base_path provided)
+        view_link = ""
+        if details_base_path and admission_id:
+            href = f"{details_base_path}/{admission_id}"
+            view_link = f"""
+              <a class="view-btn" href="{html.escape(href)}" title="View Discharge Summary" aria-label="View Discharge Summary">
+                ↗
+              </a>
+            """
 
         body_rows.append(
             f"""
@@ -15583,13 +15686,14 @@ def build_snf_pdf_html(
               <td>{dob}</td>
               <td class="col-hospital">{hosp}</td>
               <td class="col-md">{md}</td>
+              <td class="col-view">{view_link}</td>
             </tr>
             """
         )
 
     body_html = "\n".join(body_rows).strip() or """
         <tr>
-          <td colspan="4" style="padding: 16px; text-align: center; color: #6b7280;">
+          <td colspan="5" style="padding: 16px; text-align: center; color: #6b7280;">
             No patients found for this date.
           </td>
         </tr>
@@ -15884,6 +15988,26 @@ def build_snf_pdf_html(
       font-size: 10px;
       color: #000000;
     }}
+    .col-view { text-align: center; }
+
+    .view-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      border: 1px solid #e5e7eb;
+      background: #ffffff;
+      color: #0D3B66;
+      text-decoration: none;
+      font-weight: 800;
+      box-shadow: 0 6px 14px rgba(13,59,102,.10);
+    }
+
+    .view-btn:hover {
+      background: #f3f6fb;
+    }
   </style>
 </head>
 <body>
@@ -15934,6 +16058,7 @@ def build_snf_pdf_html(
               <th>DOB</th>
               <th>Hospital</th>
               <th>Hospitalist</th>
+              <th style="width:56px; text-align:center;">View</th>
             </tr>
           </thead>
           <tbody>
@@ -15962,6 +16087,45 @@ def build_snf_pdf_html(
 # SNF Secure Link routes (ANCHOR: SNF_SECURE_LINK_ROUTES)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# SNF Secure Link routes (ANCHOR: SNF_SECURE_LINK_ROUTES)
+# ---------------------------------------------------------------------------
+
+SNF_SECURE_COOKIE_NAME = "snf_secure_auth"
+SNF_SECURE_COOKIE_SECRET = os.environ.get("SNF_SECURE_COOKIE_SECRET", "").strip()
+# NOTE: Set SNF_SECURE_COOKIE_SECRET in Render env vars (recommended).
+# If empty, the cookie check will be disabled and users will have to re-enter PIN on every page.
+
+def _snf_sign_cookie(value: str) -> str:
+    if not SNF_SECURE_COOKIE_SECRET:
+        return ""
+    mac = hmac.new(
+        SNF_SECURE_COOKIE_SECRET.encode("utf-8"),
+        msg=value.encode("utf-8"),
+        digestmod=hashlib.sha256,
+    ).hexdigest()
+    return mac
+
+def _snf_make_cookie_payload(*, token_hash: str, secure_link_id: int, expires_at: str) -> str:
+    # Keep payload small and deterministic
+    raw = f"{token_hash}|{secure_link_id}|{expires_at}"
+    sig = _snf_sign_cookie(raw)
+    return f"{raw}|{sig}" if sig else ""
+
+def _snf_verify_cookie_payload(payload: str) -> Optional[dict]:
+    if not SNF_SECURE_COOKIE_SECRET:
+        return None
+    try:
+        parts = (payload or "").split("|")
+        if len(parts) != 4:
+            return None
+        token_hash, link_id, expires_at, sig = parts
+        raw = f"{token_hash}|{link_id}|{expires_at}"
+        if not hmac.compare_digest(sig, _snf_sign_cookie(raw)):
+            return None
+        return {"token_hash": token_hash, "secure_link_id": int(link_id), "expires_at": expires_at}
+    except Exception:
+        return None
 
 
 def _parse_utc_iso(s: str) -> Optional[dt.datetime]:
@@ -15991,12 +16155,26 @@ async def snf_secure_link_head(token: str, request: Request):
 
 @app.get("/snf/secure/{token}", response_class=HTMLResponse)
 async def snf_secure_link_get(token: str, request: Request):
-    """Shows a simple PIN entry page."""
+    """Shows a simple PIN entry page (or redirects to the secure list if already authorized)."""
     secure_headers = {
         "X-Robots-Tag": "noindex, nofollow, noarchive",
         "Cache-Control": "no-store",
     }
+
     token_hash = sha256_hex(token)
+
+    # NEW: if already authorized for this token, send them straight to the list page
+    cookie_val = request.cookies.get(SNF_SECURE_COOKIE_NAME)
+    cookie_obj = _snf_verify_cookie_payload(cookie_val) if cookie_val else None
+    if cookie_obj and cookie_obj.get("token_hash") == token_hash:
+        exp = _parse_utc_iso(cookie_obj.get("expires_at") or "")
+        if exp and exp > dt.datetime.utcnow():
+            return RedirectResponse(
+                url=f"/snf/secure/{token}/list",
+                status_code=302,
+                headers=secure_headers,
+            )
+
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -16287,11 +16465,7 @@ async def hospital_document_sections_get(document_id: int):
 
 @app.post("/snf/secure/{token}")
 async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] = Form(None)):
-    """Validates PIN and returns the PDF for this secure link."""
-    if not HAVE_WEASYPRINT:
-        raise HTTPException(status_code=500, detail="PDF support is not installed (weasyprint).")
-
-    # ADD: same secure headers used by GET/HEAD so crawlers don't index/cache
+    """Validates PIN and redirects to the secure admissions list page."""
     secure_headers = {
         "X-Robots-Tag": "noindex, nofollow, noarchive",
         "Cache-Control": "no-store",
@@ -16302,7 +16476,7 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
     try:
         cur = conn.cursor()
 
-        # NEW: clear cached PDFs for expired links (keep row for audit)
+        # keep your existing expired-link cleanup
         _now_iso = dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
         cur.execute(
             "UPDATE snf_secure_links SET pdf_bytes = NULL "
@@ -16313,7 +16487,7 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
 
         cur.execute(
             """
-            SELECT id, snf_facility_id, admission_ids, for_date, expires_at, pdf_bytes, pdf_generated_at
+            SELECT id, snf_facility_id, admission_ids, for_date, expires_at
             FROM snf_secure_links
             WHERE token_hash = ?
             ORDER BY id DESC
@@ -16323,7 +16497,6 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
         )
         link = cur.fetchone()
 
-        # CHANGE: return an HTML page (not JSON) + secure headers
         if not link:
             return HTMLResponse(
                 "<h2>Link expired</h2><p>This secure link is invalid or has expired.</p>",
@@ -16341,14 +16514,12 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
 
         snf_facility_id = int(link["snf_facility_id"] or 0)
 
-        # Load facility + PIN hash
+        # Load facility + PIN hash (keep existing behavior)
         cur.execute(
             "SELECT facility_name, attending, pin_hash FROM snf_admission_facilities WHERE id = ?",
             (snf_facility_id,),
         )
         fac = cur.fetchone()
-
-        # CHANGE: return an HTML page + secure headers (instead of JSON)
         if not fac:
             return HTMLResponse(
                 "<h2>Not found</h2><p>Facility not found for this link.</p>",
@@ -16370,21 +16541,18 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
     *{{box-sizing:border-box;}}
     body{{margin:0;padding:0;background:#F5F7FA;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#111827;}}
     .wrap{{max-width:520px;margin:40px auto;padding:0 14px;}}
-    .card{{background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);overflow:hidden;}}
+    .card{{background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,08);overflow:hidden;}}
     .topbar{{background:#0D3B66;padding:16px 22px;color:#fff;font-weight:700;}}
-    .mintbar{{height:4px;background:#A8E6CF;}} /* subtle mint accent */
+    .mintbar{{height:4px;background:#A8E6CF;}}
     .content{{padding:22px;}}
     h1{{margin:0 0 6px 0;font-size:18px;color:#0D3B66;}}
     p{{margin:0 0 14px 0;font-size:13px;color:#374151;line-height:1.5;}}
     label{{display:block;font-size:12px;color:#374151;margin-bottom:6px;font-weight:600;}}
     form{{margin:0;}}
     input{{display:block;width:100%;max-width:100%;min-width:0;padding:12px 12px;border-radius:12px;border:1px solid #d1d5db;font-size:14px;}}
-    input:focus{{outline:none;border-color:#A8E6CF;box-shadow:0 0 0 3px rgba(168,230,207,.45);}}
-
-    /* Match email button styling */
+    input:focus{{outline:none;border-color:#A8E6CF;box-shadow:0 0 0 3px rgba(168,230,207,45);}}
     .btn{{margin-top:12px;display:inline-block;background:#0D3B66;color:#ffffff;border:none;padding:12px 18px;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 8px 18px rgba(13,59,102,.18);}}
     .btn:hover{{background:#0b3357;}}
-
     .fine{{margin-top:14px;font-size:12px;color:#6b7280;text-align:center;}}
     .err{{margin:0 0 12px 0;padding:10px 12px;border-radius:12px;border:1px solid #fca5a5;background:#fef2f2;color:#991b1b;font-size:13px;}}
   </style>
@@ -16395,7 +16563,7 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
       <div class="topbar">First Docs • Secure List</div>
       <div class="mintbar" aria-hidden="true"></div>
       <div class="content">
-        <h1>{fac_name}</h1>
+        <h1>{html.escape(fac_name)}</h1>
         <p>Enter your facility password / PIN to view the secure list. This link expires automatically.</p>
         {err_html}
         <form method="post">
@@ -16410,7 +16578,7 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
 </body>
 </html>"""
 
-        # Normalize PIN
+        # Normalize PIN (keep existing behavior)
         pin = (pin or "").strip()
         if not pin:
             return HTMLResponse(
@@ -16446,10 +16614,9 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
                 headers=secure_headers,
             )
 
-        # NEW: write an access log row (timestamp + pin type + IP/UA)
+        # keep your existing access log insert
         ip = (request.client.host if request.client else None)
         ua = request.headers.get("user-agent")
-
         try:
             cur.execute(
                 """
@@ -16459,19 +16626,99 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
                 (int(link["id"]), int(link["snf_facility_id"]), pin_type, ip, ua),
             )
         except Exception as e:
-            # Don't block PDF if logging fails
             print("[snf-secure-link] access log insert failed:", repr(e))
 
-        # Parse admission ids
+        # NEW: set an auth cookie that expires when the link expires
+        resp = RedirectResponse(
+            url=f"/snf/secure/{token}/list",
+            status_code=302,
+            headers=secure_headers,
+        )
+
+        cookie_payload = _snf_make_cookie_payload(
+            token_hash=token_hash,
+            secure_link_id=int(link["id"]),
+            expires_at=link["expires_at"],
+        )
+        if cookie_payload:
+            # Max-Age based on link expiration
+            max_age = max(60, int((exp - dt.datetime.utcnow()).total_seconds()))
+            resp.set_cookie(
+                key=SNF_SECURE_COOKIE_NAME,
+                value=cookie_payload,
+                max_age=max_age,
+                httponly=True,
+                secure=True,      # Render is HTTPS
+                samesite="lax",
+            )
+
+        # Optional: keep your used_at audit here (since they successfully unlocked)
+        try:
+            cur.execute("UPDATE snf_secure_links SET used_at = datetime('now') WHERE id = ?", (int(link["id"]),))
+            conn.commit()
+        except Exception:
+            pass
+
+        return resp
+
+    finally:
+        conn.close()
+        
+@app.get("/snf/secure/{token}/list", response_class=HTMLResponse)
+async def snf_secure_link_list(token: str, request: Request):
+    """Secure daily admissions list page (same design as PDF)."""
+    secure_headers = {
+        "X-Robots-Tag": "noindex, nofollow, noarchive",
+        "Cache-Control": "no-store",
+    }
+
+    token_hash = sha256_hex(token)
+
+    # Require authorized cookie
+    cookie_val = request.cookies.get(SNF_SECURE_COOKIE_NAME)
+    cookie_obj = _snf_verify_cookie_payload(cookie_val) if cookie_val else None
+    if not cookie_obj or cookie_obj.get("token_hash") != token_hash:
+        return RedirectResponse(url=f"/snf/secure/{token}", status_code=302, headers=secure_headers)
+
+    exp = _parse_utc_iso(cookie_obj.get("expires_at") or "")
+    if not exp or exp <= dt.datetime.utcnow():
+        return HTMLResponse("<h2>Link expired</h2><p>This secure link has expired.</p>", status_code=410, headers=secure_headers)
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Load link row (must match secure_link_id from cookie)
+        cur.execute(
+            """
+            SELECT *
+            FROM snf_secure_links
+            WHERE id = ? AND token_hash = ?
+            """,
+            (int(cookie_obj["secure_link_id"]), token_hash),
+        )
+        link = cur.fetchone()
+        if not link:
+            return HTMLResponse("<h2>Link expired</h2><p>This secure link is invalid or has expired.</p>", status_code=410, headers=secure_headers)
+
+        # Facility
+        cur.execute(
+            "SELECT facility_name, attending FROM snf_admission_facilities WHERE id = ?",
+            (int(link["snf_facility_id"]),),
+        )
+        fac = cur.fetchone()
+        fac_name = (fac["facility_name"] if fac else "") or "Receiving Facility"
+        attending = (fac["attending"] if fac else "") or ""
+
+        # Admissions list
         try:
             admission_ids = json.loads(link["admission_ids"] or "[]")
         except Exception:
             admission_ids = []
 
         if not admission_ids:
-            raise HTTPException(status_code=400, detail="No admissions found for this link")
+            return HTMLResponse("<h2>No patients</h2><p>No admissions found for this link.</p>", status_code=400, headers=secure_headers)
 
-        # Fetch admissions rows
         placeholders = ",".join("?" for _ in admission_ids)
         sql = f"""
         SELECT
@@ -16488,47 +16735,122 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
         """
         cur.execute(sql, admission_ids)
         rows = cur.fetchall()
-        if not rows:
-            raise HTTPException(status_code=400, detail="Admissions no longer available")
 
         for_date = (link["for_date"] or "").strip() or dt.date.today().isoformat()
-        facility_name = fac["facility_name"] or "SNF facility"
-        attending = fac["attending"] or ""
 
-        # FAST PATH: reuse cached PDF (no WeasyPrint)
-        if link["pdf_bytes"]:
-            pdf_bytes = link["pdf_bytes"]
-        else:
-            # CHANGE: throttle WeasyPrint renders so multiple opens don't spike CPU
-            html_doc = build_snf_pdf_html(facility_name, for_date, rows, attending)
-            pdf_bytes = await _render_snf_pdf_throttled(
-                html_doc,
-                label=f"secure-open link_id={link['id']} facility_id={snf_facility_id}"
-            )
-            cur.execute(
-                "UPDATE snf_secure_links SET pdf_bytes = ?, pdf_generated_at = datetime('now') WHERE id = ?",
-                (pdf_bytes, link["id"]),
-            )
-            conn.commit()
-
-
-        # mark used_at (audit)
-        cur.execute("UPDATE snf_secure_links SET used_at = datetime('now') WHERE id = ?", (link["id"],))
-        conn.commit()
-
-        safe_fac = re.sub(r"[^A-Za-z0-9]+", "_", facility_name) or "SNF"
-        filename = f"SNF_Referrals_{safe_fac}_{for_date}.pdf"
-
-        return Response(
-            content=pdf_bytes,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        # IMPORTANT: pass a link base so each row can link to the discharge summary page
+        html_doc = build_snf_pdf_html(
+            fac_name,
+            for_date,
+            rows,
+            attending,
+            details_base_path=f"/snf/secure/{token}/admission",
         )
+        return HTMLResponse(html_doc, headers=secure_headers)
+
     finally:
         conn.close()
 
+@app.get("/snf/secure/{token}/admission/{admission_id}", response_class=HTMLResponse)
+async def snf_secure_admission_detail(token: str, admission_id: int, request: Request):
+    """Dedicated discharge summary page (phase-two target)."""
+    secure_headers = {
+        "X-Robots-Tag": "noindex, nofollow, noarchive",
+        "Cache-Control": "no-store",
+    }
 
+    token_hash = sha256_hex(token)
 
+    # Require authorized cookie
+    cookie_val = request.cookies.get(SNF_SECURE_COOKIE_NAME)
+    cookie_obj = _snf_verify_cookie_payload(cookie_val) if cookie_val else None
+    if not cookie_obj or cookie_obj.get("token_hash") != token_hash:
+        return RedirectResponse(url=f"/snf/secure/{token}", status_code=302, headers=secure_headers)
+
+    exp = _parse_utc_iso(cookie_obj.get("expires_at") or "")
+    if not exp or exp <= dt.datetime.utcnow():
+        return HTMLResponse("<h2>Link expired</h2><p>This secure link has expired.</p>", status_code=410, headers=secure_headers)
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Load link row
+        cur.execute(
+            "SELECT * FROM snf_secure_links WHERE id = ? AND token_hash = ?",
+            (int(cookie_obj["secure_link_id"]), token_hash),
+        )
+        link = cur.fetchone()
+        if not link:
+            return HTMLResponse("<h2>Link expired</h2><p>This secure link is invalid or has expired.</p>", status_code=410, headers=secure_headers)
+
+        # Check admission_id is allowed for this token
+        try:
+            allowed_ids = set(int(x) for x in json.loads(link["admission_ids"] or "[]"))
+        except Exception:
+            allowed_ids = set()
+
+        if int(admission_id) not in allowed_ids:
+            return HTMLResponse("<h2>Not authorized</h2><p>This patient is not included in this secure list.</p>", status_code=403, headers=secure_headers)
+
+        # Load patient row (minimal for now)
+        cur.execute(
+            """
+            SELECT
+              s.id, s.patient_name, s.hospital_name,
+              COALESCE(s.dob, raw.dob) AS dob
+            FROM snf_admissions s
+            LEFT JOIN cm_notes_raw raw ON raw.id = s.raw_note_id
+            WHERE s.id = ?
+            """,
+            (int(admission_id),),
+        )
+        srow = cur.fetchone()
+        if not srow:
+            return HTMLResponse("<h2>Not found</h2><p>Admission not found.</p>", status_code=404, headers=secure_headers)
+
+        # Phase two will replace this with extraction-profile formatted content
+        page = f"""<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Discharge Summary</title>
+  <style>
+    body{{margin:0;background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#111827;}}
+    .report-shell{{padding:16px;display:flex;justify-content:center;}}
+    .card{{width:min(980px,100%);background:#fff;border:1px solid #e5e7eb;border-radius:18px;box-shadow:0 14px 34px rgba(0,0,0,.10);overflow:hidden;}}
+    .top{{background:#0D3B66;color:#fff;padding:16px 20px;font-weight:800;display:flex;align-items:center;justify-content:space-between;}}
+    .btnback{{color:#fff;text-decoration:none;font-weight:700;opacity:.95;}}
+    .btnback:hover{{opacity:1;}}
+    .body{{padding:18px 20px;}}
+    .meta{{color:#374151;font-size:13px;margin-top:6px;}}
+    .placeholder{{margin-top:14px;padding:14px;border:1px dashed #d1d5db;border-radius:14px;background:#fafafa;color:#6b7280;}}
+  </style>
+</head>
+<body>
+  <div class="report-shell">
+    <div class="card">
+      <div class="top">
+        <div>Discharge Summary</div>
+        <a class="btnback" href="/snf/secure/{html.escape(token)}/list">← Back to List</a>
+      </div>
+      <div class="body">
+        <div style="font-size:18px;font-weight:900;color:#0D3B66;">{html.escape(srow["patient_name"] or "")}</div>
+        <div class="meta">DOB: {html.escape(srow["dob"] or "")} • Hospital: {html.escape(srow["hospital_name"] or "")}</div>
+
+        <div class="placeholder">
+          Phase two: render the formatted discharge summary here using your extraction profiles.
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>"""
+        return HTMLResponse(page, headers=secure_headers)
+
+    finally:
+        conn.close()
 
 @app.post("/admin/snf/email-pdf")
 async def admin_snf_email_pdf(
@@ -16542,19 +16864,27 @@ async def admin_snf_email_pdf(
     Uses HTML → PDF via WeasyPrint so the design exactly matches
     Example PDF Export v2.1.html.
     """
-    require_admin(request)
 
-    if not HAVE_WEASYPRINT:
-        raise HTTPException(
-            status_code=500,
-            detail="PDF support is not installed (weasyprint). Please add 'weasyprint' to your environment."
-        )
+    require_admin(request)
+    # NOTE: We no longer require WeasyPrint here because the secure link opens a web page.
 
     snf_facility_id = int(payload.get("snf_facility_id") or 0)
     admission_ids = payload.get("admission_ids") or []
     for_date = (payload.get("for_date") or "").strip()
     test_only = bool(payload.get("test_only"))
     test_email_to = (payload.get("test_email_to") or "").strip()
+
+    # ✅ NEW: stable run_id for this request (lets you grep a single send end-to-end)
+    run_id = secrets.token_hex(6)
+    logger.info(
+        "[SNF-EMAIL-PDF][REQ] run_id=%s facility_id=%s admissions=%s ids=%s for_date=%s test_only=%s",
+        run_id,
+        snf_facility_id,
+        len(admission_ids or []),
+        _snf_ids_compact(admission_ids),
+        for_date,
+        test_only,
+    )
 
     if not snf_facility_id:
         raise HTTPException(status_code=400, detail="snf_facility_id is required")
@@ -16578,16 +16908,20 @@ async def admin_snf_email_pdf(
     try:
         cur = conn.cursor()
 
-        # Load SNF facility master row
-        cur.execute(
-            """
-            SELECT id, facility_name, attending, notes, notes2, aliases, facility_emails
-            FROM snf_admission_facilities
-            WHERE id = ?
-            """,
-            (snf_facility_id,),
-        )
-        fac = cur.fetchone()
+        # ------------------------
+        # Load facility
+        # ------------------------
+        with _SnfStage(run_id, "db_load_facility", snf_facility_id=snf_facility_id):
+            cur.execute(
+                """
+                SELECT id, facility_name, attending, notes, notes2, aliases, facility_emails
+                FROM snf_admission_facilities
+                WHERE id = ?
+                """,
+                (snf_facility_id,),
+            )
+            fac = cur.fetchone()
+
         if not fac:
             raise HTTPException(status_code=404, detail="SNF Admission Facility not found")
 
@@ -16601,13 +16935,13 @@ async def admin_snf_email_pdf(
                 detail="No facility_emails configured for this SNF Admission Facility."
             )
 
-        # ✅ NEW: determine the recipient list we will send to (and log in DB)
+        # ✅ Determine recipient list we will send to (and store in DB)
         to_addr = test_email_to if test_only else facility_emails
 
-        # Look up the admissions (and DOB from raw notes)
-        # Look up the admissions (DOB + Hospitalist)
+        # ------------------------
+        # Load admissions
+        # ------------------------
         placeholders = ",".join("?" for _ in admission_ids)
-
         sql = f"""
         SELECT
             s.id,
@@ -16622,71 +16956,59 @@ async def admin_snf_email_pdf(
         ORDER BY s.patient_name COLLATE NOCASE
         """
 
-        try:
-            cur.execute(sql, admission_ids)
-        except Exception as e:
-            print("[snf-email-pdf] SQL failed:", repr(e))
-            print("[snf-email-pdf] SQL text was:\n", sql)
-            print("[snf-email-pdf] admission_ids:", admission_ids)
-            raise
+        with _SnfStage(run_id, "db_load_admissions", admissions=len(admission_ids or [])):
+            try:
+                cur.execute(sql, admission_ids)
+            except Exception as e:
+                print("[snf-email-pdf] SQL failed:", repr(e))
+                print("[snf-email-pdf] SQL text was:\n", sql)
+                print("[snf-email-pdf] admission_ids:", admission_ids)
+                raise
 
+            rows = cur.fetchall()
 
-        rows = cur.fetchall()
         if not rows:
             raise HTTPException(status_code=400, detail="No admissions found for the provided IDs.")
 
-        
         # ------------------------
-        # Build secure expiring link (instead of attaching PHI)
+        # Secure link + DB insert
         # ------------------------
         if not for_date:
             for_date = dt.date.today().isoformat()
 
-        # Require a public base URL (Render env var) so links work for recipients
         base_url = get_public_base_url(request)
         if not base_url:
             raise HTTPException(status_code=500, detail="PUBLIC_APP_BASE_URL is not configured.")
 
-        # Create a one-time random token, but only store its HASH in the DB
         raw_token = secrets.token_urlsafe(32)
         token_hash = sha256_hex(raw_token)
 
-        expires_at = (dt.datetime.utcnow() + dt.timedelta(hours=SNF_LINK_TTL_HOURS)).replace(microsecond=0).isoformat() + "Z"
+        expires_at = (
+            (dt.datetime.utcnow() + dt.timedelta(hours=SNF_LINK_TTL_HOURS))
+            .replace(microsecond=0)
+            .isoformat() + "Z"
+        )
 
-        # NEW: generate email_run_id BEFORE we insert the secure link row
+        # ✅ email_run_id generated BEFORE insert
         email_run_id = secrets.token_hex(8)
 
-        cur.execute(
-            """
-            INSERT INTO snf_secure_links (token_hash, snf_facility_id, admission_ids, for_date, expires_at, email_run_id, sent_to)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (token_hash, snf_facility_id, json.dumps(admission_ids), for_date, expires_at, email_run_id, to_addr),
-        )
-        conn.commit()
-
-        # NEW: pre-render + cache the PDF NOW (so recipients don't trigger CPU spikes)
-        # CHANGE: throttle WeasyPrint renders so 10–20 sends don't melt the CPU/RAM
-        try:
-            html_doc = build_snf_pdf_html(facility_name, for_date, rows, attending)
-            pdf_bytes = await _render_snf_pdf_throttled(
-                html_doc,
-                label=f"email-pdf email_run_id={email_run_id} facility_id={snf_facility_id}"
-            )
+        with _SnfStage(run_id, "db_insert_secure_link", email_run_id=email_run_id):
             cur.execute(
-                "UPDATE snf_secure_links SET pdf_bytes = ?, pdf_generated_at = datetime('now') WHERE token_hash = ? AND email_run_id = ?",
-                (pdf_bytes, token_hash, email_run_id),
+                """
+                INSERT INTO snf_secure_links
+                    (token_hash, snf_facility_id, admission_ids, for_date, expires_at, email_run_id, sent_to)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (token_hash, snf_facility_id, json.dumps(admission_ids), for_date, expires_at, email_run_id, to_addr),
             )
             conn.commit()
-        except Exception as e:
-            # Don't fail sending the email if PDF caching fails — just log it
-            print("[snf-email-pdf] pre-render cache failed:", repr(e))
 
         secure_url = f"{base_url}/snf/secure/{raw_token}"
 
-
-        # ✅ NEW: build the outbound email (HTML + plain text)
-        sent_date = dt.date.today().isoformat()  # date the email is sent (today)
+        # ------------------------
+        # Build email
+        # ------------------------
+        sent_date = dt.date.today().isoformat()
         subject = f"Pending SNF Admissions for {facility_name} – {sent_date} PLEASE REVIEW"
         if test_only:
             subject = "[TEST] " + subject
@@ -16704,32 +17026,51 @@ async def admin_snf_email_pdf(
         msg.set_content(plain_body)
         msg.add_alternative(html_body, subtype="html")
 
+        # ------------------------
+        # SMTP send + mark sent + tag admissions
+        # ------------------------
         try:
             context = ssl.create_default_context()
-            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-                server.starttls(context=context)
-                server.login(SMTP_USER, SMTP_PASSWORD)
-                server.send_message(msg)
-                
-            # NEW: mark link "sent_at" only after successful SMTP send
-            cur.execute(
-                "UPDATE snf_secure_links SET sent_at = datetime('now') WHERE token_hash = ? AND email_run_id = ?",
-                (token_hash, email_run_id),
-            )
-            conn.commit()
 
-            # Mark those admissions as emailed if this is a real send
-            if not test_only:
+            with _SnfStage(run_id, "smtp_connect", host=SMTP_HOST, port=SMTP_PORT):
+                with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+                    with _SnfStage(run_id, "smtp_starttls"):
+                        server.starttls(context=context)
+
+                    with _SnfStage(run_id, "smtp_login"):
+                        server.login(SMTP_USER, SMTP_PASSWORD)
+
+                    with _SnfStage(run_id, "smtp_send_message"):
+                        server.send_message(msg)
+
+            with _SnfStage(run_id, "db_mark_sent_at"):
                 cur.execute(
-                    f"""
-                    UPDATE snf_admissions
-                       SET emailed_at = datetime('now'),
-                           email_run_id = ?
-                     WHERE id IN ({placeholders})
-                    """,
-                    (email_run_id, *admission_ids),
+                    "UPDATE snf_secure_links SET sent_at = datetime('now') WHERE token_hash = ? AND email_run_id = ?",
+                    (token_hash, email_run_id),
                 )
                 conn.commit()
+
+            if not test_only:
+                with _SnfStage(run_id, "db_tag_admissions_emailed", admissions=len(admission_ids or [])):
+                    cur.execute(
+                        f"""
+                        UPDATE snf_admissions
+                           SET emailed_at = datetime('now'),
+                               email_run_id = ?
+                         WHERE id IN ({placeholders})
+                        """,
+                        (email_run_id, *admission_ids),
+                    )
+                    conn.commit()
+
+            logger.info(
+                "[SNF-EMAIL-PDF][DONE] run_id=%s facility_id=%s email_run_id=%s admissions=%s test_only=%s",
+                run_id,
+                snf_facility_id,
+                (email_run_id if not test_only else None),
+                len(admission_ids or []),
+                test_only,
+            )
 
             return {
                 "ok": True,
@@ -16743,6 +17084,7 @@ async def admin_snf_email_pdf(
             raise HTTPException(status_code=500, detail=f"Failed to send email: {e}")
     finally:
         conn.close()
+
 
 def _send_pad_flow_notification_email(event_type: str, run_row: sqlite3.Row, event_payload: dict) -> None:
     """
