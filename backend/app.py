@@ -14923,6 +14923,10 @@ async def admin_snf_send_emails(
             by_fac.setdefault(fid, []).append(r)
 
         email_run_id = secrets.token_hex(8)
+
+        # NEW: fixed processed timestamp for this email run (UTC)
+        processed_at_utc = dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
         sent = 0
         skipped_no_targets = 0
 
@@ -16047,7 +16051,7 @@ def build_snf_pdf_html(
         </div>
         <div class="summary-tags">
           <!-- Source pill removed on purpose -->
-          <span class="summary-status">Status: Upcoming Discharges</span>
+          <span class="summary-status">Date Processed: {utc_text_to_eastern_display(processed_at_utc)}</span>
         </div>
       </section>
 
