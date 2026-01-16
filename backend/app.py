@@ -21337,6 +21337,7 @@ def sensys_ccc_staff_work_items(
           wi.completed_at,
           wi.assignment_notes,
           wi.max_attempts,
+          wi.attempt_count,
 
           a.dc_date,
           ag.agency_name,
