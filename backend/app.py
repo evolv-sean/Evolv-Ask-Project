@@ -15989,9 +15989,9 @@ def build_snf_pdf_html(
       font-size: 10px;
       color: #000000;
     }}
-    .col-view { text-align: center; }
+    .col-view {{ text-align: center; }}
 
-    .view-btn {
+    .view-btn {{
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -16004,11 +16004,12 @@ def build_snf_pdf_html(
       text-decoration: none;
       font-weight: 800;
       box-shadow: 0 6px 14px rgba(13,59,102,.10);
-    }
+    }}
 
-    .view-btn:hover {
+    .view-btn:hover {{
       background: #f3f6fb;
-    }
+    }}
+
   </style>
 </head>
 <body>
