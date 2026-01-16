@@ -17323,7 +17323,6 @@ def sensys_admin_users_login_as(payload: SensysAdminLoginAsIn, token: str):
             redirect_url = "/sensys/post-discharge"
         elif "ccc_staff" in role_keys:
             redirect_url = "/sensys/ccc-staff"
-            redirect_url = "/sensys/post-discharge"
         elif "provider" in role_keys:
             redirect_url = "/sensys/provider-esign"
 
