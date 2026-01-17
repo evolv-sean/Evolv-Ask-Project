@@ -15672,12 +15672,26 @@ def build_snf_pdf_html(
         hosp = html.escape(r["hospital_name"] or "")
         md = html.escape(r["hospitalist"] or "")
 
-        # Optional view link (only if details_base_path provided)
+        # Optional view link (only if details_base_path provided AND this row has a DS/Progress Note)
         view_link = ""
-        if details_base_path and admission_id:
+
+        has_view_note = True
+        view_note_type = ""
+        try:
+            # sqlite3.Row supports .keys()
+            if hasattr(r, "keys") and "has_view_note" in r.keys():
+                has_view_note = bool(r["has_view_note"])
+            if hasattr(r, "keys") and "view_note_type" in r.keys():
+                view_note_type = (r["view_note_type"] or "").strip()
+        except Exception:
+            pass
+
+        if details_base_path and admission_id and has_view_note:
             href = f"{details_base_path}/{admission_id}"
+            title_txt = f"View {view_note_type}" if view_note_type else "View Note"
             view_link = f"""
-              <a class="view-btn" href="{html.escape(href)}" title="View Discharge Summary" aria-label="View Discharge Summary">
+              <a class="view-btn" href="{html.escape(href)}" target="_blank"
+                 title="{html.escape(title_txt)}" aria-label="{html.escape(title_txt)}">
                 ↗
               </a>
             """
@@ -16382,7 +16396,7 @@ async def hospital_discharges_list():
                 updated_at
             FROM hospital_discharges
             ORDER BY COALESCE(dc_date, admit_date, updated_at) DESC, updated_at DESC
-            LIMIT 500
+            LIMIT 800
             """
         )
         return {"ok": True, "items": [dict(r) for r in cur.fetchall()]}
@@ -16729,10 +16743,36 @@ async def snf_secure_link_list(token: str, request: Request):
         sql = f"""
         SELECT
             s.id,
+            s.visit_id,
             s.patient_name,
             s.hospital_name,
             COALESCE(s.dob, raw.dob) AS dob,
-            COALESCE(s.attending, raw.attending, raw.note_author) AS hospitalist
+            COALESCE(s.attending, raw.attending, raw.note_author) AS hospitalist,
+
+            -- Latest matching note type for tooltip/title (Discharge Summary OR Progress Note)
+            (
+              SELECT n.note_type
+              FROM cm_notes_raw n
+              WHERE n.visit_id = s.visit_id
+                AND (
+                  lower(COALESCE(n.note_type,'')) = 'discharge summary'
+                  OR lower(COALESCE(n.note_type,'')) = 'progress note'
+                )
+              ORDER BY COALESCE(n.note_datetime, n.created_at) DESC
+              LIMIT 1
+            ) AS view_note_type,
+
+            -- Whether the row should show the ↗ button at all
+            CASE WHEN EXISTS (
+              SELECT 1
+              FROM cm_notes_raw n2
+              WHERE n2.visit_id = s.visit_id
+                AND (
+                  lower(COALESCE(n2.note_type,'')) = 'discharge summary'
+                  OR lower(COALESCE(n2.note_type,'')) = 'progress note'
+                )
+            ) THEN 1 ELSE 0 END AS has_view_note
+
         FROM snf_admissions s
         LEFT JOIN cm_notes_raw raw
           ON raw.id = s.raw_note_id
@@ -16750,7 +16790,7 @@ async def snf_secure_link_list(token: str, request: Request):
             for_date,
             rows,
             attending,
-            details_base_path=f"/snf/secure/{token}/admission",
+            details_base_path=f"/snf/secure/{token}/note",
         )
         return HTMLResponse(html_doc, headers=secure_headers)
 
@@ -16759,7 +16799,24 @@ async def snf_secure_link_list(token: str, request: Request):
 
 @app.get("/snf/secure/{token}/admission/{admission_id}", response_class=HTMLResponse)
 async def snf_secure_admission_detail(token: str, admission_id: int, request: Request):
-    """Dedicated discharge summary page (phase-two target)."""
+    # Backwards-compat: old path now redirects to the note viewer
+    secure_headers = {
+        "X-Robots-Tag": "noindex, nofollow, noarchive",
+        "Cache-Control": "no-store",
+    }
+    return RedirectResponse(
+        url=f"/snf/secure/{token}/note/{admission_id}",
+        status_code=302,
+        headers=secure_headers,
+    )
+
+@app.get("/snf/secure/{token}/note/{admission_id}", response_class=HTMLResponse)
+async def snf_secure_note_viewer(token: str, admission_id: int, request: Request):
+    """
+    Note-viewer page for the latest Discharge Summary or Progress Note
+    for this admission's visit_id, split by Hospital Discharge extraction profile.
+    Expires with the secure link cookie.
+    """
     secure_headers = {
         "X-Robots-Tag": "noindex, nofollow, noarchive",
         "Cache-Control": "no-store",
@@ -16767,7 +16824,7 @@ async def snf_secure_admission_detail(token: str, admission_id: int, request: Re
 
     token_hash = sha256_hex(token)
 
-    # Require authorized cookie
+    # Require authorized cookie (same as list)
     cookie_val = request.cookies.get(SNF_SECURE_COOKIE_NAME)
     cookie_obj = _snf_verify_cookie_payload(cookie_val) if cookie_val else None
     if not cookie_obj or cookie_obj.get("token_hash") != token_hash:
@@ -16799,11 +16856,14 @@ async def snf_secure_admission_detail(token: str, admission_id: int, request: Re
         if int(admission_id) not in allowed_ids:
             return HTMLResponse("<h2>Not authorized</h2><p>This patient is not included in this secure list.</p>", status_code=403, headers=secure_headers)
 
-        # Load patient row (minimal for now)
+        # Load admission (needs visit_id)
         cur.execute(
             """
             SELECT
-              s.id, s.patient_name, s.hospital_name,
+              s.id,
+              s.visit_id,
+              s.patient_name,
+              s.hospital_name,
               COALESCE(s.dob, raw.dob) AS dob
             FROM snf_admissions s
             LEFT JOIN cm_notes_raw raw ON raw.id = s.raw_note_id
@@ -16815,48 +16875,192 @@ async def snf_secure_admission_detail(token: str, admission_id: int, request: Re
         if not srow:
             return HTMLResponse("<h2>Not found</h2><p>Admission not found.</p>", status_code=404, headers=secure_headers)
 
-        # Phase two will replace this with extraction-profile formatted content
+        visit_id = (srow["visit_id"] or "").strip()
+        if not visit_id:
+            return HTMLResponse("<h2>No visit</h2><p>This admission has no visit_id to load notes.</p>", status_code=404, headers=secure_headers)
+
+        # Find latest Discharge Summary OR Progress Note for this visit
+        cur.execute(
+            """
+            SELECT id, note_type, note_datetime, note_author, hospital_name, note_text, created_at
+            FROM cm_notes_raw
+            WHERE visit_id = ?
+              AND (
+                lower(COALESCE(note_type,'')) = 'discharge summary'
+                OR lower(COALESCE(note_type,'')) = 'progress note'
+              )
+            ORDER BY COALESCE(note_datetime, created_at) DESC
+            LIMIT 1
+            """,
+            (visit_id,),
+        )
+        nrow = cur.fetchone()
+        if not nrow:
+            # If none exists, we remove the button in the list (via has_view_note),
+            # but if someone manually hits the URL, show a clean message.
+            return HTMLResponse(
+                "<h2>No note found</h2><p>No Discharge Summary or Progress Note exists for this patient.</p>",
+                status_code=404,
+                headers=secure_headers,
+            )
+
+        note_text = nrow["note_text"] or ""
+        note_type = (nrow["note_type"] or "").strip() or "Note"
+        note_dt = (nrow["note_datetime"] or "").strip()
+        note_hosp = (nrow["hospital_name"] or srow["hospital_name"] or "").strip()
+
+        # Load extraction profile from Hospital Discharge settings (hospital_name + document_type)
+        profile = load_extraction_profile(conn, note_hosp, note_type)
+        sections = split_document_into_sections(note_text, profile)
+
+        # Render sections (server-side) in the note-viewer style
+        def esc(x: str) -> str:
+            return html.escape(x or "")
+
+        sections_html = []
+        for sec in sections:
+            sections_html.append(
+                f"""
+                <div class="section">
+                  <h3>{esc(sec.get("section_title") or sec.get("section_key") or "")}</h3>
+                  <pre>{esc(sec.get("section_text") or "")}</pre>
+                </div>
+                """.strip()
+            )
+        rendered_sections = "\n".join(sections_html)
+
+        expires_at_txt = cookie_obj.get("expires_at") or ""
+
         page = f"""<!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Discharge Summary</title>
+  <title>Hospital Note • Print View</title>
   <style>
-    body{{margin:0;background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#111827;}}
-    .report-shell{{padding:16px;display:flex;justify-content:center;}}
-    .card{{width:min(980px,100%);background:#fff;border:1px solid #e5e7eb;border-radius:18px;box-shadow:0 14px 34px rgba(0,0,0,.10);overflow:hidden;}}
-    .top{{background:#0D3B66;color:#fff;padding:16px 20px;font-weight:800;display:flex;align-items:center;justify-content:space-between;}}
-    .btnback{{color:#fff;text-decoration:none;font-weight:700;opacity:.95;}}
-    .btnback:hover{{opacity:1;}}
-    .body{{padding:18px 20px;}}
-    .meta{{color:#374151;font-size:13px;margin-top:6px;}}
-    .placeholder{{margin-top:14px;padding:14px;border:1px dashed #d1d5db;border-radius:14px;background:#fafafa;color:#6b7280;}}
+    :root{{
+      --navy:#0D3B66; --grey:#F5F7FA; --text:#0f172a; --muted:#55657f;
+      --mint:#A8E6CF; --mint-2: rgba(168,230,207,.35); --white:#FFFFFF;
+      --shadow: 0 16px 34px rgba(0,0,0,.06); --r-xl:18px;
+    }}
+    *{{box-sizing:border-box;}}
+    body{{
+      margin:0;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(900px 520px at 10% 0%, rgba(77,168,218,.10), transparent 55%),
+        radial-gradient(900px 520px at 95% 12%, rgba(168,230,207,.12), transparent 55%),
+        var(--grey);
+    }}
+    .page{{max-width:1100px;margin:0 auto;padding:18px 16px 26px;}}
+    .card{{background: rgba(255,255,255,.92); border:1px solid rgba(13,59,102,.14);
+      border-radius: var(--r-xl); box-shadow: var(--shadow); overflow:hidden;}}
+    .card-head{{padding: 12px 14px; border-bottom:1px solid rgba(13,59,102,.10);
+      background: linear-gradient(180deg, rgba(13,59,102,.06), rgba(255,255,255,0));
+      display:flex; align-items:flex-start; justify-content:space-between; gap:10px; flex-wrap:wrap;}}
+    .head-left{{display:flex;flex-direction:column;gap:4px;min-width:220px;}}
+    .card-title{{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:1000;color:var(--navy);}}
+    .mint-accent{{width:10px;height:10px;border-radius:999px;background:var(--mint);box-shadow:0 0 0 4px var(--mint-2);}}
+    .card-subtitle{{font-size:12px;color:var(--muted);font-weight:500;line-height:1.6;}}
+    .actions{{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;}}
+    .pill{{display:inline-flex;align-items:center;gap:8px;padding:7px 10px;border-radius:999px;
+      border:1px solid rgba(13,59,102,.22); background: rgba(13,59,102,.04);
+      font-size:12px;font-weight:900;color: rgba(13,59,102,.92); white-space:nowrap;}}
+    .pill .dot{{width:9px;height:9px;border-radius:999px;background:var(--mint);box-shadow:0 0 0 4px var(--mint-2);}}
+    .icon-btn{{width:42px;height:38px;border-radius:12px;border:1px solid rgba(13,59,102,.22);
+      background:#fff;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;justify-content:center;color:var(--navy);}}
+    .icon-btn:hover{{border-color: rgba(168,230,207,.9); box-shadow: 0 0 0 4px rgba(168,230,207,.35); transform: translateY(-1px);}}
+    .icon-btn svg{{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}}
+    .card-body{{padding:14px 14px 16px;}}
+    .section{{border:1px solid rgba(13,59,102,.10);border-radius:18px;background:#fff;padding:12px;margin-bottom:12px;page-break-inside: avoid;}}
+    .section h3{{margin:0 0 8px 0;font-size:13px;font-weight:1000;color:var(--navy);}}
+    .section pre{{margin:0;white-space:pre-wrap;word-break:break-word;font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+      font-size:12px;line-height:1.48;color:#111827;}}
+    .notice-card{{border:1px solid rgba(13,59,102,.14);background: rgba(13,59,102,.04);
+      border-radius:16px;padding:10px 12px;color: rgba(13,59,102,.90);font-size:12px;line-height:1.45;margin-top:14px;}}
+    .notice-card strong{{font-weight:1000;}}
+    .notice-card .muted{{color:var(--muted);font-weight:500;}}
+    @media print{{ body{{background:#fff;}} .page{{max-width:none;padding:0;}} .card{{box-shadow:none;border:0;border-radius:0;}}
+      .icon-btn{{display:none;}} .pill{{border:1px solid #ccc;background:#fff;}} }}
   </style>
 </head>
 <body>
-  <div class="report-shell">
+  <div class="page">
     <div class="card">
-      <div class="top">
-        <div>Discharge Summary</div>
-        <a class="btnback" href="/snf/secure/{html.escape(token)}/list">← Back to List</a>
-      </div>
-      <div class="body">
-        <div style="font-size:18px;font-weight:900;color:#0D3B66;">{html.escape(srow["patient_name"] or "")}</div>
-        <div class="meta">DOB: {html.escape(srow["dob"] or "")} • Hospital: {html.escape(srow["hospital_name"] or "")}</div>
+      <div class="card-head">
+        <div class="head-left">
+          <div class="card-title"><span class="mint-accent"></span>Note Content</div>
+          <div class="card-subtitle">
+            <div><b>{esc(srow["patient_name"] or "")}</b> • DOB {esc(srow["dob"] or "")} • {esc(note_hosp)}</div>
+            <div>{esc(note_type)}{(" • " + esc(note_dt)) if note_dt else ""}</div>
+            <div style="margin-top:2px;">This view is designed to support care coordination and does not replace the hospital’s original documentation.</div>
+          </div>
+        </div>
 
-        <div class="placeholder">
-          Phase two: render the formatted discharge summary here using your extraction profiles.
+        <div class="actions">
+          <span class="pill" title="This is a reconstructed viewer page, not the hospital’s native export.">
+            <span class="dot"></span><span id="pillStatus">Recreated view</span>
+          </span>
+
+          <button class="icon-btn" id="btnCopyLink" title="Copy link">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M10 13a5 5 0 0 0 7.1 0l1.9-1.9a5 5 0 0 0-7.1-7.1L11 4"></path>
+              <path d="M14 11a5 5 0 0 0-7.1 0L5 12.9a5 5 0 0 0 7.1 7.1L13 20"></path>
+            </svg>
+          </button>
+
+          <button class="icon-btn" id="btnPrint" title="Print">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 9V4h12v5"></path>
+              <path d="M6 18h12v2H6z"></path>
+              <path d="M6 14H5a3 3 0 0 1-3-3V9a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v2a3 3 0 0 1-3 3h-1"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="card-body">
+        {rendered_sections}
+
+        <div class="notice-card">
+          <strong>Notice:</strong>
+          <span class="muted">This page provides a reconstructed, human-readable view of documentation received from</span>
+          <span>{esc(note_hosp)}</span>.
+          <span class="muted">For official records or certified exports, please contact the originating facility or health system.</span>
+          <div style="margin-top:8px;" class="muted">
+            Link expires at: <b>{esc(expires_at_txt)}</b> • <a href="/snf/secure/{esc(token)}/list">Back to List</a>
+          </div>
         </div>
       </div>
     </div>
   </div>
+
+<script>
+  document.getElementById("btnPrint").addEventListener("click", () => window.print());
+  document.getElementById("btnCopyLink").addEventListener("click", async () => {{
+    const url = location.href;
+    try {{
+      await navigator.clipboard.writeText(url);
+      const pill = document.getElementById("pillStatus");
+      const old = pill.textContent;
+      pill.textContent = "Link copied";
+      setTimeout(() => pill.textContent = old, 1200);
+    }} catch {{
+      const pill = document.getElementById("pillStatus");
+      const old = pill.textContent;
+      pill.textContent = "Copy failed";
+      setTimeout(() => pill.textContent = old, 1200);
+    }}
+  }});
+</script>
 </body>
 </html>"""
         return HTMLResponse(page, headers=secure_headers)
 
     finally:
         conn.close()
+
 
 @app.post("/admin/snf/email-pdf")
 async def admin_snf_email_pdf(
