@@ -15662,6 +15662,9 @@ def build_snf_pdf_html(
 
     patient_count = len(rows)
     patient_word = "patient" if patient_count == 1 else "patients"
+    
+    # NEW: stamp "Date Processed" for the PDF/list header (UTC)
+    processed_at_utc = dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
     # Build table body rows
     body_rows: List[str] = []
