@@ -15695,7 +15695,13 @@ def build_snf_pdf_html(
             view_link = f"""
               <a class="view-btn" href="{html.escape(href)}" target="_blank"
                  title="{html.escape(title_txt)}" aria-label="{html.escape(title_txt)}">
-                ↗
+                <svg viewBox="0 0 235.52 264.02" aria-hidden="true">
+                  <path d="M232.77,124.21L133.8,25.24c-29.98-29.98-78.59-29.98-108.57,0h0
+                    c-29.98,29.98-29.98,78.59,0,108.57l111.87,111.87
+                    c20.8,20.8,54.51,20.8,75.31,0h0c20.79-20.8,20.79-54.51,0-75.3
+                    l-82.48-82.49c-11.95-11.95-31.31-11.95-43.26,0h0
+                    c-11.95,11.95-11.95,31.31,0,43.26l69.95,69.95" />
+                </svg>
               </a>
             """
 
@@ -16023,8 +16029,17 @@ def build_snf_pdf_html(
       background: #ffffff;
       color: #0D3B66;
       text-decoration: none;
-      font-weight: 800;
       box-shadow: 0 6px 14px rgba(13,59,102,.10);
+    }}
+    .view-btn svg {{
+      width: 18px;   /* medium */
+      height: 18px;  /* medium */
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      display:block;
     }}
 
     .view-btn:hover {{
@@ -16081,7 +16096,7 @@ def build_snf_pdf_html(
               <th>DOB</th>
               <th>Hospital</th>
               <th>Hospitalist</th>
-              <th style="width:56px; text-align:center;">View</th>
+              <th style="width:56px; text-align:center;">Latest MD Note</th>
             </tr>
           </thead>
           <tbody>
@@ -17007,17 +17022,27 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
           </span>
 
           <button class="icon-btn" id="btnCopyLink" title="Copy link">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M10 13a5 5 0 0 0 7.1 0l1.9-1.9a5 5 0 0 0-7.1-7.1L11 4"></path>
-              <path d="M14 11a5 5 0 0 0-7.1 0L5 12.9a5 5 0 0 0 7.1 7.1L13 20"></path>
+            <svg viewBox="0 0 75.98 75.98" aria-hidden="true">
+              <polyline points="57.36 44.8 74.59 27.56 74.59 14.94
+                61.04 1.39 48.42 1.39 24.13 25.67 24.8 38.96 33.39 47.55" />
+              <polyline points="40.52 40.52 34.15 34.15 34.15 29.82
+                52.56 11.4 56.89 11.4 64.58 19.09 64.58 23.42 51.33 36.66" />
+              <polyline points="18.12 31.68 1.39 48.42 1.39 61.04
+                14.94 74.59 27.56 74.59 51.85 50.31 51.18 37.02 43.03 28.87" />
+              <polyline points="24.65 39.32 11.4 52.56 11.4 56.89
+                19.09 64.58 23.42 64.58 44 44 40.52 40.52" />
             </svg>
           </button>
 
           <button class="icon-btn" id="btnPrint" title="Print">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M6 9V4h12v5"></path>
-              <path d="M6 18h12v2H6z"></path>
-              <path d="M6 14H5a3 3 0 0 1-3-3V9a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v2a3 3 0 0 1-3 3h-1"></path>
+            <svg viewBox="0 0 73.17 77.01" aria-hidden="true">
+              <path d="M16.18,61.52H1.39v-30.43c0-2.96,2.4-5.37,5.37-5.37h59.66
+                c2.96,0,5.37,2.4,5.37,5.37v30.43h-14.8" />
+              <polyline points="16.18 25.73 16.18 1.39 44.31 1.39 56.99 14.52 56.99 25.73" />
+              <polyline points="56.99 43.62 56.99 75.63 16.18 75.63 16.18 43.62" />
+              <line x1="10.02" y1="43.39" x2="63.92" y2="43.39" />
+              <line x1="27.43" y1="53.95" x2="45.89" y2="53.95" />
+              <line x1="27.43" y1="65.03" x2="45.89" y2="65.03" />
             </svg>
           </button>
         </div>
