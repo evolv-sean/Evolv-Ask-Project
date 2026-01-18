@@ -16964,60 +16964,72 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Hospital Note • Print View</title>
   <style>
-    :root{{
-      --navy:#0D3B66; --grey:#F5F7FA; --text:#0f172a; --muted:#55657f;
-      --mint:#A8E6CF; --mint-2: rgba(168,230,207,.35); --white:#FFFFFF;
-      --shadow: 0 16px 34px rgba(0,0,0,.06); --r-xl:18px;
-      --zipIconColor: var(--navy);
-      --zipIconHoverColor: var(--mint);
-      --zipIconStroke: 1.3px;
-      --zipBtnSm: 30px;  --zipSvgSm: 18px;
-      --zipBtnMd: 35px;  --zipSvgMd: 23px;
-      --zipBtnLg: 42px;  --zipSvgLg: 28px;
-      --zipIconBtn: var(--zipBtnMd);
-      --zipIconSvg: var(--zipSvgMd);
-    }}
-    *{{box-sizing:border-box;}}
-    body{{
-      margin:0;
-      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
-      color:var(--text);
-      background:
-        radial-gradient(900px 520px at 10% 0%, rgba(77,168,218,.10), transparent 55%),
-        radial-gradient(900px 520px at 95% 12%, rgba(168,230,207,.12), transparent 55%),
-        var(--grey);
-    }}
-    .page{{max-width:1100px;margin:0 auto;padding:18px 16px 26px;}}
-    .card{{background: rgba(255,255,255,.92); border:1px solid rgba(13,59,102,.14);
-      border-radius: var(--r-xl); box-shadow: var(--shadow); overflow:hidden;}}
-    .card-head{{padding: 12px 14px; border-bottom:1px solid rgba(13,59,102,.10);
-      background: linear-gradient(180deg, rgba(13,59,102,.06), rgba(255,255,255,0));
-      display:flex; align-items:flex-start; justify-content:space-between; gap:10px; flex-wrap:wrap;}}
-    .head-left{{display:flex;flex-direction:column;gap:4px;min-width:220px;}}
-    .card-title{{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:1000;color:var(--navy);}}
-    .mint-accent{{width:10px;height:10px;border-radius:999px;background:var(--mint);box-shadow:0 0 0 4px var(--mint-2);}}
-    .card-subtitle{{font-size:12px;color:var(--muted);font-weight:500;line-height:1.6;}}
-    .actions{{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;}}
-    .pill{{display:inline-flex;align-items:center;gap:8px;padding:7px 10px;border-radius:999px;
-      border:1px solid rgba(13,59,102,.22); background: rgba(13,59,102,.04);
-      font-size:12px;font-weight:900;color: rgba(13,59,102,.92); white-space:nowrap;}}
-    .pill .dot{{width:9px;height:9px;border-radius:999px;background:var(--mint);box-shadow:0 0 0 4px var(--mint-2);}}
-    .icon-btn{{width:42px;height:38px;border-radius:12px;border:1px solid rgba(13,59,102,.22);
-      background:#fff;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;justify-content:center;color:var(--navy);}}
-    .icon-btn:hover{{border-color: rgba(168,230,207,.9); box-shadow: 0 0 0 4px rgba(168,230,207,.35); transform: translateY(-1px);}}
-    .icon-btn svg{{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}}
-    .card-body{{padding:14px 14px 16px;}}
-    .section{{border:1px solid rgba(13,59,102,.10);border-radius:18px;background:#fff;padding:12px;margin-bottom:12px;page-break-inside: avoid;}}
-    .section h3{{margin:0 0 8px 0;font-size:13px;font-weight:1000;color:var(--navy);}}
-    .section pre{{margin:0;white-space:pre-wrap;word-break:break-word;font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
-      font-size:12px;line-height:1.48;color:#111827;}}
-    .notice-card{{border:1px solid rgba(13,59,102,.14);background: rgba(13,59,102,.04);
-      border-radius:16px;padding:10px 12px;color: rgba(13,59,102,.90);font-size:12px;line-height:1.45;margin-top:14px;}}
-    .notice-card strong{{font-weight:1000;}}
-    .notice-card .muted{{color:var(--muted);font-weight:500;}}
-    @media print{{ body{{background:#fff;}} .page{{max-width:none;padding:0;}} .card{{box-shadow:none;border:0;border-radius:0;}} .plain-ico{{display:none;}}
-      .icon-btn{{display:none;}} .pill{{border:1px solid #ccc;background:#fff;}} }}
+      :root {{
+        --zipIconColor: #0D3B66;
+        --zipIconHoverColor: #A8E6CF;
+        --zipIconStroke: 1.3px;
+
+        --zipIconBtn: 35px;
+        --zipIconSvg: 23px;
+      }}
+
+      .actions{{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;}}
+
+      .pill{{display:inline-flex;align-items:center;gap:8px;padding:7px 10px;border-radius:999px;
+        border:1px solid rgba(13,59,102,.22); background: rgba(13,59,102,.04);
+        font-size:12px;font-weight:900;color: rgba(13,59,102,.92); white-space:nowrap;}}
+
+      .pill .dot{{width:9px;height:9px;border-radius:999px;background:var(--zipIconHoverColor);
+        box-shadow:0 0 0 4px rgba(168,230,207,.35);}}
+
+      /* --- Design Library: unboxed zip icons --- */
+      .plain-ico{{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        width:var(--zipIconBtn);
+        height:var(--zipIconBtn);
+        border:0;
+        background:transparent;
+        padding:0;
+        border-radius:12px;
+        cursor:pointer;
+        color:var(--zipIconColor);
+        transition: box-shadow .15s ease, transform .15s ease, filter .15s ease, color .15s ease;
+      }}
+
+      .plain-ico .zip-svg{{
+        width:var(--zipIconSvg);
+        height:var(--zipIconSvg);
+      }}
+
+      .plain-ico svg{{overflow:visible;}}
+
+      .plain-ico:hover{{
+        box-shadow: 0 0 0 2px rgba(168,230,207,.70);
+        color:var(--zipIconHoverColor);
+        transform: translateY(-1px);
+        filter: drop-shadow(0 6px 10px rgba(13,59,102,.12));
+      }}
+
+      .plain-ico:active{{transform: translateY(0px);}}
+
+      .plain-ico:focus-visible{{
+        outline:none;
+        box-shadow: 0 0 0 4px rgba(168,230,207,.35);
+      }}
+
+      /* Force SVG stroke rendering */
+      .plain-ico svg :where(path, line, polyline, polygon, rect, circle, ellipse){{
+        fill:none;
+        stroke:currentColor;
+        stroke-width: var(--zipIconStroke);
+        stroke-linecap:round;
+        stroke-linejoin:round;
+        vector-effect: non-scaling-stroke;
+      }}
   </style>
+
 </head>
 <body>
   <div class="page">
