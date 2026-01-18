@@ -16968,58 +16968,45 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
         --zipIconColor: #0D3B66;
         --zipIconHoverColor: #A8E6CF;
         --zipIconStroke: 1.3px;
-
         --zipIconBtn: 35px;
         --zipIconSvg: 23px;
+
+        /* If your page already defines these elsewhere, keep them there */
+        --mint: #A8E6CF;
+        --mint-2: rgba(168,230,207,.35);
       }}
 
+      /* NOTE: removed the duplicate .actions line + fixed pill dot vars */
       .actions{{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;}}
 
       .pill{{display:inline-flex;align-items:center;gap:8px;padding:7px 10px;border-radius:999px;
         border:1px solid rgba(13,59,102,.22); background: rgba(13,59,102,.04);
         font-size:12px;font-weight:900;color: rgba(13,59,102,.92); white-space:nowrap;}}
 
-      .pill .dot{{width:9px;height:9px;border-radius:999px;background:var(--zipIconHoverColor);
-        box-shadow:0 0 0 4px rgba(168,230,207,.35);}}
+      .pill .dot{{width:9px;height:9px;border-radius:999px;background:var(--mint);box-shadow:0 0 0 4px var(--mint-2);}}
 
-      /* --- Design Library: unboxed zip icons --- */
+      /* --- Design Library: unboxed zip icons (no box) --- */
       .plain-ico{{
-        display:inline-flex;
-        align-items:center;
-        justify-content:center;
-        width:var(--zipIconBtn);
-        height:var(--zipIconBtn);
-        border:0;
-        background:transparent;
-        padding:0;
+        display:inline-flex; align-items:center; justify-content:center;
+        width:var(--zipIconBtn); height:var(--zipIconBtn);
+        border:0; background:transparent; padding:0;
         border-radius:12px;
         cursor:pointer;
         color:var(--zipIconColor);
         transition: box-shadow .15s ease, transform .15s ease, filter .15s ease, color .15s ease;
       }}
-
-      .plain-ico .zip-svg{{
-        width:var(--zipIconSvg);
-        height:var(--zipIconSvg);
-      }}
-
+      .plain-ico .zip-svg{{width:var(--zipIconSvg);height:var(--zipIconSvg);}}
       .plain-ico svg{{overflow:visible;}}
-
       .plain-ico:hover{{
         box-shadow: 0 0 0 2px rgba(168,230,207,.70);
         color:var(--zipIconHoverColor);
         transform: translateY(-1px);
         filter: drop-shadow(0 6px 10px rgba(13,59,102,.12));
       }}
-
       .plain-ico:active{{transform: translateY(0px);}}
+      .plain-ico:focus-visible{{outline:none; box-shadow: 0 0 0 4px rgba(168,230,207,.35);}}
 
-      .plain-ico:focus-visible{{
-        outline:none;
-        box-shadow: 0 0 0 4px rgba(168,230,207,.35);
-      }}
-
-      /* Force SVG stroke rendering */
+      /* Force SVG stroke rendering (your SVG paths/polylines rely on CSS) */
       .plain-ico svg :where(path, line, polyline, polygon, rect, circle, ellipse){{
         fill:none;
         stroke:currentColor;
@@ -17029,8 +17016,8 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
         vector-effect: non-scaling-stroke;
       }}
   </style>
-
 </head>
+
 <body>
   <div class="page">
     <div class="card">
@@ -17112,6 +17099,7 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
 </script>
 </body>
 </html>"""
+
         return HTMLResponse(page, headers=secure_headers)
 
     finally:
