@@ -15693,9 +15693,9 @@ def build_snf_pdf_html(
             href = f"{details_base_path}/{admission_id}"
             title_txt = f"View {view_note_type}" if view_note_type else "View Note"
             view_link = f"""
-              <a class="view-btn" href="{html.escape(href)}" target="_blank"
+              <a class="plain-ico zip-ico view-btn" href="{html.escape(href)}" target="_blank"
                  title="{html.escape(title_txt)}" aria-label="{html.escape(title_txt)}">
-                <svg viewBox="0 0 235.52 264.02" aria-hidden="true">
+                <svg class="zip-svg" viewBox="0 0 235.52 264.02" aria-hidden="true">
                   <path d="M232.77,124.21L133.8,25.24c-29.98-29.98-78.59-29.98-108.57,0h0
                     c-29.98,29.98-29.98,78.59,0,108.57l111.87,111.87
                     c20.8,20.8,54.51,20.8,75.31,0h0c20.79-20.8,20.79-54.51,0-75.3
@@ -16018,33 +16018,41 @@ def build_snf_pdf_html(
     }}
     .col-view {{ text-align: center; }}
 
-    .view-btn {{
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 34px;
-      height: 34px;
-      border-radius: 10px;
-      border: 1px solid #e5e7eb;
-      background: #ffffff;
-      color: #0D3B66;
-      text-decoration: none;
-      box-shadow: 0 6px 14px rgba(13,59,102,.10);
+    /* Unboxed action icon (Design Library: plain-ico + zip-ico, Medium) */
+    .plain-ico{{
+      display:inline-flex; align-items:center; justify-content:center;
+      width:48px; height:44px;
+      border:0; background:transparent;
+      border-radius:14px;
+      cursor:pointer;
+      color:#0D3B66;
+      transition: box-shadow .15s ease, transform .15s ease, filter .15s ease, color .15s ease;
     }}
-    .view-btn svg {{
-      width: 18px;   /* medium */
-      height: 18px;  /* medium */
-      stroke: currentColor;
-      fill: none;
-      stroke-width: 1.8;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      display:block;
+    .zip-ico{{width:35px;height:35px;border-radius:12px; opacity:1 !important;}}
+    .zip-ico .zip-svg{{width:23px;height:23px;}}
+    .zip-ico svg{{overflow:visible;}}
+    .zip-ico:hover{{
+      box-shadow: 0 0 0 2px rgba(168,230,207,.70);
+      color:#A8E6CF !important;
+      filter: drop-shadow(0 6px 10px rgba(13,59,102,.12));
+      transform: translateY(-1px);
     }}
+    .zip-ico:active{{transform: translateY(0px);}
 
-    .view-btn:hover {{
-      background: #f3f6fb;
+    /* consistent line weight like your older line icons */
+    .zip-ico svg :where(path, line, polyline, polygon, rect, circle, ellipse){{
+      fill:none !important;
+      stroke:currentColor !important;
+      opacity:1 !important;
+      stroke-opacity:1 !important;
+      fill-opacity:1 !important;
+      vector-effect: non-scaling-stroke !important;
+      stroke-width: 1.3px !important;
+      stroke-linecap:round !important;
+      stroke-linejoin:round !important;
     }}
+    .zip-ico svg :where(text){{ fill: currentColor !important; stroke:none !important; }}
+
 
   </style>
 </head>
@@ -16960,6 +16968,14 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
       --navy:#0D3B66; --grey:#F5F7FA; --text:#0f172a; --muted:#55657f;
       --mint:#A8E6CF; --mint-2: rgba(168,230,207,.35); --white:#FFFFFF;
       --shadow: 0 16px 34px rgba(0,0,0,.06); --r-xl:18px;
+      --zipIconColor: var(--navy);
+      --zipIconHoverColor: var(--mint);
+      --zipIconStroke: 1.3px;
+      --zipBtnSm: 30px;  --zipSvgSm: 18px;
+      --zipBtnMd: 35px;  --zipSvgMd: 23px;
+      --zipBtnLg: 42px;  --zipSvgLg: 28px;
+      --zipIconBtn: var(--zipBtnMd);
+      --zipIconSvg: var(--zipSvgMd);
     }}
     *{{box-sizing:border-box;}}
     body{{
@@ -16999,7 +17015,7 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
       border-radius:16px;padding:10px 12px;color: rgba(13,59,102,.90);font-size:12px;line-height:1.45;margin-top:14px;}}
     .notice-card strong{{font-weight:1000;}}
     .notice-card .muted{{color:var(--muted);font-weight:500;}}
-    @media print{{ body{{background:#fff;}} .page{{max-width:none;padding:0;}} .card{{box-shadow:none;border:0;border-radius:0;}}
+    @media print{{ body{{background:#fff;}} .page{{max-width:none;padding:0;}} .card{{box-shadow:none;border:0;border-radius:0;}} .plain-ico{{display:none;}}
       .icon-btn{{display:none;}} .pill{{border:1px solid #ccc;background:#fff;}} }}
   </style>
 </head>
@@ -17021,8 +17037,8 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
             <span class="dot"></span><span id="pillStatus">Recreated view</span>
           </span>
 
-          <button class="icon-btn" id="btnCopyLink" title="Copy link">
-            <svg viewBox="0 0 75.98 75.98" aria-hidden="true">
+          <button class="plain-ico zip-ico" id="btnCopyLink" title="Copy link">
+            <svg class="zip-svg" viewBox="0 0 75.98 75.98" aria-hidden="true">
               <polyline points="57.36 44.8 74.59 27.56 74.59 14.94
                 61.04 1.39 48.42 1.39 24.13 25.67 24.8 38.96 33.39 47.55" />
               <polyline points="40.52 40.52 34.15 34.15 34.15 29.82
@@ -17034,8 +17050,8 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
             </svg>
           </button>
 
-          <button class="icon-btn" id="btnPrint" title="Print">
-            <svg viewBox="0 0 73.17 77.01" aria-hidden="true">
+          <button class="plain-ico zip-ico" id="btnPrint" title="Print">
+            <svg class="zip-svg" viewBox="0 0 73.17 77.01" aria-hidden="true">
               <path d="M16.18,61.52H1.39v-30.43c0-2.96,2.4-5.37,5.37-5.37h59.66
                 c2.96,0,5.37,2.4,5.37,5.37v30.43h-14.8" />
               <polyline points="16.18 25.73 16.18 1.39 44.31 1.39 56.99 14.52 56.99 25.73" />
