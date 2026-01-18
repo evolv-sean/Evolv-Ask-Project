@@ -16037,7 +16037,7 @@ def build_snf_pdf_html(
       filter: drop-shadow(0 6px 10px rgba(13,59,102,.12));
       transform: translateY(-1px);
     }}
-    .zip-ico:active{{transform: translateY(0px);}
+    .zip-ico:active{{transform: translateY(0px);}}
 
     /* consistent line weight like your older line icons */
     .zip-ico svg :where(path, line, polyline, polygon, rect, circle, ellipse){{
