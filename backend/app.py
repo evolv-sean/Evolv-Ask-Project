@@ -17021,7 +17021,6 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
         --iconBtnMd: 35px; --iconSvgMd: 23px;
         --iconBtnLg: 44px; --iconSvgLg: 28px;
 
-        /* Zipped SVG icon tuning */
         --zipIconColor: var(--iconStroke);
         --zipIconHoverColor: var(--mint);
         --zipIconStroke: var(--iconStrokeWidth);
@@ -17030,13 +17029,15 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
         --zipBtnMd: var(--iconBtnMd);  --zipSvgMd: var(--iconSvgMd);
         --zipBtnLg: var(--iconBtnLg);  --zipSvgLg: var(--iconSvgLg);
 
+        /* Active size */
         --zipIconBtn: var(--zipBtnMd);
         --zipIconSvg: var(--zipSvgMd);
-      }
+      }}
 
-      :root[data-zip-size="sm"]{--zipIconBtn: var(--zipBtnSm); --zipIconSvg: var(--zipSvgSm);}
-      :root[data-zip-size="md"]{--zipIconBtn: var(--zipBtnMd); --zipIconSvg: var(--zipSvgMd);}
-      :root[data-zip-size="lg"]{--zipIconBtn: var(--zipBtnLg); --zipIconSvg: var(--zipSvgLg);}
+      /* Size presets controlled by <html data-zip-size="."> */
+      :root[data-zip-size="sm"]{{--zipIconBtn: var(--zipBtnSm); --zipIconSvg: var(--zipSvgSm);}}
+      :root[data-zip-size="md"]{{--zipIconBtn: var(--zipBtnMd); --zipIconSvg: var(--zipSvgMd);}}
+      :root[data-zip-size="lg"]{{--zipIconBtn: var(--zipBtnLg); --zipIconSvg: var(--zipSvgLg);}}
 
       *{{box-sizing:border-box;}}
       body{{
