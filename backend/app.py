@@ -15662,6 +15662,9 @@ def build_snf_pdf_html(
 
     patient_count = len(rows)
     patient_word = "patient" if patient_count == 1 else "patients"
+    
+    # NEW: stamp "Date Processed" for the PDF/list header (UTC)
+    processed_at_utc = dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
     # Build table body rows
     body_rows: List[str] = []
@@ -15672,13 +15675,33 @@ def build_snf_pdf_html(
         hosp = html.escape(r["hospital_name"] or "")
         md = html.escape(r["hospitalist"] or "")
 
-        # Optional view link (only if details_base_path provided)
+        # Optional view link (only if details_base_path provided AND this row has a DS/Progress Note)
         view_link = ""
-        if details_base_path and admission_id:
+
+        has_view_note = True
+        view_note_type = ""
+        try:
+            # sqlite3.Row supports .keys()
+            if hasattr(r, "keys") and "has_view_note" in r.keys():
+                has_view_note = bool(r["has_view_note"])
+            if hasattr(r, "keys") and "view_note_type" in r.keys():
+                view_note_type = (r["view_note_type"] or "").strip()
+        except Exception:
+            pass
+
+        if details_base_path and admission_id and has_view_note:
             href = f"{details_base_path}/{admission_id}"
+            title_txt = f"View {view_note_type}" if view_note_type else "View Note"
             view_link = f"""
-              <a class="view-btn" href="{html.escape(href)}" title="View Discharge Summary" aria-label="View Discharge Summary">
-                ↗
+              <a class="plain-ico zip-ico view-btn" href="{html.escape(href)}" target="_blank"
+                 title="{html.escape(title_txt)}" aria-label="{html.escape(title_txt)}">
+                <svg class="zip-svg" viewBox="0 0 235.52 264.02" aria-hidden="true">
+                  <path d="M232.77,124.21L133.8,25.24c-29.98-29.98-78.59-29.98-108.57,0h0
+                    c-29.98,29.98-29.98,78.59,0,108.57l111.87,111.87
+                    c20.8,20.8,54.51,20.8,75.31,0h0c20.79-20.8,20.79-54.51,0-75.3
+                    l-82.48-82.49c-11.95-11.95-31.31-11.95-43.26,0h0
+                    c-11.95,11.95-11.95,31.31,0,43.26l69.95,69.95" />
+                </svg>
               </a>
             """
 
@@ -15708,7 +15731,7 @@ def build_snf_pdf_html(
 
     # NOTE: all CSS/HTML braces that are not Python variables are doubled {{ }}
     html_doc = f"""<!DOCTYPE html>
-<html lang="en">
+<html data-zip-size="sm" lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>Upcoming SNF Admissions</title>
@@ -15995,24 +16018,81 @@ def build_snf_pdf_html(
     }}
     .col-view {{ text-align: center; }}
 
-    .view-btn {{
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 34px;
-      height: 34px;
-      border-radius: 10px;
-      border: 1px solid #e5e7eb;
-      background: #ffffff;
-      color: #0D3B66;
-      text-decoration: none;
-      font-weight: 800;
-      box-shadow: 0 6px 14px rgba(13,59,102,.10);
-    }}
+    /* =========================================================
+       CANONICAL ICON TOKENS (Design Library structure)
+       ========================================================= */
+    :root{{
+      --navy:#0D3B66;
+      --mint:#A8E6CF;
 
-    .view-btn:hover {{
-      background: #f3f6fb;
+      --iconStroke: var(--navy);
+      --iconHoverStroke: var(--navy);
+      --iconHoverBg: rgba(13,59,102,.06);
+      --iconStrokeWidth: 1.3px;
+
+      --iconBtnSm: 30px; --iconSvgSm: 18px;
+      --iconBtnMd: 35px; --iconSvgMd: 23px;
+      --iconBtnLg: 44px; --iconSvgLg: 28px;
+
+      --zipIconColor: var(--iconStroke);
+      --zipIconHoverColor: var(--mint);
+      --zipIconStroke: var(--iconStrokeWidth);
+
+      --zipBtnSm: var(--iconBtnSm);  --zipSvgSm: var(--iconSvgSm);
+      --zipBtnMd: var(--iconBtnMd);  --zipSvgMd: var(--iconSvgMd);
+      --zipBtnLg: var(--iconBtnLg);  --zipSvgLg: var(--iconSvgLg);
+
+      --zipIconBtn: var(--zipBtnMd);
+      --zipIconSvg: var(--zipSvgMd);
     }}
+    :root[data-zip-size="sm"]{{--zipIconBtn: var(--zipBtnSm); --zipIconSvg: var(--zipSvgSm);}}
+    :root[data-zip-size="md"]{{--zipIconBtn: var(--zipBtnMd); --zipIconSvg: var(--zipSvgMd);}}
+    :root[data-zip-size="lg"]{{--zipIconBtn: var(--zipBtnLg); --zipIconSvg: var(--zipSvgLg);}}
+
+    .col-view {{ text-align: center; }}
+
+    /* Button wrapper (same class structure as Design Library: plain-ico + zip-ico) */
+    .plain-ico{{
+      width:var(--zipIconBtn);
+      height:var(--zipIconBtn);
+      border-radius:12px;
+      border:1px solid rgba(13,59,102,.22);
+      background:#fff;
+      cursor:pointer;
+      transition:.15s;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      color:var(--zipIconColor);
+      padding:0;
+    }}
+    .plain-ico:hover{{
+      border-color: rgba(168,230,207,.9);
+      box-shadow: 0 0 0 4px rgba(168,230,207,.35);
+      transform: translateY(-1px);
+      color: var(--zipIconHoverColor);
+    }}
+    .plain-ico:active{{transform: translateY(0px);}}
+
+    .zip-ico{{ width:var(--zipIconBtn); height:var(--zipIconBtn); }}
+    .zip-ico .zip-svg{{ width:var(--zipIconSvg); height:var(--zipIconSvg); }}
+    .zip-ico svg{{ overflow: visible; }}
+
+    /* Force line-drawn style (no fills, consistent stroke weight) */
+    .zip-ico svg :where(path, line, polyline, polygon, rect, circle, ellipse){{
+      fill:none !important;
+      stroke:currentColor !important;
+      stroke-width: var(--zipIconStroke) !important;
+      stroke-linecap:round !important;
+      stroke-linejoin:round !important;
+      vector-effect: non-scaling-stroke !important;
+      opacity:1 !important;
+      stroke-opacity:1 !important;
+      fill-opacity:1 !important;
+    }}
+    .zip-ico svg :where(text){{ fill: currentColor !important; stroke:none !important; }}
+
+
 
   </style>
 </head>
@@ -16064,7 +16144,7 @@ def build_snf_pdf_html(
               <th>DOB</th>
               <th>Hospital</th>
               <th>Hospitalist</th>
-              <th style="width:56px; text-align:center;">View</th>
+              <th style="width:56px; text-align:center;">Latest MD Note</th>
             </tr>
           </thead>
           <tbody>
@@ -16729,10 +16809,36 @@ async def snf_secure_link_list(token: str, request: Request):
         sql = f"""
         SELECT
             s.id,
+            s.visit_id,
             s.patient_name,
             s.hospital_name,
             COALESCE(s.dob, raw.dob) AS dob,
-            COALESCE(s.attending, raw.attending, raw.note_author) AS hospitalist
+            COALESCE(s.attending, raw.attending, raw.note_author) AS hospitalist,
+
+            -- Latest matching note type for tooltip/title (Discharge Summary OR Progress Note)
+            (
+              SELECT n.note_type
+              FROM cm_notes_raw n
+              WHERE n.visit_id = s.visit_id
+                AND (
+                  lower(COALESCE(n.note_type,'')) = 'discharge summary'
+                  OR lower(COALESCE(n.note_type,'')) = 'progress note'
+                )
+              ORDER BY COALESCE(n.note_datetime, n.created_at) DESC
+              LIMIT 1
+            ) AS view_note_type,
+
+            -- Whether the row should show the ↗ button at all
+            CASE WHEN EXISTS (
+              SELECT 1
+              FROM cm_notes_raw n2
+              WHERE n2.visit_id = s.visit_id
+                AND (
+                  lower(COALESCE(n2.note_type,'')) = 'discharge summary'
+                  OR lower(COALESCE(n2.note_type,'')) = 'progress note'
+                )
+            ) THEN 1 ELSE 0 END AS has_view_note
+
         FROM snf_admissions s
         LEFT JOIN cm_notes_raw raw
           ON raw.id = s.raw_note_id
@@ -16750,7 +16856,7 @@ async def snf_secure_link_list(token: str, request: Request):
             for_date,
             rows,
             attending,
-            details_base_path=f"/snf/secure/{token}/admission",
+            details_base_path=f"/snf/secure/{token}/note",
         )
         return HTMLResponse(html_doc, headers=secure_headers)
 
@@ -16759,7 +16865,24 @@ async def snf_secure_link_list(token: str, request: Request):
 
 @app.get("/snf/secure/{token}/admission/{admission_id}", response_class=HTMLResponse)
 async def snf_secure_admission_detail(token: str, admission_id: int, request: Request):
-    """Dedicated discharge summary page (phase-two target)."""
+    # Backwards-compat: old path now redirects to the note viewer
+    secure_headers = {
+        "X-Robots-Tag": "noindex, nofollow, noarchive",
+        "Cache-Control": "no-store",
+    }
+    return RedirectResponse(
+        url=f"/snf/secure/{token}/note/{admission_id}",
+        status_code=302,
+        headers=secure_headers,
+    )
+
+@app.get("/snf/secure/{token}/note/{admission_id}", response_class=HTMLResponse)
+async def snf_secure_note_viewer(token: str, admission_id: int, request: Request):
+    """
+    Note-viewer page for the latest Discharge Summary or Progress Note
+    for this admission's visit_id, split by Hospital Discharge extraction profile.
+    Expires with the secure link cookie.
+    """
     secure_headers = {
         "X-Robots-Tag": "noindex, nofollow, noarchive",
         "Cache-Control": "no-store",
@@ -16767,7 +16890,7 @@ async def snf_secure_admission_detail(token: str, admission_id: int, request: Re
 
     token_hash = sha256_hex(token)
 
-    # Require authorized cookie
+    # Require authorized cookie (same as list)
     cookie_val = request.cookies.get(SNF_SECURE_COOKIE_NAME)
     cookie_obj = _snf_verify_cookie_payload(cookie_val) if cookie_val else None
     if not cookie_obj or cookie_obj.get("token_hash") != token_hash:
@@ -16799,11 +16922,14 @@ async def snf_secure_admission_detail(token: str, admission_id: int, request: Re
         if int(admission_id) not in allowed_ids:
             return HTMLResponse("<h2>Not authorized</h2><p>This patient is not included in this secure list.</p>", status_code=403, headers=secure_headers)
 
-        # Load patient row (minimal for now)
+        # Load admission (needs visit_id)
         cur.execute(
             """
             SELECT
-              s.id, s.patient_name, s.hospital_name,
+              s.id,
+              s.visit_id,
+              s.patient_name,
+              s.hospital_name,
               COALESCE(s.dob, raw.dob) AS dob
             FROM snf_admissions s
             LEFT JOIN cm_notes_raw raw ON raw.id = s.raw_note_id
@@ -16815,48 +16941,307 @@ async def snf_secure_admission_detail(token: str, admission_id: int, request: Re
         if not srow:
             return HTMLResponse("<h2>Not found</h2><p>Admission not found.</p>", status_code=404, headers=secure_headers)
 
-        # Phase two will replace this with extraction-profile formatted content
+        visit_id = (srow["visit_id"] or "").strip()
+        if not visit_id:
+            return HTMLResponse("<h2>No visit</h2><p>This admission has no visit_id to load notes.</p>", status_code=404, headers=secure_headers)
+
+        # Find latest Discharge Summary OR Progress Note for this visit
+        cur.execute(
+            """
+            SELECT id, note_type, note_datetime, note_author, hospital_name, note_text, created_at
+            FROM cm_notes_raw
+            WHERE visit_id = ?
+              AND (
+                lower(COALESCE(note_type,'')) = 'discharge summary'
+                OR lower(COALESCE(note_type,'')) = 'progress note'
+              )
+            ORDER BY COALESCE(note_datetime, created_at) DESC
+            LIMIT 1
+            """,
+            (visit_id,),
+        )
+        nrow = cur.fetchone()
+        if not nrow:
+            # If none exists, we remove the button in the list (via has_view_note),
+            # but if someone manually hits the URL, show a clean message.
+            return HTMLResponse(
+                "<h2>No note found</h2><p>No Discharge Summary or Progress Note exists for this patient.</p>",
+                status_code=404,
+                headers=secure_headers,
+            )
+
+        note_text = nrow["note_text"] or ""
+        note_type = (nrow["note_type"] or "").strip() or "Note"
+        note_dt = (nrow["note_datetime"] or "").strip()
+        note_hosp = (nrow["hospital_name"] or srow["hospital_name"] or "").strip()
+
+        # Load extraction profile from Hospital Discharge settings (hospital_name + document_type)
+        profile = load_extraction_profile(conn, note_hosp, note_type)
+        sections = split_document_into_sections(note_text, profile)
+
+        # Render sections (server-side) in the note-viewer style
+        def esc(x: str) -> str:
+            return html.escape(x or "")
+
+        sections_html = []
+        for sec in sections:
+            sections_html.append(
+                f"""
+                <div class="section">
+                  <h3>{esc(sec.get("section_title") or sec.get("section_key") or "")}</h3>
+                  <pre>{esc(sec.get("section_text") or "")}</pre>
+                </div>
+                """.strip()
+            )
+        rendered_sections = "\n".join(sections_html)
+
+        expires_at_txt = cookie_obj.get("expires_at") or ""
+
         page = f"""<!doctype html>
-<html>
+<html data-zip-size="sm" lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Discharge Summary</title>
-  <style>
-    body{{margin:0;background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#111827;}}
-    .report-shell{{padding:16px;display:flex;justify-content:center;}}
-    .card{{width:min(980px,100%);background:#fff;border:1px solid #e5e7eb;border-radius:18px;box-shadow:0 14px 34px rgba(0,0,0,.10);overflow:hidden;}}
-    .top{{background:#0D3B66;color:#fff;padding:16px 20px;font-weight:800;display:flex;align-items:center;justify-content:space-between;}}
-    .btnback{{color:#fff;text-decoration:none;font-weight:700;opacity:.95;}}
-    .btnback:hover{{opacity:1;}}
-    .body{{padding:18px 20px;}}
-    .meta{{color:#374151;font-size:13px;margin-top:6px;}}
-    .placeholder{{margin-top:14px;padding:14px;border:1px dashed #d1d5db;border-radius:14px;background:#fafafa;color:#6b7280;}}
-  </style>
-</head>
-<body>
-  <div class="report-shell">
-    <div class="card">
-      <div class="top">
-        <div>Discharge Summary</div>
-        <a class="btnback" href="/snf/secure/{html.escape(token)}/list">← Back to List</a>
-      </div>
-      <div class="body">
-        <div style="font-size:18px;font-weight:900;color:#0D3B66;">{html.escape(srow["patient_name"] or "")}</div>
-        <div class="meta">DOB: {html.escape(srow["dob"] or "")} • Hospital: {html.escape(srow["hospital_name"] or "")}</div>
+  <title>Hospital Note • Print View</title>
+    <style>
+      :root{{
+        --navy:#0D3B66; --grey:#F5F7FA; --text:#0f172a; --muted:#55657f;
+        --mint:#A8E6CF; --mint-2: rgba(168,230,207,.35); --white:#FFFFFF;
+        --shadow: 0 16px 34px rgba(0,0,0,.06); --r-xl:18px;
 
-        <div class="placeholder">
-          Phase two: render the formatted discharge summary here using your extraction profiles.
+        /* =========================================================
+           CANONICAL ICON TOKENS (Design Library structure)
+           ========================================================= */
+        --iconStroke: var(--navy);
+        --iconHoverStroke: var(--navy);
+        --iconHoverBg: rgba(13,59,102,.06);
+        --iconStrokeWidth: 1.3px;
+
+        --iconBtnSm: 30px; --iconSvgSm: 18px;
+        --iconBtnMd: 35px; --iconSvgMd: 23px;
+        --iconBtnLg: 44px; --iconSvgLg: 28px;
+
+        --zipIconColor: var(--iconStroke);
+        --zipIconHoverColor: var(--mint);
+        --zipIconStroke: var(--iconStrokeWidth);
+
+        --zipBtnSm: var(--iconBtnSm);  --zipSvgSm: var(--iconSvgSm);
+        --zipBtnMd: var(--iconBtnMd);  --zipSvgMd: var(--iconSvgMd);
+        --zipBtnLg: var(--iconBtnLg);  --zipSvgLg: var(--iconSvgLg);
+
+        /* Active size */
+        --zipIconBtn: var(--zipBtnMd);
+        --zipIconSvg: var(--zipSvgMd);
+      }}
+
+      /* Size presets controlled by <html data-zip-size="."> */
+      :root[data-zip-size="sm"]{{--zipIconBtn: var(--zipBtnSm); --zipIconSvg: var(--zipSvgSm);}}
+      :root[data-zip-size="md"]{{--zipIconBtn: var(--zipBtnMd); --zipIconSvg: var(--zipSvgMd);}}
+      :root[data-zip-size="lg"]{{--zipIconBtn: var(--zipBtnLg); --zipIconSvg: var(--zipSvgLg);}}
+
+      *{{box-sizing:border-box;}}
+      body{{
+        margin:0;
+        font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+        color:var(--text);
+        background:
+          radial-gradient(900px 520px at 10% 0%, rgba(77,168,218,.10), transparent 55%),
+          radial-gradient(900px 520px at 95% 12%, rgba(168,230,207,.12), transparent 55%),
+          var(--grey);
+      }}
+      .page{{max-width:1100px;margin:0 auto;padding:18px 16px 26px;}}
+      .card{{
+        background: rgba(255,255,255,.92);
+        border:1px solid rgba(13,59,102,.14);
+        border-radius: var(--r-xl);
+        box-shadow: var(--shadow);
+        overflow:hidden;
+      }}
+      .card-head{{
+        padding: 12px 14px;
+        border-bottom:1px solid rgba(13,59,102,.10);
+        background: linear-gradient(180deg, rgba(13,59,102,.06), rgba(255,255,255,0));
+        display:flex; align-items:flex-start; justify-content:space-between; gap:10px; flex-wrap:wrap;
+      }}
+      .head-left{{display:flex;flex-direction:column;gap:4px;min-width:220px;}}
+      .card-title{{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:1000;color:var(--navy);}}
+      .mint-accent{{width:10px;height:10px;border-radius:999px;background:var(--mint);box-shadow:0 0 0 4px var(--mint-2);}}
+      .card-subtitle{{font-size:12px;color:var(--muted);font-weight:500;line-height:1.6;}}
+
+      .actions{{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;}}
+      .pill{{
+        display:inline-flex;align-items:center;gap:8px;padding:7px 10px;border-radius:999px;
+        border:1px solid rgba(13,59,102,.22); background: rgba(13,59,102,.04);
+        font-size:12px;font-weight:900;color: rgba(13,59,102,.92); white-space:nowrap;
+      }}
+      .pill .dot{{width:9px;height:9px;border-radius:999px;background:var(--mint);box-shadow:0 0 0 4px var(--mint-2);}}
+
+      /* --- New: unboxed zip icons (replaces old .icon-btn) --- */
+      .plain-ico{{
+        width:var(--zipIconBtn);
+        height:var(--zipIconBtn);
+        border-radius:12px;
+        border:1px solid rgba(13,59,102,.22);
+        background:#fff;
+        cursor:pointer;
+        transition:.15s;
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        color:var(--zipIconColor);
+        padding:0;
+      }}
+      .plain-ico:hover{{
+        border-color: rgba(168,230,207,.9);
+        box-shadow: 0 0 0 4px rgba(168,230,207,.35);
+        transform: translateY(-1px);
+        color: var(--zipIconHoverColor);
+      }}
+      .plain-ico:active{{transform: translateY(0px);}}
+      .plain-ico:focus-visible{{outline:none; box-shadow: 0 0 0 4px rgba(168,230,207,.35);}}
+
+      .plain-ico .zip-svg{{width:var(--zipIconSvg);height:var(--zipIconSvg);}}
+      .plain-ico svg{{overflow:visible;}}
+
+      /* Force line-drawn style (no fills, consistent stroke weight) */
+      .plain-ico svg :where(path, line, polyline, polygon, rect, circle, ellipse){{
+        fill:none !important;
+        stroke:currentColor !important;
+        stroke-width: var(--zipIconStroke) !important;
+        stroke-linecap:round !important;
+        stroke-linejoin:round !important;
+        vector-effect: non-scaling-stroke !important;
+      }}
+
+      .card-body{{padding:14px 14px 16px;}}
+      .section{{
+        border:1px solid rgba(13,59,102,.10);
+        border-radius:18px;
+        background:#fff;
+        padding:12px;
+        margin-bottom:12px;
+        page-break-inside: avoid;
+      }}
+      .section h3{{margin:0 0 8px 0;font-size:13px;font-weight:1000;color:var(--navy);}}
+      .section pre{{
+        margin:0;
+        white-space:pre-wrap;
+        word-break:break-word;
+        font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+        font-size:12px;
+        line-height:1.48;
+        color:#111827;
+      }}
+      .notice-card{{
+        border:1px solid rgba(13,59,102,.14);
+        background: rgba(13,59,102,.04);
+        border-radius:16px;
+        padding:10px 12px;
+        color: rgba(13,59,102,.90);
+        font-size:12px;
+        line-height:1.45;
+        margin-top:14px;
+      }}
+      .notice-card strong{{font-weight:1000;}}
+      .notice-card .muted{{color:var(--muted);font-weight:500;}}
+
+      @media print{{
+        body{{background:#fff;}}
+        .page{{max-width:none;padding:0;}}
+        .card{{box-shadow:none;border:0;border-radius:0;}}
+        .plain-ico{{display:none;}}
+        .pill{{border:1px solid #ccc;background:#fff;}}
+      }}
+    </style>
+</head>
+
+<body>
+  <div class="page">
+    <div class="card">
+      <div class="card-head">
+        <div class="head-left">
+          <div class="card-title"><span class="mint-accent"></span>Note Content</div>
+          <div class="card-subtitle">
+            <div><b>{esc(srow["patient_name"] or "")}</b> • DOB {esc(srow["dob"] or "")} • {esc(note_hosp)}</div>
+            <div>{esc(note_type)}{(" • " + esc(note_dt)) if note_dt else ""}</div>
+            <div style="margin-top:2px;">This view is designed to support care coordination and does not replace the hospital’s original documentation.</div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <span class="pill" title="This is a reconstructed viewer page, not the hospital’s native export.">
+            <span class="dot"></span><span id="pillStatus">Recreated view</span>
+          </span>
+
+          <button class="plain-ico zip-ico" id="btnCopyLink" title="Copy link">
+            <svg class="zip-svg" viewBox="0 0 75.98 75.98" aria-hidden="true">
+              <polyline points="57.36 44.8 74.59 27.56 74.59 14.94
+                61.04 1.39 48.42 1.39 24.13 25.67 24.8 38.96 33.39 47.55" />
+              <polyline points="40.52 40.52 34.15 34.15 34.15 29.82
+                52.56 11.4 56.89 11.4 64.58 19.09 64.58 23.42 51.33 36.66" />
+              <polyline points="18.12 31.68 1.39 48.42 1.39 61.04
+                14.94 74.59 27.56 74.59 51.85 50.31 51.18 37.02 43.03 28.87" />
+              <polyline points="24.65 39.32 11.4 52.56 11.4 56.89
+                19.09 64.58 23.42 64.58 44 44 40.52 40.52" />
+            </svg>
+          </button>
+
+          <button class="plain-ico zip-ico" id="btnPrint" title="Print">
+            <svg class="zip-svg" viewBox="0 0 73.17 77.01" aria-hidden="true">
+              <path d="M16.18,61.52H1.39v-30.43c0-2.96,2.4-5.37,5.37-5.37h59.66
+                c2.96,0,5.37,2.4,5.37,5.37v30.43h-14.8" />
+              <polyline points="16.18 25.73 16.18 1.39 44.31 1.39 56.99 14.52 56.99 25.73" />
+              <polyline points="56.99 43.62 56.99 75.63 16.18 75.63 16.18 43.62" />
+              <line x1="10.02" y1="43.39" x2="63.92" y2="43.39" />
+              <line x1="27.43" y1="53.95" x2="45.89" y2="53.95" />
+              <line x1="27.43" y1="65.03" x2="45.89" y2="65.03" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="card-body">
+        {rendered_sections}
+
+        <div class="notice-card">
+          <strong>Notice:</strong>
+          <span class="muted">This page provides a reconstructed, human-readable view of documentation received from</span>
+          <span>{esc(note_hosp)}</span>.
+          <span class="muted">For official records or certified exports, please contact the originating facility or health system.</span>
+          <div style="margin-top:8px;" class="muted">
+            Link expires at: <b>{esc(expires_at_txt)}</b> • <a href="/snf/secure/{esc(token)}/list">Back to List</a>
+          </div>
         </div>
       </div>
     </div>
   </div>
+
+<script>
+  document.getElementById("btnPrint").addEventListener("click", () => window.print());
+  document.getElementById("btnCopyLink").addEventListener("click", async () => {{
+    const url = location.href;
+    try {{
+      await navigator.clipboard.writeText(url);
+      const pill = document.getElementById("pillStatus");
+      const old = pill.textContent;
+      pill.textContent = "Link copied";
+      setTimeout(() => pill.textContent = old, 1200);
+    }} catch {{
+      const pill = document.getElementById("pillStatus");
+      const old = pill.textContent;
+      pill.textContent = "Copy failed";
+      setTimeout(() => pill.textContent = old, 1200);
+    }}
+  }});
+</script>
 </body>
 </html>"""
+
         return HTMLResponse(page, headers=secure_headers)
 
     finally:
         conn.close()
+
 
 @app.post("/admin/snf/email-pdf")
 async def admin_snf_email_pdf(
