@@ -16021,7 +16021,7 @@ def build_snf_pdf_html(
     /* =========================================================
        CANONICAL ICON TOKENS (Design Library structure)
        ========================================================= */
-    :root{
+    :root{{
       --navy:#0D3B66;
       --mint:#A8E6CF;
 
@@ -16044,15 +16044,15 @@ def build_snf_pdf_html(
 
       --zipIconBtn: var(--zipBtnMd);
       --zipIconSvg: var(--zipSvgMd);
-    }
-    :root[data-zip-size="sm"]{--zipIconBtn: var(--zipBtnSm); --zipIconSvg: var(--zipSvgSm);}
-    :root[data-zip-size="md"]{--zipIconBtn: var(--zipBtnMd); --zipIconSvg: var(--zipSvgMd);}
-    :root[data-zip-size="lg"]{--zipIconBtn: var(--zipBtnLg); --zipIconSvg: var(--zipSvgLg);}
+    }}
+    :root[data-zip-size="sm"]{{--zipIconBtn: var(--zipBtnSm); --zipIconSvg: var(--zipSvgSm);}}
+    :root[data-zip-size="md"]{{--zipIconBtn: var(--zipBtnMd); --zipIconSvg: var(--zipSvgMd);}}
+    :root[data-zip-size="lg"]{{--zipIconBtn: var(--zipBtnLg); --zipIconSvg: var(--zipSvgLg);}}
 
-    .col-view { text-align: center; }
+    .col-view {{ text-align: center; }}
 
     /* Button wrapper (same class structure as Design Library: plain-ico + zip-ico) */
-    .plain-ico{
+    .plain-ico{{
       width:var(--zipIconBtn);
       height:var(--zipIconBtn);
       border-radius:12px;
@@ -16065,21 +16065,21 @@ def build_snf_pdf_html(
       justify-content:center;
       color:var(--zipIconColor);
       padding:0;
-    }
-    .plain-ico:hover{
+    }}
+    .plain-ico:hover{{
       border-color: rgba(168,230,207,.9);
       box-shadow: 0 0 0 4px rgba(168,230,207,.35);
       transform: translateY(-1px);
       color: var(--zipIconHoverColor);
-    }
-    .plain-ico:active{transform: translateY(0px);}
+    }}
+    .plain-ico:active{{transform: translateY(0px);}}
 
-    .zip-ico{ width:var(--zipIconBtn); height:var(--zipIconBtn); }
-    .zip-ico .zip-svg{ width:var(--zipIconSvg); height:var(--zipIconSvg); }
-    .zip-ico svg{ overflow: visible; }
+    .zip-ico{{ width:var(--zipIconBtn); height:var(--zipIconBtn); }}
+    .zip-ico .zip-svg{{ width:var(--zipIconSvg); height:var(--zipIconSvg); }}
+    .zip-ico svg{{ overflow: visible; }}
 
     /* Force line-drawn style (no fills, consistent stroke weight) */
-    .zip-ico svg :where(path, line, polyline, polygon, rect, circle, ellipse){
+    .zip-ico svg :where(path, line, polyline, polygon, rect, circle, ellipse){{
       fill:none !important;
       stroke:currentColor !important;
       stroke-width: var(--zipIconStroke) !important;
@@ -16089,8 +16089,8 @@ def build_snf_pdf_html(
       opacity:1 !important;
       stroke-opacity:1 !important;
       fill-opacity:1 !important;
-    }
-    .zip-ico svg :where(text){ fill: currentColor !important; stroke:none !important; }
+    }}
+    .zip-ico svg :where(text){{ fill: currentColor !important; stroke:none !important; }}
 
 
 
