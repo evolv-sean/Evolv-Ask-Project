@@ -16815,27 +16815,29 @@ async def snf_secure_link_list(token: str, request: Request):
             COALESCE(s.dob, raw.dob) AS dob,
             COALESCE(s.attending, raw.attending, raw.note_author) AS hospitalist,
 
-            -- Latest matching note type for tooltip/title (Discharge Summary OR Progress Note)
+            -- Latest matching note type for tooltip/title (Discharge Summary OR Progress Note OR Hospitalist Progress Note)
             (
-              SELECT n.note_type
-              FROM cm_notes_raw n
-              WHERE n.visit_id = s.visit_id
+            SELECT n.note_type
+            FROM cm_notes_raw n
+            WHERE n.visit_id = s.visit_id
                 AND (
-                  lower(COALESCE(n.note_type,'')) = 'discharge summary'
-                  OR lower(COALESCE(n.note_type,'')) = 'progress note'
+                lower(COALESCE(n.note_type,'')) = 'discharge summary'
+                OR lower(COALESCE(n.note_type,'')) = 'progress note'
+                OR lower(COALESCE(n.note_type,'')) = 'hospitalist progress note'
                 )
-              ORDER BY COALESCE(n.note_datetime, n.created_at) DESC
-              LIMIT 1
+            ORDER BY COALESCE(n.note_datetime, n.created_at) DESC
+            LIMIT 1
             ) AS view_note_type,
 
             -- Whether the row should show the ↗ button at all
             CASE WHEN EXISTS (
-              SELECT 1
-              FROM cm_notes_raw n2
-              WHERE n2.visit_id = s.visit_id
+            SELECT 1
+            FROM cm_notes_raw n2
+            WHERE n2.visit_id = s.visit_id
                 AND (
-                  lower(COALESCE(n2.note_type,'')) = 'discharge summary'
-                  OR lower(COALESCE(n2.note_type,'')) = 'progress note'
+                lower(COALESCE(n2.note_type,'')) = 'discharge summary'
+                OR lower(COALESCE(n2.note_type,'')) = 'progress note'
+                OR lower(COALESCE(n2.note_type,'')) = 'hospitalist progress note'
                 )
             ) THEN 1 ELSE 0 END AS has_view_note
 
@@ -16945,27 +16947,29 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
         if not visit_id:
             return HTMLResponse("<h2>No visit</h2><p>This admission has no visit_id to load notes.</p>", status_code=404, headers=secure_headers)
 
-        # Find latest Discharge Summary OR Progress Note for this visit
+        # Find latest Discharge Summary OR Progress Note OR Hospitalist Progress Note for this visit
         cur.execute(
             """
             SELECT id, note_type, note_datetime, note_author, hospital_name, note_text, created_at
             FROM cm_notes_raw
             WHERE visit_id = ?
-              AND (
+            AND (
                 lower(COALESCE(note_type,'')) = 'discharge summary'
                 OR lower(COALESCE(note_type,'')) = 'progress note'
-              )
+                OR lower(COALESCE(note_type,'')) = 'hospitalist progress note'
+            )
             ORDER BY COALESCE(note_datetime, created_at) DESC
             LIMIT 1
             """,
             (visit_id,),
         )
+
         nrow = cur.fetchone()
         if not nrow:
             # If none exists, we remove the button in the list (via has_view_note),
             # but if someone manually hits the URL, show a clean message.
             return HTMLResponse(
-                "<h2>No note found</h2><p>No Discharge Summary or Progress Note exists for this patient.</p>",
+                "<h2>No note found</h2><p>No Discharge Summary, Progress Note, or Hospitalist Progress Note exists for this patient.</p>",
                 status_code=404,
                 headers=secure_headers,
             )
