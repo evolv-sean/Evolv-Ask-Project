@@ -15731,7 +15731,7 @@ def build_snf_pdf_html(
 
     # NOTE: all CSS/HTML braces that are not Python variables are doubled {{ }}
     html_doc = f"""<!DOCTYPE html>
-<html lang="en">
+<html data-zip-size="sm" lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>Upcoming SNF Admissions</title>
@@ -16018,40 +16018,80 @@ def build_snf_pdf_html(
     }}
     .col-view {{ text-align: center; }}
 
-    /* Unboxed action icon (Design Library: plain-ico + zip-ico, Medium) */
-    .plain-ico{{
-      display:inline-flex; align-items:center; justify-content:center;
-      width:48px; height:44px;
-      border:0; background:transparent;
-      border-radius:14px;
-      cursor:pointer;
-      color:#0D3B66;
-      transition: box-shadow .15s ease, transform .15s ease, filter .15s ease, color .15s ease;
-    }}
-    .zip-ico{{width:35px;height:35px;border-radius:12px; opacity:1 !important;}}
-    .zip-ico .zip-svg{{width:23px;height:23px;}}
-    .zip-ico svg{{overflow:visible;}}
-    .zip-ico:hover{{
-      box-shadow: 0 0 0 2px rgba(168,230,207,.70);
-      color:#A8E6CF !important;
-      filter: drop-shadow(0 6px 10px rgba(13,59,102,.12));
-      transform: translateY(-1px);
-    }}
-    .zip-ico:active{{transform: translateY(0px);}}
+    /* =========================================================
+       CANONICAL ICON TOKENS (Design Library structure)
+       ========================================================= */
+    :root{
+      --navy:#0D3B66;
+      --mint:#A8E6CF;
 
-    /* consistent line weight like your older line icons */
-    .zip-ico svg :where(path, line, polyline, polygon, rect, circle, ellipse){{
+      --iconStroke: var(--navy);
+      --iconHoverStroke: var(--navy);
+      --iconHoverBg: rgba(13,59,102,.06);
+      --iconStrokeWidth: 1.3px;
+
+      --iconBtnSm: 30px; --iconSvgSm: 18px;
+      --iconBtnMd: 35px; --iconSvgMd: 23px;
+      --iconBtnLg: 44px; --iconSvgLg: 28px;
+
+      --zipIconColor: var(--iconStroke);
+      --zipIconHoverColor: var(--mint);
+      --zipIconStroke: var(--iconStrokeWidth);
+
+      --zipBtnSm: var(--iconBtnSm);  --zipSvgSm: var(--iconSvgSm);
+      --zipBtnMd: var(--iconBtnMd);  --zipSvgMd: var(--iconSvgMd);
+      --zipBtnLg: var(--iconBtnLg);  --zipSvgLg: var(--iconSvgLg);
+
+      --zipIconBtn: var(--zipBtnMd);
+      --zipIconSvg: var(--zipSvgMd);
+    }
+    :root[data-zip-size="sm"]{--zipIconBtn: var(--zipBtnSm); --zipIconSvg: var(--zipSvgSm);}
+    :root[data-zip-size="md"]{--zipIconBtn: var(--zipBtnMd); --zipIconSvg: var(--zipSvgMd);}
+    :root[data-zip-size="lg"]{--zipIconBtn: var(--zipBtnLg); --zipIconSvg: var(--zipSvgLg);}
+
+    .col-view { text-align: center; }
+
+    /* Button wrapper (same class structure as Design Library: plain-ico + zip-ico) */
+    .plain-ico{
+      width:var(--zipIconBtn);
+      height:var(--zipIconBtn);
+      border-radius:12px;
+      border:1px solid rgba(13,59,102,.22);
+      background:#fff;
+      cursor:pointer;
+      transition:.15s;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      color:var(--zipIconColor);
+      padding:0;
+    }
+    .plain-ico:hover{
+      border-color: rgba(168,230,207,.9);
+      box-shadow: 0 0 0 4px rgba(168,230,207,.35);
+      transform: translateY(-1px);
+      color: var(--zipIconHoverColor);
+    }
+    .plain-ico:active{transform: translateY(0px);}
+
+    .zip-ico{ width:var(--zipIconBtn); height:var(--zipIconBtn); }
+    .zip-ico .zip-svg{ width:var(--zipIconSvg); height:var(--zipIconSvg); }
+    .zip-ico svg{ overflow: visible; }
+
+    /* Force line-drawn style (no fills, consistent stroke weight) */
+    .zip-ico svg :where(path, line, polyline, polygon, rect, circle, ellipse){
       fill:none !important;
       stroke:currentColor !important;
+      stroke-width: var(--zipIconStroke) !important;
+      stroke-linecap:round !important;
+      stroke-linejoin:round !important;
+      vector-effect: non-scaling-stroke !important;
       opacity:1 !important;
       stroke-opacity:1 !important;
       fill-opacity:1 !important;
-      vector-effect: non-scaling-stroke !important;
-      stroke-width: 1.3px !important;
-      stroke-linecap:round !important;
-      stroke-linejoin:round !important;
-    }}
-    .zip-ico svg :where(text){{ fill: currentColor !important; stroke:none !important; }}
+    }
+    .zip-ico svg :where(text){ fill: currentColor !important; stroke:none !important; }
+
 
 
   </style>
@@ -16958,7 +16998,7 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
         expires_at_txt = cookie_obj.get("expires_at") or ""
 
         page = f"""<!doctype html>
-<html lang="en">
+<html data-zip-size="sm" lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -16969,13 +17009,34 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
         --mint:#A8E6CF; --mint-2: rgba(168,230,207,.35); --white:#FFFFFF;
         --shadow: 0 16px 34px rgba(0,0,0,.06); --r-xl:18px;
 
-        /* New (zip icon button system) */
-        --zipIconColor: #0D3B66;
-        --zipIconHoverColor: #A8E6CF;
-        --zipIconStroke: 1.3px;
-        --zipIconBtn: 38px;   /* matches your old icon-btn footprint */
-        --zipIconSvg: 22px;
-      }}
+        /* =========================================================
+           CANONICAL ICON TOKENS (Design Library structure)
+           ========================================================= */
+        --iconStroke: var(--navy);
+        --iconHoverStroke: var(--navy);
+        --iconHoverBg: rgba(13,59,102,.06);
+        --iconStrokeWidth: 1.3px;
+
+        --iconBtnSm: 30px; --iconSvgSm: 18px;
+        --iconBtnMd: 35px; --iconSvgMd: 23px;
+        --iconBtnLg: 44px; --iconSvgLg: 28px;
+
+        /* Zipped SVG icon tuning */
+        --zipIconColor: var(--iconStroke);
+        --zipIconHoverColor: var(--mint);
+        --zipIconStroke: var(--iconStrokeWidth);
+
+        --zipBtnSm: var(--iconBtnSm);  --zipSvgSm: var(--iconSvgSm);
+        --zipBtnMd: var(--iconBtnMd);  --zipSvgMd: var(--iconSvgMd);
+        --zipBtnLg: var(--iconBtnLg);  --zipSvgLg: var(--iconSvgLg);
+
+        --zipIconBtn: var(--zipBtnMd);
+        --zipIconSvg: var(--zipSvgMd);
+      }
+
+      :root[data-zip-size="sm"]{--zipIconBtn: var(--zipBtnSm); --zipIconSvg: var(--zipSvgSm);}
+      :root[data-zip-size="md"]{--zipIconBtn: var(--zipBtnMd); --zipIconSvg: var(--zipSvgMd);}
+      :root[data-zip-size="lg"]{--zipIconBtn: var(--zipBtnLg); --zipIconSvg: var(--zipSvgLg);}
 
       *{{box-sizing:border-box;}}
       body{{
