@@ -1,0 +1,1951 @@
+BEGIN TRANSACTION;
+CREATE TABLE IF NOT EXISTS "abbreviations" (
+	"abbr"	TEXT,
+	"meaning"	TEXT,
+	"notes"	TEXT,
+	PRIMARY KEY("abbr")
+);
+CREATE TABLE IF NOT EXISTS "ai_settings" (
+	"key"	TEXT,
+	"value"	TEXT NOT NULL,
+	PRIMARY KEY("key")
+);
+CREATE TABLE IF NOT EXISTS "census_run_patients" (
+	"id"	INTEGER,
+	"run_id"	INTEGER NOT NULL,
+	"facility_name"	TEXT NOT NULL,
+	"facility_code"	TEXT,
+	"patient_key"	TEXT NOT NULL,
+	"first_name"	TEXT,
+	"last_name"	TEXT,
+	"dob"	TEXT,
+	"home_phone"	TEXT,
+	"address"	TEXT,
+	"city"	TEXT,
+	"state"	TEXT,
+	"zip"	TEXT,
+	"primary_ins"	TEXT,
+	"primary_number"	TEXT,
+	"primary_care_phys"	TEXT,
+	"attending_phys"	TEXT,
+	"admission_date"	TEXT,
+	"discharge_date"	TEXT,
+	"room_number"	TEXT,
+	"reason_admission"	TEXT,
+	"tag"	TEXT,
+	"raw_text"	TEXT,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("run_id") REFERENCES "census_runs"("id")
+);
+CREATE TABLE IF NOT EXISTS "census_runs" (
+	"id"	INTEGER,
+	"facility_name"	TEXT NOT NULL,
+	"facility_code"	TEXT,
+	"report_dt"	TEXT,
+	"source_filename"	TEXT,
+	"source_sha256"	TEXT,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "census_upload_job_files" (
+	"id"	INTEGER,
+	"job_id"	TEXT NOT NULL,
+	"filename"	TEXT,
+	"status"	TEXT NOT NULL,
+	"detail"	TEXT,
+	"run_id"	INTEGER,
+	"rows_inserted"	INTEGER DEFAULT 0,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("job_id") REFERENCES "census_upload_jobs"("job_id")
+);
+CREATE TABLE IF NOT EXISTS "census_upload_jobs" (
+	"job_id"	TEXT,
+	"status"	TEXT NOT NULL,
+	"total_files"	INTEGER DEFAULT 0,
+	"processed_files"	INTEGER DEFAULT 0,
+	"message"	TEXT,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("job_id")
+);
+CREATE TABLE IF NOT EXISTS "client_info" (
+	"facility_name"	TEXT,
+	"field_name"	TEXT,
+	"value"	TEXT,
+	"updated_at"	TEXT,
+	PRIMARY KEY("facility_name","field_name")
+);
+CREATE TABLE IF NOT EXISTS "cm_notes_raw" (
+	"id"	INTEGER,
+	"patient_mrn"	TEXT NOT NULL,
+	"patient_name"	TEXT,
+	"dob"	TEXT,
+	"encounter_id"	TEXT,
+	"hospital_name"	TEXT,
+	"unit_name"	TEXT,
+	"admission_date"	TEXT,
+	"note_datetime"	TEXT NOT NULL,
+	"note_author"	TEXT,
+	"note_type"	TEXT,
+	"note_text"	TEXT NOT NULL,
+	"source_system"	TEXT,
+	"pad_run_id"	TEXT,
+	"ocr_confidence"	REAL,
+	"note_hash"	TEXT,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"visit_id"	TEXT,
+	"attending"	TEXT,
+	"admit_date"	TEXT,
+	"ignored"	INTEGER DEFAULT 0,
+	"ignored_at"	TEXT,
+	"dc_date"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "dictionary" (
+	"key"	TEXT,
+	"canonical"	TEXT NOT NULL,
+	"kind"	TEXT DEFAULT 'abbr',
+	"notes"	TEXT DEFAULT '',
+	"match_mode"	TEXT DEFAULT 'exact',
+	PRIMARY KEY("key")
+);
+CREATE TABLE IF NOT EXISTS "fac_facts" (
+	"id"	INTEGER,
+	"facility_id"	TEXT NOT NULL,
+	"fact_text"	TEXT NOT NULL,
+	"tags"	TEXT DEFAULT '',
+	"created_at"	TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("facility_id") REFERENCES "facilities"("facility_id") ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS "facilities" (
+	"facility_id"	TEXT,
+	"facility_name"	TEXT NOT NULL,
+	"legal_name"	TEXT,
+	"corporate_group"	TEXT,
+	"address_line1"	TEXT,
+	"address_line2"	TEXT,
+	"city"	TEXT,
+	"state"	TEXT,
+	"zip"	TEXT,
+	"county"	TEXT,
+	"avg_dcs"	TEXT,
+	"short_beds"	TEXT,
+	"ltc_beds"	TEXT,
+	"outpatient_pt"	TEXT,
+	"emr"	TEXT,
+	"emr_other"	TEXT,
+	"pt_emr"	TEXT,
+	"orders"	TEXT,
+	"orders_other"	TEXT,
+	"intake_token"	TEXT UNIQUE,
+	"intake_status"	TEXT DEFAULT 'not-started',
+	"created_at"	TEXT,
+	"updated_at"	TEXT,
+	"extras"	TEXT,
+	"raw_json"	TEXT,
+	PRIMARY KEY("facility_id")
+);
+CREATE TABLE IF NOT EXISTS "facility_additional_services" (
+	"id"	INTEGER,
+	"facility_id"	TEXT NOT NULL,
+	"service"	TEXT NOT NULL,
+	UNIQUE("facility_id","service"),
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("facility_id") REFERENCES "facilities"("facility_id") ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS "facility_contacts" (
+	"id"	INTEGER,
+	"facility_id"	TEXT NOT NULL,
+	"type"	TEXT NOT NULL,
+	"name"	TEXT NOT NULL,
+	"email"	TEXT,
+	"phone"	TEXT,
+	"pref"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("facility_id") REFERENCES "facilities"("facility_id") ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS "facility_insurance_plans" (
+	"id"	INTEGER,
+	"facility_id"	TEXT NOT NULL,
+	"plan"	TEXT NOT NULL,
+	UNIQUE("facility_id","plan"),
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("facility_id") REFERENCES "facilities"("facility_id") ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS "facility_partners" (
+	"id"	INTEGER,
+	"facility_id"	TEXT NOT NULL,
+	"type"	TEXT NOT NULL,
+	"name"	TEXT NOT NULL,
+	"ins_only"	TEXT,
+	"insurance"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("facility_id") REFERENCES "facilities"("facility_id") ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS "hospital_discharges" (
+	"id"	INTEGER,
+	"visit_id"	TEXT NOT NULL,
+	"patient_mrn"	TEXT,
+	"patient_name"	TEXT,
+	"hospital_name"	TEXT,
+	"admit_date"	TEXT,
+	"dc_date"	TEXT,
+	"disposition"	TEXT,
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"dc_agency"	TEXT,
+	"dispo_source_dt"	TEXT,
+	"dispo_source_doc_id"	INTEGER,
+	"attending"	TEXT,
+	"pcp"	TEXT,
+	"insurance"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "hospital_document_sections" (
+	"id"	INTEGER,
+	"document_id"	INTEGER NOT NULL,
+	"section_key"	TEXT NOT NULL,
+	"section_title"	TEXT,
+	"section_order"	INTEGER NOT NULL,
+	"section_text"	TEXT NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("document_id") REFERENCES "hospital_documents"("id")
+);
+CREATE TABLE IF NOT EXISTS "hospital_documents" (
+	"id"	INTEGER,
+	"hospital_name"	TEXT NOT NULL,
+	"document_type"	TEXT NOT NULL,
+	"document_datetime"	TEXT,
+	"patient_mrn"	TEXT,
+	"patient_name"	TEXT,
+	"dob"	TEXT,
+	"visit_id"	TEXT,
+	"source_text"	TEXT NOT NULL,
+	"source_system"	TEXT DEFAULT 'EMR',
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"admit_date"	TEXT,
+	"dc_date"	TEXT,
+	"attending"	TEXT,
+	"pcp"	TEXT,
+	"insurance"	TEXT,
+	"document_hash"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "hospital_extraction_profiles" (
+	"id"	INTEGER,
+	"hospital_name"	TEXT NOT NULL,
+	"document_type"	TEXT NOT NULL,
+	"profile_json"	TEXT NOT NULL,
+	"active"	INTEGER DEFAULT 1,
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "pad_api_runs" (
+	"id"	INTEGER,
+	"endpoint"	TEXT NOT NULL,
+	"received_at"	TEXT NOT NULL,
+	"pad_run_id"	TEXT,
+	"rows_received"	INTEGER DEFAULT 0,
+	"inserted"	INTEGER DEFAULT 0,
+	"skipped"	INTEGER DEFAULT 0,
+	"error_count"	INTEGER DEFAULT 0,
+	"status"	TEXT NOT NULL,
+	"message"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "pad_flow_email_recipients" (
+	"id"	INTEGER,
+	"email"	TEXT NOT NULL UNIQUE,
+	"active"	INTEGER NOT NULL DEFAULT 1,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "pad_flow_events" (
+	"id"	INTEGER,
+	"run_id"	TEXT NOT NULL,
+	"event_type"	TEXT NOT NULL,
+	"event_ts"	TEXT NOT NULL,
+	"step_name"	TEXT,
+	"message"	TEXT,
+	"details_json"	TEXT,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("run_id") REFERENCES "pad_flow_runs"("run_id")
+);
+CREATE TABLE IF NOT EXISTS "pad_flow_runs" (
+	"run_id"	TEXT,
+	"flow_name"	TEXT NOT NULL,
+	"flow_key"	TEXT,
+	"flow_version"	TEXT,
+	"environment"	TEXT,
+	"machine_name"	TEXT,
+	"os_user"	TEXT,
+	"triggered_by"	TEXT,
+	"started_at"	TEXT NOT NULL,
+	"ended_at"	TEXT,
+	"status"	TEXT NOT NULL DEFAULT 'running',
+	"duration_ms"	INTEGER,
+	"start_payload_json"	TEXT,
+	"stop_payload_json"	TEXT,
+	"error_message"	TEXT,
+	"error_details_json"	TEXT,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("run_id")
+);
+CREATE TABLE IF NOT EXISTS "qa" (
+	"id"	TEXT,
+	"section"	TEXT,
+	"topics"	TEXT,
+	"question"	TEXT NOT NULL,
+	"answer"	TEXT NOT NULL,
+	"tags"	TEXT,
+	PRIMARY KEY("id")
+);
+CREATE TABLE IF NOT EXISTSAL TABLE qa_fts USING fts5(
+      question,
+      answer,
+      topics,
+      tags,
+      section,
+      orig_id UNINDEXED,
+      tokenize = 'porter'
+    );
+CREATE TABLE IF NOT EXISTS "qa_fts_config" (
+	"k"	,
+	"v"	,
+	PRIMARY KEY("k")
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS "qa_fts_content" (
+	"id"	INTEGER,
+	"c0"	,
+	"c1"	,
+	"c2"	,
+	"c3"	,
+	"c4"	,
+	"c5"	,
+	PRIMARY KEY("id")
+);
+CREATE TABLE IF NOT EXISTS "qa_fts_data" (
+	"id"	INTEGER,
+	"block"	BLOB,
+	PRIMARY KEY("id")
+);
+CREATE TABLE IF NOT EXISTS "qa_fts_docsize" (
+	"id"	INTEGER,
+	"sz"	BLOB,
+	PRIMARY KEY("id")
+);
+CREATE TABLE IF NOT EXISTS "qa_fts_idx" (
+	"segid"	,
+	"term"	,
+	"pgno"	,
+	PRIMARY KEY("segid","term")
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS "sensys_admission_appointments" (
+	"id"	INTEGER,
+	"admission_id"	INTEGER NOT NULL,
+	"appt_datetime"	TEXT,
+	"care_team_id"	INTEGER,
+	"appt_status"	TEXT NOT NULL DEFAULT 'New',
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("admission_id") REFERENCES "sensys_admissions"("id"),
+	FOREIGN KEY("care_team_id") REFERENCES "sensys_care_team"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_admission_care_team" (
+	"id"	INTEGER,
+	"care_team_id"	INTEGER NOT NULL,
+	"admission_id"	INTEGER NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("admission_id") REFERENCES "sensys_admissions"("id"),
+	FOREIGN KEY("care_team_id") REFERENCES "sensys_care_team"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_admission_dc_submissions" (
+	"id"	INTEGER,
+	"admission_id"	INTEGER NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"created_by"	INTEGER,
+	"dc_date"	TEXT,
+	"dc_time"	TEXT,
+	"dc_confirmed"	INTEGER DEFAULT 0,
+	"dc_urgent"	INTEGER DEFAULT 0,
+	"urgent_comments"	TEXT,
+	"dc_destination"	TEXT,
+	"destination_comments"	TEXT,
+	"dc_with"	TEXT,
+	"hh_comments"	TEXT,
+	"dme_comments"	TEXT,
+	"aid_consult"	TEXT,
+	"pcp_freetext"	TEXT,
+	"coordinate_caregiver"	INTEGER DEFAULT 0,
+	"caregiver_name"	TEXT,
+	"caregiver_number"	TEXT,
+	"apealling_dc"	INTEGER DEFAULT 0,
+	"appeal_comments"	TEXT,
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	"hh_agency_id"	INTEGER,
+	"hh_preferred"	INTEGER DEFAULT 0,
+	"TEXT"	,
+	"hh_carecompare_ccn"	TEXT,
+	"hh_carecompare_name"	TEXT,
+	"hh_carecompare_dba"	TEXT,
+	"hh_carecompare_city"	TEXT,
+	"hh_carecompare_state"	TEXT,
+	"hh_carecompare_zip"	TEXT,
+	"hh_carecompare_county"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("admission_id") REFERENCES "sensys_admissions"("id"),
+	FOREIGN KEY("created_by") REFERENCES "sensys_users"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_admission_esigns" (
+	"id"	INTEGER,
+	"admission_id"	INTEGER NOT NULL,
+	"care_team_id"	INTEGER NOT NULL,
+	"service_type_id"	INTEGER NOT NULL,
+	"comments"	TEXT,
+	"status"	TEXT DEFAULT 'Pending',
+	"created_by_user_id"	INTEGER,
+	"updated_by_user_id"	INTEGER,
+	"signed_by"	INTEGER,
+	"signed_at"	TEXT,
+	"declined_by"	INTEGER,
+	"declined_at"	TEXT,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "sensys_admission_note_answers" (
+	"id"	INTEGER,
+	"note_id"	INTEGER NOT NULL,
+	"field_key"	TEXT NOT NULL,
+	"value_text"	TEXT,
+	"value_num"	REAL,
+	"value_date"	TEXT,
+	"value_bool"	INTEGER,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	UNIQUE("note_id","field_key")
+);
+CREATE TABLE IF NOT EXISTS "sensys_admission_notes" (
+	"id"	INTEGER,
+	"admission_id"	INTEGER NOT NULL,
+	"note_name"	TEXT NOT NULL,
+	"note_comments"	TEXT,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"created_by"	INTEGER,
+	"deleted_at"	TEXT,
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"note_title"	TEXT,
+	"status"	TEXT NOT NULL DEFAULT 'New',
+	"response1"	TEXT,
+	"response2"	TEXT,
+	"share_with_user_id"	INTEGER,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("admission_id") REFERENCES "sensys_admissions"("id"),
+	FOREIGN KEY("created_by") REFERENCES "sensys_users"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_admission_referrals" (
+	"id"	INTEGER,
+	"admission_id"	INTEGER NOT NULL,
+	"agency_id"	INTEGER NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("admission_id") REFERENCES "sensys_admissions"("id"),
+	FOREIGN KEY("agency_id") REFERENCES "sensys_agencies"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_admission_tasks" (
+	"id"	INTEGER,
+	"admission_id"	INTEGER NOT NULL,
+	"assigned_user_id"	INTEGER,
+	"task_status"	TEXT NOT NULL DEFAULT 'New',
+	"task_name"	TEXT NOT NULL,
+	"task_comments"	TEXT,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("admission_id") REFERENCES "sensys_admissions"("id"),
+	FOREIGN KEY("assigned_user_id") REFERENCES "sensys_users"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_admissions" (
+	"id"	INTEGER,
+	"patient_id"	INTEGER NOT NULL,
+	"agency_id"	INTEGER NOT NULL,
+	"admit_date"	TEXT,
+	"dc_date"	TEXT,
+	"room"	TEXT,
+	"referring_agency"	TEXT,
+	"reason"	TEXT,
+	"latest_pcp"	TEXT,
+	"notes1"	TEXT,
+	"notes2"	TEXT,
+	"active"	INTEGER DEFAULT 1,
+	"next_location"	TEXT,
+	"next_agency_id"	INTEGER,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"assigned_user_id"	INTEGER,
+	"assigned_at"	TEXT,
+	"created_by_user_id"	INTEGER,
+	"updated_by_user_id"	INTEGER,
+	"TEXT"	,
+	"mrn"	TEXT,
+	"visit_id"	TEXT,
+	"facility_code"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("agency_id") REFERENCES "sensys_agencies"("id"),
+	FOREIGN KEY("assigned_user_id") REFERENCES "sensys_users"("id"),
+	FOREIGN KEY("created_by_user_id") REFERENCES "sensys_users"("id"),
+	FOREIGN KEY("next_agency_id") REFERENCES "sensys_agencies"("id"),
+	FOREIGN KEY("patient_id") REFERENCES "sensys_patients"("id"),
+	FOREIGN KEY("updated_by_user_id") REFERENCES "sensys_users"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_agencies" (
+	"id"	INTEGER,
+	"agency_name"	TEXT NOT NULL,
+	"agency_type"	TEXT NOT NULL,
+	"facility_code"	TEXT DEFAULT '',
+	"notes"	TEXT DEFAULT '',
+	"notes2"	TEXT DEFAULT '',
+	"address"	TEXT DEFAULT '',
+	"city"	TEXT DEFAULT '',
+	"state"	TEXT DEFAULT '',
+	"zip"	TEXT DEFAULT '',
+	"phone1"	TEXT DEFAULT '',
+	"phone2"	TEXT DEFAULT '',
+	"email"	TEXT DEFAULT '',
+	"fax"	TEXT DEFAULT '',
+	"evolv_client"	INTEGER DEFAULT 0,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"TEXT"	,
+	"aliases"	TEXT,
+	"deleted_at"	TEXT,
+	"carecompare_ccn"	TEXT DEFAULT '',
+	"pdw_attempts_expected"	INTEGER DEFAULT 2,
+	"pdw_pref_details"	TEXT DEFAULT '',
+	"pdw_enable_48h"	INTEGER DEFAULT 1,
+	"pdw_enable_15d"	INTEGER DEFAULT 1,
+	"pdw_enable_30d"	INTEGER DEFAULT 1,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "sensys_agency_preferred_providers" (
+	"id"	INTEGER,
+	"agency_id"	INTEGER NOT NULL,
+	"provider_agency_id"	INTEGER NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	UNIQUE("agency_id","provider_agency_id"),
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("agency_id") REFERENCES "sensys_agencies"("id"),
+	FOREIGN KEY("provider_agency_id") REFERENCES "sensys_agencies"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_care_team" (
+	"id"	INTEGER,
+	"name"	TEXT NOT NULL,
+	"type"	TEXT NOT NULL,
+	"npi"	TEXT,
+	"aliases"	TEXT,
+	"address1"	TEXT,
+	"address2"	TEXT,
+	"city"	TEXT,
+	"state"	TEXT,
+	"zip"	TEXT,
+	"practice_name"	TEXT,
+	"phone1"	TEXT,
+	"phone2"	TEXT,
+	"email1"	TEXT,
+	"email2"	TEXT,
+	"fax"	TEXT,
+	"active"	INTEGER DEFAULT 1,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "sensys_census_job_rows" (
+	"id"	INTEGER,
+	"job_id"	TEXT NOT NULL,
+	"kind"	TEXT NOT NULL,
+	"first_name"	TEXT,
+	"last_name"	TEXT,
+	"dob"	TEXT,
+	"admission_date"	TEXT,
+	"discharge_date"	TEXT,
+	"room_number"	TEXT,
+	"primary_phone"	TEXT,
+	"note"	TEXT,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"home_phone"	TEXT,
+	"address"	TEXT,
+	"city"	TEXT,
+	"state"	TEXT,
+	"zip"	TEXT,
+	"primary_ins"	TEXT,
+	"primary_number"	TEXT,
+	"primary_care_phys"	TEXT,
+	"tag"	TEXT,
+	"facility_code"	TEXT,
+	"reason_admission"	TEXT,
+	"attending_phys"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("job_id") REFERENCES "sensys_census_jobs"("job_id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_census_jobs" (
+	"job_id"	TEXT,
+	"facility_name"	TEXT NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("job_id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_dc_note_template_agencies" (
+	"id"	INTEGER,
+	"template_id"	INTEGER NOT NULL,
+	"agency_id"	INTEGER NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	UNIQUE("template_id","agency_id"),
+	FOREIGN KEY("template_id") REFERENCES "sensys_dc_note_templates"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_dc_note_templates" (
+	"id"	INTEGER,
+	"template_name"	TEXT NOT NULL,
+	"agency_id"	INTEGER,
+	"active"	INTEGER DEFAULT 1,
+	"template_body"	TEXT NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "sensys_dc_submission_services" (
+	"id"	INTEGER,
+	"services_id"	INTEGER NOT NULL,
+	"admission_dc_submission_id"	INTEGER NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("admission_dc_submission_id") REFERENCES "sensys_admission_dc_submissions"("id"),
+	FOREIGN KEY("services_id") REFERENCES "sensys_services"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_esign_services" (
+	"id"	INTEGER,
+	"esign_id"	INTEGER NOT NULL,
+	"services_id"	INTEGER NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "sensys_fax_log" (
+	"id"	INTEGER,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"created_by_user_id"	INTEGER,
+	"admission_id"	INTEGER,
+	"direction"	TEXT DEFAULT 'outbound',
+	"to_fax"	TEXT NOT NULL,
+	"from_fax"	TEXT,
+	"cover_text"	TEXT,
+	"pdf_id"	INTEGER,
+	"rc_fax_id"	TEXT,
+	"status"	TEXT,
+	"error"	TEXT,
+	"rc_response_json"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("admission_id") REFERENCES "sensys_admissions"("id"),
+	FOREIGN KEY("pdf_id") REFERENCES "sensys_pdf_files"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_note_template_agencies" (
+	"id"	INTEGER,
+	"template_id"	INTEGER NOT NULL,
+	"agency_id"	INTEGER NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	UNIQUE("template_id","agency_id"),
+	FOREIGN KEY("template_id") REFERENCES "sensys_note_templates"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_note_template_fields" (
+	"id"	INTEGER,
+	"template_id"	INTEGER NOT NULL,
+	"field_key"	TEXT NOT NULL,
+	"field_label"	TEXT NOT NULL,
+	"field_type"	TEXT NOT NULL,
+	"required"	INTEGER NOT NULL DEFAULT 0,
+	"sort_order"	INTEGER NOT NULL DEFAULT 0,
+	"options_json"	TEXT,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	UNIQUE("template_id","field_key")
+);
+CREATE TABLE IF NOT EXISTS "sensys_note_template_roles" (
+	"id"	INTEGER,
+	"template_id"	INTEGER NOT NULL,
+	"role_key"	TEXT NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	UNIQUE("template_id","role_key"),
+	FOREIGN KEY("template_id") REFERENCES "sensys_note_templates"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_note_template_share_roles" (
+	"id"	INTEGER,
+	"template_id"	INTEGER NOT NULL,
+	"role_key"	TEXT NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	UNIQUE("template_id","role_key"),
+	FOREIGN KEY("template_id") REFERENCES "sensys_note_templates"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_note_templates" (
+	"id"	INTEGER,
+	"agency_id"	INTEGER,
+	"template_name"	TEXT NOT NULL,
+	"active"	INTEGER NOT NULL DEFAULT 1,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "sensys_notification_templates" (
+	"id"	INTEGER,
+	"notif_key"	TEXT NOT NULL UNIQUE,
+	"name"	TEXT NOT NULL,
+	"active"	INTEGER DEFAULT 1,
+	"email_subject"	TEXT DEFAULT '',
+	"email_body"	TEXT DEFAULT '',
+	"email_html"	TEXT DEFAULT '',
+	"sms_body"	TEXT DEFAULT '',
+	"dashboard_body"	TEXT DEFAULT '',
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "sensys_patients" (
+	"id"	INTEGER,
+	"first_name"	TEXT,
+	"last_name"	TEXT,
+	"dob"	TEXT,
+	"gender"	TEXT,
+	"phone1"	TEXT,
+	"phone2"	TEXT,
+	"email"	TEXT,
+	"email2"	TEXT,
+	"address1"	TEXT,
+	"address2"	TEXT,
+	"city"	TEXT,
+	"state"	TEXT,
+	"zip"	TEXT,
+	"insurance_name1"	TEXT,
+	"insurance_number1"	TEXT,
+	"insurance_name2"	TEXT,
+	"insurance_number2"	TEXT,
+	"active"	INTEGER DEFAULT 1,
+	"notes1"	TEXT,
+	"notes2"	TEXT,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	"source"	TEXT DEFAULT 'manual',
+	"firstname_initial"	TEXT,
+	"lastname_three"	TEXT,
+	"patient_key"	TEXT,
+	"external_patient_id"	TEXT,
+	"mrn"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "sensys_pdf_files" (
+	"id"	INTEGER,
+	"admission_id"	INTEGER,
+	"doc_type"	TEXT DEFAULT 'pdf',
+	"original_filename"	TEXT,
+	"stored_filename"	TEXT NOT NULL,
+	"sha256"	TEXT,
+	"size_bytes"	INTEGER DEFAULT 0,
+	"content_type"	TEXT DEFAULT 'application/pdf',
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"expires_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "sensys_postdc_attempts" (
+	"id"	INTEGER,
+	"work_item_id"	INTEGER NOT NULL,
+	"attempt_no"	INTEGER NOT NULL,
+	"outcome"	TEXT NOT NULL,
+	"note"	TEXT,
+	"attempted_at"	TEXT NOT NULL DEFAULT (datetime('now')),
+	"next_due_at"	TEXT,
+	"created_by_user_id"	INTEGER,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("created_by_user_id") REFERENCES "sensys_users"("id"),
+	FOREIGN KEY("work_item_id") REFERENCES "sensys_postdc_work_items"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_postdc_work_items" (
+	"id"	INTEGER,
+	"admission_id"	INTEGER NOT NULL,
+	"task_type"	TEXT NOT NULL,
+	"due_at"	TEXT NOT NULL,
+	"status"	TEXT NOT NULL DEFAULT 'unassigned',
+	"assigned_to_user_id"	INTEGER,
+	"assigned_at"	TEXT,
+	"completed_at"	TEXT,
+	"completed_by_user_id"	INTEGER,
+	"attempt_count"	INTEGER DEFAULT 0,
+	"max_attempts"	INTEGER DEFAULT 2,
+	"last_attempt_at"	TEXT,
+	"last_outcome"	TEXT,
+	"last_note"	TEXT,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	"assigned_by_user_id"	INTEGER,
+	"assignment_notes"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("admission_id") REFERENCES "sensys_admissions"("id"),
+	FOREIGN KEY("assigned_to_user_id") REFERENCES "sensys_users"("id"),
+	FOREIGN KEY("completed_by_user_id") REFERENCES "sensys_users"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_provider_library_hha" (
+	"ccn"	TEXT,
+	"provider_name"	TEXT DEFAULT '',
+	"dba"	TEXT DEFAULT '',
+	"address"	TEXT DEFAULT '',
+	"city"	TEXT DEFAULT '',
+	"state"	TEXT DEFAULT '',
+	"zip"	TEXT DEFAULT '',
+	"county"	TEXT DEFAULT '',
+	"phone"	TEXT DEFAULT '',
+	"fax"	TEXT DEFAULT '',
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("ccn")
+);
+CREATE TABLE IF NOT EXISTS "sensys_provider_library_meta" (
+	"dataset_id"	TEXT,
+	"last_sync_at"	TEXT DEFAULT '',
+	"last_row_count"	INTEGER DEFAULT 0,
+	"last_error"	TEXT DEFAULT '',
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("dataset_id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_roles" (
+	"id"	INTEGER,
+	"role_key"	TEXT NOT NULL UNIQUE,
+	"role_name"	TEXT NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "sensys_service_type" (
+	"id"	INTEGER,
+	"name"	TEXT NOT NULL,
+	"code"	TEXT,
+	"active"	INTEGER DEFAULT 1,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "sensys_services" (
+	"id"	INTEGER,
+	"name"	TEXT NOT NULL,
+	"service_type"	TEXT NOT NULL,
+	"dropdown"	INTEGER DEFAULT 1,
+	"reminder_id"	TEXT,
+	"deleted_at"	TEXT,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"service_type_id"	INTEGER,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "sensys_sessions" (
+	"token"	TEXT,
+	"user_id"	INTEGER NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"expires_at"	TEXT NOT NULL,
+	PRIMARY KEY("token"),
+	FOREIGN KEY("user_id") REFERENCES "sensys_users"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_sms_log" (
+	"id"	INTEGER,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"created_by_user_id"	INTEGER,
+	"admission_id"	INTEGER,
+	"direction"	TEXT DEFAULT 'outbound',
+	"to_phone"	TEXT NOT NULL,
+	"from_phone"	TEXT,
+	"message"	TEXT,
+	"rc_message_id"	TEXT,
+	"status"	TEXT,
+	"error"	TEXT,
+	"rc_response_json"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("admission_id") REFERENCES "sensys_admissions"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_user_agencies" (
+	"id"	INTEGER,
+	"user_id"	INTEGER NOT NULL,
+	"agency_id"	INTEGER NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("id" AUTOINCREMENT),
+	UNIQUE("user_id","agency_id"),
+	FOREIGN KEY("agency_id") REFERENCES "sensys_agencies"("id"),
+	FOREIGN KEY("user_id") REFERENCES "sensys_users"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_user_esign_links" (
+	"id"	INTEGER,
+	"user_id"	INTEGER NOT NULL,
+	"care_team_id"	INTEGER NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("id" AUTOINCREMENT),
+	UNIQUE("user_id","care_team_id"),
+	FOREIGN KEY("user_id") REFERENCES "sensys_users"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_user_facilities" (
+	"id"	INTEGER,
+	"user_id"	INTEGER NOT NULL,
+	"facility_name"	TEXT NOT NULL,
+	"is_active"	INTEGER DEFAULT 1,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("id" AUTOINCREMENT),
+	UNIQUE("user_id","facility_name"),
+	FOREIGN KEY("user_id") REFERENCES "sensys_users"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_user_note_templates" (
+	"id"	INTEGER,
+	"user_id"	INTEGER NOT NULL,
+	"template_id"	INTEGER NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	UNIQUE("user_id","template_id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_user_notification_prefs" (
+	"id"	INTEGER,
+	"user_id"	INTEGER NOT NULL,
+	"notif_key"	TEXT NOT NULL,
+	"deliver_email"	INTEGER DEFAULT 0,
+	"deliver_sms"	INTEGER DEFAULT 0,
+	"deliver_dashboard"	INTEGER DEFAULT 1,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	UNIQUE("user_id","notif_key"),
+	FOREIGN KEY("user_id") REFERENCES "sensys_users"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_user_notifications" (
+	"id"	INTEGER,
+	"user_id"	INTEGER NOT NULL,
+	"notif_key"	TEXT NOT NULL,
+	"admission_id"	INTEGER,
+	"related_table"	TEXT DEFAULT '',
+	"related_id"	INTEGER,
+	"title"	TEXT DEFAULT '',
+	"body"	TEXT DEFAULT '',
+	"payload_json"	TEXT DEFAULT '',
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"read_at"	TEXT DEFAULT NULL,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "sensys_user_pages" (
+	"id"	INTEGER,
+	"user_id"	INTEGER NOT NULL,
+	"page_key"	TEXT NOT NULL,
+	"is_enabled"	INTEGER DEFAULT 1,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("id" AUTOINCREMENT),
+	UNIQUE("user_id","page_key"),
+	FOREIGN KEY("user_id") REFERENCES "sensys_users"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_user_roles" (
+	"id"	INTEGER,
+	"user_id"	INTEGER NOT NULL,
+	"role_id"	INTEGER NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("id" AUTOINCREMENT),
+	UNIQUE("user_id","role_id"),
+	FOREIGN KEY("role_id") REFERENCES "sensys_roles"("id"),
+	FOREIGN KEY("user_id") REFERENCES "sensys_users"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_user_schedules" (
+	"id"	INTEGER,
+	"user_id"	INTEGER NOT NULL,
+	"day_of_week"	INTEGER NOT NULL,
+	"start_time"	TEXT NOT NULL,
+	"end_time"	TEXT NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"deleted_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("user_id") REFERENCES "sensys_users"("id")
+);
+CREATE TABLE IF NOT EXISTS "sensys_users" (
+	"id"	INTEGER,
+	"email"	TEXT NOT NULL UNIQUE,
+	"display_name"	TEXT,
+	"is_active"	INTEGER DEFAULT 1,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	"password"	TEXT DEFAULT '',
+	"cell_phone"	TEXT DEFAULT '',
+	"account_locked"	INTEGER DEFAULT 0,
+	"npi"	TEXT DEFAULT '',
+	"calls_per_hour"	REAL DEFAULT 0,
+	"last_login_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "snf_admission_facilities" (
+	"id"	INTEGER,
+	"facility_name"	TEXT NOT NULL,
+	"attending"	TEXT,
+	"notes"	TEXT,
+	"notes2"	TEXT,
+	"aliases"	TEXT,
+	"facility_emails"	TEXT,
+	"pin_hash"	TEXT,
+	"facility_phone"	TEXT,
+	"medrina_snf"	INTEGER DEFAULT 0,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "snf_admissions" (
+	"id"	INTEGER,
+	"raw_note_id"	INTEGER NOT NULL,
+	"patient_mrn"	TEXT NOT NULL,
+	"patient_name"	TEXT,
+	"hospital_name"	TEXT,
+	"note_datetime"	TEXT,
+	"ai_is_snf_candidate"	INTEGER,
+	"ai_snf_name_raw"	TEXT,
+	"ai_snf_facility_id"	TEXT,
+	"ai_expected_transfer_date"	TEXT,
+	"ai_confidence"	REAL,
+	"status"	TEXT DEFAULT 'pending',
+	"final_snf_facility_id"	TEXT,
+	"final_snf_name_display"	TEXT,
+	"final_expected_transfer_date"	TEXT,
+	"reviewed_by"	TEXT,
+	"reviewed_at"	TEXT,
+	"review_comments"	TEXT,
+	"emailed_at"	TEXT,
+	"email_run_id"	TEXT,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"visit_id"	TEXT,
+	"disposition"	TEXT,
+	"facility_free_text"	TEXT,
+	"last_seen_active_date"	TEXT,
+	"dob"	TEXT,
+	"attending"	TEXT,
+	"admit_date"	TEXT,
+	"notified_by_hospital"	INTEGER DEFAULT 0,
+	"notified_by"	TEXT,
+	"notification_dt"	TEXT,
+	"hospital_reported_facility"	TEXT,
+	"notification_details"	TEXT,
+	"updated_at"	TEXT,
+	"assignment_confirmation"	TEXT DEFAULT 'Unknown',
+	"billing_confirmed"	INTEGER DEFAULT 0,
+	"confirmation_call_dt"	TEXT,
+	"snf_staff_name"	TEXT,
+	"physician_assigned"	TEXT,
+	"assignment_notes"	TEXT,
+	"last_reviewed_note_id"	INTEGER,
+	"dc_date"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "snf_ai_summaries" (
+	"id"	INTEGER,
+	"snf_id"	INTEGER NOT NULL,
+	"visit_id"	TEXT,
+	"created_at"	TEXT NOT NULL DEFAULT (datetime('now')),
+	"model"	TEXT,
+	"prompt_key"	TEXT,
+	"prompt_value"	TEXT,
+	"notes_count"	INTEGER DEFAULT 0,
+	"summary_json"	TEXT NOT NULL,
+	"notes_limit"	INTEGER DEFAULT 0,
+	"latest_note_id"	INTEGER DEFAULT 0,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("snf_id") REFERENCES "snf_admissions"("id")
+);
+CREATE TABLE IF NOT EXISTS "snf_notification_targets" (
+	"id"	INTEGER,
+	"facility_id"	TEXT NOT NULL,
+	"email_to"	TEXT NOT NULL,
+	"email_cc"	TEXT,
+	"active"	INTEGER DEFAULT 1,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"updated_at"	TEXT DEFAULT (datetime('now')),
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "snf_pdf_links" (
+	"id"	INTEGER,
+	"token"	TEXT NOT NULL UNIQUE,
+	"snf_facility_id"	INTEGER NOT NULL,
+	"for_date"	TEXT NOT NULL,
+	"admission_ids_json"	TEXT NOT NULL,
+	"created_at"	TEXT NOT NULL DEFAULT (datetime('now')),
+	"expires_at"	TEXT NOT NULL,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "snf_secure_link_access_log" (
+	"id"	INTEGER,
+	"secure_link_id"	INTEGER NOT NULL,
+	"snf_facility_id"	INTEGER NOT NULL,
+	"pin_type"	TEXT NOT NULL,
+	"accessed_at"	TEXT DEFAULT (datetime('now')),
+	"ip"	TEXT,
+	"user_agent"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "snf_secure_links" (
+	"id"	INTEGER,
+	"token_hash"	TEXT NOT NULL,
+	"snf_facility_id"	INTEGER NOT NULL,
+	"admission_ids"	TEXT NOT NULL,
+	"for_date"	TEXT,
+	"expires_at"	TEXT NOT NULL,
+	"created_at"	TEXT DEFAULT (datetime('now')),
+	"used_at"	TEXT,
+	"email_run_id"	TEXT,
+	"sent_to"	TEXT,
+	"sent_at"	TEXT,
+	"pdf_bytes"	BLOB,
+	"pdf_generated_at"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "user_qa_log" (
+	"id"	INTEGER,
+	"ts"	TEXT,
+	"section"	TEXT,
+	"q"	TEXT,
+	"a"	TEXT,
+	"promoted"	INTEGER DEFAULT 0,
+	"a_quality"	TEXT DEFAULT '',
+	"debug_sql"	TEXT,
+	PRIMARY KEY("id")
+);
+CREATE VIEW v_contacts_by_type AS
+    SELECT facility_id, type, GROUP_CONCAT(name, ' | ') AS names
+    FROM facility_contacts
+    GROUP BY facility_id, type;
+CREATE VIEW v_facility_knowledge AS
+    SELECT
+      f.facility_id,
+      f.facility_name,
+      'fact' AS kind,
+      ff.fact_text AS text,
+      ff.tags      AS tags,
+      ff.created_at AS created_at
+    FROM fac_facts ff
+    JOIN facilities f ON f.facility_id = ff.facility_id
+
+    UNION ALL
+
+    SELECT
+      f.facility_id,
+      f.facility_name,
+      'service' AS kind,
+      fas.service AS text,
+      '' AS tags,
+      NULL AS created_at
+    FROM facility_additional_services fas
+    JOIN facilities f ON f.facility_id = fas.facility_id
+
+    UNION ALL
+
+    SELECT
+      f.facility_id,
+      f.facility_name,
+      'partner' AS kind,
+      fp.name AS text,
+      COALESCE(fp.insurance, '') AS tags,
+      NULL AS created_at
+    FROM facility_partners fp
+    JOIN facilities f ON f.facility_id = fp.facility_id
+
+    UNION ALL
+
+    SELECT
+      f.facility_id,
+      f.facility_name,
+      'insurance' AS kind,
+      fi.plan AS text,
+      '' AS tags,
+      NULL AS created_at
+    FROM facility_insurance_plans fi
+    JOIN facilities f ON f.facility_id = fi.facility_id;
+CREATE VIEW v_facility_listables AS
+
+            -- 1) One row per facility with summary metrics
+            SELECT
+                f.facility_id,
+                f.facility_name,
+                f.city,
+                f.state,
+                f.zip,
+                f.county,
+                f.corporate_group,
+                f.emr,
+                f.emr_other,
+                f.pt_emr,
+                vs.orders,
+                vs.orders_other,
+                vs.outpatient_pt,
+                vs.short_beds,
+                vs.ltc_beds,
+                vs.avg_dcs,
+                'facility' AS item_type,
+                ''         AS item_subtype,
+                f.facility_name AS display_name,
+                TRIM(
+                    COALESCE(f.city, '') ||
+                    CASE
+                        WHEN f.city IS NOT NULL AND f.city <> '' AND f.state IS NOT NULL AND f.state <> ''
+                            THEN ', '
+                        ELSE ''
+                    END ||
+                    COALESCE(f.state, '') ||
+                    CASE
+                        WHEN f.corporate_group IS NOT NULL AND f.corporate_group <> ''
+                            THEN ' – ' || f.corporate_group
+                        ELSE ''
+                    END
+                ) AS details
+            FROM facilities f
+            LEFT JOIN v_facility_summary vs
+                ON vs.facility_id = f.facility_id
+
+            UNION ALL
+
+            -- 2) Additional services
+            SELECT
+                fas.facility_id,
+                f.facility_name,
+                f.city,
+                f.state,
+                f.zip,
+                f.county,
+                f.corporate_group,
+                NULL AS emr,
+                NULL AS emr_other,
+                NULL AS pt_emr,
+                NULL AS orders,
+                NULL AS orders_other,
+                NULL AS outpatient_pt,
+                NULL AS short_beds,
+                NULL AS ltc_beds,
+                NULL AS avg_dcs,
+                'additional_service' AS item_type,
+                ''                   AS item_subtype,
+                fas.service          AS display_name,
+                ''                   AS details
+            FROM facility_additional_services fas
+            JOIN facilities f
+                ON f.facility_id = fas.facility_id
+
+            UNION ALL
+
+            -- 3) Insurance plans
+            SELECT
+                fip.facility_id,
+                f.facility_name,
+                f.city,
+                f.state,
+                f.zip,
+                f.county,
+                f.corporate_group,
+                NULL AS emr,
+                NULL AS emr_other,
+                NULL AS pt_emr,
+                NULL AS orders,
+                NULL AS orders_other,
+                NULL AS outpatient_pt,
+                NULL AS short_beds,
+                NULL AS ltc_beds,
+                NULL AS avg_dcs,
+                'insurance_plan' AS item_type,
+                ''               AS item_subtype,
+                fip.plan         AS display_name,
+                ''               AS details
+            FROM facility_insurance_plans fip
+            JOIN facilities f
+                ON f.facility_id = fip.facility_id
+
+            UNION ALL
+
+            -- 4) Community partners (home health, hospice, DME, etc.)
+            SELECT
+                fp.facility_id,
+                f.facility_name,
+                f.city,
+                f.state,
+                f.zip,
+                f.county,
+                f.corporate_group,
+                NULL AS emr,
+                NULL AS emr_other,
+                NULL AS pt_emr,
+                NULL AS orders,
+                NULL AS orders_other,
+                NULL AS outpatient_pt,
+                NULL AS short_beds,
+                NULL AS ltc_beds,
+                NULL AS avg_dcs,
+                'community_partner' AS item_type,
+                fp.type             AS item_subtype,
+                fp.name             AS display_name,
+                TRIM(
+                    CASE
+                        WHEN fp.ins_only IS NOT NULL AND fp.ins_only <> ''
+                            THEN 'Insurance only: ' || fp.ins_only
+                        ELSE ''
+                    END ||
+                    CASE
+                        WHEN (fp.ins_only IS NOT NULL AND fp.ins_only <> '')
+                             AND (fp.insurance IS NOT NULL AND fp.insurance <> '')
+                            THEN ' – '
+                        ELSE ''
+                    END ||
+                    COALESCE(fp.insurance, '')
+                ) AS details
+            FROM facility_partners fp
+            JOIN facilities f
+                ON f.facility_id = fp.facility_id
+
+            UNION ALL
+
+            -- 5) Contacts (Administrator, DON, UR, etc.)
+            SELECT
+                fc.facility_id,
+                f.facility_name,
+                f.city,
+                f.state,
+                f.zip,
+                f.county,
+                f.corporate_group,
+                NULL AS emr,
+                NULL AS emr_other,
+                NULL AS pt_emr,
+                NULL AS orders,
+                NULL AS orders_other,
+                NULL AS outpatient_pt,
+                NULL AS short_beds,
+                NULL AS ltc_beds,
+                NULL AS avg_dcs,
+                'contact'   AS item_type,
+                fc.type     AS item_subtype,
+                fc.name     AS display_name,
+                TRIM(
+                    COALESCE(fc.phone, '') ||
+                    CASE
+                        WHEN fc.phone IS NOT NULL AND fc.phone <> '' AND fc.email IS NOT NULL AND fc.email <> ''
+                            THEN ' | '
+                        ELSE ''
+                    END ||
+                    COALESCE(fc.email, '')
+                ) AS details
+            FROM facility_contacts fc
+            JOIN facilities f
+                ON f.facility_id = fc.facility_id;
+CREATE VIEW v_facility_summary AS
+    SELECT
+      f.facility_id,
+      f.facility_name,
+      f.city,
+      f.state,
+      f.zip,
+      COALESCE(NULLIF(f.emr,''), f.emr_other) AS emr,
+      f.orders,
+      f.orders_other,
+      f.outpatient_pt,
+      f.short_beds,
+      f.ltc_beds,
+      f.avg_dcs
+    FROM facilities f;
+CREATE VIEW v_hospital_discharges_export AS
+            SELECT
+                -- Hospital Discharges (prefixed with h_)
+                h.visit_id      AS h_visit_id,
+                h.patient_name  AS h_patient_name,
+                s.dob           AS snfa_dob,
+                h.hospital_name AS h_hospital_name,
+                h.admit_date    AS h_admit_date,
+                h.dc_date       AS h_dc_date,
+                h.disposition   AS h_disposition,
+                h.updated_at    AS h_updated_at,
+                h.dc_agency     AS h_dc_agency,
+                h.attending     AS h_attending,
+                h.pcp           AS h_pcp,
+                h.insurance     AS h_insurance,
+
+                -- SNF Admissions (prefixed with snfa_)
+                s.ai_is_snf_candidate AS snfa_ai_is_snf_candidate,
+
+                COALESCE(
+                    NULLIF(TRIM(s.final_snf_name_display), ''),
+                    NULLIF(TRIM(f.facility_name), ''),
+                    NULLIF(TRIM(s.ai_snf_name_raw), '')
+                ) AS snfa_snf_agency,
+
+                s.ai_confidence AS snfa_ai_confidence,
+                s.status        AS snfa_status,
+
+                CASE
+                    WHEN s.emailed_at IS NOT NULL AND TRIM(s.emailed_at) <> '' THEN 1
+                    ELSE 0
+                END AS snfa_emailed,
+
+                s.last_seen_active_date   AS snfa_last_seen_active,
+                s.assignment_confirmation AS snfa_assignment_confirmation,
+                s.billing_confirmed       AS snfa_billing_confirmed,
+                s.assignment_notes        AS snfa_assignment_notes
+
+            FROM hospital_discharges h
+            LEFT JOIN snf_admissions s
+                ON s.visit_id = h.visit_id
+            LEFT JOIN snf_admission_facilities f
+                ON f.id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id);
+CREATE VIEW v_partners_by_type AS
+    SELECT facility_id, type, GROUP_CONCAT(name, ' | ') AS names
+    FROM facility_partners
+    GROUP BY facility_id, type;
+CREATE VIEW v_snf_admissions_export AS
+            SELECT
+                -- SNF Admissions (base row)
+                s.visit_id,
+                s.patient_name,
+                s.dob,
+                s.hospital_name,
+                s.admit_date,
+                s.ai_is_snf_candidate AS ai_snf_candidate,
+
+                -- "SNF Agency" = same effective facility logic used elsewhere:
+                -- prefer final name display, else facility table name, else AI raw text
+                COALESCE(
+                    NULLIF(TRIM(s.final_snf_name_display), ''),
+                    NULLIF(TRIM(f.facility_name), ''),
+                    NULLIF(TRIM(s.ai_snf_name_raw), '')
+                ) AS snf_agency,
+
+                s.ai_confidence,
+                s.status,
+
+                -- emailed = 1 if emailed_at has a value
+                CASE
+                    WHEN s.emailed_at IS NOT NULL AND TRIM(s.emailed_at) <> '' THEN 1
+                    ELSE 0
+                END AS emailed,
+
+                s.last_seen_active_date AS last_seen_active,
+                s.updated_at,
+                s.attending,
+
+                s.assignment_confirmation,
+                s.billing_confirmed AS billing_confirmation,
+                s.assignment_notes,
+
+                -- Hospital Discharges (prefixed with h_)
+                h.dc_date      AS h_dc_date,
+                h.disposition  AS h_disposition,
+                h.updated_at   AS h_updated_at,
+                h.dc_agency    AS h_dc_agency,
+                h.pcp          AS h_pcp,
+                h.insurance    AS h_insurance
+
+            FROM snf_admissions s
+            LEFT JOIN hospital_discharges h
+                ON h.visit_id = s.visit_id
+            LEFT JOIN snf_admission_facilities f
+                ON f.id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id);
+CREATE INDEX IF NOT EXISTS "idx_census_patients_key" ON "census_run_patients" (
+	"facility_name",
+	"patient_key"
+);
+CREATE INDEX IF NOT EXISTS "idx_census_patients_run" ON "census_run_patients" (
+	"run_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_census_runs_fac_dt" ON "census_runs" (
+	"facility_name",
+	"created_at"	DESC
+);
+CREATE INDEX IF NOT EXISTS "idx_census_upload_job_files_job" ON "census_upload_job_files" (
+	"job_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_cm_notes_raw_datetime" ON "cm_notes_raw" (
+	"note_datetime"	DESC
+);
+CREATE INDEX IF NOT EXISTS "idx_cm_notes_raw_hash" ON "cm_notes_raw" (
+	"note_hash"
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_cm_notes_raw_hash_unique" ON "cm_notes_raw" (
+	"note_hash"
+) WHERE "note_hash" IS NOT NULL AND "note_hash" != '';
+CREATE INDEX IF NOT EXISTS "idx_cm_notes_raw_ignored" ON "cm_notes_raw" (
+	"ignored"
+);
+CREATE INDEX IF NOT EXISTS "idx_cm_notes_raw_mrn" ON "cm_notes_raw" (
+	"patient_mrn"
+);
+CREATE INDEX IF NOT EXISTS "idx_contacts_fac" ON "facility_contacts" (
+	"facility_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_contacts_type" ON "facility_contacts" (
+	"type"
+);
+CREATE INDEX IF NOT EXISTS "idx_doc_sections_doc_order" ON "hospital_document_sections" (
+	"document_id",
+	"section_order"
+);
+CREATE INDEX IF NOT EXISTS "idx_doc_sections_key" ON "hospital_document_sections" (
+	"section_key"
+);
+CREATE INDEX IF NOT EXISTS "idx_fac_facts_facility" ON "fac_facts" (
+	"facility_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_facilities_name" ON "facilities" (
+	"facility_name"
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_facilities_token" ON "facilities" (
+	"intake_token"
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_hexprof_unique" ON "hospital_extraction_profiles" (
+	"hospital_name",
+	"document_type"
+);
+CREATE INDEX IF NOT EXISTS "idx_hosp_discharge_hosp_dates" ON "hospital_discharges" (
+	"hospital_name",
+	"admit_date",
+	"dc_date"
+);
+CREATE INDEX IF NOT EXISTS "idx_hosp_discharge_patient" ON "hospital_discharges" (
+	"patient_mrn",
+	"patient_name"
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_hosp_discharge_visit" ON "hospital_discharges" (
+	"visit_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_hosp_docs_hash" ON "hospital_documents" (
+	"document_hash"
+);
+CREATE INDEX IF NOT EXISTS "idx_hosp_docs_hosp_type_dt" ON "hospital_documents" (
+	"hospital_name",
+	"document_type",
+	"document_datetime"	DESC
+);
+CREATE INDEX IF NOT EXISTS "idx_hosp_docs_mrn" ON "hospital_documents" (
+	"patient_mrn"
+);
+CREATE INDEX IF NOT EXISTS "idx_note_answers_note" ON "sensys_admission_note_answers" (
+	"note_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_note_fields_template" ON "sensys_note_template_fields" (
+	"template_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_note_templates_agency" ON "sensys_note_templates" (
+	"agency_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_pad_api_runs_received" ON "pad_api_runs" (
+	"received_at"	DESC
+);
+CREATE INDEX IF NOT EXISTS "idx_pad_flow_email_recipients_active" ON "pad_flow_email_recipients" (
+	"active"
+);
+CREATE INDEX IF NOT EXISTS "idx_pad_flow_events_run" ON "pad_flow_events" (
+	"run_id",
+	"event_ts"
+);
+CREATE INDEX IF NOT EXISTS "idx_pad_flow_events_type" ON "pad_flow_events" (
+	"event_type",
+	"event_ts"
+);
+CREATE INDEX IF NOT EXISTS "idx_pad_flow_runs_flow" ON "pad_flow_runs" (
+	"flow_key",
+	"started_at"	DESC
+);
+CREATE INDEX IF NOT EXISTS "idx_pad_flow_runs_started" ON "pad_flow_runs" (
+	"started_at"	DESC
+);
+CREATE INDEX IF NOT EXISTS "idx_pad_flow_runs_status" ON "pad_flow_runs" (
+	"status"
+);
+CREATE INDEX IF NOT EXISTS "idx_partners_fac" ON "facility_partners" (
+	"facility_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_partners_type" ON "facility_partners" (
+	"type"
+);
+CREATE INDEX IF NOT EXISTS "idx_provider_hha_city" ON "sensys_provider_library_hha" (
+	"city"
+);
+CREATE INDEX IF NOT EXISTS "idx_provider_hha_county" ON "sensys_provider_library_hha" (
+	"county"
+);
+CREATE INDEX IF NOT EXISTS "idx_provider_hha_dba" ON "sensys_provider_library_hha" (
+	"dba"
+);
+CREATE INDEX IF NOT EXISTS "idx_provider_hha_name" ON "sensys_provider_library_hha" (
+	"provider_name"
+);
+CREATE INDEX IF NOT EXISTS "idx_provider_hha_state" ON "sensys_provider_library_hha" (
+	"state"
+);
+CREATE INDEX IF NOT EXISTS "idx_provider_hha_zip" ON "sensys_provider_library_hha" (
+	"zip"
+);
+CREATE INDEX IF NOT EXISTS "idx_qa_section" ON "qa" (
+	"section"
+);
+CREATE INDEX IF NOT EXISTS "idx_qa_topics" ON "qa" (
+	"topics"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_active" ON "sensys_admissions" (
+	"active"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_agency" ON "sensys_admissions" (
+	"agency_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_appt_adm" ON "sensys_admission_appointments" (
+	"admission_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_appt_deleted" ON "sensys_admission_appointments" (
+	"deleted_at"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_appt_status" ON "sensys_admission_appointments" (
+	"appt_status"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_assigned_user" ON "sensys_admissions" (
+	"assigned_user_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_ct_adm" ON "sensys_admission_care_team" (
+	"admission_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_ct_ct" ON "sensys_admission_care_team" (
+	"care_team_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_ct_deleted" ON "sensys_admission_care_team" (
+	"deleted_at"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_dates" ON "sensys_admissions" (
+	"admit_date",
+	"dc_date"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_notes_adm" ON "sensys_admission_notes" (
+	"admission_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_notes_deleted" ON "sensys_admission_notes" (
+	"deleted_at"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_notes_name" ON "sensys_admission_notes" (
+	"note_name"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_notes_status" ON "sensys_admission_notes" (
+	"status"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_patient" ON "sensys_admissions" (
+	"patient_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_ref_adm" ON "sensys_admission_referrals" (
+	"admission_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_ref_agency" ON "sensys_admission_referrals" (
+	"agency_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_ref_deleted" ON "sensys_admission_referrals" (
+	"deleted_at"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_tasks_adm" ON "sensys_admission_tasks" (
+	"admission_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_tasks_deleted" ON "sensys_admission_tasks" (
+	"deleted_at"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_adm_tasks_status" ON "sensys_admission_tasks" (
+	"task_status"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_admission_esigns_admission_id" ON "sensys_admission_esigns" (
+	"admission_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_admission_esigns_care_team" ON "sensys_admission_esigns" (
+	"care_team_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_admission_esigns_deleted" ON "sensys_admission_esigns" (
+	"deleted_at"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_admission_esigns_service_type" ON "sensys_admission_esigns" (
+	"service_type_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_agencies_name" ON "sensys_agencies" (
+	"agency_name"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_agency_pref_agency" ON "sensys_agency_preferred_providers" (
+	"agency_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_agency_pref_provider" ON "sensys_agency_preferred_providers" (
+	"provider_agency_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_care_team_active" ON "sensys_care_team" (
+	"active"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_care_team_deleted" ON "sensys_care_team" (
+	"deleted_at"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_care_team_name" ON "sensys_care_team" (
+	"name"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_care_team_type" ON "sensys_care_team" (
+	"type"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_dc_sub_adm" ON "sensys_admission_dc_submissions" (
+	"admission_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_dc_sub_deleted" ON "sensys_admission_dc_submissions" (
+	"deleted_at"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_dc_sub_services_srv" ON "sensys_dc_submission_services" (
+	"services_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_dc_sub_services_sub" ON "sensys_dc_submission_services" (
+	"admission_dc_submission_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_esign_services_esign_id" ON "sensys_esign_services" (
+	"esign_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_esign_services_services_id" ON "sensys_esign_services" (
+	"services_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_fax_log_adm" ON "sensys_fax_log" (
+	"admission_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_fax_log_created" ON "sensys_fax_log" (
+	"created_at"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_notif_tpl_active" ON "sensys_notification_templates" (
+	"active"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_notif_tpl_deleted" ON "sensys_notification_templates" (
+	"deleted_at"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_notif_tpl_key" ON "sensys_notification_templates" (
+	"notif_key"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_patients_active" ON "sensys_patients" (
+	"active"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_patients_dob" ON "sensys_patients" (
+	"dob"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_patients_key" ON "sensys_patients" (
+	"patient_key"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_patients_name" ON "sensys_patients" (
+	"last_name",
+	"first_name"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_pdf_admission" ON "sensys_pdf_files" (
+	"admission_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_pdf_expires" ON "sensys_pdf_files" (
+	"expires_at"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_pdf_sha256" ON "sensys_pdf_files" (
+	"sha256"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_postdc_attempts_work_item" ON "sensys_postdc_attempts" (
+	"work_item_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_postdc_work_items_assigned" ON "sensys_postdc_work_items" (
+	"assigned_to_user_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_postdc_work_items_assigned_by" ON "sensys_postdc_work_items" (
+	"assigned_by_user_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_postdc_work_items_due" ON "sensys_postdc_work_items" (
+	"due_at"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_postdc_work_items_status" ON "sensys_postdc_work_items" (
+	"status"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_rows_job" ON "sensys_census_job_rows" (
+	"job_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_rows_kind" ON "sensys_census_job_rows" (
+	"job_id",
+	"kind"
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_sensys_service_type_code_active" ON "sensys_service_type" (
+	"code"
+) WHERE "deleted_at" IS NULL AND "code" IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_sensys_service_type_name_active" ON "sensys_service_type" (
+	"name"
+) WHERE "deleted_at" IS NULL;
+CREATE INDEX IF NOT EXISTS "idx_sensys_services_deleted" ON "sensys_services" (
+	"deleted_at"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_services_name" ON "sensys_services" (
+	"name"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_services_type" ON "sensys_services" (
+	"service_type"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_services_type_id" ON "sensys_services" (
+	"service_type_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_sessions_exp" ON "sensys_sessions" (
+	"expires_at"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_sessions_user" ON "sensys_sessions" (
+	"user_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_sms_log_adm" ON "sensys_sms_log" (
+	"admission_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_sms_log_created" ON "sensys_sms_log" (
+	"created_at"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_agencies_agency" ON "sensys_user_agencies" (
+	"agency_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_agencies_user" ON "sensys_user_agencies" (
+	"user_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_esign_links_ct" ON "sensys_user_esign_links" (
+	"care_team_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_esign_links_user" ON "sensys_user_esign_links" (
+	"user_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_facilities_fac" ON "sensys_user_facilities" (
+	"facility_name"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_facilities_user" ON "sensys_user_facilities" (
+	"user_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_notif_prefs_deleted" ON "sensys_user_notification_prefs" (
+	"deleted_at"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_notif_prefs_key" ON "sensys_user_notification_prefs" (
+	"notif_key"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_notif_prefs_user" ON "sensys_user_notification_prefs" (
+	"user_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_notifs_adm" ON "sensys_user_notifications" (
+	"admission_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_notifs_key" ON "sensys_user_notifications" (
+	"notif_key"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_notifs_read" ON "sensys_user_notifications" (
+	"read_at"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_notifs_user" ON "sensys_user_notifications" (
+	"user_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_pages_page" ON "sensys_user_pages" (
+	"page_key"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_pages_user" ON "sensys_user_pages" (
+	"user_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_roles_role" ON "sensys_user_roles" (
+	"role_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_roles_user" ON "sensys_user_roles" (
+	"user_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_schedules_dow" ON "sensys_user_schedules" (
+	"day_of_week"
+);
+CREATE INDEX IF NOT EXISTS "idx_sensys_user_schedules_user" ON "sensys_user_schedules" (
+	"user_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_snf_access_fac" ON "snf_secure_link_access_log" (
+	"snf_facility_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_snf_access_link" ON "snf_secure_link_access_log" (
+	"secure_link_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_snf_adm_fac_name" ON "snf_admission_facilities" (
+	"facility_name"
+);
+CREATE INDEX IF NOT EXISTS "idx_snf_adm_facility" ON "snf_admissions" (
+	"final_snf_facility_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_snf_adm_mrn" ON "snf_admissions" (
+	"patient_mrn"
+);
+CREATE INDEX IF NOT EXISTS "idx_snf_adm_raw_note" ON "snf_admissions" (
+	"raw_note_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_snf_adm_status_date" ON "snf_admissions" (
+	"status",
+	"final_expected_transfer_date"
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_snf_adm_visit" ON "snf_admissions" (
+	"visit_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_snf_ai_summaries_snf_id" ON "snf_ai_summaries" (
+	"snf_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_snf_notif_facility" ON "snf_notification_targets" (
+	"facility_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_snf_secure_links_fac" ON "snf_secure_links" (
+	"snf_facility_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_snf_secure_links_hash" ON "snf_secure_links" (
+	"token_hash"
+);
+CREATE INDEX IF NOT EXISTS "idx_user_note_tpl_user" ON "sensys_user_note_templates" (
+	"user_id"
+);
+CREATE INDEX IF NOT EXISTS "idx_userlog_section_ts" ON "user_qa_log" (
+	"section",
+	"ts"
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "ux_sensys_adm_ct_pair" ON "sensys_admission_care_team" (
+	"admission_id",
+	"care_team_id"
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "ux_sensys_postdc_work_item_unique" ON "sensys_postdc_work_items" (
+	"admission_id",
+	"task_type"
+) WHERE "deleted_at" IS NULL;
+CREATE TRIGGER qa_ad AFTER DELETE ON qa BEGIN
+      DELETE FROM qa_fts WHERE orig_id = old.id;
+    END;
+CREATE TRIGGER qa_ai AFTER INSERT ON qa BEGIN
+      INSERT INTO qa_fts(orig_id, section, topics, question, answer, tags)
+      VALUES (new.id,
+              ifnull(new.section,''),
+              ifnull(new.topics,''),
+              ifnull(new.question,''),
+              ifnull(new.answer,''),
+              ifnull(new.tags,''));
+    END;
+CREATE TRIGGER qa_au AFTER UPDATE ON qa BEGIN
+      UPDATE qa_fts
+         SET section  = ifnull(new.section,''),
+             topics   = ifnull(new.topics,''),
+             question = ifnull(new.question,''),
+             answer   = ifnull(new.answer,''),
+             tags     = ifnull(new.tags,'')
+       WHERE orig_id = old.id;
+    END;
+COMMIT;
