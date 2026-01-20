@@ -20094,7 +20094,12 @@ def sensys_admin_client_surveys_email_send(
     msg.add_alternative(html_body, subtype="html")
 
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-        server.login(SMTP_USER, SMTP_PASSWORD)
+        try:
+            server.ehlo()
+            if (SMTP_USER and SMTP_PASSWORD) and server.has_extn("auth"):
+                server.login(SMTP_USER, SMTP_PASSWORD)
+        except smtplib.SMTPNotSupportedError:
+            pass
         server.send_message(msg)
 
     return {"ok": True}
