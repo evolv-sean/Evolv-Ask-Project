@@ -14030,7 +14030,6 @@ def build_client_survey_secure_list_html(agency_name: str, items: List[Dict[str,
     body{{margin:0;background:#f6f8fb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#0f172a;}}
     .wrap{{max-width:1100px;margin:0 auto;padding:24px;}}
     .hero{{background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #e5e7eb;box-shadow:0 12px 28px rgba(13,59,102,.08);}}
-    .hero-img{{width:100%;display:block;}}
     .hero-body{{padding:18px 22px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}}
     .hero-title{{font-size:20px;font-weight:900;color:#0d3b66;}}
     .hero-sub{{color:#64748b;font-size:12px;}}
@@ -14049,7 +14048,6 @@ def build_client_survey_secure_list_html(agency_name: str, items: List[Dict[str,
 <body>
   <div class="wrap">
     <div class="hero">
-      <img class="hero-img" src="{header_img}" alt="Survey header" />
       <div class="hero-body">
         <div>
           <div class="hero-title">{esc(agency_name or "Client Surveys")}</div>
@@ -19954,6 +19952,7 @@ async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File
     conn = get_db()
     inserted = 0
     updated = 0
+    skipped = 0
     try:
         cur = conn.cursor()
         prompt = _client_survey_prompt(cur)
@@ -19993,6 +19992,17 @@ async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File
                 ss_score = None
 
             ai_summary = _client_survey_summarize(str(general_comments), prompt)
+
+            dedup = conn.execute(
+                """
+                SELECT id FROM sensys_client_surveys
+                WHERE agency_name = ? AND abv_name = ? AND discharge_date = ?
+                """,
+                (str(agency_name), str(abv_name), str(discharge_date)),
+            ).fetchone()
+            if dedup:
+                skipped += 1
+                continue
 
             existing = conn.execute(
                 """
@@ -20057,7 +20067,7 @@ async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File
             )
 
         conn.commit()
-        return {"ok": True, "inserted": inserted, "updated": updated}
+        return {"ok": True, "inserted": inserted, "updated": updated, "skipped": skipped}
     finally:
         conn.close()
 
@@ -20143,7 +20153,7 @@ def build_client_survey_secure_pin_html(agency_name: str, ttl_days: int, error_m
     body{{margin:0;background:#f6f8fb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#0f172a;}}
     .wrap{{max-width:1100px;margin:0 auto;padding:24px;}}
     .hero{{background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #e5e7eb;box-shadow:0 12px 28px rgba(13,59,102,.08);}}
-    .hero-img{{width:100%;display:block;}}
+    .hero-img{{width:100%;display:block;height:120px;object-fit:cover;}}
     .hero-body{{padding:18px 22px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}}
     .hero-title{{font-size:20px;font-weight:900;color:#0d3b66;}}
     .hero-sub{{color:#64748b;font-size:12px;}}
