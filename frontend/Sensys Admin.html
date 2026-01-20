@@ -1778,7 +1778,7 @@
 
       <div class="modal-body">
         <div class="stack" style="gap:12px">
-          <div class="stack" style="gap:10px">
+          <div style="display:grid;grid-template-columns:repeat(6, minmax(0,1fr));gap:10px">
             <div>
               <div class="label">Patient</div>
               <div class="mini" id="clientSurveyPatient">—</div>
@@ -1787,36 +1787,33 @@
               <div class="label">Agency</div>
               <div class="mini" id="clientSurveyAgency">—</div>
             </div>
-            <div class="stack" style="gap:10px">
-              <div>
-                <div class="label">Admission Date</div>
-                <div class="mini" id="clientSurveyAdmit">—</div>
-              </div>
-              <div>
-                <div class="label">Discharge Date</div>
-                <div class="mini" id="clientSurveyDischarge">—</div>
-              </div>
+            <div>
+              <div class="label">Admission Date</div>
+              <div class="mini" id="clientSurveyAdmit">—</div>
             </div>
-            <div class="stack" style="gap:10px">
-              <div>
-                <div class="label">Updated</div>
-                <div class="mini" id="clientSurveyUpdated">—</div>
-              </div>
-              <div>
-                <div class="label">Overall Score</div>
-                <div class="mini" id="clientSurveyScore">—</div>
-              </div>
+            <div>
+              <div class="label">Discharge Date</div>
+              <div class="mini" id="clientSurveyDischarge">—</div>
+            </div>
+            <div>
+              <div class="label">Updated</div>
+              <div class="mini" id="clientSurveyUpdated">—</div>
+            </div>
+            <div>
+              <div class="label">Overall Score</div>
+              <div class="mini" id="clientSurveyScore">—</div>
             </div>
           </div>
 
-          <div>
-            <div class="label">Original General Comments</div>
-            <textarea class="input survey-textarea" id="clientSurveyOriginalComments" rows="13" readonly></textarea>
-          </div>
-
-          <div>
-            <div class="label">AI Summary (editable override)</div>
-            <textarea class="input survey-textarea" id="clientSurveySummaryOverride" rows="13" placeholder="Edit summary override."></textarea>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div>
+              <div class="label">Original General Comments</div>
+              <textarea class="input survey-textarea" id="clientSurveyOriginalComments" rows="13" readonly></textarea>
+            </div>
+            <div>
+              <div class="label">AI Summary (editable override)</div>
+              <textarea class="input survey-textarea" id="clientSurveySummaryOverride" rows="13" placeholder="Edit summary override."></textarea>
+            </div>
           </div>
 
           <div style="display:flex;gap:8px;align-items:center">
