@@ -79,6 +79,42 @@
       .grid{grid-template-columns:1fr}
       .field input{min-width:180px}
     }
+
+    /* --- Client Surveys split layout --- */
+    .survey-grid{
+      display:grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap:14px;
+      margin-top:14px;
+    }
+    @media (max-width: 980px){
+      .survey-grid{grid-template-columns:1fr}
+    }
+    .survey-row-top,
+    .survey-row-bottom{cursor:pointer}
+    .survey-row-top td{border-bottom:none;padding-bottom:6px}
+    .survey-row-bottom td{padding-top:0}
+    .survey-row-top.on td,
+    .survey-row-bottom.on td{background: rgba(168,230,207,.12)}
+    .survey-main-name{
+      font-weight:900;
+      color: var(--navy);
+    }
+    .survey-subline{
+      font-size:11px;
+      color: var(--muted);
+    }
+    .survey-meta{
+      font-size:11px;
+      color: var(--muted);
+      text-align:right;
+      white-space:nowrap;
+    }
+    .survey-ai{
+      font-size:12px;
+      color:#0f172a;
+      line-height:1.35;
+    }
     .card{
       background:var(--card);
       border:1px solid var(--line);
@@ -299,6 +335,11 @@
      justify-content:center;
      color: var(--navy);
    }
+   .iconbtn svg{
+     width:20px;
+     height:20px;
+     display:block;
+   }
    .iconbtn:hover{ box-shadow: 0 0 0 3px rgba(77,168,218,18); }
 
    /* Bulk upload modal */
@@ -487,6 +528,7 @@
         <div class="navitem" id="tabProviderLibrary">Provider Library</div>
         <div class="navitem" id="tabPatients">Patients</div>
         <div class="navitem" id="tabAdmissions">Admissions</div>
+        <div class="navitem" id="tabClientSurveys">Client Surveys</div>
 
         <div style="height:10px"></div>
         <div class="mini" style="font-weight:900;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;">
@@ -510,7 +552,25 @@
 
             <!-- Add New User (top-right icon) -->
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="bulkUsersIcon" title="Bulk upload users" aria-label="Bulk upload users">⇪</button>
+              <button class="iconbtn" id="bulkUsersIcon" title="Bulk upload users" aria-label="Bulk upload users">
+                <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
+                  <style>
+                    .cls-1 {
+                      fill: none;
+                      stroke: #121212;
+                      stroke-linecap: round;
+                      stroke-miterlimit: 10;
+                      stroke-width: 5.5px;
+                    }
+                  </style>
+                </defs>
+                <g>
+                  <g>
+                    <path class="cls-1" d="M82.81,106.67v97.45c0,5.42,4.39,9.81,9.81,9.81h66.35c5.42,0,9.81-4.39,9.81-9.81v-97.45h45.05c5.55,0,8.32-6.7,4.4-10.63L129.81,4.41c-2.21-2.21-5.81-2.21-8.02,0L33.36,96.05c-3.92,3.92-1.14,10.63,4.4,10.63h45.05Z"/>
+                    <path class="cls-1" d="M2.75,202.34v41.97c0,8.13,6.59,14.72,14.72,14.72h216.66c8.13,0,14.72-6.59,14.72-14.72v-41.97"/>
+                  </g>
+                </g></svg>
+              </button>
               <button class="iconbtn" id="addUserIcon" title="Add new user" aria-label="Add new user">+</button>
             </div>
           </div>
@@ -553,7 +613,25 @@
 
             <!-- Add New Agency (top-right icon) -->
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="bulkAgenciesIcon" title="Bulk upload agencies" aria-label="Bulk upload agencies">⇪</button>
+              <button class="iconbtn" id="bulkAgenciesIcon" title="Bulk upload agencies" aria-label="Bulk upload agencies">
+                <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
+                  <style>
+                    .cls-1 {
+                      fill: none;
+                      stroke: #121212;
+                      stroke-linecap: round;
+                      stroke-miterlimit: 10;
+                      stroke-width: 5.5px;
+                    }
+                  </style>
+                </defs>
+                <g>
+                  <g>
+                    <path class="cls-1" d="M82.81,106.67v97.45c0,5.42,4.39,9.81,9.81,9.81h66.35c5.42,0,9.81-4.39,9.81-9.81v-97.45h45.05c5.55,0,8.32-6.7,4.4-10.63L129.81,4.41c-2.21-2.21-5.81-2.21-8.02,0L33.36,96.05c-3.92,3.92-1.14,10.63,4.4,10.63h45.05Z"/>
+                    <path class="cls-1" d="M2.75,202.34v41.97c0,8.13,6.59,14.72,14.72,14.72h216.66c8.13,0,14.72-6.59,14.72-14.72v-41.97"/>
+                  </g>
+                </g></svg>
+              </button>
               <button class="iconbtn" id="addAgencyIcon" title="Add new agency" aria-label="Add new agency">+</button>
             </div>
           </div>
@@ -642,7 +720,25 @@
               <div class="hint">Manual add/edit for sensys_patients.</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="bulkPatientsIcon" title="Bulk upload patients" aria-label="Bulk upload patients">⇪</button>
+              <button class="iconbtn" id="bulkPatientsIcon" title="Bulk upload patients" aria-label="Bulk upload patients">
+                <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
+                  <style>
+                    .cls-1 {
+                      fill: none;
+                      stroke: #121212;
+                      stroke-linecap: round;
+                      stroke-miterlimit: 10;
+                      stroke-width: 5.5px;
+                    }
+                  </style>
+                </defs>
+                <g>
+                  <g>
+                    <path class="cls-1" d="M82.81,106.67v97.45c0,5.42,4.39,9.81,9.81,9.81h66.35c5.42,0,9.81-4.39,9.81-9.81v-97.45h45.05c5.55,0,8.32-6.7,4.4-10.63L129.81,4.41c-2.21-2.21-5.81-2.21-8.02,0L33.36,96.05c-3.92,3.92-1.14,10.63,4.4,10.63h45.05Z"/>
+                    <path class="cls-1" d="M2.75,202.34v41.97c0,8.13,6.59,14.72,14.72,14.72h216.66c8.13,0,14.72-6.59,14.72-14.72v-41.97"/>
+                  </g>
+                </g></svg>
+              </button>
               <button class="iconbtn" id="addPatientIcon" title="Add new patient" aria-label="Add new patient">+</button>
             </div>
           </div>
@@ -683,7 +779,25 @@
               <div class="hint">Manual add/edit for sensys_admissions (patient + agency + dates).</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="bulkAdmissionsIcon" title="Bulk upload admissions" aria-label="Bulk upload admissions">⇪</button>
+              <button class="iconbtn" id="bulkAdmissionsIcon" title="Bulk upload admissions" aria-label="Bulk upload admissions">
+                <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
+                  <style>
+                    .cls-1 {
+                      fill: none;
+                      stroke: #121212;
+                      stroke-linecap: round;
+                      stroke-miterlimit: 10;
+                      stroke-width: 5.5px;
+                    }
+                  </style>
+                </defs>
+                <g>
+                  <g>
+                    <path class="cls-1" d="M82.81,106.67v97.45c0,5.42,4.39,9.81,9.81,9.81h66.35c5.42,0,9.81-4.39,9.81-9.81v-97.45h45.05c5.55,0,8.32-6.7,4.4-10.63L129.81,4.41c-2.21-2.21-5.81-2.21-8.02,0L33.36,96.05c-3.92,3.92-1.14,10.63,4.4,10.63h45.05Z"/>
+                    <path class="cls-1" d="M2.75,202.34v41.97c0,8.13,6.59,14.72,14.72,14.72h216.66c8.13,0,14.72-6.59,14.72-14.72v-41.97"/>
+                  </g>
+                </g></svg>
+              </button>
               <button class="iconbtn" id="addAdmissionIcon" title="Add new admission" aria-label="Add new admission">+</button>
             </div>
           </div>
@@ -712,10 +826,147 @@
           </div>
         </div>
       </div><!-- /panelAdmissions -->
+
       <!-- =========================
-           SERVICES PANEL
+           CLIENT SURVEYS PANEL
       ========================= -->
-      <div class="panel" id="panelServices">
+      <div class="panel" id="panelClientSurveys">
+        <div class="content">
+          <div class="hd" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+            <div>
+              <h2 style="margin:0">Client Surveys</h2>
+              <div class="hint">Review survey runs and results for clients.</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="iconbtn" id="clientSurveysUploadIcon" title="Upload client survey file" aria-label="Upload client survey file">
+                <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
+                  <style>
+                    .cls-1 {
+                      fill: none;
+                      stroke: #121212;
+                      stroke-linecap: round;
+                      stroke-miterlimit: 10;
+                      stroke-width: 5.5px;
+                    }
+                  </style>
+                </defs>
+                <g>
+                  <g>
+                    <path class="cls-1" d="M82.81,106.67v97.45c0,5.42,4.39,9.81,9.81,9.81h66.35c5.42,0,9.81-4.39,9.81-9.81v-97.45h45.05c5.55,0,8.32-6.7,4.4-10.63L129.81,4.41c-2.21-2.21-5.81-2.21-8.02,0L33.36,96.05c-3.92,3.92-1.14,10.63,4.4,10.63h45.05Z"/>
+                    <path class="cls-1" d="M2.75,202.34v41.97c0,8.13,6.59,14.72,14.72,14.72h216.66c8.13,0,14.72-6.59,14.72-14.72v-41.97"/>
+                  </g>
+                </g></svg>
+              </button>
+              <button class="iconbtn" id="clientSurveysSettingsIcon" title="Client survey settings" aria-label="Client survey settings">⚙</button>
+            </div>
+          </div>
+
+            <div class="survey-grid">
+            <div class="card">
+              <div class="hd">
+                <div>
+                  <h2 style="margin:0">Surveys</h2>
+                  <div class="hint">Select a survey to view details.</div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <button class="iconbtn" id="clientSurveyFilterIcon" title="Survey filters" aria-label="Survey filters">⇅</button>
+                </div>
+              </div>
+              <div class="body">
+                <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+                  <input class="input" id="clientSurveySearch" placeholder="Search patient name." />
+                  <label class="mini" style="display:flex;align-items:center;gap:8px;">
+                    <input type="checkbox" id="clientSurveyMockToggle" checked />
+                    Show mock row
+                  </label>
+                </div>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Patient / Agency / Dates</th>
+                        <th>Updated</th>
+                        <th>Score</th>
+                      </tr>
+                    </thead>
+                    <tbody id="clientSurveyTbody"></tbody>
+                  </table>
+                </div>
+                <div id="clientSurveyListMsg" class="toast"></div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="hd">
+                <div>
+                  <h2 style="margin:0">Survey Details</h2>
+                  <div class="hint">Details for the selected survey.</div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <button class="iconbtn" id="clientSurveyRecomputeBtn" title="Recompute survey" aria-label="Recompute survey">↻</button>
+                </div>
+              </div>
+              <div class="body">
+                <div class="mini" id="clientSurveyDetailEmpty" style="margin-bottom:6px;">No survey selected.</div>
+                <div id="clientSurveyDetailForm" style="display:none">
+                  <div class="stack" style="gap:12px">
+                    <div class="stack" style="gap:10px">
+                      <div>
+                        <div class="label">Patient</div>
+                        <div class="mini" id="clientSurveyPatient">—</div>
+                      </div>
+                      <div>
+                        <div class="label">Agency</div>
+                        <div class="mini" id="clientSurveyAgency">—</div>
+                      </div>
+                      <div class="stack" style="gap:10px">
+                        <div>
+                          <div class="label">Admission Date</div>
+                          <div class="mini" id="clientSurveyAdmit">—</div>
+                        </div>
+                        <div>
+                          <div class="label">Discharge Date</div>
+                          <div class="mini" id="clientSurveyDischarge">—</div>
+                        </div>
+                      </div>
+                      <div class="stack" style="gap:10px">
+                        <div>
+                          <div class="label">Updated</div>
+                          <div class="mini" id="clientSurveyUpdated">—</div>
+                        </div>
+                        <div>
+                          <div class="label">Overall Score</div>
+                          <div class="mini" id="clientSurveyScore">—</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div class="label">Original General Comments</div>
+                      <textarea class="input" id="clientSurveyOriginalComments" rows="6" readonly></textarea>
+                    </div>
+
+                    <div>
+                      <div class="label">AI Summary (editable override)</div>
+                      <textarea class="input" id="clientSurveySummaryOverride" rows="5" placeholder="Edit summary override."></textarea>
+                    </div>
+
+                    <div style="display:flex;gap:8px;align-items:center">
+                      <button class="btn primary" id="clientSurveySaveSummary">Save Summary</button>
+                      <div class="mini" id="clientSurveyDetailMsg"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div><!-- /panelClientSurveys -->
+        <!-- =========================
+             SERVICES PANEL
+        ========================= -->
+        <div class="panel" id="panelServices">
         <div class="content">
           <div class="hd" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
             <div>
@@ -723,7 +974,25 @@
               <div class="hint">Reference list used for DC submissions (DME / HH) and E-Sign orders.</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="bulkServicesIcon" title="Bulk upload services" aria-label="Bulk upload services">⇪</button>
+              <button class="iconbtn" id="bulkServicesIcon" title="Bulk upload services" aria-label="Bulk upload services">
+                <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
+                  <style>
+                    .cls-1 {
+                      fill: none;
+                      stroke: #121212;
+                      stroke-linecap: round;
+                      stroke-miterlimit: 10;
+                      stroke-width: 5.5px;
+                    }
+                  </style>
+                </defs>
+                <g>
+                  <g>
+                    <path class="cls-1" d="M82.81,106.67v97.45c0,5.42,4.39,9.81,9.81,9.81h66.35c5.42,0,9.81-4.39,9.81-9.81v-97.45h45.05c5.55,0,8.32-6.7,4.4-10.63L129.81,4.41c-2.21-2.21-5.81-2.21-8.02,0L33.36,96.05c-3.92,3.92-1.14,10.63,4.4,10.63h45.05Z"/>
+                    <path class="cls-1" d="M2.75,202.34v41.97c0,8.13,6.59,14.72,14.72,14.72h216.66c8.13,0,14.72-6.59,14.72-14.72v-41.97"/>
+                  </g>
+                </g></svg>
+              </button>
               <button class="iconbtn" id="addServiceIcon" title="Add new service" aria-label="Add new service">+</button>
               <button class="iconbtn" id="addServiceTypeIcon" title="Add new service type" aria-label="Add new service type" style="display:none;">＋T</button>
             </div>
@@ -931,7 +1200,25 @@
               <div class="hint">Reference list of providers/contacts used on admissions.</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="bulkCareTeamIcon" title="Bulk upload care team" aria-label="Bulk upload care team">⇪</button>
+              <button class="iconbtn" id="bulkCareTeamIcon" title="Bulk upload care team" aria-label="Bulk upload care team">
+                <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
+                  <style>
+                    .cls-1 {
+                      fill: none;
+                      stroke: #121212;
+                      stroke-linecap: round;
+                      stroke-miterlimit: 10;
+                      stroke-width: 5.5px;
+                    }
+                  </style>
+                </defs>
+                <g>
+                  <g>
+                    <path class="cls-1" d="M82.81,106.67v97.45c0,5.42,4.39,9.81,9.81,9.81h66.35c5.42,0,9.81-4.39,9.81-9.81v-97.45h45.05c5.55,0,8.32-6.7,4.4-10.63L129.81,4.41c-2.21-2.21-5.81-2.21-8.02,0L33.36,96.05c-3.92,3.92-1.14,10.63,4.4,10.63h45.05Z"/>
+                    <path class="cls-1" d="M2.75,202.34v41.97c0,8.13,6.59,14.72,14.72,14.72h216.66c8.13,0,14.72-6.59,14.72-14.72v-41.97"/>
+                  </g>
+                </g></svg>
+              </button>
               <button class="iconbtn" id="addCareTeamIcon" title="Add new care team member" aria-label="Add new care team member">+</button>
             </div>
           </div>
@@ -1432,10 +1719,82 @@
     </div>
   </div>
 </div>
+  
+  <!-- =========================
+       CLIENT SURVEYS SETTINGS MODAL
+  ========================= -->
+  <div class="modal-backdrop" id="clientSurveysSettingsModalBackdrop">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="clientSurveysSettingsModalTitle">
+      <div class="modal-hd">
+        <div>
+          <h3 class="modal-title" id="clientSurveysSettingsModalTitle">Client Survey Settings</h3>
+          <div class="modal-sub">Configuration defaults and survey settings.</div>
+        </div>
+        <button class="xbtn" id="closeClientSurveysSettingsModal" aria-label="Close">×</button>
+      </div>
 
-<!-- =========================
-     BULK UPLOAD MODAL (Reusable)
-========================= -->
+      <div class="modal-body">
+        <div class="label">AI Summary Prompt</div>
+        <textarea class="input" id="clientSurveyPrompt" rows="8" placeholder="Enter prompt for AI summaries."></textarea>
+        <div style="height:10px"></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn primary" id="clientSurveyPromptSave">Save Prompt</button>
+          <div class="mini" id="clientSurveyPromptMsg"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================
+       CLIENT SURVEYS UPLOAD MODAL
+  ========================= -->
+  <div class="modal-backdrop" id="clientSurveysUploadModalBackdrop">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="clientSurveysUploadModalTitle">
+      <div class="modal-hd">
+        <div>
+          <h3 class="modal-title" id="clientSurveysUploadModalTitle">Upload Client Survey File</h3>
+          <div class="modal-sub">Drag a file into the dropzone or choose a file.</div>
+        </div>
+        <button class="xbtn" id="closeClientSurveysUploadModal" aria-label="Close">×</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="dropzone" id="clientSurveysDropzone">
+          <div style="font-weight:900;color:var(--navy);">Drop file here</div>
+          <div class="smallhint">or click to choose a file</div>
+          <button class="btn" id="clientSurveysChooseFileBtn" type="button">Choose File</button>
+          <input id="clientSurveysUploadInput" type="file" accept=".csv,text/csv" style="display:none" />
+        </div>
+        <div class="smallhint" id="clientSurveysUploadStatus" style="margin-top:10px;">No file selected.</div>
+        <div style="height:10px"></div>
+        <button class="btn primary" id="clientSurveysUploadSubmit" disabled>Upload File</button>
+        <div class="smallhint" id="clientSurveysUploadMsg" style="margin-top:8px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================
+       CLIENT SURVEYS FILTER MODAL
+  ========================= -->
+  <div class="modal-backdrop" id="clientSurveysFilterModalBackdrop">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="clientSurveysFilterModalTitle">
+      <div class="modal-hd">
+        <div>
+          <h3 class="modal-title" id="clientSurveysFilterModalTitle">Survey Filters</h3>
+          <div class="modal-sub">Sorting and filtering controls will be added here.</div>
+        </div>
+        <button class="xbtn" id="closeClientSurveysFilterModal" aria-label="Close">×</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="smallhint">Filters UI coming soon.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================
+       BULK UPLOAD MODAL (Reusable)
+  ========================= -->
 <div class="modal-backdrop" id="bulkModalBackdrop">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="bulkModalTitle">
     <div class="modal-hd">
@@ -1968,10 +2327,13 @@
   document.addEventListener("keydown", (e) => {
     if(e.key !== "Escape") return;
     closeUserModal();
-    closeAgencyModal();
-    closePatientModal();
-    closeAdmissionModal();
-    closeServiceModal();
+      closeAgencyModal();
+      closePatientModal();
+      closeAdmissionModal();
+      closeClientSurveysSettingsModal();
+      closeClientSurveysUploadModal();
+      closeClientSurveysFilterModal();
+      closeServiceModal();
     closeCareTeamModal();
     closeBulkModal();
   });
@@ -2773,10 +3135,11 @@
     // nav highlighting
     $("tabUsers").className = "navitem " + (which==="users" ? "on" : "");
     $("tabAgencies").className = "navitem " + (which==="agencies" ? "on" : "");
-    $("tabProviderLibrary").className = "navitem " + (which==="providerLibrary" ? "on" : "");
-    $("tabPatients").className = "navitem " + (which==="patients" ? "on" : "");
-    $("tabAdmissions").className = "navitem " + (which==="admissions" ? "on" : "");
-    $("tabServices").className = "navitem " + (which==="services" ? "on" : "");
+      $("tabProviderLibrary").className = "navitem " + (which==="providerLibrary" ? "on" : "");
+      $("tabPatients").className = "navitem " + (which==="patients" ? "on" : "");
+      $("tabAdmissions").className = "navitem " + (which==="admissions" ? "on" : "");
+      $("tabClientSurveys").className = "navitem " + (which==="clientSurveys" ? "on" : "");
+      $("tabServices").className = "navitem " + (which==="services" ? "on" : "");
     $("tabCareTeam").className = "navitem " + (which==="careTeam" ? "on" : "");
     $("tabNotes").className = "navitem " + (which==="notes" ? "on" : "");
     $("tabNotifications").className = "navitem " + (which==="notifications" ? "on" : "");
@@ -2784,10 +3147,11 @@
     // hide all panels
     $("panelUsers").classList.remove("on");
     $("panelAgencies").classList.remove("on");
-    $("panelProviderLibrary").classList.remove("on");
-    $("panelPatients").classList.remove("on");
-    $("panelAdmissions").classList.remove("on");
-    $("panelServices").classList.remove("on");
+      $("panelProviderLibrary").classList.remove("on");
+      $("panelPatients").classList.remove("on");
+      $("panelAdmissions").classList.remove("on");
+      $("panelClientSurveys").classList.remove("on");
+      $("panelServices").classList.remove("on");
     $("panelCareTeam").classList.remove("on");
     $("panelNotes").classList.remove("on");
     $("panelNotifications").classList.remove("on");
@@ -2804,11 +3168,15 @@
     }else if(which==="patients"){
       $("panelPatients").classList.add("on");
       refreshPatientsList();
-    }else if(which==="admissions"){
-      $("panelAdmissions").classList.add("on");
-      refreshAdmissionsList();
+      }else if(which==="admissions"){
+        $("panelAdmissions").classList.add("on");
+        refreshAdmissionsList();
+    }else if(which==="clientSurveys"){
+      $("panelClientSurveys").classList.add("on");
+      clearClientSurveyDetails();
+      refreshClientSurveysList();
     }else if(which==="services"){
-      $("panelServices").classList.add("on");
+        $("panelServices").classList.add("on");
 
       // ✅ ensure both lists are loaded
       refreshServiceTypes();   // fills serviceTypesCache + svc_type dropdown
@@ -2843,10 +3211,11 @@
 
   onClickSafe("tabUsers", () => showPanel("users"));
   onClickSafe("tabAgencies", () => showPanel("agencies"));
-  onClickSafe("tabProviderLibrary", () => showPanel("providerLibrary"));
-  onClickSafe("tabPatients", () => showPanel("patients"));
-  onClickSafe("tabAdmissions", () => showPanel("admissions"));
-  onClickSafe("tabServices", () => showPanel("services"));
+    onClickSafe("tabProviderLibrary", () => showPanel("providerLibrary"));
+    onClickSafe("tabPatients", () => showPanel("patients"));
+    onClickSafe("tabAdmissions", () => showPanel("admissions"));
+    onClickSafe("tabClientSurveys", () => showPanel("clientSurveys"));
+    onClickSafe("tabServices", () => showPanel("services"));
   onClickSafe("tabCareTeam", () => showPanel("careTeam"));
   onClickSafe("tabNotes", () => showPanel("notes"));
   onClickSafe("tabNotifications", () => showPanel("notifications"));
@@ -3004,20 +3373,292 @@
   function openPatientModal(){ $("patientModalBackdrop").classList.add("on"); }
   function closePatientModal(){ $("patientModalBackdrop").classList.remove("on"); }
 
-  function openAdmissionModal(){ $("admissionModalBackdrop").classList.add("on"); }
-  function closeAdmissionModal(){ $("admissionModalBackdrop").classList.remove("on"); }
+    function openAdmissionModal(){ $("admissionModalBackdrop").classList.add("on"); }
+    function closeAdmissionModal(){ $("admissionModalBackdrop").classList.remove("on"); }
 
-  $("patientModalBackdrop").addEventListener("click", (e) => {
-    if(e.target.id === "patientModalBackdrop") closePatientModal();
-  });
-  $("admissionModalBackdrop").addEventListener("click", (e) => {
-    if(e.target.id === "admissionModalBackdrop") closeAdmissionModal();
-  });
+    async function openClientSurveysSettingsModal(){
+      await loadClientSurveyPrompt();
+      $("clientSurveysSettingsModalBackdrop").classList.add("on");
+    }
+    function closeClientSurveysSettingsModal(){ $("clientSurveysSettingsModalBackdrop").classList.remove("on"); }
 
-  $("closePatientModal").onclick = closePatientModal;
-  $("closeAdmissionModal").onclick = closeAdmissionModal;
+    function openClientSurveysUploadModal(){ $("clientSurveysUploadModalBackdrop").classList.add("on"); }
+    function closeClientSurveysUploadModal(){ $("clientSurveysUploadModalBackdrop").classList.remove("on"); }
 
-  let patientsCache = [];
+    function openClientSurveysFilterModal(){ $("clientSurveysFilterModalBackdrop").classList.add("on"); }
+    function closeClientSurveysFilterModal(){ $("clientSurveysFilterModalBackdrop").classList.remove("on"); }
+
+    $("patientModalBackdrop").addEventListener("click", (e) => {
+      if(e.target.id === "patientModalBackdrop") closePatientModal();
+    });
+    $("admissionModalBackdrop").addEventListener("click", (e) => {
+      if(e.target.id === "admissionModalBackdrop") closeAdmissionModal();
+    });
+    $("clientSurveysSettingsModalBackdrop").addEventListener("click", (e) => {
+      if(e.target.id === "clientSurveysSettingsModalBackdrop") closeClientSurveysSettingsModal();
+    });
+    $("clientSurveysUploadModalBackdrop").addEventListener("click", (e) => {
+      if(e.target.id === "clientSurveysUploadModalBackdrop") closeClientSurveysUploadModal();
+    });
+    $("clientSurveysFilterModalBackdrop").addEventListener("click", (e) => {
+      if(e.target.id === "clientSurveysFilterModalBackdrop") closeClientSurveysFilterModal();
+    });
+
+    $("closePatientModal").onclick = closePatientModal;
+    $("closeAdmissionModal").onclick = closeAdmissionModal;
+    $("closeClientSurveysSettingsModal").onclick = closeClientSurveysSettingsModal;
+    $("clientSurveysSettingsIcon").onclick = openClientSurveysSettingsModal;
+    $("closeClientSurveysUploadModal").onclick = closeClientSurveysUploadModal;
+    $("clientSurveysUploadIcon").onclick = openClientSurveysUploadModal;
+    $("closeClientSurveysFilterModal").onclick = closeClientSurveysFilterModal;
+    $("clientSurveyFilterIcon").onclick = openClientSurveysFilterModal;
+
+    const clientSurveysDropzone = $("clientSurveysDropzone");
+    const clientSurveysUploadInput = $("clientSurveysUploadInput");
+    const clientSurveysChooseFileBtn = $("clientSurveysChooseFileBtn");
+    const clientSurveysUploadStatus = $("clientSurveysUploadStatus");
+    const clientSurveysUploadSubmit = $("clientSurveysUploadSubmit");
+    const clientSurveysUploadMsg = $("clientSurveysUploadMsg");
+    let clientSurveysSelectedFile = null;
+
+    function setClientSurveysUploadStatus(text){
+      if(clientSurveysUploadStatus) clientSurveysUploadStatus.textContent = text;
+    }
+    function setClientSurveysUploadMsg(text, ok){
+      if(clientSurveysUploadMsg){
+        clientSurveysUploadMsg.textContent = text || "";
+        clientSurveysUploadMsg.style.color = ok ? "#065f46" : "#991b1b";
+      }
+    }
+
+    function handleClientSurveysFiles(files){
+      if(!files || !files.length){
+        setClientSurveysUploadStatus("No file selected.");
+        clientSurveysSelectedFile = null;
+        clientSurveysUploadSubmit.disabled = true;
+        return;
+      }
+      clientSurveysSelectedFile = files[0];
+      setClientSurveysUploadStatus(`Selected: ${clientSurveysSelectedFile.name}`);
+      clientSurveysUploadSubmit.disabled = false;
+      setClientSurveysUploadMsg("", true);
+    }
+
+    clientSurveysChooseFileBtn.onclick = () => clientSurveysUploadInput.click();
+    clientSurveysDropzone.onclick = () => clientSurveysUploadInput.click();
+    clientSurveysUploadInput.onchange = (e) => {
+      handleClientSurveysFiles(e.target.files);
+    };
+
+    clientSurveysDropzone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      clientSurveysDropzone.classList.add("on");
+    });
+    clientSurveysDropzone.addEventListener("dragleave", () => {
+      clientSurveysDropzone.classList.remove("on");
+    });
+    clientSurveysDropzone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      clientSurveysDropzone.classList.remove("on");
+      const files = e.dataTransfer && e.dataTransfer.files ? e.dataTransfer.files : [];
+      handleClientSurveysFiles(files);
+    });
+
+    clientSurveysUploadSubmit.onclick = async () => {
+      if(!clientSurveysSelectedFile){
+        setClientSurveysUploadMsg("Choose a file first.", false);
+        return;
+      }
+      clientSurveysUploadSubmit.disabled = true;
+      setClientSurveysUploadMsg("Uploading.", true);
+      try{
+        const resp = await apiUploadCsv("/api/sensys/admin/client-surveys/upload", clientSurveysSelectedFile);
+        setClientSurveysUploadMsg(`Uploaded. Inserted: ${resp.inserted || 0}, Updated: ${resp.updated || 0}`, true);
+        await refreshClientSurveysList();
+      }catch(e){
+        setClientSurveysUploadMsg(String(e.message || e), false);
+      }finally{
+        clientSurveysUploadSubmit.disabled = false;
+      }
+    };
+
+    // -----------------------------
+    // Client Surveys UI
+    // -----------------------------
+    let clientSurveysCache = [];
+    let selectedClientSurveyId = null;
+
+    const clientSurveyMockRow = {
+      __mock: true,
+      id: "mock",
+      abv_name: "Doe, Jane",
+      agency_name: "Luxe Rehab",
+      admission_date: "12/01/2025",
+      discharge_date: "12/20/2025",
+      survey_updated_at: "01/16/2026 00:00",
+      overall_score: 4,
+      ai_summary: "Patient reported a positive stay with friendly staff and acceptable food.",
+      general_comments: "Patient reported a positive stay with friendly staff and acceptable food.",
+      ai_summary_override: ""
+    };
+
+    function formatSurveyDates(admit, dc){
+      const a = (admit || "").trim();
+      const d = (dc || "").trim();
+      if(a && d) return `${a} - ${d}`;
+      if(a) return a;
+      if(d) return d;
+      return "-";
+    }
+
+    function renderClientSurveysTable(){
+      const tbody = $("clientSurveyTbody");
+      if(!tbody) return;
+
+      const q = ($("clientSurveySearch").value || "").trim().toLowerCase();
+      let items = (clientSurveysCache || []).filter(s => {
+        const hay = String(s.abv_name || "").toLowerCase();
+        return !q || hay.includes(q);
+      });
+
+      if($("clientSurveyMockToggle").checked){
+        items = [clientSurveyMockRow].concat(items);
+      }
+
+      if(!items.length){
+        tbody.innerHTML = `<tr><td colspan="3" style="padding:12px;color:#667085;font-size:12px;">No results</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = items.map(s => {
+        const isMock = !!s.__mock;
+        const rowId = isMock ? "mock" : String(s.id || "");
+        const isSelected = !isMock && Number(s.id) === Number(selectedClientSurveyId);
+        const summary = (s.ai_summary_override || s.ai_summary || "").trim() || "—";
+        const dates = formatSurveyDates(s.admission_date, s.discharge_date);
+        const updated = s.survey_updated_at || "-";
+        const score = (s.overall_score !== null && s.overall_score !== undefined && s.overall_score !== "")
+          ? String(s.overall_score)
+          : "-";
+
+        return `
+          <tr class="survey-row-top ${isSelected ? "on" : ""}" data-id="${rowId}">
+            <td>
+              <div class="survey-main-name">${escapeHtml(s.abv_name || "—")}</div>
+              <div class="survey-subline">${escapeHtml(s.agency_name || "—")} · ${escapeHtml(dates)}</div>
+            </td>
+            <td class="survey-meta">${escapeHtml(updated)}</td>
+            <td class="survey-meta">${escapeHtml(score)}</td>
+          </tr>
+          <tr class="survey-row-bottom ${isSelected ? "on" : ""}" data-id="${rowId}">
+            <td colspan="3">
+              <div class="survey-ai">${escapeHtml(summary)}</div>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function clearClientSurveyDetails(){
+      selectedClientSurveyId = null;
+      $("clientSurveyDetailEmpty").style.display = "";
+      $("clientSurveyDetailForm").style.display = "none";
+      $("clientSurveyDetailMsg").textContent = "";
+      renderClientSurveysTable();
+    }
+
+    function selectClientSurveyById(id){
+      const s = (clientSurveysCache || []).find(x => Number(x.id) === Number(id));
+      if(!s) return;
+
+      selectedClientSurveyId = Number(s.id);
+      $("clientSurveyDetailEmpty").style.display = "none";
+      $("clientSurveyDetailForm").style.display = "block";
+
+      $("clientSurveyPatient").textContent = s.abv_name || "—";
+      $("clientSurveyAgency").textContent = s.agency_name || "—";
+      $("clientSurveyAdmit").textContent = s.admission_date || "—";
+      $("clientSurveyDischarge").textContent = s.discharge_date || "—";
+      $("clientSurveyUpdated").textContent = s.survey_updated_at || "—";
+      $("clientSurveyScore").textContent = (s.overall_score !== null && s.overall_score !== undefined && s.overall_score !== "")
+        ? String(s.overall_score)
+        : "—";
+
+      $("clientSurveyOriginalComments").value = s.general_comments || "";
+      $("clientSurveySummaryOverride").value = (s.ai_summary_override || s.ai_summary || "").trim();
+      $("clientSurveyDetailMsg").textContent = "";
+
+      renderClientSurveysTable();
+    }
+
+    $("clientSurveyTbody").addEventListener("click", (e) => {
+      const tr = e.target.closest("tr[data-id]");
+      if(!tr) return;
+      const id = parseInt(tr.getAttribute("data-id"), 10);
+      if(!Number.isFinite(id)) return;
+      selectClientSurveyById(id);
+    });
+
+    $("clientSurveySearch").addEventListener("input", renderClientSurveysTable);
+    $("clientSurveyMockToggle").addEventListener("change", renderClientSurveysTable);
+
+    $("clientSurveySaveSummary").onclick = async () => {
+      if(!selectedClientSurveyId){
+        $("clientSurveyDetailMsg").textContent = "Select a survey first.";
+        return;
+      }
+      $("clientSurveyDetailMsg").textContent = "Saving.";
+      try{
+        const overrideText = ($("clientSurveySummaryOverride").value || "").trim();
+        await apiPost("/api/sensys/admin/client-surveys/summary-override", {
+          id: Number(selectedClientSurveyId),
+          ai_summary_override: overrideText
+        });
+
+        const row = (clientSurveysCache || []).find(x => Number(x.id) === Number(selectedClientSurveyId));
+        if(row) row.ai_summary_override = overrideText;
+
+        $("clientSurveyDetailMsg").textContent = "Saved.";
+        renderClientSurveysTable();
+      }catch(e){
+        $("clientSurveyDetailMsg").textContent = String(e.message || e);
+      }
+    };
+
+    async function refreshClientSurveysList(){
+      setMsg($("clientSurveyListMsg"), "Loading.", true);
+      try{
+        const resp = await apiGet("/api/sensys/admin/client-surveys");
+        clientSurveysCache = resp.surveys || [];
+        renderClientSurveysTable();
+        setMsg($("clientSurveyListMsg"), `Loaded ${clientSurveysCache.length} surveys.`, true);
+      }catch(e){
+        setMsg($("clientSurveyListMsg"), String(e.message || e), false);
+      }
+    }
+
+    async function loadClientSurveyPrompt(){
+      try{
+        const resp = await apiGet("/api/sensys/admin/client-surveys/prompt");
+        $("clientSurveyPrompt").value = resp.prompt || "";
+        $("clientSurveyPromptMsg").textContent = "";
+      }catch(e){
+        $("clientSurveyPromptMsg").textContent = String(e.message || e);
+      }
+    }
+
+    $("clientSurveyPromptSave").onclick = async () => {
+      $("clientSurveyPromptMsg").textContent = "Saving.";
+      try{
+        const promptVal = ($("clientSurveyPrompt").value || "").trim();
+        await apiPost("/api/sensys/admin/client-surveys/prompt", { prompt: promptVal });
+        $("clientSurveyPromptMsg").textContent = "Saved.";
+      }catch(e){
+        $("clientSurveyPromptMsg").textContent = String(e.message || e);
+      }
+    };
+
+    let patientsCache = [];
   let selectedPatientId = null;
 
   let admissionsCache = [];
