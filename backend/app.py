@@ -2741,10 +2741,22 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
 </body>
 </html>"""
 
-def build_client_survey_secure_email_html(secure_url: str, ttl_days: int, agency_name: str) -> str:
+def build_client_survey_secure_email_html(
+    secure_url: str,
+    ttl_days: int,
+    agency_name: str,
+    discharge_from: str,
+    discharge_to: str,
+    base_url: str,
+) -> str:
     safe_url = html.escape(secure_url or "")
     ttl_days = int(ttl_days or 30)
     agency_label = html.escape(agency_name or "Selected Facility")
+    from_txt = html.escape(discharge_from or "Any")
+    to_txt = html.escape(discharge_to or "Any")
+    base = (base_url or "").rstrip("/")
+    logo_url = f"{base}/static/images/Evolv Health hor color.png" if base else "/static/images/Evolv Health hor color.png"
+    safe_logo = html.escape(logo_url)
 
     return f"""<!doctype html>
 <html lang="en">
@@ -2772,6 +2784,8 @@ def build_client_survey_secure_email_html(secure_url: str, ttl_days: int, agency
     }}
     .topbar{{background:#0D3B66;padding:10px 0;}}
     .content{{padding:26px 26px 18px 26px;}}
+    .logo-row{{display:flex;justify-content:flex-end;margin-bottom:8px;}}
+    .logo{{height:28px;}}
     h1{{margin:0 0 10px 0;font-size:22px;line-height:1.25;color:#0D3B66;letter-spacing:-0.01em;}}
     p{{margin:0 0 12px 0;font-size:14px;line-height:1.55;color:#374151;}}
     .callout{{
@@ -2815,6 +2829,9 @@ def build_client_survey_secure_email_html(secure_url: str, ttl_days: int, agency
       <div class="topbar" aria-hidden="true"></div>
 
       <div class="content">
+        <div class="logo-row">
+          <img class="logo" src="{safe_logo}" alt="Evolv Health" />
+        </div>
         <h1>Monthly Client Survey Responses</h1>
         <p>
           New survey responses are available for <strong>{agency_label}</strong>.
@@ -2823,12 +2840,12 @@ def build_client_survey_secure_email_html(secure_url: str, ttl_days: int, agency
 
         <div class="callout">
           <div><strong>What you'll need:</strong></div>
-          <div style="margin-top:6px;">Your PIN: <span class="pill">{CLIENT_SURVEY_UNIVERSAL_PIN}</span></div>
-          <div style="margin-top:6px;">Link expires in <span class="pill">{ttl_days} days</span></div>
+          <div style="margin-top:6px;">• Your facility PIN</div>
+          <div style="margin-top:6px;">• Link expires in <span class="pill">{ttl_days} days</span></div>
         </div>
 
         <p>
-          This secure page includes the AI summaries and rating details for the latest survey period.
+          This secure page includes patient surveys for discharges between {from_txt} - {to_txt}.
         </p>
       </div>
 
@@ -20084,7 +20101,14 @@ def sensys_admin_client_surveys_email_send(
 
     base_url = get_public_base_url(request)
     secure_url = f"{base_url}/surveys/secure/{raw_token}"
-    html_body = build_client_survey_secure_email_html(secure_url, CLIENT_SURVEY_LINK_TTL_DAYS, agency_name)
+    html_body = build_client_survey_secure_email_html(
+        secure_url,
+        CLIENT_SURVEY_LINK_TTL_DAYS,
+        agency_name,
+        str(filters.get("discharge_from") or "").strip(),
+        str(filters.get("discharge_to") or "").strip(),
+        base_url,
+    )
 
     msg = EmailMessage()
     msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
@@ -20100,6 +20124,72 @@ def sensys_admin_client_surveys_email_send(
         server.send_message(msg)
 
     return {"ok": True}
+
+
+def build_client_survey_secure_pin_html(agency_name: str, ttl_days: int, error_msg: str = "") -> str:
+    esc = html.escape
+    header_img = "/static/images/Asset 1.png"
+    logo_img = "/static/images/Evolv Health hor color.png"
+    ttl_days = int(ttl_days or 30)
+    err_html = f'<div class="err">{esc(error_msg)}</div>' if error_msg else ""
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Enter PIN</title>
+  <style>
+    body{{margin:0;background:#f6f8fb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#0f172a;}}
+    .wrap{{max-width:1100px;margin:0 auto;padding:24px;}}
+    .hero{{background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #e5e7eb;box-shadow:0 12px 28px rgba(13,59,102,.08);}}
+    .hero-img{{width:100%;display:block;}}
+    .hero-body{{padding:18px 22px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}}
+    .hero-title{{font-size:20px;font-weight:900;color:#0d3b66;}}
+    .hero-sub{{color:#64748b;font-size:12px;}}
+    .logo{{height:32px;}}
+    .pin-card{{margin-top:18px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);overflow:hidden;}}
+    .topbar{{background:#0D3B66;padding:16px 22px;color:#fff;font-weight:700;}}
+    .mintbar{{height:4px;background:#A8E6CF;}}
+    .content{{padding:22px;}}
+    p{{margin:0 0 14px 0;font-size:13px;color:#374151;line-height:1.5;}}
+    label{{display:block;font-size:12px;color:#374151;margin-bottom:6px;font-weight:600;}}
+    input{{display:block;width:100%;max-width:100%;min-width:0;padding:12px;border-radius:12px;border:1px solid #d1d5db;font-size:14px;}}
+    input:focus{{outline:none;border-color:#A8E6CF;box-shadow:0 0 0 3px rgba(168,230,207,.45);}}
+    .btn{{margin-top:12px;display:inline-block;background:#0D3B66;color:#ffffff;border:none;padding:12px 18px;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 8px 18px rgba(13,59,102,.18);}}
+    .btn:hover{{background:#0b3357;}}
+    .err{{margin:0 0 12px 0;padding:10px 12px;border-radius:12px;border:1px solid #fca5a5;background:#fef2f2;color:#991b1b;font-size:13px;}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <img class="hero-img" src="{header_img}" alt="Survey header" />
+      <div class="hero-body">
+        <div>
+          <div class="hero-title">{esc(agency_name or "Client Surveys")}</div>
+          <div class="hero-sub">Secure list expires in {ttl_days} days</div>
+        </div>
+        <img class="logo" src="{logo_img}" alt="Evolv Health" />
+      </div>
+    </div>
+
+    <div class="pin-card">
+      <div class="topbar">Secure Survey List</div>
+      <div class="mintbar" aria-hidden="true"></div>
+      <div class="content">
+        <p>Enter the PIN to view the survey list. This link expires in {ttl_days} days.</p>
+        {err_html}
+        <form method="post">
+          <label for="pin">PIN</label>
+          <input id="pin" name="pin" type="password" autocomplete="one-time-code" required />
+          <button class="btn" type="submit">Continue</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>"""
 
 
 @app.get("/surveys/secure/{token}", response_class=HTMLResponse)
@@ -20118,32 +20208,10 @@ async def client_surveys_secure_pin(token: str, request: Request):
     finally:
         conn.close()
 
-    page = f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Enter PIN</title>
-  <style>
-    body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:#f6f8fb;padding:24px;}}
-    .card{{max-width:420px;margin:0 auto;background:#fff;border-radius:16px;padding:20px;border:1px solid #e5e7eb;box-shadow:0 12px 28px rgba(13,59,102,.08);}}
-    label{{font-size:12px;color:#64748b;display:block;margin-bottom:6px;}}
-    input{{width:100%;padding:10px;border-radius:10px;border:1px solid #cbd5f5;font-size:14px;}}
-    button{{margin-top:12px;background:#0d3b66;color:#fff;border:none;padding:10px 14px;border-radius:10px;font-weight:800;cursor:pointer;}}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h2>Secure Survey List</h2>
-    <p>Enter the PIN to view the survey list. This link expires in {CLIENT_SURVEY_LINK_TTL_DAYS} days.</p>
-    <form method="post">
-      <label for="pin">PIN</label>
-      <input id="pin" name="pin" type="password" autocomplete="one-time-code" required />
-      <button type="submit">Continue</button>
-    </form>
-  </div>
-</body>
-</html>"""
+    page = build_client_survey_secure_pin_html(
+        row["agency_name"] if row else "Client Surveys",
+        CLIENT_SURVEY_LINK_TTL_DAYS,
+    )
     return HTMLResponse(page)
 
 
@@ -20164,7 +20232,12 @@ async def client_surveys_secure_pin_post(token: str, pin: Optional[str] = Form(N
         conn.close()
 
     if not (pin or "").strip() or not verify_pin(pin.strip(), hash_pin(CLIENT_SURVEY_UNIVERSAL_PIN)):
-        return HTMLResponse("<h2>Invalid PIN</h2><p>Please try again.</p>", status_code=401)
+        page = build_client_survey_secure_pin_html(
+            row["agency_name"] if row else "Client Surveys",
+            CLIENT_SURVEY_LINK_TTL_DAYS,
+            "Invalid PIN. Please try again.",
+        )
+        return HTMLResponse(page, status_code=401)
 
     max_age = None
     try:
