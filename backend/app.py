@@ -14092,7 +14092,7 @@ def build_client_survey_secure_list_html(
     .hero-title{{font-size:20px;font-weight:900;color:#0d3b66;}}
     .hero-sub{{color:#64748b;font-size:12px;}}
     .logo{{height:32px;}}
-    .hero-img{{width:100%;display:block;height:70px;object-fit:cover;}}
+    .hero-img{{width:100%;display:block;height:190px;object-fit:cover;}}
     .summary-card{{margin-top:18px;background:#fff;border:1px solid rgba(13,59,102,.14);border-radius:16px;padding:18px 18px 16px 18px;box-shadow:0 6px 18px rgba(13,59,102,.06);}}
     .summary-title{{font-size:16px;font-weight:900;color:#0d3b66;margin-bottom:8px;}}
     .summary-text{{font-size:13px;line-height:1.45;color:#0f172a;}}
@@ -20240,7 +20240,7 @@ def build_client_survey_secure_pin_html(agency_name: str, ttl_days: int, error_m
     body{{margin:0;background:#f6f8fb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#0f172a;}}
     .wrap{{max-width:1100px;margin:0 auto;padding:24px;}}
     .hero{{background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #e5e7eb;box-shadow:0 12px 28px rgba(13,59,102,.08);}}
-    .hero-img{{width:100%;display:block;height:120px;object-fit:cover;}}
+    .hero-img{{width:100%;display:block;height:190px;object-fit:cover;}}
     .hero-body{{padding:18px 22px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}}
     .hero-title{{font-size:20px;font-weight:900;color:#0d3b66;}}
     .hero-sub{{color:#64748b;font-size:12px;}}
