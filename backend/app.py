@@ -2818,7 +2818,7 @@ def build_client_survey_secure_email_html(secure_url: str, ttl_days: int, agency
         <h1>Monthly Client Survey Responses</h1>
         <p>
           New survey responses are available for <strong>{agency_label}</strong>.
-          Use the secure link below to view the filtered survey list.
+          Use the secure link below to view your recent survey responses.
         </p>
 
         <div class="callout">
