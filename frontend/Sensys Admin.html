@@ -930,6 +930,7 @@
                   <div class="hint">Select a survey to view details.</div>
                 </div>
                 <div style="display:flex;gap:8px;align-items:center">
+                  <input class="input" id="clientSurveySearch" placeholder="Search patient name." style="width:190px;max-width:190px;" />
                   <button class="iconbtn" id="clientSurveyFilterIcon" title="Survey filters" aria-label="Survey filters">
                     <svg viewBox="0 0 253.2 249.69" aria-hidden="true"><defs>
                       <style>
@@ -973,7 +974,6 @@
               </div>
               <div class="body">
                 <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
-                  <input class="input" id="clientSurveySearch" placeholder="Search patient name." />
                   <label class="mini" style="display:flex;align-items:center;gap:8px;">
                     <input type="checkbox" id="clientSurveyMockToggle" checked />
                     Show mock row
@@ -996,6 +996,7 @@
             </div>
 
           </div>
+          <div class="mini" id="clientSurveyRowCount" style="margin-top:10px;color:#64748b;"></div>
 
         </div>
       </div><!-- /panelClientSurveys -->
@@ -3791,9 +3792,15 @@
       ai_summary_override: ""
     };
 
+    function getClientSurveyDefaultDischargeFrom(){
+      const d = new Date();
+      d.setDate(d.getDate() - 30);
+      return d.toISOString().slice(0, 10);
+    }
+
     const clientSurveyFilterState = {
       agency_name: "",
-      discharge_from: "",
+      discharge_from: getClientSurveyDefaultDischargeFrom(),
       discharge_to: "",
       sort_by: "patient_asc"
     };
@@ -3888,11 +3895,18 @@
       if(!tbody) return;
 
       const q = ($("clientSurveySearch").value || "").trim().toLowerCase();
-      let items = getClientSurveyFilteredItems().filter(s => {
+      const countEl = $("clientSurveyRowCount");
+      const totalCount = (clientSurveysCache || []).length;
+      let filteredItems = getClientSurveyFilteredItems().filter(s => {
         const hay = String(s.abv_name || "").toLowerCase();
         return !q || hay.includes(q);
       });
 
+      if(countEl){
+        countEl.textContent = `${filteredItems.length} rows (from ${totalCount} total)`;
+      }
+
+      let items = filteredItems.slice();
       if($("clientSurveyMockToggle").checked){
         items = [clientSurveyMockRow].concat(items);
       }
