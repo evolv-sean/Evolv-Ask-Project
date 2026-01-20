@@ -115,14 +115,12 @@
       color:#0f172a;
       line-height:1.35;
     }
-    .survey-card,
-    .survey-detail-card{
+    .survey-card{
       height: calc(100vh - 220px);
       display:flex;
       flex-direction:column;
     }
-    .survey-card .body,
-    .survey-detail-card .body{
+    .survey-card .body{
       overflow:auto;
       flex:1;
       min-height:0;
@@ -131,7 +129,7 @@
       flex:1;
       overflow:auto;
     }
-    .survey-detail-card .survey-textarea{
+    .survey-textarea{
       width:100%;
     }
     .card{
@@ -893,7 +891,7 @@
             </div>
           </div>
 
-            <div class="survey-grid">
+          <div class="survey-grid" style="grid-template-columns:1fr;">
             <div class="card survey-card">
               <div class="hd">
                 <div>
@@ -928,69 +926,6 @@
               </div>
             </div>
 
-            <div class="card survey-detail-card">
-              <div class="hd">
-                <div>
-                  <h2 style="margin:0">Survey Details</h2>
-                  <div class="hint">Details for the selected survey.</div>
-                </div>
-                <div style="display:flex;gap:8px;align-items:center">
-                  <button class="iconbtn" id="clientSurveyRecomputeBtn" title="Recompute survey" aria-label="Recompute survey">↻</button>
-                </div>
-              </div>
-              <div class="body">
-                <div class="mini" id="clientSurveyDetailEmpty" style="margin-bottom:6px;">No survey selected.</div>
-                <div id="clientSurveyDetailForm" style="display:none">
-                  <div class="stack" style="gap:12px">
-                    <div class="stack" style="gap:10px">
-                      <div>
-                        <div class="label">Patient</div>
-                        <div class="mini" id="clientSurveyPatient">—</div>
-                      </div>
-                      <div>
-                        <div class="label">Agency</div>
-                        <div class="mini" id="clientSurveyAgency">—</div>
-                      </div>
-                      <div class="stack" style="gap:10px">
-                        <div>
-                          <div class="label">Admission Date</div>
-                          <div class="mini" id="clientSurveyAdmit">—</div>
-                        </div>
-                        <div>
-                          <div class="label">Discharge Date</div>
-                          <div class="mini" id="clientSurveyDischarge">—</div>
-                        </div>
-                      </div>
-                      <div class="stack" style="gap:10px">
-                        <div>
-                          <div class="label">Updated</div>
-                          <div class="mini" id="clientSurveyUpdated">—</div>
-                        </div>
-                        <div>
-                          <div class="label">Overall Score</div>
-                          <div class="mini" id="clientSurveyScore">—</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div class="label">Original General Comments</div>
-                      <textarea class="input survey-textarea" id="clientSurveyOriginalComments" rows="13" readonly></textarea>
-                    </div>
-
-                    <div>
-                      <div class="label">AI Summary (editable override)</div>
-                      <textarea class="input survey-textarea" id="clientSurveySummaryOverride" rows="13" placeholder="Edit summary override."></textarea>
-                    </div>
-
-                    <div style="display:flex;gap:8px;align-items:center">
-                      <button class="btn primary" id="clientSurveySaveSummary">Save Summary</button>
-                      <div class="mini" id="clientSurveyDetailMsg"></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
 
         </div>
@@ -1829,6 +1764,71 @@
   </div>
 
   <!-- =========================
+       CLIENT SURVEY DETAILS MODAL
+  ========================= -->
+  <div class="modal-backdrop" id="clientSurveyDetailsModalBackdrop">
+    <div class="modal" style="max-width:980px;width:min(980px,96vw);" role="dialog" aria-modal="true" aria-labelledby="clientSurveyDetailsModalTitle">
+      <div class="modal-hd">
+        <div>
+          <h3 class="modal-title" id="clientSurveyDetailsModalTitle">Survey Details</h3>
+          <div class="modal-sub">Review the original comments and edit the AI summary.</div>
+        </div>
+        <button class="xbtn" id="closeClientSurveyDetailsModal" aria-label="Close">×</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="stack" style="gap:12px">
+          <div class="stack" style="gap:10px">
+            <div>
+              <div class="label">Patient</div>
+              <div class="mini" id="clientSurveyPatient">—</div>
+            </div>
+            <div>
+              <div class="label">Agency</div>
+              <div class="mini" id="clientSurveyAgency">—</div>
+            </div>
+            <div class="stack" style="gap:10px">
+              <div>
+                <div class="label">Admission Date</div>
+                <div class="mini" id="clientSurveyAdmit">—</div>
+              </div>
+              <div>
+                <div class="label">Discharge Date</div>
+                <div class="mini" id="clientSurveyDischarge">—</div>
+              </div>
+            </div>
+            <div class="stack" style="gap:10px">
+              <div>
+                <div class="label">Updated</div>
+                <div class="mini" id="clientSurveyUpdated">—</div>
+              </div>
+              <div>
+                <div class="label">Overall Score</div>
+                <div class="mini" id="clientSurveyScore">—</div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="label">Original General Comments</div>
+            <textarea class="input survey-textarea" id="clientSurveyOriginalComments" rows="13" readonly></textarea>
+          </div>
+
+          <div>
+            <div class="label">AI Summary (editable override)</div>
+            <textarea class="input survey-textarea" id="clientSurveySummaryOverride" rows="13" placeholder="Edit summary override."></textarea>
+          </div>
+
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn primary" id="clientSurveySaveSummary">Save Summary</button>
+            <div class="mini" id="clientSurveyDetailMsg"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================
        BULK UPLOAD MODAL (Reusable)
   ========================= -->
 <div class="modal-backdrop" id="bulkModalBackdrop">
@@ -2369,6 +2369,7 @@
       closeClientSurveysSettingsModal();
       closeClientSurveysUploadModal();
       closeClientSurveysFilterModal();
+      closeClientSurveyDetailsModal();
       closeServiceModal();
     closeCareTeamModal();
     closeBulkModal();
@@ -3209,7 +3210,6 @@
         refreshAdmissionsList();
     }else if(which==="clientSurveys"){
       $("panelClientSurveys").classList.add("on");
-      clearClientSurveyDetails();
       refreshClientSurveysList();
     }else if(which==="services"){
         $("panelServices").classList.add("on");
@@ -3424,6 +3424,9 @@
     function openClientSurveysFilterModal(){ $("clientSurveysFilterModalBackdrop").classList.add("on"); }
     function closeClientSurveysFilterModal(){ $("clientSurveysFilterModalBackdrop").classList.remove("on"); }
 
+    function openClientSurveyDetailsModal(){ $("clientSurveyDetailsModalBackdrop").classList.add("on"); }
+    function closeClientSurveyDetailsModal(){ $("clientSurveyDetailsModalBackdrop").classList.remove("on"); }
+
     $("patientModalBackdrop").addEventListener("click", (e) => {
       if(e.target.id === "patientModalBackdrop") closePatientModal();
     });
@@ -3439,6 +3442,9 @@
     $("clientSurveysFilterModalBackdrop").addEventListener("click", (e) => {
       if(e.target.id === "clientSurveysFilterModalBackdrop") closeClientSurveysFilterModal();
     });
+    $("clientSurveyDetailsModalBackdrop").addEventListener("click", (e) => {
+      if(e.target.id === "clientSurveyDetailsModalBackdrop") closeClientSurveyDetailsModal();
+    });
 
     $("closePatientModal").onclick = closePatientModal;
     $("closeAdmissionModal").onclick = closeAdmissionModal;
@@ -3448,6 +3454,7 @@
     $("clientSurveysUploadIcon").onclick = openClientSurveysUploadModal;
     $("closeClientSurveysFilterModal").onclick = closeClientSurveysFilterModal;
     $("clientSurveyFilterIcon").onclick = openClientSurveysFilterModal;
+    $("closeClientSurveyDetailsModal").onclick = closeClientSurveyDetailsModal;
 
     const clientSurveysDropzone = $("clientSurveysDropzone");
     const clientSurveysUploadInput = $("clientSurveysUploadInput");
@@ -3621,21 +3628,11 @@
       }).join("");
     }
 
-    function clearClientSurveyDetails(){
-      selectedClientSurveyId = null;
-      $("clientSurveyDetailEmpty").style.display = "";
-      $("clientSurveyDetailForm").style.display = "none";
-      $("clientSurveyDetailMsg").textContent = "";
-      renderClientSurveysTable();
-    }
-
     function selectClientSurveyById(id){
       const s = (clientSurveysCache || []).find(x => Number(x.id) === Number(id));
       if(!s) return;
 
       selectedClientSurveyId = Number(s.id);
-      $("clientSurveyDetailEmpty").style.display = "none";
-      $("clientSurveyDetailForm").style.display = "block";
 
       $("clientSurveyPatient").textContent = s.abv_name || "—";
       $("clientSurveyAgency").textContent = s.agency_name || "—";
@@ -3651,6 +3648,7 @@
       $("clientSurveyDetailMsg").textContent = "";
 
       renderClientSurveysTable();
+      openClientSurveyDetailsModal();
     }
 
     $("clientSurveyTbody").addEventListener("click", (e) => {
