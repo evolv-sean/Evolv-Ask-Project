@@ -1792,6 +1792,9 @@
         <div class="label">AI Summary Prompt</div>
         <textarea class="input" id="clientSurveyPrompt" rows="8" placeholder="Enter prompt for AI summaries."></textarea>
         <div style="height:10px"></div>
+        <div class="label">Master Summary Prompt</div>
+        <textarea class="input" id="clientSurveyMasterPrompt" rows="6" placeholder="Enter prompt for the master survey summary."></textarea>
+        <div style="height:10px"></div>
         <div style="display:flex;gap:8px;align-items:center">
           <button class="btn primary" id="clientSurveyPromptSave">Save Prompt</button>
           <div class="mini" id="clientSurveyPromptMsg"></div>
@@ -4070,6 +4073,7 @@
       try{
         const resp = await apiGet("/api/sensys/admin/client-surveys/prompt");
         $("clientSurveyPrompt").value = resp.prompt || "";
+        $("clientSurveyMasterPrompt").value = resp.master_prompt || "";
         $("clientSurveyPromptMsg").textContent = "";
       }catch(e){
         $("clientSurveyPromptMsg").textContent = String(e.message || e);
@@ -4080,7 +4084,11 @@
       $("clientSurveyPromptMsg").textContent = "Saving.";
       try{
         const promptVal = ($("clientSurveyPrompt").value || "").trim();
-        await apiPost("/api/sensys/admin/client-surveys/prompt", { prompt: promptVal });
+        const masterPromptVal = ($("clientSurveyMasterPrompt").value || "").trim();
+        await apiPost("/api/sensys/admin/client-surveys/prompt", {
+          prompt: promptVal,
+          master_prompt: masterPromptVal
+        });
         $("clientSurveyPromptMsg").textContent = "Saved.";
       }catch(e){
         $("clientSurveyPromptMsg").textContent = String(e.message || e);
