@@ -6091,9 +6091,6 @@ def init_db():
 
 
 
-init_db()
-
-
 class ManualCmNoteIn(BaseModel):
     patient_mrn: str
     patient_name: Optional[str] = None
@@ -26471,6 +26468,8 @@ from fastapi.responses import HTMLResponse, Response
 # ---------------------------------------------------------------------------
 # Entrypoint for Render
 # ---------------------------------------------------------------------------
+
+init_db()
 
 if __name__ == "__main__":
     import uvicorn
