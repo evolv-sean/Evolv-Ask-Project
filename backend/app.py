@@ -3348,6 +3348,42 @@ def init_db():
         """
     )
 
+    # Client Surveys (Admin uploads + AI summaries)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_client_surveys (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            agency_name        TEXT,
+            abv_name           TEXT,
+            admission_date     TEXT,
+            discharge_date     TEXT,
+            survey_updated_at  TEXT,
+            general_comments   TEXT,
+            overall_score      REAL,
+            ai_summary         TEXT,
+            ai_summary_override TEXT,
+            source_filename    TEXT,
+            created_at         TEXT DEFAULT (datetime('now')),
+            updated_at         TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sensys_client_surveys_name ON sensys_client_surveys(abv_name)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sensys_client_surveys_agency ON sensys_client_surveys(agency_name)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sensys_client_surveys_updated ON sensys_client_surveys(survey_updated_at)"
+    )
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_sensys_client_surveys_unique
+        ON sensys_client_surveys(agency_name, abv_name, survey_updated_at)
+        """
+    )
+
     # User <-> Agency (many-to-many)
     cur.execute(
         """
@@ -4663,6 +4699,17 @@ def init_db():
                 "but never invent facility-specific facts. If you aren't sure, "
                 "say what you do and don't know and suggest next steps.",
             ),
+        )
+
+    cur.execute("SELECT value FROM ai_settings WHERE key=?", (CLIENT_SURVEY_SUMMARY_PROMPT_KEY,))
+    row = cur.fetchone()
+    if not row:
+        cur.execute(
+            """
+            INSERT INTO ai_settings (key, value)
+            VALUES (?, ?)
+            """,
+            (CLIENT_SURVEY_SUMMARY_PROMPT_KEY, DEFAULT_CLIENT_SURVEY_SUMMARY_PROMPT),
         )
 
 
@@ -13692,6 +13739,72 @@ Important:
 - Use ONLY the provided note text. Do not invent facts.
 """.strip()
 
+CLIENT_SURVEY_SUMMARY_PROMPT_KEY = "client_survey_summary_prompt"
+
+DEFAULT_CLIENT_SURVEY_SUMMARY_PROMPT = (
+    "Sumerize and Formalize General_Coments to sound less short-hand. "
+    "Only show the final text do not show your speaking in the output. "
+    "Try to get them to be at least 1 sentence. "
+    "For your information, this is a medical record note from the writer describing "
+    "their post discharge phone call to the patient in where we are asking about their "
+    "recent stay in a skilled nursing facility, but you dont have to unecessarily explain "
+    "this in the final output. If the field says anything regarding the survey not being "
+    "completed then simply put patient refused suvey."
+).strip()
+
+
+def _client_survey_prompt(cur: sqlite3.Cursor) -> str:
+    val = get_setting(cur, CLIENT_SURVEY_SUMMARY_PROMPT_KEY) or ""
+    if not val.strip():
+        return DEFAULT_CLIENT_SURVEY_SUMMARY_PROMPT
+    return val
+
+
+_CLIENT_SURVEY_REFUSAL_PHRASES = [
+    "not completed",
+    "not complete",
+    "did not complete",
+    "didn't complete",
+    "unable to complete",
+    "not willing",
+    "refused",
+    "declined",
+    "survey not completed",
+    "survey not complete",
+    "survey not done",
+    "not surveyed",
+    "no survey",
+    "survey refused",
+]
+
+
+def _client_survey_is_refused(text: str) -> bool:
+    t = (text or "").strip().lower()
+    if not t:
+        return False
+    return any(p in t for p in _CLIENT_SURVEY_REFUSAL_PHRASES)
+
+
+def _client_survey_summarize(text: str, prompt: str) -> str:
+    raw = (text or "").strip()
+    if not raw:
+        return ""
+    if _client_survey_is_refused(raw):
+        return "Patient refused survey."
+
+    try:
+        chat = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": raw},
+            ],
+        )
+        return (chat.choices[0].message.content or "").strip()
+    except Exception as e:
+        logger.exception("Client survey summary failed: %s", e)
+        return ""
+
 
 def _load_recent_cm_notes_for_visit(cur: sqlite3.Cursor, visit_id: str, limit: int = 6) -> List[Dict[str, Any]]:
     cur.execute(
@@ -19454,6 +19567,203 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
 # -----------------------------
 from pydantic import BaseModel
 from typing import Optional
+
+# -----------------------------
+# Sensys Admin: Client Surveys
+# -----------------------------
+@app.get("/api/sensys/admin/client-surveys")
+def sensys_admin_client_surveys(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT
+            id,
+            agency_name,
+            abv_name,
+            admission_date,
+            discharge_date,
+            survey_updated_at,
+            general_comments,
+            overall_score,
+            ai_summary,
+            ai_summary_override
+        FROM sensys_client_surveys
+        ORDER BY
+            CASE WHEN survey_updated_at IS NULL OR TRIM(survey_updated_at) = '' THEN 1 ELSE 0 END,
+            survey_updated_at DESC,
+            updated_at DESC
+        """
+    ).fetchall()
+    return {"surveys": [dict(r) for r in rows]}
+
+
+@app.get("/api/sensys/admin/client-surveys/prompt")
+def sensys_admin_client_surveys_prompt_get(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        return {"ok": True, "prompt": _client_survey_prompt(cur)}
+    finally:
+        conn.close()
+
+
+@app.post("/api/sensys/admin/client-surveys/prompt")
+def sensys_admin_client_surveys_prompt_set(payload: Dict[str, Any] = Body(...), token: str = ""):
+    _require_admin_token(token)
+    prompt = (payload.get("prompt") or "").strip()
+    if len(prompt) > 12000:
+        raise HTTPException(status_code=400, detail="prompt too long")
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        set_setting(conn, cur, CLIENT_SURVEY_SUMMARY_PROMPT_KEY, prompt)
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+@app.post("/api/sensys/admin/client-surveys/summary-override")
+def sensys_admin_client_surveys_summary_override(payload: Dict[str, Any] = Body(...), token: str = ""):
+    _require_admin_token(token)
+    row_id = payload.get("id")
+    if not row_id:
+        raise HTTPException(status_code=400, detail="id is required")
+    override = (payload.get("ai_summary_override") or "").strip()
+    conn = get_db()
+    try:
+        conn.execute(
+            """
+            UPDATE sensys_client_surveys
+            SET ai_summary_override = ?,
+                updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (override, int(row_id)),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+@app.post("/api/sensys/admin/client-surveys/upload")
+async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File(...)):
+    _require_admin_token(token)
+    if not file or not (file.filename or "").lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Please upload a .csv file")
+
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8-sig")
+    except Exception:
+        text = raw.decode("latin-1", errors="ignore")
+
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise HTTPException(status_code=400, detail="CSV has no headers")
+
+    def _norm_key(k: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", (k or "").strip().lower())
+
+    fieldnames = list(reader.fieldnames or [])
+    normed = {_norm_key(k): k for k in fieldnames}
+
+    def _find_col(candidates: list[str]) -> str | None:
+        for key in fieldnames:
+            nk = _norm_key(key)
+            for cand in candidates:
+                if nk == cand or nk.startswith(cand) or cand in nk:
+                    return key
+        return None
+
+    col_agency = _find_col(["agencyname", "agency"])
+    col_abv = _find_col(["abvname", "abv"])
+    col_admit = _find_col(["admissiondate", "admitdate", "admission"])
+    col_dc = _find_col(["dischargedate", "dcdate", "discharge"])
+    col_updated = _find_col(["updatedat", "updated"])
+    col_comments = _find_col(["generalcomments", "generalcomment", "generalcoments", "comments", "comment"])
+    col_overall = _find_col(["overallscore", "overall"])
+
+    conn = get_db()
+    inserted = 0
+    updated = 0
+    try:
+        cur = conn.cursor()
+        prompt = _client_survey_prompt(cur)
+
+        for row in reader:
+            agency_name = (row.get(col_agency) if col_agency else "") or ""
+            abv_name = (row.get(col_abv) if col_abv else "") or ""
+            admission_date = (row.get(col_admit) if col_admit else "") or ""
+            discharge_date = (row.get(col_dc) if col_dc else "") or ""
+            survey_updated_at = (row.get(col_updated) if col_updated else "") or ""
+            general_comments = (row.get(col_comments) if col_comments else "") or ""
+            overall_score_raw = (row.get(col_overall) if col_overall else "") or ""
+
+            try:
+                overall_score = float(str(overall_score_raw).strip()) if str(overall_score_raw).strip() != "" else None
+            except Exception:
+                overall_score = None
+
+            ai_summary = _client_survey_summarize(str(general_comments), prompt)
+
+            existing = conn.execute(
+                """
+                SELECT id FROM sensys_client_surveys
+                WHERE agency_name = ? AND abv_name = ? AND survey_updated_at = ?
+                """,
+                (str(agency_name), str(abv_name), str(survey_updated_at)),
+            ).fetchone()
+
+            if existing:
+                updated += 1
+            else:
+                inserted += 1
+
+            conn.execute(
+                """
+                INSERT INTO sensys_client_surveys(
+                    agency_name,
+                    abv_name,
+                    admission_date,
+                    discharge_date,
+                    survey_updated_at,
+                    general_comments,
+                    overall_score,
+                    ai_summary,
+                    source_filename,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(agency_name, abv_name, survey_updated_at) DO UPDATE SET
+                    admission_date = excluded.admission_date,
+                    discharge_date = excluded.discharge_date,
+                    general_comments = excluded.general_comments,
+                    overall_score = excluded.overall_score,
+                    ai_summary = excluded.ai_summary,
+                    source_filename = excluded.source_filename,
+                    updated_at = datetime('now')
+                """,
+                (
+                    str(agency_name).strip(),
+                    str(abv_name).strip(),
+                    str(admission_date).strip(),
+                    str(discharge_date).strip(),
+                    str(survey_updated_at).strip(),
+                    str(general_comments).strip(),
+                    overall_score,
+                    ai_summary,
+                    file.filename or "",
+                ),
+            )
+
+        conn.commit()
+        return {"ok": True, "inserted": inserted, "updated": updated}
+    finally:
+        conn.close()
+
 
 # -----------------------------
 # Sensys Admin: Service Types (NEW)
