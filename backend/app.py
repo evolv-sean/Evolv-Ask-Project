@@ -20093,13 +20093,10 @@ def sensys_admin_client_surveys_email_send(
     msg.set_content(f"View secure surveys: {secure_url}")
     msg.add_alternative(html_body, subtype="html")
 
+    context = ssl.create_default_context()
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-        try:
-            server.ehlo()
-            if (SMTP_USER and SMTP_PASSWORD) and server.has_extn("auth"):
-                server.login(SMTP_USER, SMTP_PASSWORD)
-        except smtplib.SMTPNotSupportedError:
-            pass
+        server.starttls(context=context)
+        server.login(SMTP_USER, SMTP_PASSWORD)
         server.send_message(msg)
 
     return {"ok": True}
