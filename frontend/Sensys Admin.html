@@ -900,6 +900,11 @@
                 </div>
                 <div style="display:flex;gap:8px;align-items:center">
                   <button class="iconbtn" id="clientSurveyFilterIcon" title="Survey filters" aria-label="Survey filters">⇅</button>
+                  <button class="iconbtn" id="clientSurveyEmailIcon" title="Email surveys" aria-label="Email surveys">
+                    <svg viewBox="0 0 256.63 204.3" aria-hidden="true">
+                      <path d="M.5,16.44V187.87c0,8.8,7.13,15.93,15.93,15.93H240.2c8.8,0,15.93-7.13,15.93-15.93V16.44c0-8.8-7.13-15.93-15.93-15.93H16.44C7.64,.5,.5,7.64,.5,16.44Zm3.9,4.67c0-9.08,7.36-16.44,16.44-16.44H236.68c9.08,0,16.44,7.36,16.44,16.44V181.68c0,9.08-7.36,16.44-16.44,16.44H20.84c-9.08,0-16.44-7.36-16.44-16.44V21.11ZM131.71,85.3L249.07,6.15c-3.04-1.71-6.56-2.7-10.32-2.7H18.69c-3.77,0-7.28,.99-10.32,2.7l117.36,79.15c3.69,2.49,8.52,2.49,12.21,0ZM4.42,186.33c0,.54,.03,1.08,.08,1.61l65.95-60.24c.44-.4,.47-1.08,.07-1.52-.4-.44-1.08-.47-1.52-.07L4.52,184.98c-.06,.46-.1,.92-.1,1.35Zm247.69-.22c.11-.89,.17-1.79,.17-2.7V19.47c0-.61-.02-1.21-.06-1.81l-59.24,55.29c-.44,.4-.47,1.08-.07,1.52,.4,.44,1.08,.47,1.52,.07l57.69-53.81c.1-.09,.16-.21,.18-.34,.02,.28,.03,.57,.03,.86V181.68c0,.33-.01,.66-.02,.99l-57.61-61.95c-.4-.44-1.08-.46-1.52-.06s-.46,1.08-.06,1.52l58.99,63.49Zm-64.33-113.23L135.38,121.79c-4.22,3.93-10.4,4.72-15.45,1.98-.53-.29-1.04-.62-1.52-.99L9.2,17.28c-.75,.65-1.46,1.34-2.13,2.07l65.96,60.25c.62,.57,.66,1.54,.09,2.16-.57,.62-1.54,.66-2.16,.09L5.23,21.79c-.4,.6-.77,1.22-1.11,1.85L126.5,106.26c1.84,1.24,4.26,1.24,6.1,0l119.43-80.52c-.34-.63-.71-1.25-1.11-1.85l-59.77,55.78c-.62,.57-1.59,.54-2.16-.08-.57-.62-.54-1.59,.08-2.16l60.14-56.13c-.67-.73-1.38-1.43-2.13-2.07l-59.3,55.6Z"/>
+                    </svg>
+                  </button>
                 </div>
               </div>
               <div class="body">
@@ -1744,7 +1749,7 @@
     </div>
   </div>
 
-  <!-- =========================
+    <!-- =========================
        CLIENT SURVEYS FILTER MODAL
   ========================= -->
   <div class="modal-backdrop" id="clientSurveysFilterModalBackdrop">
@@ -1752,18 +1757,74 @@
       <div class="modal-hd">
         <div>
           <h3 class="modal-title" id="clientSurveysFilterModalTitle">Survey Filters</h3>
-          <div class="modal-sub">Sorting and filtering controls will be added here.</div>
+          <div class="modal-sub">Filter by agency and discharge date range. Sort options included.</div>
         </div>
-        <button class="xbtn" id="closeClientSurveysFilterModal" aria-label="Close">×</button>
+        <button class="xbtn" id="closeClientSurveysFilterModal" aria-label="Close">x</button>
       </div>
 
       <div class="modal-body">
-        <div class="smallhint">Filters UI coming soon.</div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          <div>
+            <div class="label">Agency Name</div>
+            <select class="select" id="clientSurveyFilterAgency">
+              <option value="">All agencies</option>
+            </select>
+          </div>
+          <div>
+            <div class="label">Sort By</div>
+            <select class="select" id="clientSurveyFilterSort">
+              <option value="patient_asc">Patient Name (A-Z)</option>
+              <option value="discharge_desc">Discharge Date (Newest)</option>
+              <option value="discharge_asc">Discharge Date (Oldest)</option>
+            </select>
+          </div>
+          <div>
+            <div class="label">Discharge Date From</div>
+            <input class="input" id="clientSurveyFilterDischargeFrom" type="date" />
+          </div>
+          <div>
+            <div class="label">Discharge Date To</div>
+            <input class="input" id="clientSurveyFilterDischargeTo" type="date" />
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn primary" id="clientSurveyApplyFilters">Apply Filters</button>
+          <button class="btn" id="clientSurveyClearFilters">Clear</button>
+          <div class="mini" id="clientSurveyFilterMsg"></div>
+        </div>
       </div>
     </div>
   </div>
 
   <!-- =========================
+       CLIENT SURVEYS EMAIL MODAL
+  ========================= -->
+  <div class="modal-backdrop" id="clientSurveysEmailModalBackdrop">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="clientSurveysEmailModalTitle">
+      <div class="modal-hd">
+        <div>
+          <h3 class="modal-title" id="clientSurveysEmailModalTitle">Email Client Surveys</h3>
+          <div class="modal-sub">Send the filtered survey list to the selected facility contacts.</div>
+        </div>
+        <button class="xbtn" id="closeClientSurveysEmailModal" aria-label="Close">x</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="label">Recipients</div>
+        <textarea class="input" id="clientSurveyEmailRecipients" rows="4" placeholder="Enter email addresses separated by commas."></textarea>
+        <div class="smallhint" style="margin-top:6px">Email uses the current filters and expires in 30 days.</div>
+
+        <div style="height:12px"></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn primary" id="clientSurveySendEmailBtn">Send Email</button>
+          <div class="mini" id="clientSurveyEmailMsg"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+<!-- =========================
        CLIENT SURVEY DETAILS MODAL
   ========================= -->
   <div class="modal-backdrop" id="clientSurveyDetailsModalBackdrop">
@@ -3421,6 +3482,9 @@
     function openClientSurveysFilterModal(){ $("clientSurveysFilterModalBackdrop").classList.add("on"); }
     function closeClientSurveysFilterModal(){ $("clientSurveysFilterModalBackdrop").classList.remove("on"); }
 
+    function openClientSurveysEmailModal(){ $("clientSurveysEmailModalBackdrop").classList.add("on"); }
+    function closeClientSurveysEmailModal(){ $("clientSurveysEmailModalBackdrop").classList.remove("on"); }
+
     function openClientSurveyDetailsModal(){ $("clientSurveyDetailsModalBackdrop").classList.add("on"); }
     function closeClientSurveyDetailsModal(){ $("clientSurveyDetailsModalBackdrop").classList.remove("on"); }
 
@@ -3439,6 +3503,9 @@
     $("clientSurveysFilterModalBackdrop").addEventListener("click", (e) => {
       if(e.target.id === "clientSurveysFilterModalBackdrop") closeClientSurveysFilterModal();
     });
+    $("clientSurveysEmailModalBackdrop").addEventListener("click", (e) => {
+      if(e.target.id === "clientSurveysEmailModalBackdrop") closeClientSurveysEmailModal();
+    });
     $("clientSurveyDetailsModalBackdrop").addEventListener("click", (e) => {
       if(e.target.id === "clientSurveyDetailsModalBackdrop") closeClientSurveyDetailsModal();
     });
@@ -3451,6 +3518,8 @@
     $("clientSurveysUploadIcon").onclick = openClientSurveysUploadModal;
     $("closeClientSurveysFilterModal").onclick = closeClientSurveysFilterModal;
     $("clientSurveyFilterIcon").onclick = openClientSurveysFilterModal;
+    $("closeClientSurveysEmailModal").onclick = closeClientSurveysEmailModal;
+    $("clientSurveyEmailIcon").onclick = openClientSurveysEmailModal;
     $("closeClientSurveyDetailsModal").onclick = closeClientSurveyDetailsModal;
 
     const clientSurveysDropzone = $("clientSurveysDropzone");
@@ -3568,6 +3637,13 @@
       ai_summary_override: ""
     };
 
+    const clientSurveyFilterState = {
+      agency_name: "",
+      discharge_from: "",
+      discharge_to: "",
+      sort_by: "patient_asc"
+    };
+
     function formatSurveyDates(admit, dc){
       const a = (admit || "").trim();
       const d = (dc || "").trim();
@@ -3577,12 +3653,88 @@
       return "-";
     }
 
+    function parseClientSurveyDate(value){
+      const raw = (value || "").trim();
+      if(!raw) return null;
+
+      const iso = raw.split(" ")[0];
+      if(/^\d{4}-\d{2}-\d{2}$/.test(iso)){
+        const d = new Date(iso + "T00:00:00");
+        return isNaN(d.getTime()) ? null : d;
+      }
+
+      const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if(m){
+        const mm = String(m[1]).padStart(2, "0");
+        const dd = String(m[2]).padStart(2, "0");
+        const yyyy = m[3];
+        const d = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+        return isNaN(d.getTime()) ? null : d;
+      }
+
+      return null;
+    }
+
+    function getClientSurveyFilteredItems(){
+      let items = (clientSurveysCache || []).slice();
+
+      const agency = (clientSurveyFilterState.agency_name || "").trim().toLowerCase();
+      if(agency){
+        items = items.filter(s => String(s.agency_name || "").toLowerCase() === agency);
+      }
+
+      const from = clientSurveyFilterState.discharge_from ? new Date(clientSurveyFilterState.discharge_from + "T00:00:00") : null;
+      const to = clientSurveyFilterState.discharge_to ? new Date(clientSurveyFilterState.discharge_to + "T23:59:59") : null;
+      if(from || to){
+        items = items.filter(s => {
+          const d = parseClientSurveyDate(s.discharge_date || "");
+          if(!d) return false;
+          if(from && d < from) return false;
+          if(to && d > to) return false;
+          return true;
+        });
+      }
+
+      const sortBy = clientSurveyFilterState.sort_by || "patient_asc";
+      items.sort((a, b) => {
+        if(sortBy === "patient_asc"){
+          const an = String(a.abv_name || "").toLowerCase();
+          const bn = String(b.abv_name || "").toLowerCase();
+          return an.localeCompare(bn);
+        }
+        const ad = parseClientSurveyDate(a.discharge_date || "");
+        const bd = parseClientSurveyDate(b.discharge_date || "");
+        const av = ad ? ad.getTime() : 0;
+        const bv = bd ? bd.getTime() : 0;
+        return (sortBy === "discharge_asc") ? (av - bv) : (bv - av);
+      });
+
+      return items;
+    }
+
+    function renderClientSurveyFilterOptions(){
+      const sel = $("clientSurveyFilterAgency");
+      if(!sel) return;
+
+      const agencies = Array.from(new Set((clientSurveysCache || []).map(r => String(r.agency_name || "").trim()).filter(Boolean)))
+        .sort((a, b) => a.localeCompare(b));
+
+      sel.innerHTML = `<option value="">All agencies</option>` + agencies.map(a => (
+        `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`
+      )).join("");
+
+      sel.value = clientSurveyFilterState.agency_name || "";
+      $("clientSurveyFilterSort").value = clientSurveyFilterState.sort_by || "patient_asc";
+      $("clientSurveyFilterDischargeFrom").value = clientSurveyFilterState.discharge_from || "";
+      $("clientSurveyFilterDischargeTo").value = clientSurveyFilterState.discharge_to || "";
+    }
+
     function renderClientSurveysTable(){
       const tbody = $("clientSurveyTbody");
       if(!tbody) return;
 
       const q = ($("clientSurveySearch").value || "").trim().toLowerCase();
-      let items = (clientSurveysCache || []).filter(s => {
+      let items = getClientSurveyFilteredItems().filter(s => {
         const hay = String(s.abv_name || "").toLowerCase();
         return !q || hay.includes(q);
       });
@@ -3659,6 +3811,57 @@
     $("clientSurveySearch").addEventListener("input", renderClientSurveysTable);
     $("clientSurveyMockToggle").addEventListener("change", renderClientSurveysTable);
 
+    $("clientSurveyApplyFilters").onclick = () => {
+      const agency = ($("clientSurveyFilterAgency").value || "").trim();
+      clientSurveyFilterState.agency_name = agency;
+      clientSurveyFilterState.discharge_from = ($("clientSurveyFilterDischargeFrom").value || "").trim();
+      clientSurveyFilterState.discharge_to = ($("clientSurveyFilterDischargeTo").value || "").trim();
+      clientSurveyFilterState.sort_by = ($("clientSurveyFilterSort").value || "patient_asc").trim();
+      $("clientSurveyFilterMsg").textContent = "Filters applied.";
+      renderClientSurveysTable();
+      closeClientSurveysFilterModal();
+    };
+
+    $("clientSurveyClearFilters").onclick = () => {
+      clientSurveyFilterState.agency_name = "";
+      clientSurveyFilterState.discharge_from = "";
+      clientSurveyFilterState.discharge_to = "";
+      clientSurveyFilterState.sort_by = "patient_asc";
+      $("clientSurveyFilterMsg").textContent = "Filters cleared.";
+      renderClientSurveyFilterOptions();
+      renderClientSurveysTable();
+    };
+
+    $("clientSurveySendEmailBtn").onclick = async () => {
+      const recipients = ($("clientSurveyEmailRecipients").value || "").trim();
+      const agency = (clientSurveyFilterState.agency_name || "").trim();
+      if(!agency){
+        $("clientSurveyEmailMsg").textContent = "Select a single agency in filters before sending.";
+        return;
+      }
+      if(!recipients){
+        $("clientSurveyEmailMsg").textContent = "Enter at least one recipient email.";
+        return;
+      }
+
+      $("clientSurveyEmailMsg").textContent = "Sending.";
+      try{
+        await apiPost("/api/sensys/admin/client-surveys/email-send", {
+          recipients: recipients,
+          filters: {
+            agency_name: agency,
+            discharge_from: clientSurveyFilterState.discharge_from || "",
+            discharge_to: clientSurveyFilterState.discharge_to || "",
+            sort_by: clientSurveyFilterState.sort_by || "patient_asc"
+          }
+        });
+        $("clientSurveyEmailMsg").textContent = "Email sent.";
+        closeClientSurveysEmailModal();
+      }catch(e){
+        $("clientSurveyEmailMsg").textContent = String(e.message || e);
+      }
+    };
+
     $("clientSurveySaveSummary").onclick = async () => {
       if(!selectedClientSurveyId){
         $("clientSurveyDetailMsg").textContent = "Select a survey first.";
@@ -3687,6 +3890,7 @@
       try{
         const resp = await apiGet("/api/sensys/admin/client-surveys");
         clientSurveysCache = resp.surveys || [];
+        renderClientSurveyFilterOptions();
         renderClientSurveysTable();
         setMsg($("clientSurveyListMsg"), `Loaded ${clientSurveysCache.length} surveys.`, true);
       }catch(e){
