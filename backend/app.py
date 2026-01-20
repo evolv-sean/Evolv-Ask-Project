@@ -4863,6 +4863,17 @@ def init_db():
             (CLIENT_SURVEY_SUMMARY_PROMPT_KEY, DEFAULT_CLIENT_SURVEY_SUMMARY_PROMPT),
         )
 
+    cur.execute("SELECT value FROM ai_settings WHERE key=?", (CLIENT_SURVEY_MASTER_SUMMARY_PROMPT_KEY,))
+    row = cur.fetchone()
+    if not row:
+        cur.execute(
+            """
+            INSERT INTO ai_settings (key, value)
+            VALUES (?, ?)
+            """,
+            (CLIENT_SURVEY_MASTER_SUMMARY_PROMPT_KEY, DEFAULT_CLIENT_SURVEY_MASTER_SUMMARY_PROMPT),
+        )
+
 
     # -------------------------------------------------------------------
     # SNF pipeline tables
@@ -13888,6 +13899,7 @@ Important:
 """.strip()
 
 CLIENT_SURVEY_SUMMARY_PROMPT_KEY = "client_survey_summary_prompt"
+CLIENT_SURVEY_MASTER_SUMMARY_PROMPT_KEY = "client_survey_master_summary_prompt"
 
 DEFAULT_CLIENT_SURVEY_SUMMARY_PROMPT = (
     "Sumerize and Formalize General_Coments to sound less short-hand. "
@@ -13900,6 +13912,12 @@ DEFAULT_CLIENT_SURVEY_SUMMARY_PROMPT = (
     "completed then simply put patient refused suvey."
 ).strip()
 
+DEFAULT_CLIENT_SURVEY_MASTER_SUMMARY_PROMPT = (
+    "Summarize the following AI survey summaries into a single, concise overview. "
+    "Focus on common themes, notable positives/negatives, and overall sentiment. "
+    "Write 2-4 sentences. Output only the final summary text."
+).strip()
+
 CLIENT_SURVEY_LINK_TTL_DAYS = 30
 CLIENT_SURVEY_UNIVERSAL_PIN = "snf.s1137"
 CLIENT_SURVEY_SECURE_COOKIE_NAME = "client_survey_secure_auth"
@@ -13909,6 +13927,13 @@ def _client_survey_prompt(cur: sqlite3.Cursor) -> str:
     val = get_setting(cur, CLIENT_SURVEY_SUMMARY_PROMPT_KEY) or ""
     if not val.strip():
         return DEFAULT_CLIENT_SURVEY_SUMMARY_PROMPT
+    return val
+
+
+def _client_survey_master_prompt(cur: sqlite3.Cursor) -> str:
+    val = get_setting(cur, CLIENT_SURVEY_MASTER_SUMMARY_PROMPT_KEY) or ""
+    if not val.strip():
+        return DEFAULT_CLIENT_SURVEY_MASTER_SUMMARY_PROMPT
     return val
 
 
@@ -13958,6 +13983,29 @@ def _client_survey_summarize(text: str, prompt: str) -> str:
         return ""
 
 
+def _client_survey_master_summary(summaries: List[str], prompt: str) -> str:
+    cleaned = [s.strip() for s in (summaries or []) if (s or "").strip()]
+    if not cleaned:
+        return ""
+
+    body = "\n".join(f"- {s}" for s in cleaned)
+    if len(body) > 8000:
+        body = body[:8000]
+
+    try:
+        chat = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": body},
+            ],
+        )
+        return (chat.choices[0].message.content or "").strip()
+    except Exception as e:
+        logger.exception("Client survey master summary failed: %s", e)
+        return ""
+
+
 def _client_survey_parse_date(value: str) -> Optional[dt.date]:
     raw = (value or "").strip()
     if not raw:
@@ -13984,10 +14032,20 @@ def _client_survey_star_img(score: Any) -> str:
     return f"/static/images/{n}_Stars.png"
 
 
-def build_client_survey_secure_list_html(agency_name: str, items: List[Dict[str, Any]], expires_at: str) -> str:
+def build_client_survey_secure_list_html(
+    agency_name: str,
+    items: List[Dict[str, Any]],
+    expires_at: str,
+    master_summary: str,
+    avg_score: Optional[float],
+) -> str:
     esc = html.escape
     header_img = "/static/images/Asset 1.png"
     logo_img = "/static/images/Evolv Health hor color.png"
+    summary_text = esc((master_summary or "").strip() or "Summary not available.")
+    avg_txt = f"{avg_score:.1f}" if avg_score is not None else "—"
+    avg_stars = _client_survey_star_img(avg_score) if avg_score is not None else ""
+    avg_stars_html = f'<img src="{avg_stars}" alt="Overall average" />' if avg_stars else ""
 
     rows_html = ""
     for r in items:
@@ -14034,7 +14092,15 @@ def build_client_survey_secure_list_html(agency_name: str, items: List[Dict[str,
     .hero-title{{font-size:20px;font-weight:900;color:#0d3b66;}}
     .hero-sub{{color:#64748b;font-size:12px;}}
     .logo{{height:32px;}}
-    .survey-list{{margin-top:18px;display:flex;flex-direction:column;gap:12px;}}
+    .hero-img{{width:100%;display:block;height:70px;object-fit:cover;}}
+    .summary-card{{margin-top:18px;background:#fff;border:1px solid rgba(13,59,102,.14);border-radius:16px;padding:18px 18px 16px 18px;box-shadow:0 6px 18px rgba(13,59,102,.06);}}
+    .summary-title{{font-size:16px;font-weight:900;color:#0d3b66;margin-bottom:8px;}}
+    .summary-text{{font-size:13px;line-height:1.45;color:#0f172a;}}
+    .summary-score{{margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}}
+    .summary-score .label{{font-size:12px;color:#64748b;font-weight:700;}}
+    .summary-score .value{{font-size:18px;font-weight:900;color:#0d3b66;}}
+    .summary-score img{{height:22px;}}
+    .survey-list{{margin-top:14px;display:flex;flex-direction:column;gap:12px;}}
     .survey-row{{background:#fff;border:1px solid rgba(13,59,102,.14);border-radius:16px;padding:16px;box-shadow:0 6px 18px rgba(13,59,102,.06);}}
     .survey-head{{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;}}
     .patient{{font-size:16px;font-weight:900;color:#0d3b66;}}
@@ -14048,12 +14114,23 @@ def build_client_survey_secure_list_html(agency_name: str, items: List[Dict[str,
 <body>
   <div class="wrap">
     <div class="hero">
+      <img class="hero-img" src="{header_img}" alt="Survey header" />
       <div class="hero-body">
         <div>
           <div class="hero-title">{esc(agency_name or "Client Surveys")}</div>
           <div class="hero-sub">Secure list expires on {esc(expires_at or "")}</div>
         </div>
         <img class="logo" src="{logo_img}" alt="Evolv Health" />
+      </div>
+    </div>
+
+    <div class="summary-card">
+      <div class="summary-title">Survey Overview</div>
+      <div class="summary-text">{summary_text}</div>
+      <div class="summary-score">
+        <div class="label">Overall Average</div>
+        <div class="value">{avg_txt}</div>
+        {avg_stars_html}
       </div>
     </div>
 
@@ -19863,7 +19940,11 @@ def sensys_admin_client_surveys_prompt_get(token: str):
     conn = get_db()
     try:
         cur = conn.cursor()
-        return {"ok": True, "prompt": _client_survey_prompt(cur)}
+        return {
+            "ok": True,
+            "prompt": _client_survey_prompt(cur),
+            "master_prompt": _client_survey_master_prompt(cur),
+        }
     finally:
         conn.close()
 
@@ -19872,12 +19953,18 @@ def sensys_admin_client_surveys_prompt_get(token: str):
 def sensys_admin_client_surveys_prompt_set(payload: Dict[str, Any] = Body(...), token: str = ""):
     _require_admin_token(token)
     prompt = (payload.get("prompt") or "").strip()
+    master_prompt = (payload.get("master_prompt") or "").strip()
     if len(prompt) > 12000:
         raise HTTPException(status_code=400, detail="prompt too long")
+    if len(master_prompt) > 12000:
+        raise HTTPException(status_code=400, detail="master_prompt too long")
     conn = get_db()
     try:
         cur = conn.cursor()
-        set_setting(conn, cur, CLIENT_SURVEY_SUMMARY_PROMPT_KEY, prompt)
+        if "prompt" in payload:
+            set_setting(conn, cur, CLIENT_SURVEY_SUMMARY_PROMPT_KEY, prompt)
+        if "master_prompt" in payload:
+            set_setting(conn, cur, CLIENT_SURVEY_MASTER_SUMMARY_PROMPT_KEY, master_prompt)
         return {"ok": True}
     finally:
         conn.close()
@@ -20344,7 +20431,29 @@ async def client_surveys_secure_list(token: str, request: Request):
         else:
             items.sort(key=lambda r: (r.get("abv_name") or "").lower())
 
-        html_doc = build_client_survey_secure_list_html(agency, items, expires_at)
+        summaries = [
+            (r.get("ai_summary_override") or r.get("ai_summary") or "").strip()
+            for r in items
+            if (r.get("ai_summary_override") or r.get("ai_summary") or "").strip()
+        ]
+        master_prompt = _client_survey_master_prompt(conn.cursor())
+        master_summary = _client_survey_master_summary(summaries, master_prompt)
+
+        scores = []
+        for r in items:
+            try:
+                scores.append(float(r.get("overall_score")))
+            except Exception:
+                pass
+        avg_score = (sum(scores) / len(scores)) if scores else None
+
+        html_doc = build_client_survey_secure_list_html(
+            agency,
+            items,
+            expires_at,
+            master_summary,
+            avg_score,
+        )
         return HTMLResponse(html_doc)
     finally:
         conn.close()
