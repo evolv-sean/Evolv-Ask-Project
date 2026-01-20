@@ -115,6 +115,25 @@
       color:#0f172a;
       line-height:1.35;
     }
+    .survey-card,
+    .survey-detail-card{
+      height: calc(100vh - 220px);
+      display:flex;
+      flex-direction:column;
+    }
+    .survey-card .body,
+    .survey-detail-card .body{
+      overflow:auto;
+      flex:1;
+      min-height:0;
+    }
+    .survey-card .table-wrap{
+      flex:1;
+      overflow:auto;
+    }
+    .survey-detail-card .survey-textarea{
+      width:100%;
+    }
     .card{
       background:var(--card);
       border:1px solid var(--line);
@@ -341,6 +360,19 @@
      display:block;
    }
    .iconbtn:hover{ box-shadow: 0 0 0 3px rgba(77,168,218,18); }
+   .upload-progress{
+     height:10px;
+     border-radius:999px;
+     border:1px solid rgba(13,59,102,.18);
+     background:#f8fafc;
+     overflow:hidden;
+   }
+   .upload-progress .bar{
+     height:100%;
+     width:0%;
+     background: linear-gradient(90deg, rgba(13,59,102,.85), rgba(77,168,218,.85));
+     transition: width .25s ease;
+   }
 
    /* Bulk upload modal */
    .dropzone{
@@ -862,7 +894,7 @@
           </div>
 
             <div class="survey-grid">
-            <div class="card">
+            <div class="card survey-card">
               <div class="hd">
                 <div>
                   <h2 style="margin:0">Surveys</h2>
@@ -896,7 +928,7 @@
               </div>
             </div>
 
-            <div class="card">
+            <div class="card survey-detail-card">
               <div class="hd">
                 <div>
                   <h2 style="margin:0">Survey Details</h2>
@@ -943,12 +975,12 @@
 
                     <div>
                       <div class="label">Original General Comments</div>
-                      <textarea class="input" id="clientSurveyOriginalComments" rows="6" readonly></textarea>
+                      <textarea class="input survey-textarea" id="clientSurveyOriginalComments" rows="13" readonly></textarea>
                     </div>
 
                     <div>
                       <div class="label">AI Summary (editable override)</div>
-                      <textarea class="input" id="clientSurveySummaryOverride" rows="5" placeholder="Edit summary override."></textarea>
+                      <textarea class="input survey-textarea" id="clientSurveySummaryOverride" rows="13" placeholder="Edit summary override."></textarea>
                     </div>
 
                     <div style="display:flex;gap:8px;align-items:center">
@@ -1769,6 +1801,10 @@
         <div style="height:10px"></div>
         <button class="btn primary" id="clientSurveysUploadSubmit" disabled>Upload File</button>
         <div class="smallhint" id="clientSurveysUploadMsg" style="margin-top:8px;"></div>
+        <div style="height:10px"></div>
+        <div class="upload-progress" id="clientSurveysUploadProgress" style="display:none;">
+          <div class="bar" id="clientSurveysUploadBar"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -3419,6 +3455,8 @@
     const clientSurveysUploadStatus = $("clientSurveysUploadStatus");
     const clientSurveysUploadSubmit = $("clientSurveysUploadSubmit");
     const clientSurveysUploadMsg = $("clientSurveysUploadMsg");
+    const clientSurveysUploadProgress = $("clientSurveysUploadProgress");
+    const clientSurveysUploadBar = $("clientSurveysUploadBar");
     let clientSurveysSelectedFile = null;
 
     function setClientSurveysUploadStatus(text){
@@ -3429,6 +3467,21 @@
         clientSurveysUploadMsg.textContent = text || "";
         clientSurveysUploadMsg.style.color = ok ? "#065f46" : "#991b1b";
       }
+    }
+    function setClientSurveysUploadProgress(pct){
+      if(clientSurveysUploadBar) clientSurveysUploadBar.style.width = `${pct}%`;
+    }
+    function showClientSurveysUploadProgress(isOn){
+      if(clientSurveysUploadProgress) clientSurveysUploadProgress.style.display = isOn ? "" : "none";
+    }
+    function resetClientSurveysUpload(){
+      clientSurveysSelectedFile = null;
+      if(clientSurveysUploadInput) clientSurveysUploadInput.value = "";
+      setClientSurveysUploadStatus("No file selected.");
+      setClientSurveysUploadMsg("", true);
+      setClientSurveysUploadProgress(0);
+      showClientSurveysUploadProgress(false);
+      clientSurveysUploadSubmit.disabled = true;
     }
 
     function handleClientSurveysFiles(files){
@@ -3471,12 +3524,21 @@
       }
       clientSurveysUploadSubmit.disabled = true;
       setClientSurveysUploadMsg("Uploading.", true);
+      showClientSurveysUploadProgress(true);
+      setClientSurveysUploadProgress(20);
       try{
+        setTimeout(() => setClientSurveysUploadProgress(60), 250);
         const resp = await apiUploadCsv("/api/sensys/admin/client-surveys/upload", clientSurveysSelectedFile);
+        setClientSurveysUploadProgress(100);
         setClientSurveysUploadMsg(`Uploaded. Inserted: ${resp.inserted || 0}, Updated: ${resp.updated || 0}`, true);
         await refreshClientSurveysList();
+        setTimeout(() => {
+          closeClientSurveysUploadModal();
+          resetClientSurveysUpload();
+        }, 400);
       }catch(e){
         setClientSurveysUploadMsg(String(e.message || e), false);
+        showClientSurveysUploadProgress(false);
       }finally{
         clientSurveysUploadSubmit.disabled = false;
       }
