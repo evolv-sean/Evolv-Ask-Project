@@ -14095,6 +14095,7 @@ def build_client_survey_secure_list_html(
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Client Survey List</title>
   <style>
+    *{{box-sizing:border-box;}}
     body{{margin:0;background:#f6f8fb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#0f172a;}}
     .wrap{{max-width:1100px;margin:0 auto;padding:24px;}}
     .hero{{background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #e5e7eb;box-shadow:0 12px 28px rgba(13,59,102,.08);}}
@@ -20016,6 +20017,49 @@ def sensys_admin_client_surveys_summary_override(payload: Dict[str, Any] = Body(
         conn.close()
 
 
+@app.post("/api/sensys/admin/client-surveys/scores-update")
+def sensys_admin_client_surveys_scores_update(payload: Dict[str, Any] = Body(...), token: str = ""):
+    _require_admin_token(token)
+    row_id = payload.get("id")
+    if not row_id:
+        raise HTTPException(status_code=400, detail="id is required")
+
+    def _to_score(val):
+        s = (val or "").strip()
+        if not s:
+            return None
+        try:
+            return float(s)
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"invalid score: {val}")
+
+    therapy_score = _to_score(payload.get("therapy_score"))
+    nursing_score = _to_score(payload.get("nursing_score"))
+    md_score = _to_score(payload.get("md_score"))
+    ss_score = _to_score(payload.get("ss_score"))
+    overall_score = _to_score(payload.get("overall_score"))
+
+    conn = get_db()
+    try:
+        conn.execute(
+            """
+            UPDATE sensys_client_surveys
+            SET therapy_score = ?,
+                nursing_score = ?,
+                md_score = ?,
+                ss_score = ?,
+                overall_score = ?,
+                updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (therapy_score, nursing_score, md_score, ss_score, overall_score, int(row_id)),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
 @app.post("/api/sensys/admin/client-surveys/upload")
 async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File(...)):
     _require_admin_token(token)
@@ -20072,7 +20116,7 @@ async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File
     col_therapy = _find_col(["therapy", "therapy_score", "therapyscore"])
     col_nursing = _find_col(["nursing", "nursing_score", "nursingscore"])
     col_md = _find_col(["md", "md_score", "physician", "physicianscore", "attending", "attendingscore", "attending_score"])
-    col_ss = _find_col(["ss", "socialservice", "socialservices", "socialservicesscore", "social_services_score", "ss_score"])
+    col_ss = _find_col(["socialservice", "socialservices", "socialservicesscore", "social_services_score", "ss_score"])
 
     conn = get_db()
     inserted = 0
@@ -20115,8 +20159,6 @@ async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File
                 ss_score = float(str(ss_score_raw).strip()) if str(ss_score_raw).strip() != "" else None
             except Exception:
                 ss_score = None
-
-            ai_summary = _client_survey_summarize(str(general_comments), prompt)
 
             norm_agency = str(agency_name).strip().lower()
             norm_abv = str(abv_name).strip().lower()
@@ -20165,6 +20207,8 @@ async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File
                 else:
                     skipped += 1
                 continue
+
+            ai_summary = _client_survey_summarize(str(general_comments), prompt)
 
             existing = conn.execute(
                 """
@@ -20320,12 +20364,13 @@ def build_client_survey_secure_pin_html(agency_name: str, ttl_days: int, error_m
     .hero-title{{font-size:20px;font-weight:900;color:#0d3b66;}}
     .hero-sub{{color:#64748b;font-size:12px;}}
     .logo{{height:32px;}}
-    .pin-card{{margin-top:18px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);overflow:hidden;}}
+    .pin-card{{margin:18px auto 0 auto;max-width:520px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);overflow:hidden;}}
     .topbar{{background:#0D3B66;padding:16px 22px;color:#fff;font-weight:700;}}
     .mintbar{{height:4px;background:#A8E6CF;}}
-    .content{{padding:22px;}}
+    .content{{padding:22px;width:100%;}}
     p{{margin:0 0 14px 0;font-size:13px;color:#374151;line-height:1.5;}}
     label{{display:block;font-size:12px;color:#374151;margin-bottom:6px;font-weight:600;}}
+    form{{margin:0;}}
     input{{display:block;width:100%;max-width:100%;min-width:0;padding:12px;border-radius:12px;border:1px solid #d1d5db;font-size:14px;}}
     input:focus{{outline:none;border-color:#A8E6CF;box-shadow:0 0 0 3px rgba(168,230,207,.45);}}
     .btn{{margin-top:12px;display:inline-block;background:#0D3B66;color:#ffffff;border:none;padding:12px 18px;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 8px 18px rgba(13,59,102,.18);}}
