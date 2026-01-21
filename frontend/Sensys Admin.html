@@ -1799,6 +1799,18 @@
           <button class="btn primary" id="clientSurveyPromptSave">Save Prompt</button>
           <div class="mini" id="clientSurveyPromptMsg"></div>
         </div>
+        <div style="height:12px"></div>
+        <div style="height:1px;background:rgba(15,23,42,.08);"></div>
+        <div style="height:12px"></div>
+        <div style="border:1px solid #ef4444;border-radius:12px;padding:12px;">
+          <div class="label">Danger Zone</div>
+          <div class="hint">Deletes all client survey rows. This cannot be undone.</div>
+          <div style="height:8px"></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn" id="clientSurveyDeleteAllBtn" style="border-color:#ef4444;color:#b91c1c;">Delete All Surveys</button>
+            <div class="mini" id="clientSurveyDeleteAllMsg"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -4092,6 +4104,21 @@
         $("clientSurveyPromptMsg").textContent = "Saved.";
       }catch(e){
         $("clientSurveyPromptMsg").textContent = String(e.message || e);
+      }
+    };
+
+    $("clientSurveyDeleteAllBtn").onclick = async () => {
+      const msgEl = $("clientSurveyDeleteAllMsg");
+      msgEl.textContent = "";
+      const ok = confirm("Delete ALL client survey data? This cannot be undone.");
+      if(!ok) return;
+      msgEl.textContent = "Deleting...";
+      try{
+        await apiPost("/api/sensys/admin/client-surveys/delete-all", {});
+        msgEl.textContent = "All client surveys deleted.";
+        await refreshClientSurveysList();
+      }catch(e){
+        msgEl.textContent = String(e.message || e);
       }
     };
 
