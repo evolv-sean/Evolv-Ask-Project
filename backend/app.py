@@ -20092,13 +20092,40 @@ async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File
 
             dedup = conn.execute(
                 """
-                SELECT id FROM sensys_client_surveys
+                SELECT id, therapy_score, nursing_score, md_score, ss_score, overall_score
+                FROM sensys_client_surveys
                 WHERE agency_name = ? AND abv_name = ? AND discharge_date = ?
                 """,
                 (str(agency_name), str(abv_name), str(discharge_date)),
             ).fetchone()
             if dedup:
-                skipped += 1
+                row_updates = {}
+                if dedup["overall_score"] is None and overall_score is not None:
+                    row_updates["overall_score"] = overall_score
+                if dedup["therapy_score"] is None and therapy_score is not None:
+                    row_updates["therapy_score"] = therapy_score
+                if dedup["nursing_score"] is None and nursing_score is not None:
+                    row_updates["nursing_score"] = nursing_score
+                if dedup["md_score"] is None and md_score is not None:
+                    row_updates["md_score"] = md_score
+                if dedup["ss_score"] is None and ss_score is not None:
+                    row_updates["ss_score"] = ss_score
+
+                if row_updates:
+                    set_cols = ", ".join([f"{k} = ?" for k in row_updates.keys()])
+                    params = list(row_updates.values()) + [int(dedup["id"])]
+                    conn.execute(
+                        f"""
+                        UPDATE sensys_client_surveys
+                        SET {set_cols},
+                            updated_at = datetime('now')
+                        WHERE id = ?
+                        """,
+                        params,
+                    )
+                    updated += 1
+                else:
+                    skipped += 1
                 continue
 
             existing = conn.execute(
