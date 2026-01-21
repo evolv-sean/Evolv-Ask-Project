@@ -115,6 +115,23 @@
       color:#0f172a;
       line-height:1.35;
     }
+    .survey-scores{
+      margin-top:6px;
+      font-size:11px;
+      color:#475569;
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+    }
+    .survey-score{
+      display:inline-flex;
+      gap:4px;
+      align-items:center;
+    }
+    .survey-score strong{
+      font-weight:800;
+      color:#0d3b66;
+    }
     .survey-card{
       height: calc(100vh - 220px);
       display:flex;
@@ -2047,6 +2064,29 @@
             </div>
           </div>
 
+          <div style="display:grid;grid-template-columns:repeat(5, minmax(0,1fr));gap:10px;width:100%">
+            <div>
+              <div class="label">Therapy Score</div>
+              <input class="input" id="clientSurveyTherapyScore" type="number" step="0.1" />
+            </div>
+            <div>
+              <div class="label">Nursing Score</div>
+              <input class="input" id="clientSurveyNursingScore" type="number" step="0.1" />
+            </div>
+            <div>
+              <div class="label">MD Score</div>
+              <input class="input" id="clientSurveyMdScore" type="number" step="0.1" />
+            </div>
+            <div>
+              <div class="label">SS Score</div>
+              <input class="input" id="clientSurveySsScore" type="number" step="0.1" />
+            </div>
+            <div>
+              <div class="label">Overall Score</div>
+              <input class="input" id="clientSurveyOverallScore" type="number" step="0.1" />
+            </div>
+          </div>
+          <div style="height:10px"></div>
           <div style="display:flex;gap:8px;align-items:center">
             <button class="btn primary" id="clientSurveySaveSummary">Save Summary</button>
             <div class="mini" id="clientSurveyDetailMsg"></div>
@@ -3954,6 +3994,14 @@
         const score = (s.overall_score !== null && s.overall_score !== undefined && s.overall_score !== "")
           ? String(s.overall_score)
           : "-";
+        const scoreText = (val) => {
+          if(val === null || val === undefined || String(val).trim() === "") return "-";
+          return String(val);
+        };
+        const therapyScore = scoreText(s.therapy_score);
+        const nursingScore = scoreText(s.nursing_score);
+        const mdScore = scoreText(s.md_score);
+        const ssScore = scoreText(s.ss_score);
 
         return `
           <tr class="survey-row-top ${isSelected ? "on" : ""}" data-id="${rowId}">
@@ -3968,6 +4016,12 @@
           <tr class="survey-row-bottom ${isSelected ? "on" : ""}" data-id="${rowId}">
             <td colspan="3">
               <div class="survey-ai">${escapeHtml(summary)}</div>
+              <div class="survey-scores">
+                <div class="survey-score"><strong>Therapy:</strong> ${escapeHtml(therapyScore)}</div>
+                <div class="survey-score"><strong>Nursing:</strong> ${escapeHtml(nursingScore)}</div>
+                <div class="survey-score"><strong>MD:</strong> ${escapeHtml(mdScore)}</div>
+                <div class="survey-score"><strong>SS:</strong> ${escapeHtml(ssScore)}</div>
+              </div>
             </td>
           </tr>
         `;
@@ -3991,6 +4045,11 @@
 
       $("clientSurveyOriginalComments").value = s.general_comments || "";
       $("clientSurveySummaryOverride").value = (s.ai_summary_override || s.ai_summary || "").trim();
+      $("clientSurveyTherapyScore").value = s.therapy_score ?? "";
+      $("clientSurveyNursingScore").value = s.nursing_score ?? "";
+      $("clientSurveyMdScore").value = s.md_score ?? "";
+      $("clientSurveySsScore").value = s.ss_score ?? "";
+      $("clientSurveyOverallScore").value = s.overall_score ?? "";
       $("clientSurveyDetailMsg").textContent = "";
 
       renderClientSurveysTable();
@@ -4071,9 +4130,24 @@
           id: Number(selectedClientSurveyId),
           ai_summary_override: overrideText
         });
+        await apiPost("/api/sensys/admin/client-surveys/scores-update", {
+          id: Number(selectedClientSurveyId),
+          therapy_score: ($("clientSurveyTherapyScore").value || "").trim(),
+          nursing_score: ($("clientSurveyNursingScore").value || "").trim(),
+          md_score: ($("clientSurveyMdScore").value || "").trim(),
+          ss_score: ($("clientSurveySsScore").value || "").trim(),
+          overall_score: ($("clientSurveyOverallScore").value || "").trim()
+        });
 
         const row = (clientSurveysCache || []).find(x => Number(x.id) === Number(selectedClientSurveyId));
-        if(row) row.ai_summary_override = overrideText;
+        if(row){
+          row.ai_summary_override = overrideText;
+          row.therapy_score = ($("clientSurveyTherapyScore").value || "").trim();
+          row.nursing_score = ($("clientSurveyNursingScore").value || "").trim();
+          row.md_score = ($("clientSurveyMdScore").value || "").trim();
+          row.ss_score = ($("clientSurveySsScore").value || "").trim();
+          row.overall_score = ($("clientSurveyOverallScore").value || "").trim();
+        }
 
         $("clientSurveyDetailMsg").textContent = "Saved.";
         renderClientSurveysTable();
