@@ -2782,10 +2782,9 @@ def build_client_survey_secure_email_html(
       box-shadow:0 10px 28px rgba(0,0,0,.08);
       border:1px solid #e5e7eb;
     }}
-    .topbar{{background:#0D3B66;padding:10px 0;}}
+    .topbar{{background:#0D3B66;padding:10px 16px;display:flex;align-items:center;justify-content:flex-end;}}
+    .topbar-logo{{height:26px;max-width:180px;object-fit:contain;}}
     .content{{padding:26px 26px 18px 26px;}}
-    .logo-row{{display:flex;justify-content:flex-end;margin-bottom:8px;}}
-    .logo{{height:28px;}}
     h1{{margin:0 0 10px 0;font-size:22px;line-height:1.25;color:#0D3B66;letter-spacing:-0.01em;}}
     p{{margin:0 0 12px 0;font-size:14px;line-height:1.55;color:#374151;}}
     .callout{{
@@ -2826,12 +2825,11 @@ def build_client_survey_secure_email_html(
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="topbar" aria-hidden="true"></div>
+      <div class="topbar">
+        <img class="topbar-logo" src="{safe_logo}" alt="Evolv Health" />
+      </div>
 
       <div class="content">
-        <div class="logo-row">
-          <img class="logo" src="{safe_logo}" alt="Evolv Health" />
-        </div>
         <h1>Monthly Client Survey Responses</h1>
         <p>
           New survey responses are available for <strong>{agency_label}</strong>.
