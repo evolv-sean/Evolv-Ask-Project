@@ -3367,6 +3367,9 @@ def init_db():
             fax           TEXT DEFAULT '',
 
             evolv_client  INTEGER DEFAULT 0,
+
+            survey_recipient_emails TEXT DEFAULT '',
+            survey_pin TEXT DEFAULT '',
             
             pdw_attempts_expected INTEGER DEFAULT 2,
             pdw_pref_details      TEXT DEFAULT '',
@@ -3398,6 +3401,8 @@ def init_db():
         "ALTER TABLE sensys_agencies ADD COLUMN email TEXT DEFAULT ''",
         "ALTER TABLE sensys_agencies ADD COLUMN fax TEXT DEFAULT ''",
         "ALTER TABLE sensys_agencies ADD COLUMN evolv_client INTEGER DEFAULT 0",
+        "ALTER TABLE sensys_agencies ADD COLUMN survey_recipient_emails TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN survey_pin TEXT DEFAULT ''",
         "ALTER TABLE sensys_agencies ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))",
         "ALTER TABLE sensys_agencies ADD COLUMN deleted_at TEXT",
         "ALTER TABLE sensys_agencies ADD COLUMN pdw_attempts_expected INTEGER DEFAULT 2",
@@ -18207,6 +18212,8 @@ class SensysAgencyUpsert(BaseModel):
     fax: Optional[str] = ""
 
     evolv_client: Optional[bool] = False
+    survey_recipient_emails: Optional[str] = ""
+    survey_pin: Optional[str] = ""
     # Preferred Providers (if omitted, do NOT change existing)
     preferred_provider_ids: Optional[List[int]] = None
 
@@ -19153,6 +19160,8 @@ def sensys_admin_agencies(token: str):
             email,
             fax,
             evolv_client,
+            COALESCE(survey_recipient_emails, '') AS survey_recipient_emails,
+            COALESCE(survey_pin, '') AS survey_pin,
             created_at,
             updated_at,
             COALESCE(pdw_attempts_expected, 2) AS pdw_attempts_expected,
@@ -19223,6 +19232,8 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                    email            = ?,
                    fax              = ?,
                    evolv_client     = ?,
+                   survey_recipient_emails = ?,
+                   survey_pin       = ?,
                    -- ✅ PDW Prefs (only overwrite when payload sends them)
                    pdw_attempts_expected = COALESCE(?, pdw_attempts_expected),
                    pdw_pref_details      = COALESCE(?, pdw_pref_details),
@@ -19249,6 +19260,8 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                 (payload.email or "").strip(),
                 (payload.fax or "").strip(),
                 evolv_client,
+                (payload.survey_recipient_emails or "").strip(),
+                (payload.survey_pin or "").strip(),
                 payload.pdw_attempts_expected,
                 payload.pdw_pref_details,
                 payload.pdw_enable_48h,
@@ -19267,13 +19280,14 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                     address, city, state, zip,
                     phone1, phone2, email, fax,
                     evolv_client,
+                    survey_recipient_emails, survey_pin,
 
                     -- ✅ PDW Prefs
                     pdw_attempts_expected, pdw_pref_details,
                     pdw_enable_48h, pdw_enable_15d, pdw_enable_30d
                 )
             VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
@@ -19292,6 +19306,8 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                 (payload.email or "").strip(),
                 (payload.fax or "").strip(),
                 evolv_client,
+                (payload.survey_recipient_emails or "").strip(),
+                (payload.survey_pin or "").strip(),
                 int(payload.pdw_attempts_expected or 2),
                 (payload.pdw_pref_details or ""),
                 1 if int(payload.pdw_enable_48h or 1) else 0,
