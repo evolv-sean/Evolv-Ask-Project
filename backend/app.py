@@ -2784,7 +2784,7 @@ def build_client_survey_secure_email_html(
     }}
     .topbar{{background:#0D3B66;padding:10px 0;}}
     .content{{padding:26px 26px 18px 26px;}}
-    .logo-row{{display:flex;justify-content:flex-end;margin-bottom:8px;}}
+    .logo-row{{display:flex;justify-content:center;align-items:center;margin-bottom:8px;}}
     .logo{{height:34px;}}
     h1{{margin:0 0 10px 0;font-size:22px;line-height:1.25;color:#0D3B66;letter-spacing:-0.01em;}}
     p{{margin:0 0 12px 0;font-size:14px;line-height:1.55;color:#374151;}}
@@ -14041,7 +14041,7 @@ def build_client_survey_secure_list_html(
 ) -> str:
     esc = html.escape
     header_img = "/static/images/Asset 1.png"
-    logo_img = "/static/images/Evolv Health hor color.png"
+    logo_img = "/static/images/Evolv-Health-hor-color.png"
     summary_text = esc((master_summary or "").strip() or "Summary not available.")
     avg_txt = f"{avg_score:.1f}" if avg_score is not None else "—"
     avg_stars = _client_survey_star_img(avg_score) if avg_score is not None else ""
@@ -20043,8 +20043,8 @@ async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File
     col_overall = _find_col(["overallscore", "overall"])
     col_therapy = _find_col(["therapy", "therapy_score", "therapyscore"])
     col_nursing = _find_col(["nursing", "nursing_score", "nursingscore"])
-    col_md = _find_col(["md", "md_score", "physician", "physicianscore"])
-    col_ss = _find_col(["ss", "socialservice", "socialservices", "social_services", "ss_score"])
+    col_md = _find_col(["md", "md_score", "physician", "physicianscore", "attending", "attendingscore", "attending_score"])
+    col_ss = _find_col(["ss", "socialservice", "socialservices", "social_services", "socialservicesscore", "social_services_score", "ss_score"])
 
     conn = get_db()
     inserted = 0
