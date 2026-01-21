@@ -112,7 +112,6 @@ FRONTEND_DIR = BASE_DIR.parent / "frontend"
 
 # Static assets (images, logos, etc.)
 STATIC_DIR = BASE_DIR / "static"
-PUBLIC_DIR = BASE_DIR.parent / "public"
 
 SNF_DEFAULT_PIN = (os.getenv("SNF_DEFAULT_PIN") or "").strip()
 
@@ -587,8 +586,6 @@ app.add_middleware(
 
 # Serve /static/* from backend/static/*
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-# Serve /images/logos/* from /Public (repo root)
-app.mount("/images", StaticFiles(directory=str(PUBLIC_DIR / "images")), name="public-images")
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -2758,7 +2755,7 @@ def build_client_survey_secure_email_html(
     from_txt = html.escape(discharge_from or "Any")
     to_txt = html.escape(discharge_to or "Any")
     base = (PUBLIC_APP_BASE_URL or base_url or "").rstrip("/")
-    logo_url = f"{base}/images/logos/Evolv-Health-hor-color.png" if base else "/images/logos/Evolv-Health-hor-color.png"
+    logo_url = f"{base}/static/images/Evolv-Health-hor-color.png" if base else "/static/images/Evolv-Health-hor-color.png"
     safe_logo = html.escape(logo_url)
 
     return f"""<!doctype html>
