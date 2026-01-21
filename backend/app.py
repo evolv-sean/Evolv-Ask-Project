@@ -112,7 +112,7 @@ FRONTEND_DIR = BASE_DIR.parent / "frontend"
 
 # Static assets (images, logos, etc.)
 STATIC_DIR = BASE_DIR / "static"
-PUBLIC_DIR = BASE_DIR.parent / "Public"
+PUBLIC_DIR = BASE_DIR.parent / "public"
 
 SNF_DEFAULT_PIN = (os.getenv("SNF_DEFAULT_PIN") or "").strip()
 
