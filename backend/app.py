@@ -20368,13 +20368,13 @@ def build_client_survey_secure_pin_html(agency_name: str, ttl_days: int, error_m
     .hero-title{{font-size:20px;font-weight:900;color:#0d3b66;}}
     .hero-sub{{color:#64748b;font-size:12px;}}
     .logo{{height:32px;}}
-    .pin-card{{margin:18px auto 0 auto;max-width:520px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);overflow:hidden;}}
+    .pin-card{{margin:18px auto 0 auto;max-width:520px;width:min(520px,92vw);background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);overflow:hidden;}}
     .topbar{{background:#0D3B66;padding:16px 22px;color:#fff;font-weight:700;}}
     .mintbar{{height:4px;background:#A8E6CF;}}
     .content{{padding:22px;width:100%;}}
     p{{margin:0 0 14px 0;font-size:13px;color:#374151;line-height:1.5;}}
     label{{display:block;font-size:12px;color:#374151;margin-bottom:6px;font-weight:600;}}
-    form{{margin:0;}}
+    form{{margin:0;width:100%;}}
     input{{display:block;width:100%;max-width:100%;min-width:0;padding:12px;border-radius:12px;border:1px solid #d1d5db;font-size:14px;}}
     input:focus{{outline:none;border-color:#A8E6CF;box-shadow:0 0 0 3px rgba(168,230,207,.45);}}
     .btn{{margin-top:12px;display:inline-block;background:#0D3B66;color:#ffffff;border:none;padding:12px 18px;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 8px 18px rgba(13,59,102,.18);}}
