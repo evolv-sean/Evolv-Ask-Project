@@ -19980,6 +19980,18 @@ def sensys_admin_client_surveys_prompt_set(payload: Dict[str, Any] = Body(...), 
         conn.close()
 
 
+@app.post("/api/sensys/admin/client-surveys/delete-all")
+def sensys_admin_client_surveys_delete_all(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    try:
+        conn.execute("DELETE FROM sensys_client_surveys")
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
 @app.post("/api/sensys/admin/client-surveys/summary-override")
 def sensys_admin_client_surveys_summary_override(payload: Dict[str, Any] = Body(...), token: str = ""):
     _require_admin_token(token)
@@ -20044,7 +20056,7 @@ async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File
     col_therapy = _find_col(["therapy", "therapy_score", "therapyscore"])
     col_nursing = _find_col(["nursing", "nursing_score", "nursingscore"])
     col_md = _find_col(["md", "md_score", "physician", "physicianscore", "attending", "attendingscore", "attending_score"])
-    col_ss = _find_col(["ss", "socialservice", "socialservices", "social_services", "socialservicesscore", "social_services_score", "ss_score"])
+    col_ss = _find_col(["ss", "socialservice", "socialservices", "socialservicesscore", "social_services_score", "ss_score"])
 
     conn = get_db()
     inserted = 0
