@@ -2784,7 +2784,7 @@ def build_client_survey_secure_email_html(
     }}
     .topbar{{background:#0D3B66;padding:10px 0;}}
     .content{{padding:26px 26px 18px 26px;}}
-    .logo-row{{display:flex;justify-content:center;align-items:center;margin-bottom:8px;}}
+    .logo-row{{display:flex;justify-content:center;align-items:center;margin-bottom:4px;margin-bottom:-4px;}}
     .logo{{height:44px;}}
     h1{{margin:0 0 10px 0;font-size:22px;line-height:1.25;color:#0D3B66;letter-spacing:-0.01em;}}
     p{{margin:0 0 12px 0;font-size:14px;line-height:1.55;color:#374151;}}
