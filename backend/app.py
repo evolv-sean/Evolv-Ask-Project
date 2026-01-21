@@ -112,6 +112,7 @@ FRONTEND_DIR = BASE_DIR.parent / "frontend"
 
 # Static assets (images, logos, etc.)
 STATIC_DIR = BASE_DIR / "static"
+PUBLIC_DIR = BASE_DIR.parent / "Public"
 
 SNF_DEFAULT_PIN = (os.getenv("SNF_DEFAULT_PIN") or "").strip()
 
@@ -586,6 +587,8 @@ app.add_middleware(
 
 # Serve /static/* from backend/static/*
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+# Serve /images/logos/* from /Public (repo root)
+app.mount("/images/logos", StaticFiles(directory=str(PUBLIC_DIR)), name="public-logos")
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -2741,6 +2744,129 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
 </body>
 </html>"""
 
+def build_client_survey_secure_email_html(
+    secure_url: str,
+    ttl_days: int,
+    agency_name: str,
+    discharge_from: str,
+    discharge_to: str,
+    base_url: str,
+) -> str:
+    safe_url = html.escape(secure_url or "")
+    ttl_days = int(ttl_days or 30)
+    agency_label = html.escape(agency_name or "Selected Facility")
+    from_txt = html.escape(discharge_from or "Any")
+    to_txt = html.escape(discharge_to or "Any")
+    base = (PUBLIC_APP_BASE_URL or base_url or "").rstrip("/")
+    logo_url = f"{base}/images/logos/Evolv-Health-hor-color.png" if base else "/images/logos/Evolv-Health-hor-color.png"
+    safe_logo = html.escape(logo_url)
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Client Survey Responses</title>
+  <style>
+    body{{
+      margin:0;
+      padding:0;
+      background:#F5F7FA;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      color:#111827;
+    }}
+    .wrap{{padding:28px 12px;}}
+    .card{{
+      max-width:560px;
+      margin:0 auto;
+      background:#ffffff;
+      border-radius:14px;
+      overflow:hidden;
+      box-shadow:0 10px 28px rgba(0,0,0,.08);
+      border:1px solid #e5e7eb;
+    }}
+    .topbar{{background:#0D3B66;padding:10px 16px;display:flex;align-items:center;justify-content:flex-end;}}
+    .topbar-logo{{height:26px;max-width:180px;object-fit:contain;}}
+    .content{{padding:26px 26px 18px 26px;}}
+    h1{{margin:0 0 10px 0;font-size:22px;line-height:1.25;color:#0D3B66;letter-spacing:-0.01em;}}
+    p{{margin:0 0 12px 0;font-size:14px;line-height:1.55;color:#374151;}}
+    .callout{{
+      background:#F5F7FA;
+      border:1px solid #A8E6CF;
+      padding:12px 14px;
+      border-radius:12px;
+      margin:14px 0 18px 0;
+      font-size:13px;
+      color:#1f2937;
+    }}
+    .pill{{
+      display:inline-block;
+      background:#A8E6CF;
+      color:#0D3B66;
+      padding:2px 8px;
+      border-radius:999px;
+      font-weight:700;
+      font-size:12px;
+    }}
+    .btn-row{{padding:0 26px 24px 26px;}}
+    .btn{{
+      display:inline-block;
+      background:#0D3B66;
+      color:#ffffff !important;
+      text-decoration:none;
+      padding:12px 18px;
+      border-radius:10px;
+      font-weight:700;
+      font-size:14px;
+      box-shadow:0 8px 18px rgba(13,59,102,.18);
+    }}
+    .divider{{height:1px;background:#eef2f7;}}
+    .footer{{padding:14px 26px 18px 26px;font-size:11px;color:#6b7280;line-height:1.4;}}
+    .footer strong{{color:#111827}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="topbar">
+        <img class="topbar-logo" src="{safe_logo}" alt="Evolv Health" />
+      </div>
+
+      <div class="content">
+        <h1>Monthly Client Survey Responses</h1>
+        <p>
+          New survey responses are available for <strong>{agency_label}</strong>.
+          Use the secure link below to view your recent survey responses.
+        </p>
+
+        <div class="callout">
+          <div><strong>What you'll need:</strong></div>
+          <div style="margin-top:6px;">• Your facility PIN</div>
+          <div style="margin-top:6px;">• Link expires in <span class="pill">{ttl_days} days</span></div>
+        </div>
+
+        <p>
+          This secure page includes patient surveys for discharges between {from_txt} - {to_txt}.
+        </p>
+      </div>
+
+      <div class="btn-row">
+        <a class="btn" href="{safe_url}" target="_blank" rel="noopener">View Survey List</a>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="footer">
+        <div><strong>Powered by Evolv Health</strong></div>
+        <div style="margin-top:6px;">
+          This link is intended only for authorized facility users and expires automatically.
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>"""
+
 
 
 
@@ -3346,6 +3472,68 @@ def init_db():
             updated_at     TEXT DEFAULT (datetime('now'))
         )
         """
+    )
+
+    # Client Surveys (Admin uploads + AI summaries)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_client_surveys (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            agency_name        TEXT,
+            abv_name           TEXT,
+            admission_date     TEXT,
+            discharge_date     TEXT,
+            survey_updated_at  TEXT,
+            general_comments   TEXT,
+            overall_score      REAL,
+            therapy_score      REAL,
+            nursing_score      REAL,
+            md_score           REAL,
+            ss_score           REAL,
+            ai_summary         TEXT,
+            ai_summary_override TEXT,
+            source_filename    TEXT,
+            created_at         TEXT DEFAULT (datetime('now')),
+            updated_at         TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    ensure_column(conn, "sensys_client_surveys", "therapy_score", "therapy_score REAL")
+    ensure_column(conn, "sensys_client_surveys", "nursing_score", "nursing_score REAL")
+    ensure_column(conn, "sensys_client_surveys", "md_score", "md_score REAL")
+    ensure_column(conn, "sensys_client_surveys", "ss_score", "ss_score REAL")
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sensys_client_surveys_name ON sensys_client_surveys(abv_name)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sensys_client_surveys_agency ON sensys_client_surveys(agency_name)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sensys_client_surveys_updated ON sensys_client_surveys(survey_updated_at)"
+    )
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_sensys_client_surveys_unique
+        ON sensys_client_surveys(agency_name, abv_name, survey_updated_at)
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_client_survey_secure_links (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            token_hash  TEXT NOT NULL UNIQUE,
+            agency_name TEXT,
+            filters_json TEXT,
+            expires_at  TEXT,
+            created_at  TEXT DEFAULT (datetime('now')),
+            sent_to     TEXT,
+            sent_at     TEXT
+        )
+        """
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_client_survey_secure_links_exp ON sensys_client_survey_secure_links(expires_at)"
     )
 
     # User <-> Agency (many-to-many)
@@ -4663,6 +4851,28 @@ def init_db():
                 "but never invent facility-specific facts. If you aren't sure, "
                 "say what you do and don't know and suggest next steps.",
             ),
+        )
+
+    cur.execute("SELECT value FROM ai_settings WHERE key=?", (CLIENT_SURVEY_SUMMARY_PROMPT_KEY,))
+    row = cur.fetchone()
+    if not row:
+        cur.execute(
+            """
+            INSERT INTO ai_settings (key, value)
+            VALUES (?, ?)
+            """,
+            (CLIENT_SURVEY_SUMMARY_PROMPT_KEY, DEFAULT_CLIENT_SURVEY_SUMMARY_PROMPT),
+        )
+
+    cur.execute("SELECT value FROM ai_settings WHERE key=?", (CLIENT_SURVEY_MASTER_SUMMARY_PROMPT_KEY,))
+    row = cur.fetchone()
+    if not row:
+        cur.execute(
+            """
+            INSERT INTO ai_settings (key, value)
+            VALUES (?, ?)
+            """,
+            (CLIENT_SURVEY_MASTER_SUMMARY_PROMPT_KEY, DEFAULT_CLIENT_SURVEY_MASTER_SUMMARY_PROMPT),
         )
 
 
@@ -6042,9 +6252,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-
-
-init_db()
 
 
 class ManualCmNoteIn(BaseModel):
@@ -13692,6 +13899,249 @@ Important:
 - Use ONLY the provided note text. Do not invent facts.
 """.strip()
 
+CLIENT_SURVEY_SUMMARY_PROMPT_KEY = "client_survey_summary_prompt"
+CLIENT_SURVEY_MASTER_SUMMARY_PROMPT_KEY = "client_survey_master_summary_prompt"
+
+DEFAULT_CLIENT_SURVEY_SUMMARY_PROMPT = (
+    "Sumerize and Formalize General_Coments to sound less short-hand. "
+    "Only show the final text do not show your speaking in the output. "
+    "Try to get them to be at least 1 sentence. "
+    "For your information, this is a medical record note from the writer describing "
+    "their post discharge phone call to the patient in where we are asking about their "
+    "recent stay in a skilled nursing facility, but you dont have to unecessarily explain "
+    "this in the final output. If the field says anything regarding the survey not being "
+    "completed then simply put patient refused suvey."
+).strip()
+
+DEFAULT_CLIENT_SURVEY_MASTER_SUMMARY_PROMPT = (
+    "Summarize the following AI survey summaries into a single, concise overview. "
+    "Focus on common themes, notable positives/negatives, and overall sentiment. "
+    "Write 2-4 sentences. Output only the final summary text."
+).strip()
+
+CLIENT_SURVEY_LINK_TTL_DAYS = 30
+CLIENT_SURVEY_UNIVERSAL_PIN = "snf.s1137"
+CLIENT_SURVEY_SECURE_COOKIE_NAME = "client_survey_secure_auth"
+
+
+def _client_survey_prompt(cur: sqlite3.Cursor) -> str:
+    val = get_setting(cur, CLIENT_SURVEY_SUMMARY_PROMPT_KEY) or ""
+    if not val.strip():
+        return DEFAULT_CLIENT_SURVEY_SUMMARY_PROMPT
+    return val
+
+
+def _client_survey_master_prompt(cur: sqlite3.Cursor) -> str:
+    val = get_setting(cur, CLIENT_SURVEY_MASTER_SUMMARY_PROMPT_KEY) or ""
+    if not val.strip():
+        return DEFAULT_CLIENT_SURVEY_MASTER_SUMMARY_PROMPT
+    return val
+
+
+_CLIENT_SURVEY_REFUSAL_PHRASES = [
+    "not completed",
+    "not complete",
+    "did not complete",
+    "didn't complete",
+    "unable to complete",
+    "not willing",
+    "refused",
+    "declined",
+    "survey not completed",
+    "survey not complete",
+    "survey not done",
+    "not surveyed",
+    "no survey",
+    "survey refused",
+]
+
+
+def _client_survey_is_refused(text: str) -> bool:
+    t = (text or "").strip().lower()
+    if not t:
+        return False
+    return any(p in t for p in _CLIENT_SURVEY_REFUSAL_PHRASES)
+
+
+def _client_survey_summarize(text: str, prompt: str) -> str:
+    raw = (text or "").strip()
+    if not raw:
+        return ""
+    if _client_survey_is_refused(raw):
+        return "Patient refused survey."
+
+    try:
+        chat = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": raw},
+            ],
+        )
+        return (chat.choices[0].message.content or "").strip()
+    except Exception as e:
+        logger.exception("Client survey summary failed: %s", e)
+        return ""
+
+
+def _client_survey_master_summary(summaries: List[str], prompt: str) -> str:
+    cleaned = [s.strip() for s in (summaries or []) if (s or "").strip()]
+    if not cleaned:
+        return ""
+
+    body = "\n".join(f"- {s}" for s in cleaned)
+    if len(body) > 8000:
+        body = body[:8000]
+
+    try:
+        chat = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": body},
+            ],
+        )
+        return (chat.choices[0].message.content or "").strip()
+    except Exception as e:
+        logger.exception("Client survey master summary failed: %s", e)
+        return ""
+
+
+def _client_survey_parse_date(value: str) -> Optional[dt.date]:
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    try:
+        if re.match(r"^\d{4}-\d{2}-\d{2}", raw):
+            return dt.datetime.strptime(raw[:10], "%Y-%m-%d").date()
+        m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})", raw)
+        if m:
+            mm, dd, yy = m.group(1), m.group(2), m.group(3)
+            return dt.datetime.strptime(f"{yy}-{mm.zfill(2)}-{dd.zfill(2)}", "%Y-%m-%d").date()
+    except Exception:
+        return None
+    return None
+
+
+def _client_survey_star_img(score: Any) -> str:
+    try:
+        v = float(score)
+        n = int(round(v))
+    except Exception:
+        n = 0
+    n = max(0, min(5, n))
+    return f"/static/images/{n}_Stars.png"
+
+
+def build_client_survey_secure_list_html(
+    agency_name: str,
+    items: List[Dict[str, Any]],
+    expires_at: str,
+    master_summary: str,
+    avg_score: Optional[float],
+) -> str:
+    esc = html.escape
+    header_img = "/static/images/Asset 1.png"
+    logo_img = "/static/images/Evolv Health hor color.png"
+    summary_text = esc((master_summary or "").strip() or "Summary not available.")
+    avg_txt = f"{avg_score:.1f}" if avg_score is not None else "—"
+    avg_stars = _client_survey_star_img(avg_score) if avg_score is not None else ""
+    avg_stars_html = f'<img src="{avg_stars}" alt="Overall average" />' if avg_stars else ""
+
+    rows_html = ""
+    for r in items:
+        name = esc(r.get("abv_name") or "-")
+        date_txt = esc(r.get("survey_updated_at") or "-")
+        overall = r.get("overall_score")
+        stars = _client_survey_star_img(overall)
+        summary = esc((r.get("ai_summary_override") or r.get("ai_summary") or "").strip() or "-")
+        therapy = esc(str(r.get("therapy_score") or "-"))
+        nursing = esc(str(r.get("nursing_score") or "-"))
+        md = esc(str(r.get("md_score") or "-"))
+        ss = esc(str(r.get("ss_score") or "-"))
+
+        rows_html += f"""
+        <div class="survey-row">
+          <div class="survey-head">
+            <div>
+              <div class="patient">{name}</div>
+              <div class="date">Survey Date: {date_txt}</div>
+            </div>
+            <div class="stars"><img src="{stars}" alt="Overall score" /></div>
+          </div>
+          <div class="summary">{summary}</div>
+          <div class="scores">
+            <div><strong>Therapy:</strong> {therapy}</div>
+            <div><strong>Nursing:</strong> {nursing}</div>
+            <div><strong>MD:</strong> {md}</div>
+            <div><strong>SS:</strong> {ss}</div>
+          </div>
+        </div>
+        """
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Client Survey List</title>
+  <style>
+    body{{margin:0;background:#f6f8fb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#0f172a;}}
+    .wrap{{max-width:1100px;margin:0 auto;padding:24px;}}
+    .hero{{background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #e5e7eb;box-shadow:0 12px 28px rgba(13,59,102,.08);}}
+    .hero-body{{padding:18px 22px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}}
+    .hero-title{{font-size:20px;font-weight:900;color:#0d3b66;}}
+    .hero-sub{{color:#64748b;font-size:12px;}}
+    .logo{{height:32px;}}
+    .hero-img{{width:100%;display:block;height:190px;object-fit:cover;}}
+    .summary-card{{margin-top:18px;background:#fff;border:1px solid rgba(13,59,102,.14);border-radius:16px;padding:18px 18px 16px 18px;box-shadow:0 6px 18px rgba(13,59,102,.06);text-align:center;}}
+    .summary-title{{font-size:16px;font-weight:900;color:#0d3b66;margin-bottom:8px;}}
+    .summary-text{{font-size:13px;line-height:1.45;color:#0f172a;}}
+    .summary-score{{margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}}
+    .summary-score .label{{font-size:12px;color:#64748b;font-weight:700;}}
+    .summary-score .value{{font-size:18px;font-weight:900;color:#0d3b66;}}
+    .summary-score img{{height:22px;}}
+    .survey-list{{margin-top:14px;display:flex;flex-direction:column;gap:12px;}}
+    .survey-row{{background:#fff;border:1px solid rgba(13,59,102,.14);border-radius:16px;padding:16px;box-shadow:0 6px 18px rgba(13,59,102,.06);}}
+    .survey-head{{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;}}
+    .patient{{font-size:16px;font-weight:900;color:#0d3b66;}}
+    .date{{font-size:12px;color:#64748b;}}
+    .stars img{{height:22px;}}
+    .summary{{margin-top:10px;font-size:13px;line-height:1.45;color:#0f172a;}}
+    .scores{{margin-top:10px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;font-size:12px;color:#475569;}}
+    @media (max-width: 800px){{.scores{{grid-template-columns:repeat(2,minmax(0,1fr));}}}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <img class="hero-img" src="{header_img}" alt="Survey header" />
+      <div class="hero-body">
+        <div>
+          <div class="hero-title">{esc(agency_name or "Client Surveys")}</div>
+          <div class="hero-sub">Secure list expires on {esc(expires_at or "")}</div>
+        </div>
+        <img class="logo" src="{logo_img}" alt="Evolv Health" />
+      </div>
+    </div>
+
+    <div class="summary-card">
+      <div class="summary-title">Survey Overview</div>
+      <div class="summary-text">{summary_text}</div>
+      <div class="summary-score">
+        <div class="label">Overall Average</div>
+        <div class="value">{avg_txt}</div>
+        {avg_stars_html}
+      </div>
+    </div>
+
+    <div class="survey-list">
+      {rows_html or "<div class='survey-row'>No surveys available.</div>"}
+    </div>
+  </div>
+</body>
+</html>"""
+
 
 def _load_recent_cm_notes_for_visit(cur: sqlite3.Cursor, visit_id: str, limit: int = 6) -> List[Dict[str, Any]]:
     cur.execute(
@@ -16815,27 +17265,29 @@ async def snf_secure_link_list(token: str, request: Request):
             COALESCE(s.dob, raw.dob) AS dob,
             COALESCE(s.attending, raw.attending, raw.note_author) AS hospitalist,
 
-            -- Latest matching note type for tooltip/title (Discharge Summary OR Progress Note)
+            -- Latest matching note type for tooltip/title (Discharge Summary OR Progress Note OR Hospitalist Progress Note)
             (
-              SELECT n.note_type
-              FROM cm_notes_raw n
-              WHERE n.visit_id = s.visit_id
+            SELECT n.note_type
+            FROM cm_notes_raw n
+            WHERE n.visit_id = s.visit_id
                 AND (
-                  lower(COALESCE(n.note_type,'')) = 'discharge summary'
-                  OR lower(COALESCE(n.note_type,'')) = 'progress note'
+                lower(COALESCE(n.note_type,'')) = 'discharge summary'
+                OR lower(COALESCE(n.note_type,'')) = 'progress note'
+                OR lower(COALESCE(n.note_type,'')) = 'hospitalist progress note'
                 )
-              ORDER BY COALESCE(n.note_datetime, n.created_at) DESC
-              LIMIT 1
+            ORDER BY COALESCE(n.note_datetime, n.created_at) DESC
+            LIMIT 1
             ) AS view_note_type,
 
             -- Whether the row should show the ↗ button at all
             CASE WHEN EXISTS (
-              SELECT 1
-              FROM cm_notes_raw n2
-              WHERE n2.visit_id = s.visit_id
+            SELECT 1
+            FROM cm_notes_raw n2
+            WHERE n2.visit_id = s.visit_id
                 AND (
-                  lower(COALESCE(n2.note_type,'')) = 'discharge summary'
-                  OR lower(COALESCE(n2.note_type,'')) = 'progress note'
+                lower(COALESCE(n2.note_type,'')) = 'discharge summary'
+                OR lower(COALESCE(n2.note_type,'')) = 'progress note'
+                OR lower(COALESCE(n2.note_type,'')) = 'hospitalist progress note'
                 )
             ) THEN 1 ELSE 0 END AS has_view_note
 
@@ -16945,27 +17397,29 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
         if not visit_id:
             return HTMLResponse("<h2>No visit</h2><p>This admission has no visit_id to load notes.</p>", status_code=404, headers=secure_headers)
 
-        # Find latest Discharge Summary OR Progress Note for this visit
+        # Find latest Discharge Summary OR Progress Note OR Hospitalist Progress Note for this visit
         cur.execute(
             """
             SELECT id, note_type, note_datetime, note_author, hospital_name, note_text, created_at
             FROM cm_notes_raw
             WHERE visit_id = ?
-              AND (
+            AND (
                 lower(COALESCE(note_type,'')) = 'discharge summary'
                 OR lower(COALESCE(note_type,'')) = 'progress note'
-              )
+                OR lower(COALESCE(note_type,'')) = 'hospitalist progress note'
+            )
             ORDER BY COALESCE(note_datetime, created_at) DESC
             LIMIT 1
             """,
             (visit_id,),
         )
+
         nrow = cur.fetchone()
         if not nrow:
             # If none exists, we remove the button in the list (via has_view_note),
             # but if someone manually hits the URL, show a clean message.
             return HTMLResponse(
-                "<h2>No note found</h2><p>No Discharge Summary or Progress Note exists for this patient.</p>",
+                "<h2>No note found</h2><p>No Discharge Summary, Progress Note, or Hospitalist Progress Note exists for this patient.</p>",
                 status_code=404,
                 headers=secure_headers,
             )
@@ -19450,6 +19904,561 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
 # -----------------------------
 from pydantic import BaseModel
 from typing import Optional
+
+# -----------------------------
+# Sensys Admin: Client Surveys
+# -----------------------------
+@app.get("/api/sensys/admin/client-surveys")
+def sensys_admin_client_surveys(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT
+            id,
+            agency_name,
+            abv_name,
+            admission_date,
+            discharge_date,
+            survey_updated_at,
+            general_comments,
+            overall_score,
+            ai_summary,
+            ai_summary_override
+        FROM sensys_client_surveys
+        ORDER BY
+            CASE WHEN survey_updated_at IS NULL OR TRIM(survey_updated_at) = '' THEN 1 ELSE 0 END,
+            survey_updated_at DESC,
+            updated_at DESC
+        """
+    ).fetchall()
+    return {"surveys": [dict(r) for r in rows]}
+
+
+@app.get("/api/sensys/admin/client-surveys/prompt")
+def sensys_admin_client_surveys_prompt_get(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        return {
+            "ok": True,
+            "prompt": _client_survey_prompt(cur),
+            "master_prompt": _client_survey_master_prompt(cur),
+        }
+    finally:
+        conn.close()
+
+
+@app.post("/api/sensys/admin/client-surveys/prompt")
+def sensys_admin_client_surveys_prompt_set(payload: Dict[str, Any] = Body(...), token: str = ""):
+    _require_admin_token(token)
+    prompt = (payload.get("prompt") or "").strip()
+    master_prompt = (payload.get("master_prompt") or "").strip()
+    if len(prompt) > 12000:
+        raise HTTPException(status_code=400, detail="prompt too long")
+    if len(master_prompt) > 12000:
+        raise HTTPException(status_code=400, detail="master_prompt too long")
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        if "prompt" in payload:
+            set_setting(conn, cur, CLIENT_SURVEY_SUMMARY_PROMPT_KEY, prompt)
+        if "master_prompt" in payload:
+            set_setting(conn, cur, CLIENT_SURVEY_MASTER_SUMMARY_PROMPT_KEY, master_prompt)
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+@app.post("/api/sensys/admin/client-surveys/summary-override")
+def sensys_admin_client_surveys_summary_override(payload: Dict[str, Any] = Body(...), token: str = ""):
+    _require_admin_token(token)
+    row_id = payload.get("id")
+    if not row_id:
+        raise HTTPException(status_code=400, detail="id is required")
+    override = (payload.get("ai_summary_override") or "").strip()
+    conn = get_db()
+    try:
+        conn.execute(
+            """
+            UPDATE sensys_client_surveys
+            SET ai_summary_override = ?,
+                updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (override, int(row_id)),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+@app.post("/api/sensys/admin/client-surveys/upload")
+async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File(...)):
+    _require_admin_token(token)
+    if not file or not (file.filename or "").lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Please upload a .csv file")
+
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8-sig")
+    except Exception:
+        text = raw.decode("latin-1", errors="ignore")
+
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise HTTPException(status_code=400, detail="CSV has no headers")
+
+    def _norm_key(k: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", (k or "").strip().lower())
+
+    fieldnames = list(reader.fieldnames or [])
+    normed = {_norm_key(k): k for k in fieldnames}
+
+    def _find_col(candidates: list[str]) -> str | None:
+        for key in fieldnames:
+            nk = _norm_key(key)
+            for cand in candidates:
+                if nk == cand or nk.startswith(cand) or cand in nk:
+                    return key
+        return None
+
+    col_agency = _find_col(["agencyname", "agency"])
+    col_abv = _find_col(["abvname", "abv"])
+    col_admit = _find_col(["admissiondate", "admitdate", "admission"])
+    col_dc = _find_col(["dischargedate", "dcdate", "discharge"])
+    col_updated = _find_col(["updatedat", "updated"])
+    col_comments = _find_col(["generalcomments", "generalcomment", "generalcoments", "comments", "comment"])
+    col_overall = _find_col(["overallscore", "overall"])
+    col_therapy = _find_col(["therapy", "therapy_score", "therapyscore"])
+    col_nursing = _find_col(["nursing", "nursing_score", "nursingscore"])
+    col_md = _find_col(["md", "md_score", "physician", "physicianscore"])
+    col_ss = _find_col(["ss", "socialservice", "socialservices", "social_services", "ss_score"])
+
+    conn = get_db()
+    inserted = 0
+    updated = 0
+    skipped = 0
+    try:
+        cur = conn.cursor()
+        prompt = _client_survey_prompt(cur)
+
+        for row in reader:
+            agency_name = (row.get(col_agency) if col_agency else "") or ""
+            abv_name = (row.get(col_abv) if col_abv else "") or ""
+            admission_date = (row.get(col_admit) if col_admit else "") or ""
+            discharge_date = (row.get(col_dc) if col_dc else "") or ""
+            survey_updated_at = (row.get(col_updated) if col_updated else "") or ""
+            general_comments = (row.get(col_comments) if col_comments else "") or ""
+            overall_score_raw = (row.get(col_overall) if col_overall else "") or ""
+            therapy_score_raw = (row.get(col_therapy) if col_therapy else "") or ""
+            nursing_score_raw = (row.get(col_nursing) if col_nursing else "") or ""
+            md_score_raw = (row.get(col_md) if col_md else "") or ""
+            ss_score_raw = (row.get(col_ss) if col_ss else "") or ""
+
+            try:
+                overall_score = float(str(overall_score_raw).strip()) if str(overall_score_raw).strip() != "" else None
+            except Exception:
+                overall_score = None
+            try:
+                therapy_score = float(str(therapy_score_raw).strip()) if str(therapy_score_raw).strip() != "" else None
+            except Exception:
+                therapy_score = None
+            try:
+                nursing_score = float(str(nursing_score_raw).strip()) if str(nursing_score_raw).strip() != "" else None
+            except Exception:
+                nursing_score = None
+            try:
+                md_score = float(str(md_score_raw).strip()) if str(md_score_raw).strip() != "" else None
+            except Exception:
+                md_score = None
+            try:
+                ss_score = float(str(ss_score_raw).strip()) if str(ss_score_raw).strip() != "" else None
+            except Exception:
+                ss_score = None
+
+            ai_summary = _client_survey_summarize(str(general_comments), prompt)
+
+            dedup = conn.execute(
+                """
+                SELECT id FROM sensys_client_surveys
+                WHERE agency_name = ? AND abv_name = ? AND discharge_date = ?
+                """,
+                (str(agency_name), str(abv_name), str(discharge_date)),
+            ).fetchone()
+            if dedup:
+                skipped += 1
+                continue
+
+            existing = conn.execute(
+                """
+                SELECT id FROM sensys_client_surveys
+                WHERE agency_name = ? AND abv_name = ? AND survey_updated_at = ?
+                """,
+                (str(agency_name), str(abv_name), str(survey_updated_at)),
+            ).fetchone()
+
+            if existing:
+                updated += 1
+            else:
+                inserted += 1
+
+            conn.execute(
+                """
+                INSERT INTO sensys_client_surveys(
+                    agency_name,
+                    abv_name,
+                    admission_date,
+                    discharge_date,
+                    survey_updated_at,
+                    general_comments,
+                    overall_score,
+                    therapy_score,
+                    nursing_score,
+                    md_score,
+                    ss_score,
+                    ai_summary,
+                    source_filename,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(agency_name, abv_name, survey_updated_at) DO UPDATE SET
+                    admission_date = excluded.admission_date,
+                    discharge_date = excluded.discharge_date,
+                    general_comments = excluded.general_comments,
+                    overall_score = excluded.overall_score,
+                    therapy_score = excluded.therapy_score,
+                    nursing_score = excluded.nursing_score,
+                    md_score = excluded.md_score,
+                    ss_score = excluded.ss_score,
+                    ai_summary = excluded.ai_summary,
+                    source_filename = excluded.source_filename,
+                    updated_at = datetime('now')
+                """,
+                (
+                    str(agency_name).strip(),
+                    str(abv_name).strip(),
+                    str(admission_date).strip(),
+                    str(discharge_date).strip(),
+                    str(survey_updated_at).strip(),
+                    str(general_comments).strip(),
+                    overall_score,
+                    therapy_score,
+                    nursing_score,
+                    md_score,
+                    ss_score,
+                    ai_summary,
+                    file.filename or "",
+                ),
+            )
+
+        conn.commit()
+        return {"ok": True, "inserted": inserted, "updated": updated, "skipped": skipped}
+    finally:
+        conn.close()
+
+@app.post("/api/sensys/admin/client-surveys/email-send")
+def sensys_admin_client_surveys_email_send(
+    request: Request,
+    payload: Dict[str, Any] = Body(...),
+    token: str = "",
+):
+    _require_admin_token(token)
+
+    recipients = normalize_email_list(payload.get("recipients") or "")
+    filters = payload.get("filters") or {}
+    agency_name = (filters.get("agency_name") or "").strip()
+
+    if not agency_name:
+        raise HTTPException(status_code=400, detail="agency_name filter is required")
+    if not recipients:
+        raise HTTPException(status_code=400, detail="recipients are required")
+
+    if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD):
+        return {"ok": False, "message": "SMTP not configured; skipping send."}
+
+    raw_token = secrets.token_urlsafe(18)
+    token_hash = sha256_hex(raw_token)
+    expires_at = (dt.datetime.utcnow() + dt.timedelta(days=CLIENT_SURVEY_LINK_TTL_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = get_db()
+    try:
+        conn.execute(
+            """
+            INSERT INTO sensys_client_survey_secure_links
+                (token_hash, agency_name, filters_json, expires_at, sent_to, sent_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            """,
+            (token_hash, agency_name, json.dumps(filters), expires_at, recipients),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    base_url = get_public_base_url(request)
+    secure_url = f"{base_url}/surveys/secure/{raw_token}"
+    html_body = build_client_survey_secure_email_html(
+        secure_url,
+        CLIENT_SURVEY_LINK_TTL_DAYS,
+        agency_name,
+        str(filters.get("discharge_from") or "").strip(),
+        str(filters.get("discharge_to") or "").strip(),
+        base_url,
+    )
+
+    msg = EmailMessage()
+    msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
+    msg["To"] = recipients
+    msg["Subject"] = f"Client Survey Responses - {agency_name}"
+    msg.set_content(f"View secure surveys: {secure_url}")
+    msg.add_alternative(html_body, subtype="html")
+
+    context = ssl.create_default_context()
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        server.starttls(context=context)
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.send_message(msg)
+
+    return {"ok": True}
+
+
+def build_client_survey_secure_pin_html(agency_name: str, ttl_days: int, error_msg: str = "") -> str:
+    esc = html.escape
+    header_img = "/static/images/Asset 1.png"
+    logo_img = "/static/images/Evolv Health hor color.png"
+    ttl_days = int(ttl_days or 30)
+    err_html = f'<div class="err">{esc(error_msg)}</div>' if error_msg else ""
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Enter PIN</title>
+  <style>
+    body{{margin:0;background:#f6f8fb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#0f172a;}}
+    .wrap{{max-width:1100px;margin:0 auto;padding:24px;}}
+    .hero{{background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #e5e7eb;box-shadow:0 12px 28px rgba(13,59,102,.08);}}
+    .hero-img{{width:100%;display:block;height:190px;object-fit:cover;}}
+    .hero-body{{padding:18px 22px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}}
+    .hero-title{{font-size:20px;font-weight:900;color:#0d3b66;}}
+    .hero-sub{{color:#64748b;font-size:12px;}}
+    .logo{{height:32px;}}
+    .pin-card{{margin-top:18px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);overflow:hidden;}}
+    .topbar{{background:#0D3B66;padding:16px 22px;color:#fff;font-weight:700;}}
+    .mintbar{{height:4px;background:#A8E6CF;}}
+    .content{{padding:22px;}}
+    p{{margin:0 0 14px 0;font-size:13px;color:#374151;line-height:1.5;}}
+    label{{display:block;font-size:12px;color:#374151;margin-bottom:6px;font-weight:600;}}
+    input{{display:block;width:100%;max-width:100%;min-width:0;padding:12px;border-radius:12px;border:1px solid #d1d5db;font-size:14px;}}
+    input:focus{{outline:none;border-color:#A8E6CF;box-shadow:0 0 0 3px rgba(168,230,207,.45);}}
+    .btn{{margin-top:12px;display:inline-block;background:#0D3B66;color:#ffffff;border:none;padding:12px 18px;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 8px 18px rgba(13,59,102,.18);}}
+    .btn:hover{{background:#0b3357;}}
+    .err{{margin:0 0 12px 0;padding:10px 12px;border-radius:12px;border:1px solid #fca5a5;background:#fef2f2;color:#991b1b;font-size:13px;}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <img class="hero-img" src="{header_img}" alt="Survey header" />
+      <div class="hero-body">
+        <div>
+          <div class="hero-title">{esc(agency_name or "Client Surveys")}</div>
+          <div class="hero-sub">Secure list expires in {ttl_days} days</div>
+        </div>
+        <img class="logo" src="{logo_img}" alt="Evolv Health" />
+      </div>
+    </div>
+
+    <div class="pin-card">
+      <div class="topbar">Secure Survey List</div>
+      <div class="mintbar" aria-hidden="true"></div>
+      <div class="content">
+        <p>Enter the PIN to view the survey list. This link expires in {ttl_days} days.</p>
+        {err_html}
+        <form method="post">
+          <label for="pin">PIN</label>
+          <input id="pin" name="pin" type="password" autocomplete="one-time-code" required />
+          <button class="btn" type="submit">Continue</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>"""
+
+
+@app.get("/surveys/secure/{token}", response_class=HTMLResponse)
+async def client_surveys_secure_pin(token: str, request: Request):
+    token_hash = sha256_hex(token or "")
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT id, agency_name, filters_json, expires_at FROM sensys_client_survey_secure_links WHERE token_hash = ?",
+            (token_hash,),
+        ).fetchone()
+        if not row:
+            return HTMLResponse("<h2>Link expired</h2><p>This secure link is invalid or has expired.</p>", status_code=410)
+        if row["expires_at"] and row["expires_at"] < dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"):
+            return HTMLResponse("<h2>Link expired</h2><p>This secure link has expired.</p>", status_code=410)
+    finally:
+        conn.close()
+
+    page = build_client_survey_secure_pin_html(
+        row["agency_name"] if row else "Client Surveys",
+        CLIENT_SURVEY_LINK_TTL_DAYS,
+    )
+    return HTMLResponse(page)
+
+
+@app.post("/surveys/secure/{token}", response_class=HTMLResponse)
+async def client_surveys_secure_pin_post(token: str, pin: Optional[str] = Form(None)):
+    token_hash = sha256_hex(token or "")
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT id, agency_name, filters_json, expires_at FROM sensys_client_survey_secure_links WHERE token_hash = ?",
+            (token_hash,),
+        ).fetchone()
+        if not row:
+            return HTMLResponse("<h2>Link expired</h2><p>This secure link is invalid or has expired.</p>", status_code=410)
+        if row["expires_at"] and row["expires_at"] < dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"):
+            return HTMLResponse("<h2>Link expired</h2><p>This secure link has expired.</p>", status_code=410)
+    finally:
+        conn.close()
+
+    if not (pin or "").strip() or not verify_pin(pin.strip(), hash_pin(CLIENT_SURVEY_UNIVERSAL_PIN)):
+        page = build_client_survey_secure_pin_html(
+            row["agency_name"] if row else "Client Surveys",
+            CLIENT_SURVEY_LINK_TTL_DAYS,
+            "Invalid PIN. Please try again.",
+        )
+        return HTMLResponse(page, status_code=401)
+
+    max_age = None
+    try:
+        if row and row["expires_at"]:
+            exp_dt = dt.datetime.strptime(row["expires_at"], "%Y-%m-%d %H:%M:%S")
+            max_age = int((exp_dt - dt.datetime.utcnow()).total_seconds())
+    except Exception:
+        max_age = None
+
+    resp = RedirectResponse(url=f"/surveys/secure/{token}/list", status_code=302)
+    resp.set_cookie(
+        CLIENT_SURVEY_SECURE_COOKIE_NAME,
+        token_hash,
+        max_age=max_age,
+        httponly=True,
+        samesite="lax",
+        secure=True,
+    )
+    return resp
+
+
+@app.get("/surveys/secure/{token}/list", response_class=HTMLResponse)
+async def client_surveys_secure_list(token: str, request: Request):
+    token_hash = sha256_hex(token or "")
+    conn = get_db()
+    try:
+        cookie_val = (request.cookies.get(CLIENT_SURVEY_SECURE_COOKIE_NAME) or "").strip()
+        if cookie_val != token_hash:
+            return RedirectResponse(url=f"/surveys/secure/{token}", status_code=302)
+
+        link = conn.execute(
+            "SELECT agency_name, filters_json, expires_at FROM sensys_client_survey_secure_links WHERE token_hash = ?",
+            (token_hash,),
+        ).fetchone()
+        if not link:
+            return HTMLResponse("<h2>Link expired</h2><p>This secure link is invalid or has expired.</p>", status_code=410)
+
+        expires_at = link["expires_at"] or ""
+        if expires_at and expires_at < dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"):
+            return HTMLResponse("<h2>Link expired</h2><p>This secure link has expired.</p>", status_code=410)
+
+        filters = {}
+        try:
+            filters = json.loads(link["filters_json"] or "{}")
+        except Exception:
+            filters = {}
+
+        agency = (filters.get("agency_name") or link["agency_name"] or "").strip()
+        discharge_from = (filters.get("discharge_from") or "").strip()
+        discharge_to = (filters.get("discharge_to") or "").strip()
+        sort_by = (filters.get("sort_by") or "patient_asc").strip()
+
+        rows = conn.execute(
+            """
+            SELECT
+                abv_name,
+                agency_name,
+                discharge_date,
+                survey_updated_at,
+                overall_score,
+                ai_summary,
+                ai_summary_override,
+                therapy_score,
+                nursing_score,
+                md_score,
+                ss_score
+            FROM sensys_client_surveys
+            WHERE agency_name = ?
+            """,
+            (agency,),
+        ).fetchall()
+
+        items = [dict(r) for r in rows]
+
+        df = _client_survey_parse_date(discharge_from) if discharge_from else None
+        dt_to = _client_survey_parse_date(discharge_to) if discharge_to else None
+        if df or dt_to:
+            filtered = []
+            for r in items:
+                dd = _client_survey_parse_date(r.get("discharge_date") or "")
+                if not dd:
+                    continue
+                if df and dd < df:
+                    continue
+                if dt_to and dd > dt_to:
+                    continue
+                filtered.append(r)
+            items = filtered
+
+        if sort_by == "discharge_asc":
+            items.sort(key=lambda r: (_client_survey_parse_date(r.get("discharge_date") or "") or dt.date.min))
+        elif sort_by == "discharge_desc":
+            items.sort(key=lambda r: (_client_survey_parse_date(r.get("discharge_date") or "") or dt.date.min), reverse=True)
+        else:
+            items.sort(key=lambda r: (r.get("abv_name") or "").lower())
+
+        summaries = [
+            (r.get("ai_summary_override") or r.get("ai_summary") or "").strip()
+            for r in items
+            if (r.get("ai_summary_override") or r.get("ai_summary") or "").strip()
+        ]
+        master_prompt = _client_survey_master_prompt(conn.cursor())
+        master_summary = _client_survey_master_summary(summaries, master_prompt)
+
+        scores = []
+        for r in items:
+            try:
+                scores.append(float(r.get("overall_score")))
+            except Exception:
+                pass
+        avg_score = (sum(scores) / len(scores)) if scores else None
+
+        html_doc = build_client_survey_secure_list_html(
+            agency,
+            items,
+            expires_at,
+            master_summary,
+            avg_score,
+        )
+        return HTMLResponse(html_doc)
+    finally:
+        conn.close()
+
 
 # -----------------------------
 # Sensys Admin: Service Types (NEW)
@@ -26157,6 +27166,8 @@ from fastapi.responses import HTMLResponse, Response
 # ---------------------------------------------------------------------------
 # Entrypoint for Render
 # ---------------------------------------------------------------------------
+
+init_db()
 
 if __name__ == "__main__":
     import uvicorn
