@@ -2614,7 +2614,7 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
       padding:10px 0; /* thinner, empty bar */
     }}
 
-    .content{{padding:26px 26px 18px 26px;}}
+    .content{{padding:20px 26px 18px 26px;}}
     h1{{
       margin:0 0 10px 0;
       font-size:22px;
