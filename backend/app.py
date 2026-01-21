@@ -20046,6 +20046,22 @@ async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File
                     return key
         return None
 
+    def _normalize_date(value: str) -> str:
+        raw = (value or "").strip()
+        if not raw:
+            return ""
+        if " " in raw:
+            raw = raw.split(" ")[0]
+        if "T" in raw:
+            raw = raw.split("T")[0]
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", raw):
+            return raw
+        m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})", raw)
+        if m:
+            mm, dd, yy = m.group(1), m.group(2), m.group(3)
+            return f"{yy}-{mm.zfill(2)}-{dd.zfill(2)}"
+        return raw
+
     col_agency = _find_col(["agencyname", "agency"])
     col_abv = _find_col(["abvname", "abv"])
     col_admit = _find_col(["admissiondate", "admitdate", "admission"])
@@ -20069,9 +20085,9 @@ async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File
         for row in reader:
             agency_name = (row.get(col_agency) if col_agency else "") or ""
             abv_name = (row.get(col_abv) if col_abv else "") or ""
-            admission_date = (row.get(col_admit) if col_admit else "") or ""
-            discharge_date = (row.get(col_dc) if col_dc else "") or ""
-            survey_updated_at = (row.get(col_updated) if col_updated else "") or ""
+            admission_date = _normalize_date((row.get(col_admit) if col_admit else "") or "")
+            discharge_date = _normalize_date((row.get(col_dc) if col_dc else "") or "")
+            survey_updated_at = _normalize_date((row.get(col_updated) if col_updated else "") or "")
             general_comments = (row.get(col_comments) if col_comments else "") or ""
             overall_score_raw = (row.get(col_overall) if col_overall else "") or ""
             therapy_score_raw = (row.get(col_therapy) if col_therapy else "") or ""
@@ -20102,14 +20118,24 @@ async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File
 
             ai_summary = _client_survey_summarize(str(general_comments), prompt)
 
-            dedup = conn.execute(
+            norm_agency = str(agency_name).strip().lower()
+            norm_abv = str(abv_name).strip().lower()
+            norm_dc = _normalize_date(str(discharge_date))
+            dedup_rows = conn.execute(
                 """
-                SELECT id, therapy_score, nursing_score, md_score, ss_score, overall_score
+                SELECT id, discharge_date, therapy_score, nursing_score, md_score, ss_score, overall_score
                 FROM sensys_client_surveys
-                WHERE agency_name = ? AND abv_name = ? AND discharge_date = ?
+                WHERE LOWER(TRIM(agency_name)) = ? AND LOWER(TRIM(abv_name)) = ?
                 """,
-                (str(agency_name), str(abv_name), str(discharge_date)),
-            ).fetchone()
+                (norm_agency, norm_abv),
+            ).fetchall()
+
+            dedup = None
+            for r in dedup_rows:
+                if _normalize_date(str(r["discharge_date"] or "")) == norm_dc:
+                    dedup = r
+                    break
+
             if dedup:
                 row_updates = {}
                 if dedup["overall_score"] is None and overall_score is not None:
