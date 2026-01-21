@@ -19933,6 +19933,10 @@ def sensys_admin_client_surveys(token: str):
             survey_updated_at,
             general_comments,
             overall_score,
+            therapy_score,
+            nursing_score,
+            md_score,
+            ss_score,
             ai_summary,
             ai_summary_override
         FROM sensys_client_surveys
