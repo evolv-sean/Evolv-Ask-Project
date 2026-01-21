@@ -588,7 +588,7 @@ app.add_middleware(
 # Serve /static/* from backend/static/*
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 # Serve /images/logos/* from /Public (repo root)
-app.mount("/images/logos", StaticFiles(directory=str(PUBLIC_DIR)), name="public-logos")
+app.mount("/images", StaticFiles(directory=str(PUBLIC_DIR / "images")), name="public-images")
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -2785,9 +2785,10 @@ def build_client_survey_secure_email_html(
       box-shadow:0 10px 28px rgba(0,0,0,.08);
       border:1px solid #e5e7eb;
     }}
-    .topbar{{background:#0D3B66;padding:10px 16px;display:flex;align-items:center;justify-content:flex-end;}}
-    .topbar-logo{{height:26px;max-width:180px;object-fit:contain;}}
+    .topbar{{background:#0D3B66;padding:10px 0;}}
     .content{{padding:26px 26px 18px 26px;}}
+    .logo-row{{display:flex;justify-content:flex-end;margin-bottom:8px;}}
+    .logo{{height:34px;}}
     h1{{margin:0 0 10px 0;font-size:22px;line-height:1.25;color:#0D3B66;letter-spacing:-0.01em;}}
     p{{margin:0 0 12px 0;font-size:14px;line-height:1.55;color:#374151;}}
     .callout{{
@@ -2828,11 +2829,12 @@ def build_client_survey_secure_email_html(
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="topbar">
-        <img class="topbar-logo" src="{safe_logo}" alt="Evolv Health" />
-      </div>
+      <div class="topbar" aria-hidden="true"></div>
 
       <div class="content">
+        <div class="logo-row">
+          <img class="logo" src="{safe_logo}" alt="Evolv Health" />
+        </div>
         <h1>Monthly Client Survey Responses</h1>
         <p>
           New survey responses are available for <strong>{agency_label}</strong>.
@@ -14051,14 +14053,24 @@ def build_client_survey_secure_list_html(
     rows_html = ""
     for r in items:
         name = esc(r.get("abv_name") or "-")
-        date_txt = esc(r.get("survey_updated_at") or "-")
+        raw_date = str(r.get("survey_updated_at") or "").strip()
+        if " " in raw_date:
+            raw_date = raw_date.split(" ")[0]
+        if "T" in raw_date:
+            raw_date = raw_date.split("T")[0]
+        date_txt = esc(raw_date or "-")
         overall = r.get("overall_score")
         stars = _client_survey_star_img(overall)
         summary = esc((r.get("ai_summary_override") or r.get("ai_summary") or "").strip() or "-")
-        therapy = esc(str(r.get("therapy_score") or "-"))
-        nursing = esc(str(r.get("nursing_score") or "-"))
-        md = esc(str(r.get("md_score") or "-"))
-        ss = esc(str(r.get("ss_score") or "-"))
+        def _score_text(val: Any) -> str:
+            if val is None:
+                return "-"
+            txt = str(val).strip()
+            return txt if txt else "-"
+        therapy = esc(_score_text(r.get("therapy_score")))
+        nursing = esc(_score_text(r.get("nursing_score")))
+        md = esc(_score_text(r.get("md_score")))
+        ss = esc(_score_text(r.get("ss_score")))
 
         rows_html += f"""
         <div class="survey-row">
@@ -14095,9 +14107,9 @@ def build_client_survey_secure_list_html(
     .logo{{height:32px;}}
     .hero-img{{width:100%;display:block;height:190px;object-fit:cover;}}
     .summary-card{{margin-top:18px;background:#fff;border:1px solid rgba(13,59,102,.14);border-radius:16px;padding:18px 18px 16px 18px;box-shadow:0 6px 18px rgba(13,59,102,.06);text-align:center;}}
-    .summary-title{{font-size:16px;font-weight:900;color:#0d3b66;margin-bottom:8px;}}
-    .summary-text{{font-size:13px;line-height:1.45;color:#0f172a;}}
-    .summary-score{{margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}}
+    .summary-title{{font-size:18px;font-weight:900;color:#0d3b66;margin-bottom:8px;}}
+    .summary-text{{font-size:14px;line-height:1.5;color:#0f172a;}}
+    .summary-score{{margin-top:12px;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;}}
     .summary-score .label{{font-size:12px;color:#64748b;font-weight:700;}}
     .summary-score .value{{font-size:18px;font-weight:900;color:#0d3b66;}}
     .summary-score img{{height:22px;}}
@@ -20227,7 +20239,7 @@ def sensys_admin_client_surveys_email_send(
 def build_client_survey_secure_pin_html(agency_name: str, ttl_days: int, error_msg: str = "") -> str:
     esc = html.escape
     header_img = "/static/images/Asset 1.png"
-    logo_img = "/static/images/Evolv Health hor color.png"
+    logo_img = "/static/images/Evolv-Health-hor-color.png"
     ttl_days = int(ttl_days or 30)
     err_html = f'<div class="err">{esc(error_msg)}</div>' if error_msg else ""
 
