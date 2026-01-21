@@ -14093,7 +14093,7 @@ def build_client_survey_secure_list_html(
     .hero-sub{{color:#64748b;font-size:12px;}}
     .logo{{height:32px;}}
     .hero-img{{width:100%;display:block;height:190px;object-fit:cover;}}
-    .summary-card{{margin-top:18px;background:#fff;border:1px solid rgba(13,59,102,.14);border-radius:16px;padding:18px 18px 16px 18px;box-shadow:0 6px 18px rgba(13,59,102,.06);}}
+    .summary-card{{margin-top:18px;background:#fff;border:1px solid rgba(13,59,102,.14);border-radius:16px;padding:18px 18px 16px 18px;box-shadow:0 6px 18px rgba(13,59,102,.06);text-align:center;}}
     .summary-title{{font-size:16px;font-weight:900;color:#0d3b66;margin-bottom:8px;}}
     .summary-text{{font-size:13px;line-height:1.45;color:#0f172a;}}
     .summary-score{{margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}}
