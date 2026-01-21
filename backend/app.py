@@ -2611,7 +2611,7 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
     }}
     .topbar{{
       background:#0D3B66; /* primary/nav */
-      padding:10px 0; /* thinner, empty bar */
+      padding:5px 0; /* thinner, empty bar */
     }}
 
     .content{{padding:20px 26px 18px 26px;}}
