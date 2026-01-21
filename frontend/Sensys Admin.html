@@ -111,7 +111,7 @@
       white-space:nowrap;
     }
     .survey-ai{
-      font-size:12px;
+      font-size:14px;
       color:#0f172a;
       line-height:1.35;
     }
@@ -3820,9 +3820,22 @@
       sort_by: "patient_asc"
     };
 
+    function normalizeSurveyDate(value){
+      const raw = (value || "").trim();
+      if(!raw) return "";
+      let out = raw;
+      if(out.includes(" ")){
+        out = out.split(" ")[0];
+      }
+      if(out.includes("T")){
+        out = out.split("T")[0];
+      }
+      return out;
+    }
+
     function formatSurveyDates(admit, dc){
-      const a = (admit || "").trim();
-      const d = (dc || "").trim();
+      const a = normalizeSurveyDate(admit);
+      const d = normalizeSurveyDate(dc);
       if(a && d) return `${a} - ${d}`;
       if(a) return a;
       if(d) return d;
@@ -3937,7 +3950,7 @@
         const isSelected = !isMock && Number(s.id) === Number(selectedClientSurveyId);
         const summary = (s.ai_summary_override || s.ai_summary || "").trim() || "—";
         const dates = formatSurveyDates(s.admission_date, s.discharge_date);
-        const updated = s.survey_updated_at || "-";
+        const updated = normalizeSurveyDate(s.survey_updated_at) || "-";
         const score = (s.overall_score !== null && s.overall_score !== undefined && s.overall_score !== "")
           ? String(s.overall_score)
           : "-";
@@ -3946,7 +3959,8 @@
           <tr class="survey-row-top ${isSelected ? "on" : ""}" data-id="${rowId}">
             <td>
               <div class="survey-main-name">${escapeHtml(s.abv_name || "—")}</div>
-              <div class="survey-subline">${escapeHtml(s.agency_name || "—")} · ${escapeHtml(dates)}</div>
+              <div class="survey-subline">${escapeHtml(s.agency_name || "—")}</div>
+              <div class="survey-subline">${escapeHtml(dates)}</div>
             </td>
             <td class="survey-meta">${escapeHtml(updated)}</td>
             <td class="survey-meta">${escapeHtml(score)}</td>
@@ -3968,9 +3982,9 @@
 
       $("clientSurveyPatient").textContent = s.abv_name || "—";
       $("clientSurveyAgency").textContent = s.agency_name || "—";
-      $("clientSurveyAdmit").textContent = s.admission_date || "—";
-      $("clientSurveyDischarge").textContent = s.discharge_date || "—";
-      $("clientSurveyUpdated").textContent = s.survey_updated_at || "—";
+      $("clientSurveyAdmit").textContent = normalizeSurveyDate(s.admission_date) || "—";
+      $("clientSurveyDischarge").textContent = normalizeSurveyDate(s.discharge_date) || "—";
+      $("clientSurveyUpdated").textContent = normalizeSurveyDate(s.survey_updated_at) || "—";
       $("clientSurveyScore").textContent = (s.overall_score !== null && s.overall_score !== undefined && s.overall_score !== "")
         ? String(s.overall_score)
         : "—";
