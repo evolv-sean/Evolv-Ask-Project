@@ -20149,6 +20149,7 @@ async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File
         for row in reader:
             agency_name = (row.get(col_agency) if col_agency else "") or ""
             abv_name = (row.get(col_abv) if col_abv else "") or ""
+            abv_name = str(abv_name).strip().upper()
             admission_date = _normalize_date((row.get(col_admit) if col_admit else "") or "")
             discharge_date = _normalize_date((row.get(col_dc) if col_dc else "") or "")
             survey_updated_at = _normalize_date((row.get(col_updated) if col_updated else "") or "")
