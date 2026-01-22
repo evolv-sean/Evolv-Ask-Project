@@ -18342,7 +18342,8 @@ def _sensys_seed_roles(conn: sqlite3.Connection):
         ("provider", "Provider"),
         ("ccm", "CCM"),
         ("hospital", "Hospital"),
-        ("snf_sw", "SNF SW"),
+        ("snf_sw", "Developer"),
+        ("snf_user", "SNF User"),
 
         # ✅ CCC Post-Discharge Workspace (CCC-PDW v1)
         ("ccc_lead", "CCC Lead"),
@@ -18354,6 +18355,10 @@ def _sensys_seed_roles(conn: sqlite3.Connection):
         VALUES (?, ?)
         """,
         roles,
+    )
+    conn.executemany(
+        "UPDATE sensys_roles SET role_name = ? WHERE role_key = ?",
+        [(r[1], r[0]) for r in roles],
     )
     
     # Remove deprecated roles (and any user-role links to them)
