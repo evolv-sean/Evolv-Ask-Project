@@ -1,0 +1,525 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sensys - Discharge Calendar</title>
+  <style>
+    :root{
+      --navy:#0D3B66;
+      --mint:#A8E6CF;
+      --mint-strong:#86d9ba;
+      --bg:#ffffff;
+      --bg-2:#F5F7FA;
+      --text:#0f172a;
+      --muted:#5b6b84;
+      --line: rgba(13,59,102,.12);
+      --shadow:0 12px 26px rgba(13,59,102,.08);
+      --r-lg:18px;
+      --r-md:12px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    html,body{
+      margin:0;
+      background:
+        radial-gradient(900px 320px at 50% 14%, rgba(168,230,207,.05), rgba(255,255,255,0) 72%),
+        linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+      color:var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    .page{
+      min-height:100%;
+      padding:28px 28px 36px;
+      max-width:1280px;
+      margin:0 auto;
+    }
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+      margin-bottom:16px;
+    }
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:16px;
+    }
+    .brand img{
+      height:90px;
+      width:auto;
+    }
+    .title-wrap h1{
+      margin:0 0 4px;
+      font-size:36px;
+      font-weight:700;
+      color:var(--navy);
+      letter-spacing:.2px;
+    }
+    .title-wrap p{
+      margin:0;
+      font-size:14px;
+      color:var(--muted);
+    }
+    .actions{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .btn{
+      border:1px solid var(--line);
+      background:#fff;
+      padding:9px 12px;
+      border-radius:10px;
+      font-size:13px;
+      font-weight:700;
+      color:var(--navy);
+      cursor:pointer;
+      transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .btn:hover{
+      border-color: rgba(168,230,207,.9);
+      box-shadow:0 10px 18px rgba(13,59,102,.10);
+      transform: translateY(-1px);
+    }
+    .btn.primary{
+      background:var(--navy);
+      color:#fff;
+      border-color:transparent;
+    }
+    .filters{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin:10px 0 22px;
+      flex-wrap:wrap;
+    }
+    .range-toggle{
+      display:inline-flex;
+      padding:4px;
+      border:1px solid var(--line);
+      border-radius:999px;
+      background:#fff;
+      gap:4px;
+    }
+    .range-toggle button{
+      border:0;
+      background:transparent;
+      padding:8px 14px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:800;
+      color:#546079;
+      cursor:pointer;
+    }
+    .range-toggle button.on{
+      background:rgba(168,230,207,.4);
+      color:var(--navy);
+    }
+    .status{
+      font-size:12px;
+      color:var(--muted);
+    }
+    .columns{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:18px;
+    }
+    .panel{
+      border:1px solid var(--line);
+      border-radius:var(--r-lg);
+      background:#fff;
+      box-shadow:var(--shadow);
+      padding:16px 16px 18px;
+      min-height:280px;
+    }
+    .panel-head{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:12px;
+    }
+    .panel-title{
+      display:flex;
+      align-items:center;
+      padding-left:8px;
+      gap:12px;
+    }
+    .panel-ico{
+      width:60px;
+      height:60px;
+      color:var(--mint-strong);
+      opacity:.7;
+      flex:0 0 auto;
+    }
+    .panel-ico svg{width:100%;height:100%}
+    .panel-ico .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:2.1px;
+    }
+    .panel-head h2{
+      margin:0;
+      font-size:18px;
+      color:var(--navy);
+      font-weight:800;
+      letter-spacing:.2px;
+    }
+    .panel-head .hint{
+      font-size:12px;
+      color:var(--muted);
+    }
+    .count{
+      min-width:54px;
+      text-align:center;
+      padding:6px 10px;
+      border-radius:999px;
+      background:rgba(13,59,102,.08);
+      color:var(--navy);
+      font-size:12px;
+      font-weight:800;
+    }
+    .legend{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+      font-size:12px;
+      color:var(--muted);
+    }
+    .panel-meta{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+    .dot{
+      width:8px;
+      height:8px;
+      border-radius:999px;
+      display:inline-block;
+      margin-right:6px;
+    }
+    .dot.confirmed{background:#16a34a;}
+    .dot.unconfirmed{background:#f59e0b;}
+    .date-group{
+      margin-top:16px;
+    }
+    .date-label{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-size:16px;
+      font-weight:800;
+      color:#334155;
+      text-transform:uppercase;
+      letter-spacing:.6px;
+      margin:4px 0 10px;
+    }
+    .date-label::after{
+      content:"";
+      flex:1;
+      height:1px;
+      background:rgba(13,59,102,.12);
+    }
+    .dc-card{
+      border:1px solid rgba(168,230,207,.55);
+      border-radius:14px;
+      padding:14px 14px;
+      margin:0 80px 10px;
+      background:transparent;
+      transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+      cursor:pointer;
+    }
+    .dc-card .content{
+      padding-left:6px;
+    }
+    .dc-card:hover{
+      border-color:rgba(168,230,207,.95);
+      box-shadow:0 10px 18px rgba(13,59,102,.10);
+      transform: translateY(-1px);
+    }
+    .dc-card .patient{
+      font-size:14px;
+      font-weight:600;
+      color:var(--navy);
+    }
+    .dc-card .meta{
+      font-size:12px;
+      color:var(--muted);
+      margin-top:4px;
+    }
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:4px 8px;
+      border-radius:999px;
+      font-size:11px;
+      font-weight:800;
+      margin-top:8px;
+      border:1px solid transparent;
+    }
+    .badge.confirmed{
+      color:#166534;
+      background:rgba(22,163,74,.12);
+      border-color:rgba(22,163,74,.25);
+    }
+    .badge.unconfirmed{
+      color:#92400e;
+      background:rgba(245,158,11,.12);
+      border-color:rgba(245,158,11,.25);
+    }
+    .empty{
+      padding:20px 10px;
+      font-size:12px;
+      color:var(--muted);
+    }
+    @media (max-width: 980px){
+      .topbar{flex-direction:column;align-items:flex-start}
+      .columns{grid-template-columns:1fr}
+      .brand img{height:72px}
+      .title-wrap h1{font-size:30px}
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="topbar">
+      <div class="brand">
+        <img src="Logos/Sensys S blue2.svg" alt="Sensys" />
+        <div class="title-wrap">
+          <h1>Discharge Calendar</h1>
+          <p>Today's and upcoming discharges for your patients.</p>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn" id="backBtn">Back</button>
+        <button class="btn" id="refreshBtn">Refresh</button>
+        <button class="btn primary" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <div class="filters">
+      <div class="range-toggle" id="rangeToggle">
+        <button class="on" data-days="10">Today + 10 days</button>
+        <button data-days="30">Today + 30 days</button>
+      </div>
+      <div class="status" id="statusMsg">Loading...</div>
+    </div>
+
+    <div class="columns">
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-title">
+            <span class="panel-ico" aria-hidden="true">
+              <svg viewBox="0 0 76.95 76.22">
+                <g>
+                  <g>
+                    <polyline class="cls-1" points="54.6 54.39 60.96 60.23 66.09 55.29" />
+                    <circle class="cls-1" cx="60.96" cy="60.23" r="14.61" transform="translate(-18.01 93.5) rotate(-67.5)" />
+                  </g>
+                  <g>
+                    <g>
+                      <g>
+                        <line class="cls-1" x1="25.88" y1="9.85" x2="51.17" y2="9.85" />
+                        <path class="cls-1" d="M45.28,72.7H6.7c-2.93,0-5.31-2.38-5.31-5.31V15.16c0-2.93,2.38-5.31,5.31-5.31h5.68" />
+                        <path class="cls-1" d="M64.8,9.85h.76c2.93,0,5.31,2.38,5.31,5.31v28.08" />
+                        <line class="cls-1" x1="1.39" y1="26.06" x2="70.87" y2="26.06" />
+                      </g>
+                      <line class="cls-1" x1="31.68" y1="49.27" x2="40.48" y2="49.27" />
+                      <line class="cls-1" x1="31.68" y1="61.2" x2="40.48" y2="61.2" />
+                      <line class="cls-1" x1="12.62" y1="61.2" x2="21.42" y2="61.2" />
+                      <line class="cls-1" x1="50.73" y1="37.33" x2="59.53" y2="37.33" />
+                      <line class="cls-1" x1="31.68" y1="37.33" x2="40.48" y2="37.33" />
+                      <line class="cls-1" x1="12.62" y1="37.33" x2="21.42" y2="37.33" />
+                      <line class="cls-1" x1="12.62" y1="49.27" x2="21.42" y2="49.27" />
+                    </g>
+                    <path class="cls-1" d="M16.74,18.31h0c-2.12,0-3.84-1.72-3.84-3.84V5.23c0-2.12,1.72-3.84,3.84-3.84h0c2.12,0,3.84,1.72,3.84,3.84v9.24c0,2.12-1.72,3.84-3.84,3.84Z" />
+                    <path class="cls-1" d="M55.51,18.31h0c-2.12,0-3.84-1.72-3.84-3.84V5.23c0-2.12,1.72-3.84,3.84-3.84h0c2.12,0,3.84,1.72,3.84,3.84v9.24c0,2.12-1.72,3.84-3.84,3.84Z" />
+                  </g>
+                </g>
+              </svg>
+            </span>
+            <div>
+              <h2>Upcoming Discharges</h2>
+              <div class="hint">Confirmed and unconfirmed in one list.</div>
+            </div>
+          </div>
+          <div class="panel-meta">
+            <div class="legend">
+              <span><span class="dot confirmed"></span>Confirmed</span>
+              <span><span class="dot unconfirmed"></span>Unconfirmed</span>
+            </div>
+            <div class="count" id="countAll">0</div>
+          </div>
+        </div>
+        <div id="allList"></div>
+      </section>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const statusMsg = document.getElementById("statusMsg");
+  const allList = document.getElementById("allList");
+  const countAll = document.getElementById("countAll");
+  const refreshBtn = document.getElementById("refreshBtn");
+  const logoutBtn = document.getElementById("logoutBtn");
+  const backBtn = document.getElementById("backBtn");
+  const rangeToggle = document.getElementById("rangeToggle");
+
+  let rangeDays = 10;
+  const USE_SAMPLE = true;
+  const SAMPLE_ROWS = [
+    { admission_id: 101, dc_date: "2026-01-23", dc_confirmed: 1, patient_name: "Angela Brooks", insurance_name1: "Aetna" },
+    { admission_id: 102, dc_date: "2026-01-24", dc_confirmed: 0, patient_name: "James Miller", insurance_name1: "UnitedHealthcare" },
+    { admission_id: 103, dc_date: "2026-01-24", dc_confirmed: 1, patient_name: "Rosa Martinez", insurance_name1: "Humana" },
+    { admission_id: 104, dc_date: "2026-01-25", dc_confirmed: 0, patient_name: "Samuel Nguyen", insurance_name1: "Blue Cross" },
+    { admission_id: 105, dc_date: "2026-01-26", dc_confirmed: 1, patient_name: "Diane Collins", insurance_name1: "Cigna" },
+    { admission_id: 106, dc_date: "2026-01-27", dc_confirmed: 0, patient_name: "Marcus Lee", insurance_name1: "Medicare" },
+    { admission_id: 107, dc_date: "2026-01-29", dc_confirmed: 1, patient_name: "Evelyn Scott", insurance_name1: "Tricare" },
+    { admission_id: 108, dc_date: "2026-01-31", dc_confirmed: 0, patient_name: "Carlos Rivera", insurance_name1: "Molina" }
+  ];
+
+  function token(){
+    return (localStorage.getItem("sensys_token") || "").trim();
+  }
+
+  function authHeaders(){
+    return { "Authorization": "Bearer " + token() };
+  }
+
+  function esc(s){
+    return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  function formatDate(d){
+    const dt = new Date(String(d || "").trim() + "T00:00:00");
+    if(isNaN(dt.getTime())) return String(d || "");
+    return dt.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" });
+  }
+
+  function buildGroups(rows){
+    const groups = {};
+    rows.forEach(r => {
+      const key = String(r.dc_date || "").trim();
+      if(!key) return;
+      groups[key] = groups[key] || [];
+      groups[key].push(r);
+    });
+    return groups;
+  }
+
+  function renderList(host, rows){
+    host.innerHTML = "";
+    if(!rows.length){
+      host.innerHTML = '<div class="empty">No discharges in this range.</div>';
+      return;
+    }
+    const groups = buildGroups(rows);
+    const dates = Object.keys(groups).sort();
+    dates.forEach(dateKey => {
+      const wrap = document.createElement("div");
+      wrap.className = "date-group";
+      wrap.innerHTML = `<div class="date-label">${esc(formatDate(dateKey))}</div>`;
+      groups[dateKey].forEach(r => {
+        const card = document.createElement("div");
+        card.className = "dc-card";
+        const confirmed = Number(r.dc_confirmed || 0) === 1;
+        card.innerHTML = `
+          <div class="content">
+            <div class="patient">${esc(r.patient_name || "Patient")}</div>
+            <div class="meta">Insurance: ${esc(r.insurance_name1 || "Not listed")}</div>
+            <div class="badge ${confirmed ? "confirmed" : "unconfirmed"}">
+              <span class="dot ${confirmed ? "confirmed" : "unconfirmed"}"></span>
+              ${confirmed ? "Confirmed" : "Unconfirmed"}
+            </div>
+          </div>
+        `;
+        card.addEventListener("click", () => {
+          if(!r.admission_id) return;
+          window.location.href = "/sensys/admission-details?admission_id=" + encodeURIComponent(String(r.admission_id));
+        });
+        wrap.appendChild(card);
+      });
+      host.appendChild(wrap);
+    });
+  }
+
+  function setStatus(t){
+    statusMsg.textContent = t || "";
+  }
+
+  async function load(){
+    if(!token() && !USE_SAMPLE){
+      window.location.href = "/sensys/login";
+      return;
+    }
+    setStatus("Loading...");
+    refreshBtn.disabled = true;
+    try{
+      let rows = [];
+
+      if(USE_SAMPLE){
+        rows = SAMPLE_ROWS.slice(0);
+      }else{
+        const meRes = await fetch("/api/sensys/me", { headers: authHeaders() });
+        const meData = await meRes.json();
+        if(!meRes.ok || !meData.ok){
+          localStorage.removeItem("sensys_token");
+          window.location.href = "/sensys/login";
+          return;
+        }
+
+        const res = await fetch(`/api/sensys/my-dc-submissions?days=${encodeURIComponent(rangeDays)}`, { headers: authHeaders() });
+        const data = await res.json();
+        if(!res.ok || !data.ok){
+          setStatus((data && data.detail) ? data.detail : "Failed to load discharges.");
+          renderList(allList, []);
+          countAll.textContent = "0";
+          return;
+        }
+        rows = data.items || [];
+      }
+
+      renderList(allList, rows);
+      countAll.textContent = String(rows.length);
+      setStatus(`Showing today + ${rangeDays} days`);
+    }catch(e){
+      setStatus("Network error");
+    }finally{
+      refreshBtn.disabled = false;
+    }
+  }
+
+  rangeToggle.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-days]");
+    if(!btn) return;
+    rangeDays = Number(btn.getAttribute("data-days")) || 10;
+    Array.from(rangeToggle.querySelectorAll("button")).forEach(b => b.classList.remove("on"));
+    btn.classList.add("on");
+    load();
+  });
+
+  refreshBtn.addEventListener("click", load);
+  logoutBtn.addEventListener("click", () => {
+    localStorage.removeItem("sensys_token");
+    window.location.href = "/sensys/login";
+  });
+  backBtn.addEventListener("click", () => {
+    window.location.href = "/sensys/snf-user";
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>
