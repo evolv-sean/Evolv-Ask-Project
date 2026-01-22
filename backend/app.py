@@ -444,23 +444,19 @@ if not os.path.exists(DB_PATH):
 # HTML files (mirror of your old app.py wiring)
 ASK_HTML = FRONTEND_DIR / "TEST Ask.html"
 ADMIN_HTML = FRONTEND_DIR / "TEST Admin.html"
-SENSYS_ADMIN_HTML = FRONTEND_DIR / "Sensys Admin.html"
 FACILITY_HTML = FRONTEND_DIR / "TEST  Facility_Details.html"  # note double space
-SNF_HTML = FRONTEND_DIR / "TEST SNF_Admissions.html"
+SNF_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF Handoff Workspace.html"
 HOSPITAL_DISCHARGE_HTML = FRONTEND_DIR / "Hospital_Discharge.html"
 CENSUS_HTML = FRONTEND_DIR / "Census.html"
-
-# -----------------------------
-# NEW: Sensys quick-login + SNF SW test UI pages
-# -----------------------------
-SENSYS_LOGIN_HTML = FRONTEND_DIR / "Sensys Login.html"
-SENSYS_SNF_SW_HTML = FRONTEND_DIR / "Sensys SNF SW.html"
-SENSYS_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Admission Details.html"
-SENSYS_HOME_HEALTH_HTML = FRONTEND_DIR / "Sensys Home Health.html"
-SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Home Health Admission Details.html"
-SENSYS_PROVIDER_ESIGN_HTML = FRONTEND_DIR / "Sensys Provider E-Sign.html"
-SENSYS_POST_DISCHARGE_HTML = FRONTEND_DIR / "Sensys Post-Discharge Workspace.html"
-SENSYS_CCC_STAFF_HTML = FRONTEND_DIR / "Sensys CCC Staff Workspace.html"
+SENSYS_ADMIN_HTML = FRONTEND_DIR / "Sensys 3.0 - Admin.html"
+SENSYS_LOGIN_HTML = FRONTEND_DIR / "Sensys 3.0 - Login.html"
+SENSYS_SNF_SW_HTML = FRONTEND_DIR / "Sensys 3.0 - Developer.html"
+SENSYS_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - Developer - Admission Details.html"
+SENSYS_HOME_HEALTH_HTML = FRONTEND_DIR / "Sensys 3.0 - Home Health.html"
+SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - Home Health - Admission Details.html"
+SENSYS_PROVIDER_ESIGN_HTML = FRONTEND_DIR / "Sensys 3.0 - Provider E-Sign.html"
+SENSYS_POST_DISCHARGE_HTML = FRONTEND_DIR / "Sensys 3.0 - Post-Discharge Workspace.html"
+SENSYS_CCC_STAFF_HTML = FRONTEND_DIR / "Sensys 3.0 - CCC Staff Workspace.html"
 SENSYS_IMPERSONATE_HTML = FRONTEND_DIR / "Sensys Impersonate.html"
 
 logging.basicConfig(level=logging.INFO)
