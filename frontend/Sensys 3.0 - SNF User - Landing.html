@@ -1,0 +1,279 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sensys - SNF User</title>
+  <style>
+    :root{
+      --navy:#0D3B66;
+      --mint:#A8E6CF;
+      --mint-strong:#86d9ba;
+      --bg:#ffffff;
+      --bg-2:#F5F7FA;
+      --icon-mint:#92e1c6;
+      --text:#0f172a;
+      --muted:#5b6b84;
+      --shadow:0 16px 30px rgba(13,59,102,.08);
+      --r-lg:18px;
+      --r-md:12px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+    margin:0;
+    background:
+        radial-gradient(
+        900px 320px at 50% 1%,
+        rgba(15,23,42,.035),
+        rgba(255,255,255,0) 80%
+        ),
+        linear-gradient(
+        180deg,
+        #ffffff 0%,
+        #f5f7fa 180%
+        );
+    color:var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    .page{
+      min-height:100vh;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      padding:28px 20px 26px;
+      gap:18px;
+      text-align:center;
+    }
+    .sensys-logo{
+      height:200px;
+      width:auto;
+    }
+    h1{
+      margin:-10px 0 4px;
+      font-size:48px;
+      font-weight:400;
+      color:var(--navy);
+      letter-spacing:.2px;
+    }
+    .sub{
+      margin:0;
+      font-size:20px;
+      color:var(--muted);
+    }
+    .cards{
+      margin-top:18px;
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap:18px;
+      width:min(1259px, 96vw);
+    }
+    .card{
+      position:relative;
+      border:1px solid rgba(168,230,207,.9);
+      border-radius:var(--r-lg);
+      padding:20px 20px 64px;
+      min-height:235px;
+      background:transparent;
+      text-align:left;
+      box-shadow:none;
+      transition:border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+      overflow:hidden;
+    }
+    .card:hover{
+      border-color:var(--mint-strong);
+      box-shadow:0 10px 24px rgba(13,59,102,.10);
+      transform: translateY(-2px);
+    }
+    .card h3{
+      margin:0 0 8px;
+      font-size:22px;
+      color:var(--navy);
+      font-weight:800;
+      letter-spacing:.2px;
+    }
+    .card p{
+      margin:0;
+      font-size:15px;
+      color:var(--muted);
+      line-height:1.5;
+      max-width:300px;
+    }
+    .card ul{
+      margin:6px 0 0 16px;
+      padding:0;
+      color:var(--muted);
+      font-size:14px;
+      line-height:1.6;
+    }
+    .card-icon{
+      position:absolute;
+      right:50px;
+      bottom:50px;
+      width:98px;
+      height:98px;
+      color:var(--icon-mint);
+      opacity:.50;
+      pointer-events:none;
+    }
+    .card-icon svg{
+      width:130%;
+      height:130%;
+    }
+    .card-icon .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:1.3px;
+    }
+    .footer{
+      margin-top:170px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:10px;
+      color:var(--muted);
+      font-size:12px;
+    }
+    .evolv-logo{
+      height:40px;
+      width:auto;
+    }
+    @media (max-width: 980px){
+      h1{font-size:36px}
+      .cards{grid-template-columns:1fr; width:min(520px, 96vw);}
+      .card{min-height:190px}
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <img class="sensys-logo" src="Logos/Sensys S blue2.svg" alt="Sensys" />
+
+    <div>
+      <h1>Welcome to Sensys!</h1>
+      <p class="sub">What would you like to do?</p>
+    </div>
+
+    <div class="cards">
+      <div class="card" role="button" tabindex="0" data-link="/sensys/snf-user/calendar">
+        <h3>Discharge Calendar</h3>
+        <p>View your upcoming discharges.</p>
+        <span class="card-icon" aria-hidden="true">
+          <svg viewBox="0 0 76.95 76.22">
+            <g>
+              <g>
+                <polyline class="cls-1" points="54.6 54.39 60.96 60.23 66.09 55.29" />
+                <circle class="cls-1" cx="60.96" cy="60.23" r="14.61" transform="translate(-18.01 93.5) rotate(-67.5)" />
+              </g>
+              <g>
+                <g>
+                  <g>
+                    <line class="cls-1" x1="25.88" y1="9.85" x2="51.17" y2="9.85" />
+                    <path class="cls-1" d="M45.28,72.7H6.7c-2.93,0-5.31-2.38-5.31-5.31V15.16c0-2.93,2.38-5.31,5.31-5.31h5.68" />
+                    <path class="cls-1" d="M64.8,9.85h.76c2.93,0,5.31,2.38,5.31,5.31v28.08" />
+                    <line class="cls-1" x1="1.39" y1="26.06" x2="70.87" y2="26.06" />
+                  </g>
+                  <line class="cls-1" x1="31.68" y1="49.27" x2="40.48" y2="49.27" />
+                  <line class="cls-1" x1="31.68" y1="61.2" x2="40.48" y2="61.2" />
+                  <line class="cls-1" x1="12.62" y1="61.2" x2="21.42" y2="61.2" />
+                  <line class="cls-1" x1="50.73" y1="37.33" x2="59.53" y2="37.33" />
+                  <line class="cls-1" x1="31.68" y1="37.33" x2="40.48" y2="37.33" />
+                  <line class="cls-1" x1="12.62" y1="37.33" x2="21.42" y2="37.33" />
+                  <line class="cls-1" x1="12.62" y1="49.27" x2="21.42" y2="49.27" />
+                </g>
+                <path class="cls-1" d="M16.74,18.31h0c-2.12,0-3.84-1.72-3.84-3.84V5.23c0-2.12,1.72-3.84,3.84-3.84h0c2.12,0,3.84,1.72,3.84,3.84v9.24c0,2.12-1.72,3.84-3.84,3.84Z" />
+                <path class="cls-1" d="M55.51,18.31h0c-2.12,0-3.84-1.72-3.84-3.84V5.23c0-2.12,1.72-3.84,3.84-3.84h0c2.12,0,3.84,1.72,3.84,3.84v9.24c0,2.12-1.72,3.84-3.84,3.84Z" />
+              </g>
+            </g>
+          </svg>
+        </span>
+      </div>
+
+      <div class="card">
+        <h3>Discharge Plan</h3>
+        <p>Submit or update a patient's</p>
+        <p>discharge plan.</p>
+        <span class="card-icon" aria-hidden="true">
+          <svg viewBox="0 0 83.92 75.06">
+            <g>
+              <g>
+                <g>
+                  <g>
+                    <path class="cls-1" d="M72.39,10.9l-35.5,35.5-3.11,11.52,11.52-3.11,35.5-35.5c2.32-2.32,2.32-6.09,0-8.41h0c-2.32-2.32-6.09-2.32-8.41,0Z" />
+                    <path class="cls-1" d="M76.73,23.71l2.11,2.11c1.49,1.49,1.49,3.91,0,5.4l-10.06,10.06" />
+                  </g>
+                  <line class="cls-1" x1="33.77" y1="57.93" x2="30.75" y2="60.95" />
+                </g>
+                <polyline class="cls-1" points="60.87 46.97 60.87 73.67 1.39 73.67 1.39 18.52 19.51 1.39 60.87 1.39 60.87 15.15" />
+                <line class="cls-1" x1="14.38" y1="34.58" x2="39.07" y2="34.58" />
+                <line class="cls-1" x1="14.38" y1="47.32" x2="29.52" y2="47.32" />
+                <line class="cls-1" x1="14.38" y1="60.06" x2="25.2" y2="60.06" />
+              </g>
+              <polyline class="cls-1" points="7.59 20.48 21.52 20.48 21.52 7.59" />
+              <line class="cls-1" x1="64.14" y1="36.3" x2="55.54" y2="27.7" />
+            </g>
+          </svg>
+        </span>
+      </div>
+
+      <div class="card">
+        <h3>Patient Details</h3>
+        <ul>
+          <li>Status Updates</li>
+          <li>Documents</li>
+          <li>Messaging</li>
+          <li>More</li>
+        </ul>
+        <span class="card-icon" aria-hidden="true">
+          <svg viewBox="0 0 85.16 71.36">
+            <g>
+              <polyline class="cls-1" points="27.53 58.07 26.36 64.74 22.04 68.98 22.04 69.97 46.09 69.97 46.09 68.98 41.77 64.74 40.6 58.07" />
+              <g>
+                <g>
+                  <rect class="cls-1" x="54.66" y="21.81" width="29.11" height="48.08" rx="3.87" ry="3.87" />
+                  <line class="cls-1" x1="54.66" y1="30.61" x2="83.77" y2="30.61" />
+                  <line class="cls-1" x1="54.66" y1="58.39" x2="83.77" y2="58.39" />
+                </g>
+                <g>
+                  <path class="cls-1" d="M48.2,58.39H5.71c-2.39,0-4.33-1.94-4.33-4.33V5.71C1.39,3.32,3.32,1.39,5.71,1.39h56.7c2.39,0,4.33,1.94,4.33,4.33v9.65" />
+                  <line class="cls-1" x1="1.39" y1="47.55" x2="48.2" y2="47.55" />
+                </g>
+              </g>
+            </g>
+          </svg>
+        </span>
+      </div>
+    </div>
+
+    <div class="footer">
+      <img class="evolv-logo" src="Logos/Evolv-Health-hor-color.svg" alt="Evolv Health" />
+      <div>Powered by Evolv Health</div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  function bindCardLinks(){
+    const cards = document.querySelectorAll(".card[data-link]");
+    cards.forEach(card => {
+      card.addEventListener("click", () => {
+        const href = card.getAttribute("data-link");
+        if(href) window.location.href = href;
+      });
+      card.addEventListener("keydown", (e) => {
+        if(e.key === "Enter" || e.key === " "){
+          e.preventDefault();
+          const href = card.getAttribute("data-link");
+          if(href) window.location.href = href;
+        }
+      });
+    });
+  }
+  bindCardLinks();
+})();
+</script>
+</body>
+</html>
