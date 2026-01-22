@@ -20392,7 +20392,7 @@ def build_client_survey_secure_pin_html(agency_name: str, ttl_days: int, error_m
     p{{margin:0 0 14px 0;font-size:13px;color:#374151;line-height:1.5;}}
     label{{display:block;font-size:12px;color:#374151;margin-bottom:6px;font-weight:600;}}
     form{{margin:0;width:100%;}}
-    input{{display:block;width:100%;max-width:100%;min-width:0;padding:12px;border-radius:12px;border:1px solid #d1d5db;font-size:14px;}}
+    input{{display:block;width:100%;max-width:100%;min-width:0;padding:12px;border-radius:12px;border:1px solid #d1d5db;font-size:14px;box-sizing:border-box;}}
     input:focus{{outline:none;border-color:#A8E6CF;box-shadow:0 0 0 3px rgba(168,230,207,.45);}}
     .btn{{margin-top:12px;display:inline-block;background:#0D3B66;color:#ffffff;border:none;padding:12px 18px;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 8px 18px rgba(13,59,102,.18);}}
     .btn:hover{{background:#0b3357;}}
