@@ -112,7 +112,6 @@ FRONTEND_DIR = BASE_DIR.parent / "frontend"
 
 # Static assets (images, logos, etc.)
 STATIC_DIR = BASE_DIR / "static"
-PUBLIC_DIR = BASE_DIR.parent / "Public"
 
 SNF_DEFAULT_PIN = (os.getenv("SNF_DEFAULT_PIN") or "").strip()
 
@@ -587,8 +586,6 @@ app.add_middleware(
 
 # Serve /static/* from backend/static/*
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-# Serve /images/logos/* from /Public (repo root)
-app.mount("/images/logos", StaticFiles(directory=str(PUBLIC_DIR)), name="public-logos")
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -2614,10 +2611,10 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
     }}
     .topbar{{
       background:#0D3B66; /* primary/nav */
-      padding:10px 0; /* thinner, empty bar */
+      padding:5px 0; /* thinner, empty bar */
     }}
 
-    .content{{padding:26px 26px 18px 26px;}}
+    .content{{padding:20px 26px 18px 26px;}}
     h1{{
       margin:0 0 10px 0;
       font-size:22px;
@@ -2758,7 +2755,7 @@ def build_client_survey_secure_email_html(
     from_txt = html.escape(discharge_from or "Any")
     to_txt = html.escape(discharge_to or "Any")
     base = (PUBLIC_APP_BASE_URL or base_url or "").rstrip("/")
-    logo_url = f"{base}/images/logos/Evolv-Health-hor-color.png" if base else "/images/logos/Evolv-Health-hor-color.png"
+    logo_url = f"{base}/static/images/Evolv-Health-hor-color.png" if base else "/static/images/Evolv-Health-hor-color.png"
     safe_logo = html.escape(logo_url)
 
     return f"""<!doctype html>
@@ -2785,9 +2782,10 @@ def build_client_survey_secure_email_html(
       box-shadow:0 10px 28px rgba(0,0,0,.08);
       border:1px solid #e5e7eb;
     }}
-    .topbar{{background:#0D3B66;padding:10px 16px;display:flex;align-items:center;justify-content:flex-end;}}
-    .topbar-logo{{height:26px;max-width:180px;object-fit:contain;}}
+    .topbar{{background:#0D3B66;padding:10px 0;}}
     .content{{padding:26px 26px 18px 26px;}}
+    .logo-row{{display:flex;justify-content:center;align-items:center;margin-bottom:-4px;width:100%;}}
+    .logo{{height:46px;}}
     h1{{margin:0 0 10px 0;font-size:22px;line-height:1.25;color:#0D3B66;letter-spacing:-0.01em;}}
     p{{margin:0 0 12px 0;font-size:14px;line-height:1.55;color:#374151;}}
     .callout{{
@@ -2828,11 +2826,12 @@ def build_client_survey_secure_email_html(
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="topbar">
-        <img class="topbar-logo" src="{safe_logo}" alt="Evolv Health" />
-      </div>
+      <div class="topbar" aria-hidden="true"></div>
 
       <div class="content">
+        <div class="logo-row">
+          <img class="logo" src="{safe_logo}" alt="Evolv Health" />
+        </div>
         <h1>Monthly Client Survey Responses</h1>
         <p>
           New survey responses are available for <strong>{agency_label}</strong>.
@@ -3368,6 +3367,9 @@ def init_db():
             fax           TEXT DEFAULT '',
 
             evolv_client  INTEGER DEFAULT 0,
+
+            survey_recipient_emails TEXT DEFAULT '',
+            survey_pin TEXT DEFAULT '',
             
             pdw_attempts_expected INTEGER DEFAULT 2,
             pdw_pref_details      TEXT DEFAULT '',
@@ -3399,6 +3401,8 @@ def init_db():
         "ALTER TABLE sensys_agencies ADD COLUMN email TEXT DEFAULT ''",
         "ALTER TABLE sensys_agencies ADD COLUMN fax TEXT DEFAULT ''",
         "ALTER TABLE sensys_agencies ADD COLUMN evolv_client INTEGER DEFAULT 0",
+        "ALTER TABLE sensys_agencies ADD COLUMN survey_recipient_emails TEXT DEFAULT ''",
+        "ALTER TABLE sensys_agencies ADD COLUMN survey_pin TEXT DEFAULT ''",
         "ALTER TABLE sensys_agencies ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))",
         "ALTER TABLE sensys_agencies ADD COLUMN deleted_at TEXT",
         "ALTER TABLE sensys_agencies ADD COLUMN pdw_attempts_expected INTEGER DEFAULT 2",
@@ -14042,7 +14046,7 @@ def build_client_survey_secure_list_html(
 ) -> str:
     esc = html.escape
     header_img = "/static/images/Asset 1.png"
-    logo_img = "/static/images/Evolv Health hor color.png"
+    logo_img = "/static/images/Evolv-Health-hor-color.png"
     summary_text = esc((master_summary or "").strip() or "Summary not available.")
     avg_txt = f"{avg_score:.1f}" if avg_score is not None else "—"
     avg_stars = _client_survey_star_img(avg_score) if avg_score is not None else ""
@@ -14051,14 +14055,24 @@ def build_client_survey_secure_list_html(
     rows_html = ""
     for r in items:
         name = esc(r.get("abv_name") or "-")
-        date_txt = esc(r.get("survey_updated_at") or "-")
+        raw_date = str(r.get("survey_updated_at") or "").strip()
+        if " " in raw_date:
+            raw_date = raw_date.split(" ")[0]
+        if "T" in raw_date:
+            raw_date = raw_date.split("T")[0]
+        date_txt = esc(raw_date or "-")
         overall = r.get("overall_score")
         stars = _client_survey_star_img(overall)
         summary = esc((r.get("ai_summary_override") or r.get("ai_summary") or "").strip() or "-")
-        therapy = esc(str(r.get("therapy_score") or "-"))
-        nursing = esc(str(r.get("nursing_score") or "-"))
-        md = esc(str(r.get("md_score") or "-"))
-        ss = esc(str(r.get("ss_score") or "-"))
+        def _score_text(val: Any) -> str:
+            if val is None:
+                return "-"
+            txt = str(val).strip()
+            return txt if txt else "-"
+        therapy = esc(_score_text(r.get("therapy_score")))
+        nursing = esc(_score_text(r.get("nursing_score")))
+        md = esc(_score_text(r.get("md_score")))
+        ss = esc(_score_text(r.get("ss_score")))
 
         rows_html += f"""
         <div class="survey-row">
@@ -14086,6 +14100,7 @@ def build_client_survey_secure_list_html(
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Client Survey List</title>
   <style>
+    *{{box-sizing:border-box;}}
     body{{margin:0;background:#f6f8fb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#0f172a;}}
     .wrap{{max-width:1100px;margin:0 auto;padding:24px;}}
     .hero{{background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #e5e7eb;box-shadow:0 12px 28px rgba(13,59,102,.08);}}
@@ -14095,9 +14110,9 @@ def build_client_survey_secure_list_html(
     .logo{{height:32px;}}
     .hero-img{{width:100%;display:block;height:190px;object-fit:cover;}}
     .summary-card{{margin-top:18px;background:#fff;border:1px solid rgba(13,59,102,.14);border-radius:16px;padding:18px 18px 16px 18px;box-shadow:0 6px 18px rgba(13,59,102,.06);text-align:center;}}
-    .summary-title{{font-size:16px;font-weight:900;color:#0d3b66;margin-bottom:8px;}}
-    .summary-text{{font-size:13px;line-height:1.45;color:#0f172a;}}
-    .summary-score{{margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}}
+    .summary-title{{font-size:18px;font-weight:900;color:#0d3b66;margin-bottom:8px;}}
+    .summary-text{{font-size:14px;line-height:1.5;color:#0f172a;}}
+    .summary-score{{margin-top:12px;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;}}
     .summary-score .label{{font-size:12px;color:#64748b;font-weight:700;}}
     .summary-score .value{{font-size:18px;font-weight:900;color:#0d3b66;}}
     .summary-score img{{height:22px;}}
@@ -15078,6 +15093,10 @@ async def admin_snf_update(
         else:
             raise HTTPException(status_code=400, detail="Invalid disposition value")
     facility_free_text = (payload.get("facility_free_text") or "").strip()
+    facility_id_raw = payload.get("facility_id") or payload.get("final_snf_facility_id") or ""
+    facility_id = None
+    if facility_id_raw is not None and re.match(r"^\d+$", str(facility_id_raw).strip()):
+        facility_id = int(str(facility_id_raw).strip())
 
     conn = get_db()
     try:
@@ -15199,7 +15218,7 @@ async def admin_snf_update(
 
         # If user selected "(none)" in the Facility dropdown, always clear any prior final override.
         # This ensures the UI falls back to AI (or Unknown) instead of snapping back to a previous manual choice.
-        if not facility_free_text:
+        if not facility_free_text and not facility_id:
             new_final_facility_id = None
             new_final_name_display = None
 
@@ -15211,11 +15230,22 @@ async def admin_snf_update(
             new_ai_is_candidate = 1
 
         # This ensures the UI falls back to AI (or Unknown) instead of snapping back to a previous manual choice.
-        if not facility_free_text:
+        if not facility_free_text and not facility_id:
             new_final_facility_id = None
             new_final_name_display = None
+        elif facility_id:
+            cur.execute(
+                "SELECT facility_name FROM snf_admission_facilities WHERE id = ?",
+                (facility_id,),
+            )
+            fac_row = cur.fetchone()
+            new_final_facility_id = facility_id
+            if fac_row and (fac_row["facility_name"] or "").strip():
+                new_final_name_display = (fac_row["facility_name"] or "").strip()
+            else:
+                new_final_name_display = facility_free_text or existing_final_name_display
         else:
-            # ✅ Manual facility should override the Facility(AI) column whenever it is selected,
+            # ? Manual facility should override the Facility(AI) column whenever it is selected,
             # not only when disposition == "SNF".
             mapped_id, mapped_label = map_snf_name_to_facility_id(conn, facility_free_text)
             new_final_facility_id = mapped_id
@@ -18197,6 +18227,8 @@ class SensysAgencyUpsert(BaseModel):
     fax: Optional[str] = ""
 
     evolv_client: Optional[bool] = False
+    survey_recipient_emails: Optional[str] = ""
+    survey_pin: Optional[str] = ""
     # Preferred Providers (if omitted, do NOT change existing)
     preferred_provider_ids: Optional[List[int]] = None
 
@@ -19143,6 +19175,8 @@ def sensys_admin_agencies(token: str):
             email,
             fax,
             evolv_client,
+            COALESCE(survey_recipient_emails, '') AS survey_recipient_emails,
+            COALESCE(survey_pin, '') AS survey_pin,
             created_at,
             updated_at,
             COALESCE(pdw_attempts_expected, 2) AS pdw_attempts_expected,
@@ -19213,6 +19247,8 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                    email            = ?,
                    fax              = ?,
                    evolv_client     = ?,
+                   survey_recipient_emails = ?,
+                   survey_pin       = ?,
                    -- ✅ PDW Prefs (only overwrite when payload sends them)
                    pdw_attempts_expected = COALESCE(?, pdw_attempts_expected),
                    pdw_pref_details      = COALESCE(?, pdw_pref_details),
@@ -19239,6 +19275,8 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                 (payload.email or "").strip(),
                 (payload.fax or "").strip(),
                 evolv_client,
+                (payload.survey_recipient_emails or "").strip(),
+                (payload.survey_pin or "").strip(),
                 payload.pdw_attempts_expected,
                 payload.pdw_pref_details,
                 payload.pdw_enable_48h,
@@ -19257,13 +19295,14 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                     address, city, state, zip,
                     phone1, phone2, email, fax,
                     evolv_client,
+                    survey_recipient_emails, survey_pin,
 
                     -- ✅ PDW Prefs
                     pdw_attempts_expected, pdw_pref_details,
                     pdw_enable_48h, pdw_enable_15d, pdw_enable_30d
                 )
             VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
@@ -19282,6 +19321,8 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                 (payload.email or "").strip(),
                 (payload.fax or "").strip(),
                 evolv_client,
+                (payload.survey_recipient_emails or "").strip(),
+                (payload.survey_pin or "").strip(),
                 int(payload.pdw_attempts_expected or 2),
                 (payload.pdw_pref_details or ""),
                 1 if int(payload.pdw_enable_48h or 1) else 0,
@@ -19923,6 +19964,10 @@ def sensys_admin_client_surveys(token: str):
             survey_updated_at,
             general_comments,
             overall_score,
+            therapy_score,
+            nursing_score,
+            md_score,
+            ss_score,
             ai_summary,
             ai_summary_override
         FROM sensys_client_surveys
@@ -19971,6 +20016,18 @@ def sensys_admin_client_surveys_prompt_set(payload: Dict[str, Any] = Body(...), 
         conn.close()
 
 
+@app.post("/api/sensys/admin/client-surveys/delete-all")
+def sensys_admin_client_surveys_delete_all(token: str):
+    _require_admin_token(token)
+    conn = get_db()
+    try:
+        conn.execute("DELETE FROM sensys_client_surveys")
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
 @app.post("/api/sensys/admin/client-surveys/summary-override")
 def sensys_admin_client_surveys_summary_override(payload: Dict[str, Any] = Body(...), token: str = ""):
     _require_admin_token(token)
@@ -19988,6 +20045,49 @@ def sensys_admin_client_surveys_summary_override(payload: Dict[str, Any] = Body(
             WHERE id = ?
             """,
             (override, int(row_id)),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+@app.post("/api/sensys/admin/client-surveys/scores-update")
+def sensys_admin_client_surveys_scores_update(payload: Dict[str, Any] = Body(...), token: str = ""):
+    _require_admin_token(token)
+    row_id = payload.get("id")
+    if not row_id:
+        raise HTTPException(status_code=400, detail="id is required")
+
+    def _to_score(val):
+        s = (val or "").strip()
+        if not s:
+            return None
+        try:
+            return float(s)
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"invalid score: {val}")
+
+    therapy_score = _to_score(payload.get("therapy_score"))
+    nursing_score = _to_score(payload.get("nursing_score"))
+    md_score = _to_score(payload.get("md_score"))
+    ss_score = _to_score(payload.get("ss_score"))
+    overall_score = _to_score(payload.get("overall_score"))
+
+    conn = get_db()
+    try:
+        conn.execute(
+            """
+            UPDATE sensys_client_surveys
+            SET therapy_score = ?,
+                nursing_score = ?,
+                md_score = ?,
+                ss_score = ?,
+                overall_score = ?,
+                updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (therapy_score, nursing_score, md_score, ss_score, overall_score, int(row_id)),
         )
         conn.commit()
         return {"ok": True}
@@ -20025,6 +20125,22 @@ async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File
                     return key
         return None
 
+    def _normalize_date(value: str) -> str:
+        raw = (value or "").strip()
+        if not raw:
+            return ""
+        if " " in raw:
+            raw = raw.split(" ")[0]
+        if "T" in raw:
+            raw = raw.split("T")[0]
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", raw):
+            return raw
+        m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})", raw)
+        if m:
+            mm, dd, yy = m.group(1), m.group(2), m.group(3)
+            return f"{yy}-{mm.zfill(2)}-{dd.zfill(2)}"
+        return raw
+
     col_agency = _find_col(["agencyname", "agency"])
     col_abv = _find_col(["abvname", "abv"])
     col_admit = _find_col(["admissiondate", "admitdate", "admission"])
@@ -20034,8 +20150,8 @@ async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File
     col_overall = _find_col(["overallscore", "overall"])
     col_therapy = _find_col(["therapy", "therapy_score", "therapyscore"])
     col_nursing = _find_col(["nursing", "nursing_score", "nursingscore"])
-    col_md = _find_col(["md", "md_score", "physician", "physicianscore"])
-    col_ss = _find_col(["ss", "socialservice", "socialservices", "social_services", "ss_score"])
+    col_md = _find_col(["md", "md_score", "physician", "physicianscore", "attending", "attendingscore", "attending_score"])
+    col_ss = _find_col(["socialservice", "socialservices", "socialservicesscore", "social_services_score", "ss_score"])
 
     conn = get_db()
     inserted = 0
@@ -20048,9 +20164,10 @@ async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File
         for row in reader:
             agency_name = (row.get(col_agency) if col_agency else "") or ""
             abv_name = (row.get(col_abv) if col_abv else "") or ""
-            admission_date = (row.get(col_admit) if col_admit else "") or ""
-            discharge_date = (row.get(col_dc) if col_dc else "") or ""
-            survey_updated_at = (row.get(col_updated) if col_updated else "") or ""
+            abv_name = str(abv_name).strip().upper()
+            admission_date = _normalize_date((row.get(col_admit) if col_admit else "") or "")
+            discharge_date = _normalize_date((row.get(col_dc) if col_dc else "") or "")
+            survey_updated_at = _normalize_date((row.get(col_updated) if col_updated else "") or "")
             general_comments = (row.get(col_comments) if col_comments else "") or ""
             overall_score_raw = (row.get(col_overall) if col_overall else "") or ""
             therapy_score_raw = (row.get(col_therapy) if col_therapy else "") or ""
@@ -20079,18 +20196,55 @@ async def sensys_admin_client_surveys_upload(token: str, file: UploadFile = File
             except Exception:
                 ss_score = None
 
-            ai_summary = _client_survey_summarize(str(general_comments), prompt)
-
-            dedup = conn.execute(
+            norm_agency = str(agency_name).strip().lower()
+            norm_abv = str(abv_name).strip().lower()
+            norm_dc = _normalize_date(str(discharge_date))
+            dedup_rows = conn.execute(
                 """
-                SELECT id FROM sensys_client_surveys
-                WHERE agency_name = ? AND abv_name = ? AND discharge_date = ?
+                SELECT id, discharge_date, therapy_score, nursing_score, md_score, ss_score, overall_score
+                FROM sensys_client_surveys
+                WHERE LOWER(TRIM(agency_name)) = ? AND LOWER(TRIM(abv_name)) = ?
                 """,
-                (str(agency_name), str(abv_name), str(discharge_date)),
-            ).fetchone()
+                (norm_agency, norm_abv),
+            ).fetchall()
+
+            dedup = None
+            for r in dedup_rows:
+                if _normalize_date(str(r["discharge_date"] or "")) == norm_dc:
+                    dedup = r
+                    break
+
             if dedup:
-                skipped += 1
+                row_updates = {}
+                if dedup["overall_score"] is None and overall_score is not None:
+                    row_updates["overall_score"] = overall_score
+                if dedup["therapy_score"] is None and therapy_score is not None:
+                    row_updates["therapy_score"] = therapy_score
+                if dedup["nursing_score"] is None and nursing_score is not None:
+                    row_updates["nursing_score"] = nursing_score
+                if dedup["md_score"] is None and md_score is not None:
+                    row_updates["md_score"] = md_score
+                if dedup["ss_score"] is None and ss_score is not None:
+                    row_updates["ss_score"] = ss_score
+
+                if row_updates:
+                    set_cols = ", ".join([f"{k} = ?" for k in row_updates.keys()])
+                    params = list(row_updates.values()) + [int(dedup["id"])]
+                    conn.execute(
+                        f"""
+                        UPDATE sensys_client_surveys
+                        SET {set_cols},
+                            updated_at = datetime('now')
+                        WHERE id = ?
+                        """,
+                        params,
+                    )
+                    updated += 1
+                else:
+                    skipped += 1
                 continue
+
+            ai_summary = _client_survey_summarize(str(general_comments), prompt)
 
             existing = conn.execute(
                 """
@@ -20227,7 +20381,7 @@ def sensys_admin_client_surveys_email_send(
 def build_client_survey_secure_pin_html(agency_name: str, ttl_days: int, error_msg: str = "") -> str:
     esc = html.escape
     header_img = "/static/images/Asset 1.png"
-    logo_img = "/static/images/Evolv Health hor color.png"
+    logo_img = "/static/images/Evolv-Health-hor-color.png"
     ttl_days = int(ttl_days or 30)
     err_html = f'<div class="err">{esc(error_msg)}</div>' if error_msg else ""
 
@@ -20246,13 +20400,14 @@ def build_client_survey_secure_pin_html(agency_name: str, ttl_days: int, error_m
     .hero-title{{font-size:20px;font-weight:900;color:#0d3b66;}}
     .hero-sub{{color:#64748b;font-size:12px;}}
     .logo{{height:32px;}}
-    .pin-card{{margin-top:18px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);overflow:hidden;}}
+    .pin-card{{margin:18px auto 0 auto;max-width:520px;width:min(520px,92vw);background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);overflow:hidden;}}
     .topbar{{background:#0D3B66;padding:16px 22px;color:#fff;font-weight:700;}}
     .mintbar{{height:4px;background:#A8E6CF;}}
-    .content{{padding:22px;}}
+    .content{{padding:22px;width:100%;}}
     p{{margin:0 0 14px 0;font-size:13px;color:#374151;line-height:1.5;}}
     label{{display:block;font-size:12px;color:#374151;margin-bottom:6px;font-weight:600;}}
-    input{{display:block;width:100%;max-width:100%;min-width:0;padding:12px;border-radius:12px;border:1px solid #d1d5db;font-size:14px;}}
+    form{{margin:0;width:100%;}}
+    input{{display:block;width:100%;max-width:100%;min-width:0;padding:12px;border-radius:12px;border:1px solid #d1d5db;font-size:14px;box-sizing:border-box;}}
     input:focus{{outline:none;border-color:#A8E6CF;box-shadow:0 0 0 3px rgba(168,230,207,.45);}}
     .btn{{margin-top:12px;display:inline-block;background:#0D3B66;color:#ffffff;border:none;padding:12px 18px;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 8px 18px rgba(13,59,102,.18);}}
     .btn:hover{{background:#0b3357;}}
@@ -20326,10 +20481,30 @@ async def client_surveys_secure_pin_post(token: str, pin: Optional[str] = Form(N
             return HTMLResponse("<h2>Link expired</h2><p>This secure link is invalid or has expired.</p>", status_code=410)
         if row["expires_at"] and row["expires_at"] < dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"):
             return HTMLResponse("<h2>Link expired</h2><p>This secure link has expired.</p>", status_code=410)
+
+        agency_pin_row = conn.execute(
+            "SELECT survey_pin FROM sensys_agencies WHERE LOWER(TRIM(agency_name)) = LOWER(TRIM(?)) LIMIT 1",
+            (row["agency_name"] or "",),
+        ).fetchone()
+        agency_pin = (agency_pin_row["survey_pin"] if agency_pin_row else "") or ""
     finally:
         conn.close()
 
-    if not (pin or "").strip() or not verify_pin(pin.strip(), hash_pin(CLIENT_SURVEY_UNIVERSAL_PIN)):
+    entered_pin = (pin or "").strip()
+    agency_pin = (agency_pin or "").strip()
+
+    if not entered_pin:
+        page = build_client_survey_secure_pin_html(
+            row["agency_name"] if row else "Client Surveys",
+            CLIENT_SURVEY_LINK_TTL_DAYS,
+            "Please enter your PIN.",
+        )
+        return HTMLResponse(page, status_code=401)
+
+    is_universal_ok = verify_pin(entered_pin, hash_pin(CLIENT_SURVEY_UNIVERSAL_PIN))
+    is_agency_ok = bool(agency_pin) and entered_pin == agency_pin
+
+    if not (is_universal_ok or is_agency_ok):
         page = build_client_survey_secure_pin_html(
             row["agency_name"] if row else "Client Surveys",
             CLIENT_SURVEY_LINK_TTL_DAYS,
@@ -27174,3 +27349,5 @@ if __name__ == "__main__":
 
     port = int(os.getenv("PORT", "8000"))
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
+
+
