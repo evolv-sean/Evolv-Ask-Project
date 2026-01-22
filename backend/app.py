@@ -451,6 +451,8 @@ CENSUS_HTML = FRONTEND_DIR / "Census.html"
 SENSYS_ADMIN_HTML = FRONTEND_DIR / "Sensys 3.0 - Admin.html"
 SENSYS_LOGIN_HTML = FRONTEND_DIR / "Sensys 3.0 - Login.html"
 SENSYS_SNF_SW_HTML = FRONTEND_DIR / "Sensys 3.0 - Developer.html"
+SENSYS_SNF_USER_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Landing.html"
+SENSYS_SNF_USER_CALENDAR_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Calendar.html"
 SENSYS_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - Developer - Admission Details.html"
 SENSYS_HOME_HEALTH_HTML = FRONTEND_DIR / "Sensys 3.0 - Home Health.html"
 SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - Home Health - Admission Details.html"
@@ -18596,6 +18598,8 @@ def sensys_admin_users_login_as(payload: SensysAdminLoginAsIn, token: str):
             redirect_url = "/admin/sensys"
         elif "snf_sw" in role_keys:
             redirect_url = "/sensys/snf-sw"
+        elif "snf_user" in role_keys:
+            redirect_url = "/sensys/snf-user"
         elif "home_health" in role_keys:
             redirect_url = "/sensys/home-health"
         elif "ccc_lead" in role_keys:
@@ -19845,6 +19849,7 @@ def sensys_admin_admissions(token: str):
             a.patient_id,
             (p.last_name || ', ' || p.first_name) AS patient_name,
             p.dob AS patient_dob,
+            p.insurance_name1 AS insurance_name1,
 
             a.agency_id,
             ag.agency_name AS agency_name,
@@ -22281,6 +22286,8 @@ def sensys_login(payload: SensysLoginIn, request: Request):
     # existing role landing pages
     elif "snf_sw" in role_keys:
         redirect_url = "/sensys/snf-sw"
+    elif "snf_user" in role_keys:
+        redirect_url = "/sensys/snf-user"
     elif "home_health" in role_keys:
         redirect_url = "/sensys/home-health"
     elif "provider" in role_keys:
@@ -22426,6 +22433,85 @@ def sensys_my_admissions(request: Request):
     ).fetchall()
 
     return {"ok": True, "admissions": [dict(r) for r in rows]}
+
+# -----------------------------
+# Sensys: discharge calendar (by current user)
+# -----------------------------
+@app.get("/api/sensys/my-dc-submissions")
+def sensys_my_dc_submissions(request: Request, days: int = 10):
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    role_keys = u.get("role_keys") or []
+    user_id = int(u["user_id"])
+
+    try:
+        days = int(days or 10)
+    except Exception:
+        days = 10
+    if days < 1:
+        days = 10
+    if days > 60:
+        days = 60
+
+    day_mod = f"+{days} day"
+
+    if "home_health" in role_keys:
+        my_adm_cte = """
+        WITH my_adm AS (
+            SELECT DISTINCT ar.admission_id
+            FROM sensys_user_agencies ua
+            JOIN sensys_admission_referrals ar
+                 ON ar.agency_id = ua.agency_id
+                AND ar.deleted_at IS NULL
+            WHERE ua.user_id = ?
+        )
+        """
+        params = (user_id, day_mod)
+    else:
+        my_adm_cte = """
+        WITH my_adm AS (
+            SELECT DISTINCT a.id AS admission_id
+            FROM sensys_user_agencies ua
+            JOIN sensys_admissions a
+                 ON a.agency_id = ua.agency_id
+            WHERE ua.user_id = ?
+        )
+        """
+        params = (user_id, day_mod)
+
+    rows = conn.execute(
+        f"""
+        {my_adm_cte},
+        latest AS (
+            SELECT admission_id, MAX(id) AS dc_id
+            FROM sensys_admission_dc_submissions
+            WHERE deleted_at IS NULL
+            GROUP BY admission_id
+        )
+        SELECT
+            dcs.id,
+            dcs.admission_id,
+            dcs.dc_date,
+            dcs.dc_time,
+            dcs.dc_confirmed,
+            (p.last_name || ', ' || p.first_name) AS patient_name,
+            p.insurance_name1 AS insurance_name1
+        FROM latest l
+        JOIN sensys_admission_dc_submissions dcs ON dcs.id = l.dc_id
+        JOIN sensys_admissions a ON a.id = dcs.admission_id
+        JOIN sensys_patients p ON p.id = a.patient_id
+        JOIN my_adm m ON m.admission_id = a.id
+        WHERE dcs.deleted_at IS NULL
+          AND COALESCE(dcs.dc_date, '') <> ''
+          AND date(dcs.dc_date) >= date('now')
+          AND date(dcs.dc_date) <= date('now', ?)
+        ORDER BY date(dcs.dc_date) ASC, p.last_name COLLATE NOCASE, p.first_name COLLATE NOCASE
+        """,
+        params,
+    ).fetchall()
+
+    return {"ok": True, "range_days": days, "items": [dict(r) for r in rows]}
 
 # =========================================================
 # CCC-PDW v1 — Post-Discharge Workspace (postdc) (ANCHOR: PDW_SECTION)
@@ -27307,6 +27393,14 @@ async def sensys_impersonate_ui(st: str = "", r: str = "/sensys/login"):
 async def sensys_snf_sw_ui():
     return HTMLResponse(content=read_html(SENSYS_SNF_SW_HTML))
 
+@app.get("/sensys/snf-user", response_class=HTMLResponse)
+async def sensys_snf_user_ui():
+    return HTMLResponse(content=read_html(SENSYS_SNF_USER_HTML))
+
+@app.get("/sensys/snf-user/calendar", response_class=HTMLResponse)
+async def sensys_snf_user_calendar_ui():
+    return HTMLResponse(content=read_html(SENSYS_SNF_USER_CALENDAR_HTML))
+
 
 @app.get("/sensys/admission-details", response_class=HTMLResponse)
 async def sensys_admission_details_ui():
@@ -27440,5 +27534,3 @@ if __name__ == "__main__":
 
     port = int(os.getenv("PORT", "8000"))
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
-
-
