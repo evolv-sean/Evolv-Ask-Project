@@ -96,6 +96,8 @@
     .survey-row-bottom td{padding-top:0}
     .survey-row-top.on td,
     .survey-row-bottom.on td{background: rgba(168,230,207,.12)}
+    .survey-row-top.hover td,
+    .survey-row-bottom.hover td{background: rgba(168,230,207,.12)}
     .survey-main-name{
       font-weight:900;
       color: var(--navy);
@@ -107,7 +109,7 @@
     .survey-meta{
       font-size:11px;
       color: var(--muted);
-      text-align:right;
+      text-align:left;
       white-space:nowrap;
     }
     .survey-ai{
@@ -374,7 +376,18 @@
      height:20px;
      display:block;
    }
-   .iconbtn:hover{ box-shadow: 0 0 0 3px rgba(77,168,218,18); }
+   .iconbtn:hover{ box-shadow: 0 0 0 3px rgba(168,230,207,.45); border-color: rgba(168,230,207,.95); }
+   .iconbtn.sm{
+     width:32px;
+     height:32px;
+     border-radius:10px;
+     font-size:11px;
+     font-weight:800;
+   }
+   .iconbtn.sm svg{
+     width:18px;
+     height:18px;
+   }
    .upload-progress{
      height:10px;
      border-radius:999px;
@@ -423,6 +436,7 @@
      font-size:16px;
      line-height:1;
    }
+   .xbtn:hover{ box-shadow: 0 0 0 3px rgba(168,230,207,.45); border-color: rgba(168,230,207,.95); }
    /* =========================
       Notes panel split layout
    ========================= */
@@ -541,6 +555,8 @@
    }
    .miniIconBtn:hover{
      background: #f9fafb;
+     box-shadow: 0 0 0 3px rgba(168,230,207,.35);
+     border-color: rgba(168,230,207,.95);
    }
 
   </style>
@@ -3681,8 +3697,7 @@
       tr.onclick = () => selectAgency(a);
 
       const surveyPrefsBtn = a.evolv_client ? `
-          <button class="iconbtn" style="width:32px;height:32px;border-radius:10px;"
-                  title="Survey Preferences" aria-label="Survey Preferences"
+          <button class="iconbtn sm" title="Survey Preferences" aria-label="Survey Preferences"
                   onclick="event.stopPropagation(); openSurveyPrefsModal(${Number(a.id)})">
             <svg viewBox="0 0 271.18 260.93" aria-hidden="true"><defs>
               <style>
@@ -3707,9 +3722,11 @@
         <td>${a.evolv_client ? "Yes" : "No"}</td>
         <td style="text-align:right;">
           <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">
-            <button class="mini"
+            <button class="iconbtn sm"
+                    title="PDW Preferences"
+                    aria-label="PDW Preferences"
                     onclick="event.stopPropagation(); openPdwPrefsModal(${Number(a.id)})">
-              PDW Prefs
+              PDW
             </button>
             ${surveyPrefsBtn}
           </div>
@@ -4253,6 +4270,22 @@
       const id = parseInt(tr.getAttribute("data-id"), 10);
       if(!Number.isFinite(id)) return;
       selectClientSurveyById(id);
+    });
+
+    $("clientSurveyTbody").addEventListener("mouseover", (e) => {
+      const tr = e.target.closest("tr[data-id]");
+      if(!tr) return;
+      const id = tr.getAttribute("data-id");
+      if(!id) return;
+      document.querySelectorAll(`#clientSurveyTbody tr[data-id="${id}"]`).forEach(r => r.classList.add("hover"));
+    });
+
+    $("clientSurveyTbody").addEventListener("mouseout", (e) => {
+      const tr = e.target.closest("tr[data-id]");
+      if(!tr) return;
+      const id = tr.getAttribute("data-id");
+      if(!id) return;
+      document.querySelectorAll(`#clientSurveyTbody tr[data-id="${id}"]`).forEach(r => r.classList.remove("hover"));
     });
 
     $("clientSurveySearch").addEventListener("input", renderClientSurveysTable);
