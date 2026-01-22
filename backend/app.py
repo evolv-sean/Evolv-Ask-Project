@@ -3709,6 +3709,25 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_sessions_exp ON sensys_sessions(expires_at)")
 
     # -------------------------------------------------------------------
+    # NEW: Sensys user login attempts (success + failed)
+    # -------------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_user_login_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            status TEXT NOT NULL,
+            ip TEXT,
+            user_agent TEXT,
+            details TEXT,
+            attempted_at TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_login_log_user ON sensys_user_login_log(user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_login_log_attempted ON sensys_user_login_log(attempted_at)")
+
+    # -------------------------------------------------------------------
     # Sensys 3.0: Patients + Admissions (manual + future automation)
     # -------------------------------------------------------------------
     cur.execute(
@@ -18488,6 +18507,44 @@ def sensys_admin_users(token: str):
 
     return {"users": out}
 
+@app.get("/api/sensys/admin/users/login-log")
+def sensys_admin_user_login_log(user_id: int, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    email = ""
+    try:
+        row = conn.execute(
+            "SELECT email FROM sensys_users WHERE id = ?",
+            (int(user_id),),
+        ).fetchone()
+        email = (row["email"] if row else "") or ""
+    except Exception:
+        email = ""
+
+    like_email = f'%\"email\":\"{email}\"%' if email else ""
+
+    rows = conn.execute(
+        """
+        SELECT
+            id,
+            user_id,
+            status,
+            ip,
+            user_agent,
+            details,
+            attempted_at
+        FROM sensys_user_login_log
+        WHERE user_id = ?
+           OR (? <> '' AND details LIKE ?)
+        ORDER BY attempted_at DESC
+        LIMIT 200
+        """,
+        (int(user_id), like_email, like_email),
+    ).fetchall()
+
+    return {"ok": True, "logins": [dict(r) for r in rows]}
+
 # -----------------------------
 # Sensys Admin: login as user (impersonate)
 # -----------------------------
@@ -22146,8 +22203,26 @@ def _sensys_require_admin(request: Request) -> dict:
         raise HTTPException(status_code=403, detail="Admin access required")
     return u
 
+def _sensys_log_login_attempt(conn: sqlite3.Connection, request: Request, user_id: Optional[int], status: str, details: dict | None = None) -> None:
+    try:
+        ip = request.client.host if request.client else ""
+        ua = request.headers.get("user-agent") or ""
+        payload = json.dumps(details or {})
+        conn.execute(
+            """
+            INSERT INTO sensys_user_login_log
+                (user_id, status, ip, user_agent, details, attempted_at)
+            VALUES
+                (?, ?, ?, ?, ?, datetime('now'))
+            """,
+            (int(user_id) if user_id is not None else None, status, ip, ua, payload),
+        )
+        conn.commit()
+    except Exception:
+        pass
+
 @app.post("/api/sensys/login")
-def sensys_login(payload: SensysLoginIn):
+def sensys_login(payload: SensysLoginIn, request: Request):
     """
     Email-only login for testing.
     - Password is ignored for now.
@@ -22170,6 +22245,13 @@ def sensys_login(payload: SensysLoginIn):
     ).fetchone()
 
     if not user:
+        _sensys_log_login_attempt(
+            conn,
+            request,
+            None,
+            "failed",
+            {"email": email, "reason": "user_not_found"},
+        )
         raise HTTPException(status_code=401, detail="Invalid login")
 
     user_id = int(user["user_id"])
@@ -22214,6 +22296,14 @@ def sensys_login(payload: SensysLoginIn):
         conn.commit()
     except Exception:
         pass
+
+    _sensys_log_login_attempt(
+        conn,
+        request,
+        user_id,
+        "success",
+        {"email": user["email"]},
+    )
 
     token = _sensys_create_session(conn, user_id=user_id, ttl_hours=24)
 
