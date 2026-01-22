@@ -1688,6 +1688,15 @@
                 <option value="1">Notified only</option>
               </select>
             </div>
+            
+            <div style="margin-top:10px;">
+              <label for="filter-reviewed">Reviewed</label>
+              <select id="filter-reviewed">
+                <option value="">All</option>
+                <option value="unreviewed">Unreviewed</option>
+                <option value="reviewed">Reviewed</option>
+              </select>
+            </div>
           </div> <!-- ✅ CLOSE modal-body -->
 
           <div class="modal-foot" style="justify-content:center;">
@@ -4226,6 +4235,16 @@
       });
 
       // -------------------------------
+      // Reviewed filter (red = unreviewed, green = reviewed)
+      // -------------------------------
+      const reviewedFilter = document.getElementById("filter-reviewed")?.value || "";
+      if (reviewedFilter === "reviewed") {
+        filtered = filtered.filter(r => !!r.reviewed_up_to_latest);
+      } else if (reviewedFilter === "unreviewed") {
+        filtered = filtered.filter(r => !r.reviewed_up_to_latest);
+      }
+
+      // -------------------------------
       // NEW: Free-text search (patient_name + visit_id)
       // -------------------------------
       if (snfSearchTerm) {
@@ -4379,17 +4398,18 @@
     function extractDispositionPreview(text) {
       const raw = String(text || "");
       if (!raw.trim()) return "";
+      const maxLen = 240;
 
       const lines = raw.split(/\r?\n/);
       const idx = lines.findIndex(l => /disposition/i.test(l));
       if (idx >= 0) {
         const slice = lines.slice(idx, idx + 3).join(" ");
         const cleaned = slice.replace(/\s+/g, " ").trim();
-        if (cleaned) return cleaned;
+        if (cleaned) return cleaned.slice(0, maxLen);
       }
 
       const compact = raw.replace(/\s+/g, " ").trim();
-      return compact.slice(0, 240);
+      return compact.slice(0, maxLen);
     }
 
     function renderTable(rows) {
@@ -4905,13 +4925,18 @@
         // Build groups: { facility_id:number => admission_ids:number[] }
         const medrinaFacilities = (snfFacilities || []).filter(f => !!f.medrina_snf);
 
+        const medrinaIds = new Set(medrinaFacilities.map(f => String(f.id)));
+
         // map row -> matching Medrina facility id using the SAME text-matching approach as your filter
         function rowToMedrinaFacilityId(r) {
-          const rowText = normFacilityStr(
-            (r.effective_facility_name || "") + " " +
-            (r.final_snf_name_display || "") + " " +
-            (r.ai_snf_name_raw || "")
-          );
+          const rowFacilityId =
+            (r.effective_facility_id != null && String(r.effective_facility_id).trim() !== "")
+              ? String(r.effective_facility_id)
+              : "";
+          if (rowFacilityId && medrinaIds.has(rowFacilityId)) return parseInt(rowFacilityId, 10);
+          if (rowFacilityId && !medrinaIds.has(rowFacilityId)) return null;
+
+          const rowText = normFacilityStr(getFacilityFilterCandidate(r));
 
           for (const f of medrinaFacilities) {
             const tokens = [];
@@ -4946,6 +4971,28 @@
         if (!fids.length) {
           document.getElementById("list-message").textContent =
             "No Medrina facility matches found in the current list (nothing sent).";
+          return;
+        }
+
+        const totalAdmissions = currentRows.length;
+        const unmappedCount = unmapped.length;
+        const facNameMap = {};
+        medrinaFacilities.forEach(f => {
+          facNameMap[String(f.id)] = f.facility_name || `Facility ${f.id}`;
+        });
+        const lines = fids.map(fid => {
+          const name = facNameMap[String(fid)] || `Facility ${fid}`;
+          const count = (groups[fid] || []).length;
+          return `- ${name} (${count})`;
+        }).sort((a, b) => a.localeCompare(b));
+        const confirmMsg =
+          (testOnly ? "Send TEST emails" : "Send emails") +
+          ` to ${fids.length} Medrina facilities for ${totalAdmissions} admissions` +
+          (unmappedCount ? ` (${unmappedCount} unmapped will be skipped)` : "") +
+          "?\n\n" +
+          lines.join("\n");
+        if (!confirm(confirmMsg)) {
+          document.getElementById("list-message").textContent = "Canceled.";
           return;
         }
 
