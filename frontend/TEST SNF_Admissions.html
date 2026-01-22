@@ -488,6 +488,25 @@
     .note-entry-body {
       color: #4b5563;
     }
+    .note-entry-preview{
+      color:#4b5563;
+      font-size:12px;
+      line-height:1.45;
+      background:#f9fafb;
+      border:1px dashed #e5e7eb;
+      border-radius:10px;
+      padding:8px 10px;
+      margin-top:6px;
+    }
+    .note-entry-toggle{
+      display:inline-block;
+      margin-top:6px;
+      font-size:11px;
+      font-weight:700;
+      color:#0D3B66;
+      cursor:pointer;
+      text-decoration:underline;
+    }
     
     /* NEW: note header row with created_at + delete */
     .note-entry-header-row{
@@ -4138,6 +4157,15 @@
       applyClientFiltersAndRender(); // re-render instantly (no API call)
     }
 
+    function getFacilityFilterCandidate(r) {
+      return String(
+        r.final_snf_name_display ||
+        r.effective_facility_name ||
+        r.ai_snf_name_raw ||
+        ""
+      ).trim();
+    }
+
     function applyClientFiltersAndRender() {
       const facilityId = document.getElementById("filter-facility").value || "";
 
@@ -4151,16 +4179,19 @@
       filtered = filtered.filter(r => {
         if (!facilityId) return true;
 
-        const rowText = normFacilityStr(
-          (r.effective_facility_name || "") + " " +
-          (r.final_snf_name_display || "") + " " +
-          (r.ai_snf_name_raw || "")
-        );
+        const rowFacilityId =
+          (r.effective_facility_id != null && String(r.effective_facility_id).trim() !== "")
+            ? String(r.effective_facility_id)
+            : "";
+        const rowText = normFacilityStr(getFacilityFilterCandidate(r));
 
         // Medrina SNF filter (formerly "Starred")
         if (facilityId === "__starred__") {
           const medrinaFacilities = (snfFacilities || []).filter(f => !!f.medrina_snf);
           if (!medrinaFacilities.length) return false;
+
+          const medrinaIds = new Set(medrinaFacilities.map(f => String(f.id)));
+          if (rowFacilityId && medrinaIds.has(rowFacilityId)) return true;
 
           for (const f of medrinaFacilities) {
             const tokens = [];
@@ -4180,6 +4211,8 @@
         // Normal single-facility filter
         const fac = snfFacilities.find(f => String(f.id) === String(facilityId));
         if (!fac) return true;
+
+        if (rowFacilityId) return rowFacilityId === String(facilityId);
 
         const tokens = [];
         if (fac.facility_name) tokens.push(fac.facility_name);
@@ -4330,6 +4363,33 @@
         return `<span class="assign-dot neg-accent" title="${label}" aria-label="${label}"></span>`;
       }
       return "";
+    }
+
+    function shouldCollapseNoteType(noteType) {
+      const t = String(noteType || "").toLowerCase();
+      if (!t) return false;
+      if (t.includes("discharge summary")) return true;
+      if (t.includes("discharge summaries")) return true;
+      if (t.includes("hospital progress note")) return true;
+      if (t.includes("progress note")) return true;
+      if (t.includes("progress notes")) return true;
+      return false;
+    }
+
+    function extractDispositionPreview(text) {
+      const raw = String(text || "");
+      if (!raw.trim()) return "";
+
+      const lines = raw.split(/\r?\n/);
+      const idx = lines.findIndex(l => /disposition/i.test(l));
+      if (idx >= 0) {
+        const slice = lines.slice(idx, idx + 3).join(" ");
+        const cleaned = slice.replace(/\s+/g, " ").trim();
+        if (cleaned) return cleaned;
+      }
+
+      const compact = raw.replace(/\s+/g, " ").trim();
+      return compact.slice(0, 240);
     }
 
     function renderTable(rows) {
@@ -4663,9 +4723,34 @@
           body.className = "note-entry-body";
           body.innerHTML = highlightText(n.note_text || "", getEffectiveHighlightKeywords());
 
+          const preview = document.createElement("div");
+          preview.className = "note-entry-preview";
+          preview.textContent = "";
+
+          const toggle = document.createElement("span");
+          toggle.className = "note-entry-toggle";
+          toggle.textContent = "Show full note";
+
+          const collapseByDefault = shouldCollapseNoteType(n.note_type || "");
+          if (collapseByDefault) {
+            const previewText = extractDispositionPreview(n.note_text || "");
+            preview.innerHTML = highlightText(previewText || "", getEffectiveHighlightKeywords());
+            body.style.display = "none";
+            toggle.onclick = () => {
+              const isHidden = body.style.display === "none";
+              body.style.display = isHidden ? "" : "none";
+              preview.style.display = isHidden ? "none" : "";
+              toggle.textContent = isHidden ? "Hide note" : "Show full note";
+            };
+          } else {
+            preview.style.display = "none";
+            toggle.style.display = "none";
+          }
 
           wrapper.appendChild(header);
+          wrapper.appendChild(preview);
           wrapper.appendChild(body);
+          wrapper.appendChild(toggle);
           noteTextEl.appendChild(wrapper);
         });
 
@@ -4680,11 +4765,17 @@
 
         // Facility dropdown is ONLY a manual override.
         // Default to (none) unless user previously saved a manual selection.
-        const facilityLabel =
-          adm.facility_free_text ||
-          adm.final_snf_name_display ||
-          "";
-        setEditFacilityByLabel(facilityLabel);
+        const facId = adm.final_snf_facility_id;
+        if (facId != null && String(facId).trim() !== "") {
+          const sel = document.getElementById("edit-facility-select");
+          if (sel) sel.value = String(facId);
+        } else {
+          const facilityLabel =
+            adm.facility_free_text ||
+            adm.final_snf_name_display ||
+            "";
+          setEditFacilityByLabel(facilityLabel);
+        }
 
         document.getElementById("note-header-summary").textContent = `Editing SNF record ID ${adm.id}`;
         
@@ -4722,6 +4813,7 @@
       const disposition = document.getElementById("edit-disposition").value;
       const date = document.getElementById("edit-date").value;
       const facilitySelect = document.getElementById("edit-facility-select");
+      const facilityId = facilitySelect ? facilitySelect.value : "";
       const facilityLabel =
         facilitySelect && facilitySelect.value
           ? stripMedrinaStarPrefix(facilitySelect.options[facilitySelect.selectedIndex].text)
@@ -4742,6 +4834,7 @@
             disposition: disposition || "",
             dc_date: date || null,
             facility_free_text: facilityLabel || "",
+            facility_id: facilityId || "",
             review_comments: comments || ""
           })
         });
