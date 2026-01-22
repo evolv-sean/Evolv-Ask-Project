@@ -377,17 +377,7 @@
   const rangeToggle = document.getElementById("rangeToggle");
 
   let rangeDays = 10;
-  const USE_SAMPLE = true;
-  const SAMPLE_ROWS = [
-    { admission_id: 101, dc_date: "2026-01-23", dc_confirmed: 1, patient_name: "Angela Brooks", insurance_name1: "Aetna" },
-    { admission_id: 102, dc_date: "2026-01-24", dc_confirmed: 0, patient_name: "James Miller", insurance_name1: "UnitedHealthcare" },
-    { admission_id: 103, dc_date: "2026-01-24", dc_confirmed: 1, patient_name: "Rosa Martinez", insurance_name1: "Humana" },
-    { admission_id: 104, dc_date: "2026-01-25", dc_confirmed: 0, patient_name: "Samuel Nguyen", insurance_name1: "Blue Cross" },
-    { admission_id: 105, dc_date: "2026-01-26", dc_confirmed: 1, patient_name: "Diane Collins", insurance_name1: "Cigna" },
-    { admission_id: 106, dc_date: "2026-01-27", dc_confirmed: 0, patient_name: "Marcus Lee", insurance_name1: "Medicare" },
-    { admission_id: 107, dc_date: "2026-01-29", dc_confirmed: 1, patient_name: "Evelyn Scott", insurance_name1: "Tricare" },
-    { admission_id: 108, dc_date: "2026-01-31", dc_confirmed: 0, patient_name: "Carlos Rivera", insurance_name1: "Molina" }
-  ];
+  const USE_SAMPLE = false;
 
   function token(){
     return (localStorage.getItem("sensys_token") || "").trim();
@@ -459,36 +449,30 @@
   }
 
   async function load(){
-    if(!token() && !USE_SAMPLE){
+    if(!token()){
       window.location.href = "/sensys/login";
       return;
     }
     setStatus("Loading...");
     refreshBtn.disabled = true;
     try{
-      let rows = [];
-
-      if(USE_SAMPLE){
-        rows = SAMPLE_ROWS.slice(0);
-      }else{
-        const meRes = await fetch("/api/sensys/me", { headers: authHeaders() });
-        const meData = await meRes.json();
-        if(!meRes.ok || !meData.ok){
-          localStorage.removeItem("sensys_token");
-          window.location.href = "/sensys/login";
-          return;
-        }
-
-        const res = await fetch(`/api/sensys/my-dc-submissions?days=${encodeURIComponent(rangeDays)}`, { headers: authHeaders() });
-        const data = await res.json();
-        if(!res.ok || !data.ok){
-          setStatus((data && data.detail) ? data.detail : "Failed to load discharges.");
-          renderList(allList, []);
-          countAll.textContent = "0";
-          return;
-        }
-        rows = data.items || [];
+      const meRes = await fetch("/api/sensys/me", { headers: authHeaders() });
+      const meData = await meRes.json();
+      if(!meRes.ok || !meData.ok){
+        localStorage.removeItem("sensys_token");
+        window.location.href = "/sensys/login";
+        return;
       }
+
+      const res = await fetch(`/api/sensys/my-dc-submissions?days=${encodeURIComponent(rangeDays)}`, { headers: authHeaders() });
+      const data = await res.json();
+      if(!res.ok || !data.ok){
+        setStatus((data && data.detail) ? data.detail : "Failed to load discharges.");
+        renderList(allList, []);
+        countAll.textContent = "0";
+        return;
+      }
+      const rows = data.items || [];
 
       renderList(allList, rows);
       countAll.textContent = String(rows.length);
