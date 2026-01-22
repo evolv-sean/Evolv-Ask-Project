@@ -586,24 +586,29 @@
       <!-- LEFT SIDEBAR -->
       <div class="sidebar">
         <div class="mini" style="font-weight:900;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;">
-          Sections
+          Main
         </div>
 
         <div class="navitem on" id="tabUsers">Users</div>
-        <div class="navitem" id="tabAgencies">Agencies</div>
-        <div class="navitem" id="tabProviderLibrary">Provider Library</div>
-        <div class="navitem" id="tabPatients">Patients</div>
-        <div class="navitem" id="tabAdmissions">Admissions</div>
-        <div class="navitem" id="tabClientSurveys">Client Surveys</div>
 
         <div style="height:10px"></div>
         <div class="mini" style="font-weight:900;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;">
-          Reference
+          Data
         </div>
+        <div class="navitem" id="tabAgencies">Agencies</div>
+        <div class="navitem" id="tabPatients">Patients</div>
+        <div class="navitem" id="tabAdmissions">Admissions</div>
         <div class="navitem" id="tabServices">Services</div>
         <div class="navitem" id="tabCareTeam">Care Team</div>
+
+        <div style="height:10px"></div>
+        <div class="mini" style="font-weight:900;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;">
+          Actions
+        </div>
+        <div class="navitem" id="tabClientSurveys">Client Surveys</div>
         <div class="navitem" id="tabNotes">Notes</div>
         <div class="navitem" id="tabNotifications">Notifications</div>
+        <div class="navitem" id="tabProviderLibrary">Provider Library</div>
       </div>
 
       <!-- USERS PANEL -->
@@ -618,6 +623,27 @@
 
             <!-- Add New User (top-right icon) -->
             <div style="display:flex;gap:8px;align-items:center">
+              <input class="input" id="userSearch" placeholder="Search username, email, or name." style="width:220px;max-width:220px;" />
+              <button class="iconbtn sm" id="usersFilterIcon" title="User filters" aria-label="User filters">
+                <svg viewBox="0 0 253.2 249.69" aria-hidden="true"><defs>
+                  <style>
+                    .cls-1 {
+                      fill: none;
+                      stroke: #121212;
+                      stroke-linecap: round;
+                      stroke-miterlimit: 10;
+                      stroke-width: 5.5px;
+                    }
+                  </style>
+                </defs>
+                <g>
+                  <g>
+                    <path class="cls-1" d="M250.45,2.75v39.04c0,7.59-3.01,14.86-8.36,20.23l-78.27,78.52c-6.72,6.74-10.5,15.88-10.5,25.4v59.57c0,4.07-2.58,7.7-6.43,9.03l-34.32,11.86c-6.21,2.14-12.67-2.46-12.67-9.03v-71.55c0-9.5-3.76-18.62-10.45-25.36L11.08,61.6c-5.33-5.37-8.33-12.63-8.33-20.2V2.75"/>
+                    <line class="cls-1" x1="28.56" y1="43.43" x2="222.5" y2="43.43"/>
+                    <line class="cls-1" x1="26.93" y1="2.75" x2="224.14" y2="2.75"/>
+                  </g>
+                </g></svg>
+              </button>
               <button class="iconbtn" id="bulkUsersIcon" title="Bulk upload users" aria-label="Bulk upload users">
                 <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
                   <style>
@@ -665,6 +691,122 @@
         <div class="card" style="display:none"></div>
 
       </div><!-- /panelUsers -->
+
+      <!-- =========================
+           USERS FILTER MODAL
+      ========================= -->
+      <div class="modal-backdrop" id="usersFilterModalBackdrop">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="usersFilterModalTitle">
+          <div class="modal-hd">
+            <div>
+              <h3 class="modal-title" id="usersFilterModalTitle">User Filters</h3>
+              <div class="modal-sub">Filter by role, lock status, and last login dates.</div>
+            </div>
+            <button class="xbtn" id="closeUsersFilterModal" aria-label="Close">
+              <svg viewBox="0 0 183.48 183.48" aria-hidden="true"><defs>
+                <style>
+                  .cls-1 {
+                    fill: none;
+                    stroke: #121212;
+                    stroke-linecap: round;
+                    stroke-miterlimit: 10;
+                    stroke-width: 5.5px;
+                  }
+                </style>
+              </defs>
+              <g>
+                <g>
+                  <line class="cls-1" x1="180.73" y1="2.75" x2="2.75" y2="180.73"/>
+                  <line class="cls-1" x1="180.73" y1="180.73" x2="2.75" y2="2.75"/>
+                </g>
+              </g></svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+              <div>
+                <div class="label">Role</div>
+                <select class="select" id="userFilterRole">
+                  <option value="">All roles</option>
+                </select>
+              </div>
+              <div>
+                <div class="label">Account Locked</div>
+                <select class="select" id="userFilterLocked">
+                  <option value="">All</option>
+                  <option value="1">Yes</option>
+                  <option value="0">No</option>
+                </select>
+              </div>
+              <div>
+                <div class="label">Last Login From</div>
+                <input class="input" id="userFilterLoginFrom" type="date" />
+              </div>
+              <div>
+                <div class="label">Last Login To</div>
+                <input class="input" id="userFilterLoginTo" type="date" />
+              </div>
+            </div>
+
+            <div style="height:12px"></div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <button class="btn primary" id="userApplyFilters">Apply Filters</button>
+              <button class="btn" id="userClearFilters">Clear</button>
+              <div class="mini" id="userFilterMsg"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- =========================
+           USER LOGIN LOG MODAL
+      ========================= -->
+      <div class="modal-backdrop" id="userLoginLogModalBackdrop">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="userLoginLogModalTitle">
+          <div class="modal-hd">
+            <div>
+              <h3 class="modal-title" id="userLoginLogModalTitle">User Login History</h3>
+              <div class="modal-sub">User: <b id="userLoginLogName">-</b></div>
+            </div>
+            <button class="xbtn" id="closeUserLoginLogModal" aria-label="Close">
+              <svg viewBox="0 0 183.48 183.48" aria-hidden="true"><defs>
+                <style>
+                  .cls-1 {
+                    fill: none;
+                    stroke: #121212;
+                    stroke-linecap: round;
+                    stroke-miterlimit: 10;
+                    stroke-width: 5.5px;
+                  }
+                </style>
+              </defs>
+              <g>
+                <g>
+                  <line class="cls-1" x1="180.73" y1="2.75" x2="2.75" y2="180.73"/>
+                  <line class="cls-1" x1="180.73" y1="180.73" x2="2.75" y2="2.75"/>
+                </g>
+              </g></svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Attempted</th>
+                    <th>Status</th>
+                    <th>IP</th>
+                    <th>User Agent</th>
+                    <th>Details</th>
+                  </tr>
+                </thead>
+                <tbody id="userLoginLogTbody"></tbody>
+              </table>
+            </div>
+            <div id="userLoginLogMsg" class="toast"></div>
+          </div>
+        </div>
+      </div>
       
       <!-- =========================
            AGENCIES PANEL
@@ -1694,8 +1836,88 @@
 
       <div style="height:10px"></div>
 
+      <div class="label">Phone 2</div>
+      <input class="input" id="p_phone2" />
+
+      <div style="height:10px"></div>
+
       <div class="label">Email</div>
       <input class="input" id="p_email" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Email 2</div>
+      <input class="input" id="p_email2" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Address 1</div>
+      <input class="input" id="p_address1" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Address 2</div>
+      <input class="input" id="p_address2" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">City</div>
+      <input class="input" id="p_city" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">State</div>
+      <input class="input" id="p_state" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Zip</div>
+      <input class="input" id="p_zip" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Insurance Name 1</div>
+      <input class="input" id="p_insurance_name1" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Insurance Number 1</div>
+      <input class="input" id="p_insurance_number1" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Insurance Name 2</div>
+      <input class="input" id="p_insurance_name2" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Insurance Number 2</div>
+      <input class="input" id="p_insurance_number2" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Notes 1</div>
+      <textarea class="input" id="p_notes1" rows="3"></textarea>
+
+      <div style="height:10px"></div>
+
+      <div class="label">Notes 2</div>
+      <textarea class="input" id="p_notes2" rows="3"></textarea>
+
+      <div style="height:10px"></div>
+
+      <div class="label">External Patient ID</div>
+      <input class="input" id="p_external_patient_id" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">MRN</div>
+      <input class="input" id="p_mrn" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Source</div>
+      <input class="input" id="p_source" placeholder="manual" />
 
       <div style="height:10px"></div>
 
@@ -1773,6 +1995,36 @@
 
       <div class="label">Reason</div>
       <input class="input" id="a_reason" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Referring Agency</div>
+      <input class="input" id="a_referring_agency" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Latest PCP</div>
+      <input class="input" id="a_latest_pcp" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Notes 1</div>
+      <textarea class="input" id="a_notes1" rows="3"></textarea>
+
+      <div style="height:10px"></div>
+
+      <div class="label">Notes 2</div>
+      <textarea class="input" id="a_notes2" rows="3"></textarea>
+
+      <div style="height:10px"></div>
+
+      <div class="label">Next Location</div>
+      <input class="input" id="a_next_location" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Next Agency ID</div>
+      <input class="input" id="a_next_agency_id" placeholder="Agency ID" />
 
       <div style="height:10px"></div>
 
@@ -2192,6 +2444,10 @@
             <option value="0">No</option>
           </select>
         </div>
+        <div style="width:200px;">
+          <div class="label">Reminder ID</div>
+          <input id="svc_reminder_id" class="input" placeholder="Reminder ID" />
+        </div>
       </div>
 
       <div id="svcMsg" class="toast"></div>
@@ -2278,6 +2534,74 @@
             <option value="1">Yes</option>
             <option value="0">No</option>
           </select>
+        </div>
+      </div>
+
+      <div style="height:10px"></div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:220px;">
+          <div class="label">Aliases</div>
+          <input id="ct_aliases" class="input" placeholder="Aliases" />
+        </div>
+        <div style="flex:1;min-width:220px;">
+          <div class="label">Practice Name</div>
+          <input id="ct_practice_name" class="input" placeholder="Practice name" />
+        </div>
+      </div>
+
+      <div style="height:10px"></div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:240px;">
+          <div class="label">Address 1</div>
+          <input id="ct_address1" class="input" placeholder="Address 1" />
+        </div>
+        <div style="flex:1;min-width:240px;">
+          <div class="label">Address 2</div>
+          <input id="ct_address2" class="input" placeholder="Address 2" />
+        </div>
+      </div>
+
+      <div style="height:10px"></div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="width:180px;">
+          <div class="label">City</div>
+          <input id="ct_city" class="input" placeholder="City" />
+        </div>
+        <div style="width:120px;">
+          <div class="label">State</div>
+          <input id="ct_state" class="input" placeholder="State" />
+        </div>
+        <div style="width:140px;">
+          <div class="label">Zip</div>
+          <input id="ct_zip" class="input" placeholder="Zip" />
+        </div>
+      </div>
+
+      <div style="height:10px"></div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="width:180px;">
+          <div class="label">Phone 1</div>
+          <input id="ct_phone1" class="input" placeholder="Phone 1" />
+        </div>
+        <div style="width:180px;">
+          <div class="label">Phone 2</div>
+          <input id="ct_phone2" class="input" placeholder="Phone 2" />
+        </div>
+        <div style="width:200px;">
+          <div class="label">Email 1</div>
+          <input id="ct_email1" class="input" placeholder="Email 1" />
+        </div>
+        <div style="width:200px;">
+          <div class="label">Email 2</div>
+          <input id="ct_email2" class="input" placeholder="Email 2" />
+        </div>
+        <div style="width:160px;">
+          <div class="label">Fax</div>
+          <input id="ct_fax" class="input" placeholder="Fax" />
         </div>
       </div>
 
@@ -2595,10 +2919,11 @@
 
   function openServiceModal(service){
     $("svc_id").value = service ? String(service.id || "") : "";
-    $("selServiceId").textContent = service && service.id ? String(service.id) : "—";
+    $("selServiceId").textContent = service && service.id ? String(service.id) : "-";
     $("svc_name").value = service ? (service.name || "") : "";
     $("svc_type").value = service ? (service.service_type || "dme") : "dme";
     $("svc_dropdown").value = service ? String(service.dropdown ? 1 : 0) : "1";
+    $("svc_reminder_id").value = service ? (service.reminder_id || "") : "";
     setMsg($("svcMsg"), "", true);
     $("serviceModalBackdrop").classList.add("on");
   }
@@ -2607,11 +2932,13 @@
 
   $("saveServiceBtn").onclick = async () => {
     try{
+      const nextAgencyRaw = ($("a_next_agency_id").value || "").trim();
       const payload = {
         id: $("svc_id").value ? Number($("svc_id").value) : null,
         name: ($("svc_name").value || "").trim(),
         service_type_id: Number($("svc_type").value || 0),
-        dropdown: Number($("svc_dropdown").value || 1)
+        dropdown: Number($("svc_dropdown").value || 1),
+        reminder_id: ($("svc_reminder_id").value || "").trim()
       };
       await apiPost("/api/sensys/admin/services/upsert", payload);
       await refreshServicesList();
@@ -2636,10 +2963,22 @@
 
   function openCareTeamModal(row){
     $("ct_id").value = row ? String(row.id || "") : "";
-    $("selCareTeamId").textContent = row && row.id ? String(row.id) : "—";
+    $("selCareTeamId").textContent = row && row.id ? String(row.id) : "-";
     $("ct_name").value = row ? (row.name || "") : "";
     $("ct_type").value = row ? (row.type || "") : "";
     $("ct_npi").value = row ? (row.npi || "") : "";
+    $("ct_aliases").value = row ? (row.aliases || "") : "";
+    $("ct_practice_name").value = row ? (row.practice_name || "") : "";
+    $("ct_address1").value = row ? (row.address1 || "") : "";
+    $("ct_address2").value = row ? (row.address2 || "") : "";
+    $("ct_city").value = row ? (row.city || "") : "";
+    $("ct_state").value = row ? (row.state || "") : "";
+    $("ct_zip").value = row ? (row.zip || "") : "";
+    $("ct_phone1").value = row ? (row.phone1 || "") : "";
+    $("ct_phone2").value = row ? (row.phone2 || "") : "";
+    $("ct_email1").value = row ? (row.email1 || "") : "";
+    $("ct_email2").value = row ? (row.email2 || "") : "";
+    $("ct_fax").value = row ? (row.fax || "") : "";
     $("ct_active").value = row ? String(row.active ? 1 : 0) : "1";
     setMsg($("ctMsg"), "", true);
     $("careTeamModalBackdrop").classList.add("on");
@@ -2654,6 +2993,18 @@
         name: ($("ct_name").value || "").trim(),
         type: ($("ct_type").value || "").trim(),
         npi: ($("ct_npi").value || "").trim(),
+        aliases: ($("ct_aliases").value || "").trim(),
+        practice_name: ($("ct_practice_name").value || "").trim(),
+        address1: ($("ct_address1").value || "").trim(),
+        address2: ($("ct_address2").value || "").trim(),
+        city: ($("ct_city").value || "").trim(),
+        state: ($("ct_state").value || "").trim(),
+        zip: ($("ct_zip").value || "").trim(),
+        phone1: ($("ct_phone1").value || "").trim(),
+        phone2: ($("ct_phone2").value || "").trim(),
+        email1: ($("ct_email1").value || "").trim(),
+        email2: ($("ct_email2").value || "").trim(),
+        fax: ($("ct_fax").value || "").trim(),
         active: Number($("ct_active").value || 1)
       };
       await apiPost("/api/sensys/admin/care-team/upsert", payload);
@@ -2685,6 +3036,12 @@
   $("agencyModalBackdrop").addEventListener("click", (e) => {
     if(e.target.id === "agencyModalBackdrop") closeAgencyModal();
   });
+  $("usersFilterModalBackdrop").addEventListener("click", (e) => {
+    if(e.target.id === "usersFilterModalBackdrop") closeUsersFilterModal();
+  });
+  $("userLoginLogModalBackdrop").addEventListener("click", (e) => {
+    if(e.target.id === "userLoginLogModalBackdrop") closeUserLoginLogModal();
+  });
 
   // ✅ ADD: close services + care team when clicking the dark backdrop
   $("serviceModalBackdrop").addEventListener("click", (e) => {
@@ -2697,6 +3054,8 @@
   // Close buttons
   $("closeUserModal").onclick = closeUserModal;
   $("closeAgencyModal").onclick = closeAgencyModal;
+  $("closeUsersFilterModal").onclick = closeUsersFilterModal;
+  $("closeUserLoginLogModal").onclick = closeUserLoginLogModal;
 
   // ESC key closes whichever modal is open
   document.addEventListener("keydown", (e) => {
@@ -2710,6 +3069,8 @@
       closeClientSurveysFilterModal();
       closeClientSurveyDetailsModal();
       closeSurveyPrefsModal();
+      closeUsersFilterModal();
+      closeUserLoginLogModal();
       closeServiceModal();
     closeCareTeamModal();
     closeBulkModal();
@@ -3226,7 +3587,37 @@
     const tbody = $("tbody");
     tbody.innerHTML = "";
 
-    usersCache.forEach(u => {
+    const q = ($("userSearch")?.value || "").trim().toLowerCase();
+    const roleFilter = (userFilterState.role || "").trim().toLowerCase();
+    const lockedFilter = (userFilterState.locked || "").trim();
+    const fromDate = userFilterState.login_from ? new Date(userFilterState.login_from + "T00:00:00") : null;
+    const toDate = userFilterState.login_to ? new Date(userFilterState.login_to + "T23:59:59") : null;
+
+    const items = (usersCache || []).filter(u => {
+      const hay = `${u.email || ""} ${u.display_name || ""}`.toLowerCase();
+      if(q && !hay.includes(q)) return false;
+
+      if(roleFilter){
+        const roles = (u.role_keys || []).map(r => String(r).toLowerCase());
+        if(!roles.includes(roleFilter)) return false;
+      }
+
+      if(lockedFilter !== ""){
+        const lockedVal = u.account_locked ? "1" : "0";
+        if(lockedVal !== lockedFilter) return false;
+      }
+
+      if(fromDate || toDate){
+        if(!u.last_login_at) return false;
+        const dt = new Date(String(u.last_login_at).replace(" ", "T") + "Z");
+        if(fromDate && dt < fromDate) return false;
+        if(toDate && dt > toDate) return false;
+      }
+
+      return true;
+    });
+
+    items.forEach(u => {
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
       tr.onclick = () => selectUser(u);
@@ -3235,19 +3626,71 @@
 
       const lastLogin = u.last_login_at
         ? new Date(u.last_login_at.replace(" ", "T") + "Z").toLocaleString()
-        : "—";
+        : "-";
 
       tr.innerHTML = `
-        <td style="width:78px;">
-          <button class="miniIconBtn"
-                  title="Login as this user"
+        <td style="width:110px;">
+          <button class="iconbtn sm"
+                  title="Login As"
+                  aria-label="Login As"
                   onclick="event.stopPropagation(); loginAsUser(${Number(u.user_id)})">
-            🔑
+            <svg viewBox="0 0 200.04 246.31" aria-hidden="true"><defs>
+              <style>
+                .cls-1 {
+                  fill: none;
+                  stroke: #121212;
+                  stroke-linecap: round;
+                  stroke-miterlimit: 10;
+                  stroke-width: 5.89px;
+                }
+              </style>
+            </defs>
+            <g>
+              <path class="cls-1" d="M2.95,25.12v196.07c0,17.53,19.22,28.11,33.8,18.6l150.32-98.04c13.37-8.72,13.37-28.48,0-37.19L36.74,6.52C22.16-2.99,2.95,7.59,2.95,25.12Z"/>
+            </g></svg>
           </button>
-          <button class="miniIconBtn"
-                  title="Copy this user"
+          <button class="iconbtn sm"
+                  title="New User from Copy"
+                  aria-label="New User from Copy"
                   onclick="event.stopPropagation(); startCopyUser(usersCache.find(x => Number(x.user_id)===${Number(u.user_id)}))">
-            📄
+            <svg viewBox="0 0 75.98 75.98" aria-hidden="true"><g>
+              <g>
+                <polyline class="cls-1" points="57.36 44.8 74.59 27.56 74.59 14.94 61.04 1.39 48.42 1.39 24.13 25.67 24.8 38.96 33.39 47.55" />
+                <polyline class="cls-1" points="40.52 40.52 34.15 34.15 34.15 29.82 52.56 11.4 56.89 11.4 64.58 19.09 64.58 23.42 51.33 36.66" />
+              </g>
+              <g>
+                <polyline class="cls-1" points="18.12 31.68 1.39 48.42 1.39 61.04 14.94 74.59 27.56 74.59 51.85 50.31 51.18 37.02 43.03 28.87" />
+                <polyline class="cls-1" points="24.65 39.32 11.4 52.56 11.4 56.89 19.09 64.58 23.42 64.58 44 44 40.52 40.52" />
+              </g>
+            </g></svg>
+          </button>
+          <button class="iconbtn sm"
+                  title="Login History"
+                  aria-label="Login History"
+                  onclick="event.stopPropagation(); openUserLoginLogModal(${Number(u.user_id)})">
+            <svg viewBox="0 0 261.05 261.05" aria-hidden="true"><defs>
+              <style>
+                .cls-1 {
+                  fill: none;
+                  stroke: #121212;
+                  stroke-linecap: round;
+                  stroke-miterlimit: 10;
+                  stroke-width: 5.5px;
+                }
+              </style>
+            </defs>
+            <g>
+              <g>
+                <circle class="cls-1" cx="130.53" cy="130.52" r="127.77"/>
+                <g>
+                  <path class="cls-1" d="M78.7,82.88l51.47,47.32c.2.18.5.18.7,0l34.82-33.47"/>
+                  <line class="cls-1" x1="130.52" y1="54.84" x2="130.52" y2="31.86"/>
+                  <line class="cls-1" x1="206.21" y1="130.52" x2="229.19" y2="130.52"/>
+                  <line class="cls-1" x1="130.53" y1="206.21" x2="130.53" y2="229.19"/>
+                  <line class="cls-1" x1="54.84" y1="130.52" x2="31.86" y2="130.52"/>
+                </g>
+              </g>
+            </g></svg>
           </button>
         </td>
         <td><b>${escapeHtml(u.email || "")}</b></td>
@@ -3261,6 +3704,64 @@
       tbody.appendChild(tr);
     });
   }
+
+  const userFilterState = {
+    role: "",
+    locked: "",
+    login_from: "",
+    login_to: ""
+  };
+
+  function renderUserFilterOptions(){
+    const sel = $("userFilterRole");
+    if(!sel) return;
+
+    sel.innerHTML = `<option value="">All roles</option>` + (rolesMaster || []).map(r => (
+      `<option value="${escapeHtml(r.role_key)}">${escapeHtml(r.role_name)}</option>`
+    )).join("");
+
+    sel.value = userFilterState.role || "";
+    $("userFilterLocked").value = userFilterState.locked || "";
+    $("userFilterLoginFrom").value = userFilterState.login_from || "";
+    $("userFilterLoginTo").value = userFilterState.login_to || "";
+  }
+
+  function openUsersFilterModal(){
+    renderUserFilterOptions();
+    $("usersFilterModalBackdrop").classList.add("on");
+  }
+  function closeUsersFilterModal(){ $("usersFilterModalBackdrop").classList.remove("on"); }
+
+  async function openUserLoginLogModal(userId){
+    const u = (usersCache || []).find(x => Number(x.user_id) === Number(userId));
+    $("userLoginLogName").textContent = u ? (u.display_name || u.email || "-") : "-";
+    $("userLoginLogTbody").innerHTML = "";
+    $("userLoginLogMsg").textContent = "Loading.";
+    $("userLoginLogModalBackdrop").classList.add("on");
+    try{
+      const resp = await apiGet(`/api/sensys/admin/users/login-log?user_id=${encodeURIComponent(userId)}`);
+      const rows = resp.logins || [];
+      if(!rows.length){
+        $("userLoginLogTbody").innerHTML = `<tr><td colspan="5" style="padding:12px;color:#667085;font-size:12px;">No login history found.</td></tr>`;
+        $("userLoginLogMsg").textContent = "";
+        return;
+      }
+      $("userLoginLogTbody").innerHTML = rows.map(r => `
+        <tr>
+          <td>${escapeHtml(r.attempted_at || "-")}</td>
+          <td>${escapeHtml(r.status || "-")}</td>
+          <td>${escapeHtml(r.ip || "-")}</td>
+          <td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.user_agent || "-")}</td>
+          <td>${escapeHtml(r.details || "-")}</td>
+        </tr>
+      `).join("");
+      $("userLoginLogMsg").textContent = "";
+    }catch(e){
+      $("userLoginLogMsg").textContent = String(e.message || e);
+    }
+  }
+
+  function closeUserLoginLogModal(){ $("userLoginLogModalBackdrop").classList.remove("on"); }
 
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, (m) => ({
@@ -3324,6 +3825,7 @@
       const rolesResp = await apiGet("/api/sensys/admin/roles");
       rolesMaster = rolesResp.roles || [];
       renderRolesPills();
+      renderUserFilterOptions();
 
       const agResp = await apiGet("/api/sensys/admin/agencies");
       agenciesMaster = agResp.agencies || [];
@@ -3432,6 +3934,28 @@
 
   // NEW: top-right icon
   $("addUserIcon").onclick = startNewUser;
+  $("usersFilterIcon").onclick = openUsersFilterModal;
+  $("userSearch").addEventListener("input", renderUsersTable);
+
+  $("userApplyFilters").onclick = () => {
+    userFilterState.role = ($("userFilterRole").value || "").trim();
+    userFilterState.locked = ($("userFilterLocked").value || "").trim();
+    userFilterState.login_from = ($("userFilterLoginFrom").value || "").trim();
+    userFilterState.login_to = ($("userFilterLoginTo").value || "").trim();
+    $("userFilterMsg").textContent = "Filters applied.";
+    renderUsersTable();
+    closeUsersFilterModal();
+  };
+
+  $("userClearFilters").onclick = () => {
+    userFilterState.role = "";
+    userFilterState.locked = "";
+    userFilterState.login_from = "";
+    userFilterState.login_to = "";
+    $("userFilterMsg").textContent = "Filters cleared.";
+    renderUserFilterOptions();
+    renderUsersTable();
+  };
 
   $("bulkUsersIcon").onclick = () => openBulkModal("users");
   $("bulkAgenciesIcon").onclick = () => openBulkModal("agencies");
@@ -3726,10 +4250,27 @@
         <td style="text-align:right;">
           <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">
             <button class="iconbtn sm"
-                    title="PDW Preferences"
-                    aria-label="PDW Preferences"
+                    title="Post-DC Preferences"
+                    aria-label="Post-DC Preferences"
                     onclick="event.stopPropagation(); openPdwPrefsModal(${Number(a.id)})">
-              PDW
+              <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
+                <style>
+                  .cls-1 {
+                    fill: none;
+                    stroke: #121212;
+                    stroke-linecap: round;
+                    stroke-miterlimit: 10;
+                    stroke-width: 5.5px;
+                  }
+                </style>
+              </defs>
+              <g>
+                <g>
+                  <path class="cls-1" d="M29.03,82.57c-14.35,8.05-26.27,20.05-26.27,34.18,0,30.15,25.08,61.32,68.71,85.41,36.68,20.24,80.18,33.4,115.38,33.4,17.62,0,33.47-3.29,46.43-10.07,17.26-9.03,22.57-19.42,22.57-31.01,0-21.38-18.17-52.45-44.98-79.26l-34.16,34.16c11.98,11.98,15.39,27.58,4.07,38.9-4.98,4.98-11.97,7.17-21.89,4.98-16.39-3.62-38.9-18.62-60.9-40.62-22.01-22.01-37-44.52-40.62-60.91-2.2-9.92,0-16.91,4.98-21.89,11.32-11.32,26.92-7.91,38.9,4.07l34.16-34.16c-19.52-19.52-41.42-35.58-61.06-44.31-17.48-7.77-33.43-10.32-45.33-3.63Z"/>
+                  <path class="cls-1" d="M152.33,15.93h46.92c10.13,0,18.35,8.22,18.35,18.35v46.92"/>
+                  <line class="cls-1" x1="199.25" y1="34.28" x2="138.88" y2="94.65"/>
+                </g>
+              </g></svg>
             </button>
             ${surveyPrefsBtn}
           </div>
@@ -4491,7 +5032,23 @@
     $("p_dob").value = p.dob || "";
     $("p_gender").value = p.gender || "";
     $("p_phone1").value = p.phone1 || "";
+    $("p_phone2").value = p.phone2 || "";
     $("p_email").value = p.email || "";
+    $("p_email2").value = p.email2 || "";
+    $("p_address1").value = p.address1 || "";
+    $("p_address2").value = p.address2 || "";
+    $("p_city").value = p.city || "";
+    $("p_state").value = p.state || "";
+    $("p_zip").value = p.zip || "";
+    $("p_insurance_name1").value = p.insurance_name1 || "";
+    $("p_insurance_number1").value = p.insurance_number1 || "";
+    $("p_insurance_name2").value = p.insurance_name2 || "";
+    $("p_insurance_number2").value = p.insurance_number2 || "";
+    $("p_notes1").value = p.notes1 || "";
+    $("p_notes2").value = p.notes2 || "";
+    $("p_external_patient_id").value = p.external_patient_id || "";
+    $("p_mrn").value = p.mrn || "";
+    $("p_source").value = p.source || "";
     $("p_active").value = String(p.active ? 1 : 0);
 
     setMsg($("patientEditMsg"), "", true);
@@ -4520,7 +5077,23 @@
     $("p_dob").value = "";
     $("p_gender").value = "";
     $("p_phone1").value = "";
+    $("p_phone2").value = "";
     $("p_email").value = "";
+    $("p_email2").value = "";
+    $("p_address1").value = "";
+    $("p_address2").value = "";
+    $("p_city").value = "";
+    $("p_state").value = "";
+    $("p_zip").value = "";
+    $("p_insurance_name1").value = "";
+    $("p_insurance_number1").value = "";
+    $("p_insurance_name2").value = "";
+    $("p_insurance_number2").value = "";
+    $("p_notes1").value = "";
+    $("p_notes2").value = "";
+    $("p_external_patient_id").value = "";
+    $("p_mrn").value = "";
+    $("p_source").value = "manual";
     $("p_active").value = "1";
     setMsg($("patientEditMsg"), "New patient mode (Save Patient to create).", true);
     openPatientModal();
@@ -4537,7 +5110,23 @@
         dob: ($("p_dob").value || "").trim(),
         gender: ($("p_gender").value || "").trim(),
         phone1: ($("p_phone1").value || "").trim(),
+        phone2: ($("p_phone2").value || "").trim(),
         email: ($("p_email").value || "").trim(),
+        email2: ($("p_email2").value || "").trim(),
+        address1: ($("p_address1").value || "").trim(),
+        address2: ($("p_address2").value || "").trim(),
+        city: ($("p_city").value || "").trim(),
+        state: ($("p_state").value || "").trim(),
+        zip: ($("p_zip").value || "").trim(),
+        insurance_name1: ($("p_insurance_name1").value || "").trim(),
+        insurance_number1: ($("p_insurance_number1").value || "").trim(),
+        insurance_name2: ($("p_insurance_name2").value || "").trim(),
+        insurance_number2: ($("p_insurance_number2").value || "").trim(),
+        notes1: ($("p_notes1").value || "").trim(),
+        notes2: ($("p_notes2").value || "").trim(),
+        external_patient_id: ($("p_external_patient_id").value || "").trim(),
+        mrn: ($("p_mrn").value || "").trim(),
+        source: ($("p_source").value || "").trim(),
         active: parseInt($("p_active").value, 10)
       };
       await apiPost("/api/sensys/admin/patients/upsert", payload);
@@ -4639,6 +5228,12 @@
     $("a_dc_date").value = a.dc_date || "";
     $("a_room").value = a.room || "";
     $("a_reason").value = a.reason || "";
+    $("a_referring_agency").value = a.referring_agency || "";
+    $("a_latest_pcp").value = a.latest_pcp || "";
+    $("a_notes1").value = a.notes1 || "";
+    $("a_notes2").value = a.notes2 || "";
+    $("a_next_location").value = a.next_location || "";
+    $("a_next_agency_id").value = a.next_agency_id || "";
     $("a_active").value = String(a.active ? 1 : 0);
 
     setMsg($("admissionEditMsg"), "", true);
@@ -4673,6 +5268,12 @@
     $("a_dc_date").value = "";
     $("a_room").value = "";
     $("a_reason").value = "";
+    $("a_referring_agency").value = "";
+    $("a_latest_pcp").value = "";
+    $("a_notes1").value = "";
+    $("a_notes2").value = "";
+    $("a_next_location").value = "";
+    $("a_next_agency_id").value = "";
     $("a_active").value = "1";
 
     setMsg($("admissionEditMsg"), "New admission mode (Save Admission to create).", true);
@@ -5918,7 +6519,13 @@
         admit_date: ($("a_admit_date").value || "").trim(),
         dc_date: ($("a_dc_date").value || "").trim(),
         room: ($("a_room").value || "").trim(),
+        referring_agency: ($("a_referring_agency").value || "").trim(),
         reason: ($("a_reason").value || "").trim(),
+        latest_pcp: ($("a_latest_pcp").value || "").trim(),
+        notes1: ($("a_notes1").value || "").trim(),
+        notes2: ($("a_notes2").value || "").trim(),
+        next_location: ($("a_next_location").value || "").trim(),
+        next_agency_id: nextAgencyRaw ? parseInt(nextAgencyRaw, 10) : null,
         active: parseInt($("a_active").value, 10)
       }
 
@@ -5934,3 +6541,4 @@
 </script>
 </body>
 </html>
+
