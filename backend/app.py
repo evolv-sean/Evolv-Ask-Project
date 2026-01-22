@@ -20465,10 +20465,30 @@ async def client_surveys_secure_pin_post(token: str, pin: Optional[str] = Form(N
             return HTMLResponse("<h2>Link expired</h2><p>This secure link is invalid or has expired.</p>", status_code=410)
         if row["expires_at"] and row["expires_at"] < dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"):
             return HTMLResponse("<h2>Link expired</h2><p>This secure link has expired.</p>", status_code=410)
+
+        agency_pin_row = conn.execute(
+            "SELECT survey_pin FROM sensys_agencies WHERE LOWER(TRIM(agency_name)) = LOWER(TRIM(?)) LIMIT 1",
+            (row["agency_name"] or "",),
+        ).fetchone()
+        agency_pin = (agency_pin_row["survey_pin"] if agency_pin_row else "") or ""
     finally:
         conn.close()
 
-    if not (pin or "").strip() or not verify_pin(pin.strip(), hash_pin(CLIENT_SURVEY_UNIVERSAL_PIN)):
+    entered_pin = (pin or "").strip()
+    agency_pin = (agency_pin or "").strip()
+
+    if not entered_pin:
+        page = build_client_survey_secure_pin_html(
+            row["agency_name"] if row else "Client Surveys",
+            CLIENT_SURVEY_LINK_TTL_DAYS,
+            "Please enter your PIN.",
+        )
+        return HTMLResponse(page, status_code=401)
+
+    is_universal_ok = verify_pin(entered_pin, hash_pin(CLIENT_SURVEY_UNIVERSAL_PIN))
+    is_agency_ok = bool(agency_pin) and entered_pin == agency_pin
+
+    if not (is_universal_ok or is_agency_ok):
         page = build_client_survey_secure_pin_html(
             row["agency_name"] if row else "Client Surveys",
             CLIENT_SURVEY_LINK_TTL_DAYS,
