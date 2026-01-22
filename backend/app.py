@@ -15093,6 +15093,10 @@ async def admin_snf_update(
         else:
             raise HTTPException(status_code=400, detail="Invalid disposition value")
     facility_free_text = (payload.get("facility_free_text") or "").strip()
+    facility_id_raw = payload.get("facility_id") or payload.get("final_snf_facility_id") or ""
+    facility_id = None
+    if facility_id_raw is not None and re.match(r"^\d+$", str(facility_id_raw).strip()):
+        facility_id = int(str(facility_id_raw).strip())
 
     conn = get_db()
     try:
@@ -15214,7 +15218,7 @@ async def admin_snf_update(
 
         # If user selected "(none)" in the Facility dropdown, always clear any prior final override.
         # This ensures the UI falls back to AI (or Unknown) instead of snapping back to a previous manual choice.
-        if not facility_free_text:
+        if not facility_free_text and not facility_id:
             new_final_facility_id = None
             new_final_name_display = None
 
@@ -15226,11 +15230,22 @@ async def admin_snf_update(
             new_ai_is_candidate = 1
 
         # This ensures the UI falls back to AI (or Unknown) instead of snapping back to a previous manual choice.
-        if not facility_free_text:
+        if not facility_free_text and not facility_id:
             new_final_facility_id = None
             new_final_name_display = None
+        elif facility_id:
+            cur.execute(
+                "SELECT facility_name FROM snf_admission_facilities WHERE id = ?",
+                (facility_id,),
+            )
+            fac_row = cur.fetchone()
+            new_final_facility_id = facility_id
+            if fac_row and (fac_row["facility_name"] or "").strip():
+                new_final_name_display = (fac_row["facility_name"] or "").strip()
+            else:
+                new_final_name_display = facility_free_text or existing_final_name_display
         else:
-            # ✅ Manual facility should override the Facility(AI) column whenever it is selected,
+            # ? Manual facility should override the Facility(AI) column whenever it is selected,
             # not only when disposition == "SNF".
             mapped_id, mapped_label = map_snf_name_to_facility_id(conn, facility_free_text)
             new_final_facility_id = mapped_id
@@ -27334,3 +27349,5 @@ if __name__ == "__main__":
 
     port = int(os.getenv("PORT", "8000"))
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
+
+
