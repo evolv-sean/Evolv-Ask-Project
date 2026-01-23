@@ -17,6 +17,9 @@
       --shadow:0 12px 26px rgba(13,59,102,.08);
       --r-lg:18px;
       --r-md:12px;
+      --sidebar-w:78px;
+      --logo-offset-x:-18px;
+      --logo-offset-y:-14px;
     }
     *{box-sizing:border-box}
     html,body{height:100%}
@@ -28,11 +31,110 @@
       color:var(--text);
       font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
     }
+    .layout{
+      min-height:100vh;
+      display:flex;
+    }
+    .sidebar{
+      width:var(--sidebar-w);
+      background:#fff;
+      border-right:1px solid rgba(13,59,102,.08);
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      padding:0 0 14px;
+      position:relative;
+    }
+    .sidebar-logo{
+      width:100%;
+      height:92px;
+      overflow:hidden;
+      margin-bottom:18px;
+      position:relative;
+    }
+    .sidebar-logo img{
+      width:120px;
+      height:120px;
+      position:absolute;
+      left:-6px;
+      top:-6px;
+      transform: translate(var(--logo-offset-x), var(--logo-offset-y));
+      display:block;
+    }
+    .side-nav{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:14px;
+      margin-top:6px;
+    }
+    .side-btn{
+      width:42px;
+      height:42px;
+      border-radius:14px;
+      border:0;
+      background:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:var(--navy);
+      cursor:pointer;
+      transition: box-shadow .15s ease, transform .15s ease;
+    }
+    .side-btn:hover{
+      box-shadow:0 0 0 3px rgba(168,230,207,.35);
+      transform: translateY(-1px);
+    }
+    .side-btn svg{
+      width:22px;
+      height:22px;
+    }
+    .side-btn .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:5.5px;
+    }
+    .side-spacer{flex:1}
+    .profile-wrap{
+      position:relative;
+      margin-bottom:6px;
+    }
+    .profile-menu{
+      position:absolute;
+      left:52px;
+      bottom:0;
+      background:#fff;
+      border:1px solid rgba(13,59,102,.12);
+      border-radius:12px;
+      box-shadow:0 18px 36px rgba(13,59,102,.16);
+      padding:8px;
+      min-width:170px;
+      display:none;
+      z-index:10;
+    }
+    .profile-menu button{
+      width:100%;
+      border:0;
+      background:#fff;
+      text-align:left;
+      padding:8px 10px;
+      border-radius:10px;
+      font-size:12px;
+      font-weight:800;
+      color:#111827;
+      cursor:pointer;
+    }
+    .profile-menu button:hover{
+      background:rgba(168,230,207,.18);
+    }
     .page{
       min-height:100%;
       padding:28px 28px 36px;
       max-width:1280px;
       margin:0 auto;
+      flex:1;
     }
     .topbar{
       display:flex;
@@ -291,21 +393,104 @@
   </style>
 </head>
 <body>
-  <div class="page">
-    <div class="topbar">
-      <div class="brand">
-        <img src="/static/images/Sensys-S-blue2.svg" alt="Sensys" />
-        <div class="title-wrap">
-          <h1>Discharge Calendar</h1>
-          <p>Today's and upcoming discharges for your patients.</p>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <img src="/static/images/Evolv-Health-E-Color.svg" alt="Evolv Health" onerror="this.onerror=null;this.src='Logos/Evolv-Health-E-Color.svg';" />
+      </div>
+      <div class="side-nav">
+        <button class="side-btn" id="navHome" title="Home" aria-label="Home">
+          <svg viewBox="0 0 84.28 75.71" aria-hidden="true">
+            <g>
+              <polygon class="cls-1" points="72.76 74.32 72.76 41.92 82.89 41.92 82.89 35.62 71 25.54 71 7.55 58.75 7.55 58.75 15.16 42.14 1.79 1.39 35.62 1.39 41.92 11.52 41.92 11.52 74.31 32.09 74.32 32.09 52.8 52.18 52.8 52.18 74.32 72.76 74.32" />
+              <polyline class="cls-1" points="11.52 41.92 42.14 16.92 72.76 41.92" />
+            </g>
+          </svg>
+        </button>
+        <button class="side-btn" id="navInpatient" title="Inpatient List" aria-label="Inpatient List">
+          <svg viewBox="0 0 77.02 76.67" aria-hidden="true">
+            <g>
+              <g>
+                <path class="cls-1" d="M75.63,58.69v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06v-14.55c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                <line class="cls-1" x1="65.85" y1="66.01" x2="58.74" y2="66.01" />
+              </g>
+              <g>
+                <path class="cls-1" d="M75.63,31.08v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06v-14.55c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                <line class="cls-1" x1="65.85" y1="38.4" x2="58.74" y2="38.4" />
+              </g>
+              <g>
+                <path class="cls-1" d="M75.63,3.46v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06V3.45c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                <line class="cls-1" x1="65.85" y1="10.78" x2="58.74" y2="10.78" />
+              </g>
+            </g>
+          </svg>
+        </button>
+        <button class="side-btn" id="navDischarged" title="Discharged Patients" aria-label="Discharged Patients">
+          <svg viewBox="0 0 63.35 80.07" aria-hidden="true">
+            <g>
+              <g>
+                <path class="cls-1" d="M14.34,33.31l-3.49,3.35v20.24l-5.37,8.59c-1.29,2.06-.6,4.78,1.52,5.97l.05.03c1.96,1.11,4.44.5,5.67-1.38l6.59-10.08.07-10.59,8.37,5.92,2.54,6.78c.53,1.41,2.19,2.56,3.69,2.56h.44c2.9,0,4.88-2.91,3.83-5.61l-3.91-9.97-9.06-6.49.03-16.43" />
+                <path class="cls-1" d="M25.68,10.8c.39,3.99-2.52,7.54-6.51,7.93-3.99.39-7.54-2.52-7.93-6.51-.39-3.99,2.52-7.54,6.51-7.93,3.99-.39,7.54,2.52,7.93,6.51Z" />
+                <path class="cls-1" d="M25.6,35.54l4.38,2.32c2,1.06,4.48.27,5.5-1.75h0c.99-1.96.23-4.35-1.71-5.39l-12.71-6.8h-8.41s-9.81,8.84-9.81,8.84v9.8c0,2.68,2.17,4.86,4.86,4.86h3.14" />
+              </g>
+              <polyline class="cls-1" points="0 78.69 21.94 78.69 21.94 71.37 44.55 71.37 44.55 62.95 61.96 62.95 61.96 1.39 41.17 1.39 46.02 9.76 41.17 18.33 61.96 18.33" />
+            </g>
+          </svg>
+        </button>
+        <button class="side-btn" id="navCalendar" title="Discharge Calendar" aria-label="Discharge Calendar">
+          <svg viewBox="0 0 74.16 76.04" aria-hidden="true">
+            <g>
+              <g>
+                <g>
+                  <line class="cls-1" x1="26.55" y1="10.08" x2="52.53" y2="10.08" />
+                  <path class="cls-1" d="M66.54,10.08h2.08c2.3,0,4.16,1.86,4.16,4.16v56.27c0,2.3-1.86,4.16-4.16,4.16H5.54c-2.3,0-4.16-1.86-4.16-4.16V14.23c0-2.3,1.86-4.16,4.16-4.16h7.14" />
+                  <line class="cls-1" x1="1.39" y1="26.73" x2="72.78" y2="26.73" />
+                </g>
+                <line class="cls-1" x1="32.51" y1="50.58" x2="41.55" y2="50.58" />
+                <line class="cls-1" x1="32.51" y1="63.68" x2="41.55" y2="63.68" />
+                <line class="cls-1" x1="12.09" y1="63.68" x2="21.13" y2="63.68" />
+                <line class="cls-1" x1="52.93" y1="37.47" x2="61.97" y2="37.47" />
+                <line class="cls-1" x1="32.51" y1="37.47" x2="41.55" y2="37.47" />
+                <line class="cls-1" x1="12.09" y1="37.47" x2="21.13" y2="37.47" />
+                <line class="cls-1" x1="52.93" y1="50.58" x2="61.97" y2="50.58" />
+                <line class="cls-1" x1="12.09" y1="50.58" x2="21.13" y2="50.58" />
+              </g>
+              <rect class="cls-1" x="13.22" y="1.39" width="7.89" height="17.38" rx="3.94" ry="3.94" />
+              <path class="cls-1" d="M57,18.77h0c-2.18,0-3.94-1.77-3.94-3.94V5.33c0-2.18,1.77-3.94,3.94-3.94h0c2.18,0,3.94,1.77,3.94,3.94v9.5c0,2.18-1.77,3.94-3.94,3.94Z" />
+            </g>
+          </svg>
+        </button>
+      </div>
+      <div class="side-spacer"></div>
+      <div class="profile-wrap">
+        <button class="side-btn" id="profileBtn" title="Account" aria-label="Account">
+          <svg viewBox="0 0 65.83 73.85" aria-hidden="true">
+            <g>
+              <g>
+                <path class="cls-1" d="M64.44,73.85v-21.35c-.11-.1-10.45-8.89-31.53-8.89S1.47,52.43,1.39,52.5h0v21.35" />
+                <path class="cls-1" d="M46.83,16.09c0,9.32-6.14,16.65-13.71,16.65s-13.71-7.32-13.71-16.65S25.55,1.39,33.12,1.39s13.71,5.38,13.71,14.7Z" />
+              </g>
+              <line class="cls-1" x1="17.42" y1="73.85" x2="17.42" y2="60.4" />
+              <line class="cls-1" x1="48.82" y1="73.85" x2="48.82" y2="60.4" />
+            </g>
+          </svg>
+        </button>
+        <div class="profile-menu" id="profileMenu">
+          <button id="changePasswordBtn">Change Password</button>
+          <button id="signOutBtn">Sign Out</button>
         </div>
       </div>
-      <div class="actions">
-        <button class="btn" id="backBtn">Back</button>
-        <button class="btn" id="refreshBtn">Refresh</button>
-        <button class="btn primary" id="logoutBtn">Log out</button>
+    </aside>
+
+    <div class="page">
+      <div class="topbar">
+        <div class="brand">
+          <div class="title-wrap">
+            <h1>Discharge Calendar</h1>
+            <p>Today's and upcoming discharges for your patients.</p>
+          </div>
+        </div>
       </div>
-    </div>
 
     <div class="filters">
       <div class="range-toggle" id="rangeToggle">
@@ -365,16 +550,22 @@
       </section>
     </div>
   </div>
+</div>
 
 <script>
 (function(){
   const statusMsg = document.getElementById("statusMsg");
   const allList = document.getElementById("allList");
   const countAll = document.getElementById("countAll");
-  const refreshBtn = document.getElementById("refreshBtn");
-  const logoutBtn = document.getElementById("logoutBtn");
-  const backBtn = document.getElementById("backBtn");
   const rangeToggle = document.getElementById("rangeToggle");
+  const profileBtn = document.getElementById("profileBtn");
+  const profileMenu = document.getElementById("profileMenu");
+  const signOutBtn = document.getElementById("signOutBtn");
+  const changePasswordBtn = document.getElementById("changePasswordBtn");
+  const navHome = document.getElementById("navHome");
+  const navInpatient = document.getElementById("navInpatient");
+  const navDischarged = document.getElementById("navDischarged");
+  const navCalendar = document.getElementById("navCalendar");
 
   let rangeDays = 10;
   const USE_SAMPLE = false;
@@ -454,7 +645,6 @@
       return;
     }
     setStatus("Loading...");
-    refreshBtn.disabled = true;
     try{
       const meRes = await fetch("/api/sensys/me", { headers: authHeaders() });
       const meData = await meRes.json();
@@ -479,9 +669,7 @@
       setStatus(`Showing today + ${rangeDays} days`);
     }catch(e){
       setStatus("Network error");
-    }finally{
-      refreshBtn.disabled = false;
-    }
+    }finally{}
   }
 
   rangeToggle.addEventListener("click", (e) => {
@@ -493,13 +681,31 @@
     load();
   });
 
-  refreshBtn.addEventListener("click", load);
-  logoutBtn.addEventListener("click", () => {
+  profileBtn.addEventListener("click", () => {
+    const isOpen = profileMenu.style.display === "block";
+    profileMenu.style.display = isOpen ? "none" : "block";
+  });
+  document.addEventListener("click", (e) => {
+    if(!profileMenu.contains(e.target) && !profileBtn.contains(e.target)){
+      profileMenu.style.display = "none";
+    }
+  });
+  signOutBtn.addEventListener("click", () => {
     localStorage.removeItem("sensys_token");
     window.location.href = "/sensys/login";
   });
-  backBtn.addEventListener("click", () => {
+  changePasswordBtn.addEventListener("click", () => {
+    window.location.href = "/sensys/change-password";
+  });
+  navHome.addEventListener("click", () => {
     window.location.href = "/sensys/snf-user";
+  });
+  navInpatient.addEventListener("click", () => {
+    window.location.reload();
+  });
+  navDischarged.addEventListener("click", () => {});
+  navCalendar.addEventListener("click", () => {
+    window.location.href = "/sensys/snf-user/calendar";
   });
 
   load();
