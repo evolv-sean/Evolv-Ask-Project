@@ -227,7 +227,7 @@
       return;
     }
     try{
-      const res = await fetch("/api/sensys/my-admissions", { headers: authHeaders() });
+      const res = await fetch("/api/sensys/my-admissions?admitted_only=1", { headers: authHeaders() });
       const data = await res.json();
       if(!res.ok || !data.ok){
         allRows = [];
