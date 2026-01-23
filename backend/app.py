@@ -454,6 +454,7 @@ SENSYS_SNF_SW_HTML = FRONTEND_DIR / "Sensys 3.0 - Developer.html"
 SENSYS_SNF_USER_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Landing.html"
 SENSYS_SNF_USER_CALENDAR_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Calendar.html"
 SENSYS_SNF_USER_PATIENT_LIST_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Patient List.html"
+SENSYS_SNF_USER_DISCHARGED_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Discharged Patients.html"
 SENSYS_SNF_USER_PATIENT_SEARCH_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Patient Search.html"
 SENSYS_SNF_USER_DC_SUBMISSION_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - DC Submission.html"
 SENSYS_SNF_USER_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Admission Details.html"
@@ -22409,6 +22410,7 @@ def sensys_my_admissions(request: Request, admitted_only: int = 0):
 
                 a.admit_date,
                 a.dc_date,
+                a.dc_confirmed,
                 a.room,
                 a.reason,
                 a.latest_pcp,
@@ -22453,6 +22455,7 @@ def sensys_my_admissions(request: Request, admitted_only: int = 0):
 
             a.admit_date,
             a.dc_date,
+            a.dc_confirmed,
             a.room,
             a.reason,
             a.latest_pcp,
@@ -27490,6 +27493,10 @@ async def sensys_snf_user_calendar_ui():
 @app.get("/sensys/snf-user/patient-list", response_class=HTMLResponse)
 async def sensys_snf_user_patient_list_ui():
     return HTMLResponse(content=read_html(SENSYS_SNF_USER_PATIENT_LIST_HTML))
+
+@app.get("/sensys/snf-user/discharged-patients", response_class=HTMLResponse)
+async def sensys_snf_user_discharged_ui():
+    return HTMLResponse(content=read_html(SENSYS_SNF_USER_DISCHARGED_HTML))
 
 @app.get("/sensys/snf-user/patient-search", response_class=HTMLResponse)
 async def sensys_snf_user_patient_search_ui():
