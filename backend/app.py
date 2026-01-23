@@ -3830,6 +3830,10 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_active ON sensys_admissions(active)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_dates ON sensys_admissions(admit_date, dc_date)")
 
+    # Keep snapshot fields in sensys_admissions (latest DC submission)
+    ensure_column(conn, "sensys_admissions", "dc_confirmed", "dc_confirmed INTEGER DEFAULT 0")
+    ensure_column(conn, "sensys_admissions", "latest_dc_submission_id", "latest_dc_submission_id INTEGER")
+
     # -------------------------------------------------------------------
     # PDW v1 — Post-Discharge Workspace (Option B: Work Items + Attempts Log)
     # -------------------------------------------------------------------
@@ -22337,7 +22341,7 @@ def sensys_me(request: Request):
 
 
 @app.get("/api/sensys/my-admissions")
-def sensys_my_admissions(request: Request):
+def sensys_my_admissions(request: Request, admitted_only: int = 0):
     """
     Returns admissions linked to the logged-in user.
 
@@ -22355,6 +22359,14 @@ def sensys_my_admissions(request: Request):
 
     role_keys = u.get("role_keys") or []
     user_id = int(u["user_id"])
+
+    admitted_clause = ""
+    if int(admitted_only or 0) == 1:
+        admitted_clause = """
+          AND (COALESCE(a.dc_confirmed, 0) = 0
+               OR a.dc_date IS NULL
+               OR date(a.dc_date) >= date('now'))
+        """
 
     # ✅ Home Health: show admissions where THIS user's agencies appear as a referral agency
     if "home_health" in role_keys:
@@ -22394,10 +22406,11 @@ def sensys_my_admissions(request: Request):
             LEFT JOIN sensys_agencies rag
                  ON rag.id = ar.agency_id
             WHERE ua.user_id = ?
+            {admitted_clause}
             ORDER BY
                 COALESCE(a.admit_date, '') DESC,
                 a.id DESC
-            """,
+            """.format(admitted_clause=admitted_clause),
             (user_id,),
         ).fetchall()
 
@@ -22427,10 +22440,11 @@ def sensys_my_admissions(request: Request):
         JOIN sensys_patients p ON p.id = a.patient_id
         JOIN sensys_agencies ag ON ag.id = a.agency_id
         WHERE ua.user_id = ?
+        {admitted_clause}
         ORDER BY
             COALESCE(a.admit_date, '') DESC,
             a.id DESC
-        """,
+        """.format(admitted_clause=admitted_clause),
         (user_id,),
     ).fetchall()
 
@@ -25747,6 +25761,49 @@ class DcSubmissionUpsert(BaseModel):
     apealling_dc: int = 0
     appeal_comments: Optional[str] = ""
 
+def _sensys_update_admission_from_latest_dc(conn: sqlite3.Connection, admission_id: int):
+    row = conn.execute(
+        """
+        SELECT id, dc_date, dc_confirmed
+        FROM sensys_admission_dc_submissions
+        WHERE admission_id = ?
+          AND deleted_at IS NULL
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (int(admission_id),),
+    ).fetchone()
+
+    if not row:
+        conn.execute(
+            """
+            UPDATE sensys_admissions
+               SET dc_date = NULL,
+                   dc_confirmed = 0,
+                   latest_dc_submission_id = NULL,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (int(admission_id),),
+        )
+        return
+
+    dc_date_clean = normalize_date_to_iso(row["dc_date"])
+    dc_confirmed = int(row["dc_confirmed"] or 0)
+    latest_id = int(row["id"])
+
+    conn.execute(
+        """
+        UPDATE sensys_admissions
+           SET dc_date = ?,
+               dc_confirmed = ?,
+               latest_dc_submission_id = ?,
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (dc_date_clean, dc_confirmed, latest_id, int(admission_id)),
+    )
+
 @app.get("/api/sensys/dc-note/render")
 def sensys_dc_note_render(dc_submission_id: int, request: Request):
     u = _sensys_require_user(request)
@@ -26034,6 +26091,8 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                     (dc_date_clean, int(payload.admission_id)),
                 )
 
+        _sensys_update_admission_from_latest_dc(conn, int(payload.admission_id))
+
         title = "Updated Discharge"
         if patient_name:
             title = f"Updated Discharge — {patient_name}"
@@ -26130,7 +26189,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
     dc_submission_id = int(cur.lastrowid)
     # ✅ PDW: if confirmed, push dc_date into sensys_admissions.dc_date
     if int(payload.dc_confirmed or 0) == 1:
-        dc_date_clean = (payload.dc_date or "").strip()
+        dc_date_clean = normalize_date_to_iso(payload.dc_date)
         if dc_date_clean:
             conn.execute(
                 """
@@ -26141,6 +26200,8 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                 """,
                 (dc_date_clean, int(payload.admission_id)),
             )
+
+    _sensys_update_admission_from_latest_dc(conn, int(payload.admission_id))
             
             
     # ---- 🔔 AUTOMATED NOTIFICATION TRIGGER: New Discharge vs Updated Discharge ----
