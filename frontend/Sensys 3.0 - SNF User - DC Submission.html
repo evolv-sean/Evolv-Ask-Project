@@ -994,7 +994,10 @@
       if(!agenciesResp.ok || !agencies.ok) throw new Error("Failed to load agencies.");
 
       const a = details.admission || {};
-      const name = a.patient_name || "Patient";
+      const rawName = a.patient_name || "Patient";
+      const name = rawName.includes(",")
+        ? rawName.split(",").slice(0, 2).reverse().map(s => s.trim()).filter(Boolean).join(" ")
+        : rawName;
       pageTitle.textContent = name + "'s Discharge Plan";
 
       SERVICES = (services.services || []).slice();
