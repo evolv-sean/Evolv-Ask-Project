@@ -4005,6 +4005,19 @@ def init_db():
                  AND TRIM(LOWER(service_type)) = ?
             """, (int(row["id"]), st))
 
+    # Backfill legacy service_type string from service_type_id if missing
+    conn.execute("""
+      UPDATE sensys_services
+         SET service_type = (
+           SELECT COALESCE(st.code, '')
+             FROM sensys_service_type st
+            WHERE st.id = sensys_services.service_type_id
+              AND st.deleted_at IS NULL
+         )
+       WHERE (service_type IS NULL OR TRIM(service_type) = '')
+         AND service_type_id IS NOT NULL
+    """)
+
     # =========================
     # E-SIGN: orders + services
     # =========================
@@ -20828,11 +20841,14 @@ def sensys_admin_services_upsert(payload: SensysServiceUpsert, token: str):
 
     # ensure type exists
     ok = conn.execute("""
-        SELECT id FROM sensys_service_type
+        SELECT id, code FROM sensys_service_type
         WHERE deleted_at IS NULL AND id = ?
     """, (stid,)).fetchone()
     if not ok:
         raise HTTPException(status_code=400, detail="service_type_id not found")
+    st_code = (ok["code"] or "").strip().lower()
+    if not st_code:
+        st_code = "other"
 
     dropdown = 1 if int(payload.dropdown or 0) == 1 else 0
     reminder_id = (payload.reminder_id or "").strip() or None
@@ -20842,16 +20858,17 @@ def sensys_admin_services_upsert(payload: SensysServiceUpsert, token: str):
             UPDATE sensys_services
                SET name = ?,
                    service_type_id = ?,
+                   service_type = ?,
                    dropdown = ?,
                    reminder_id = ?,
                    updated_at = datetime('now')
              WHERE id = ?
-        """, (name, stid, dropdown, reminder_id, int(payload.id)))
+        """, (name, stid, st_code, dropdown, reminder_id, int(payload.id)))
     else:
         conn.execute("""
-            INSERT INTO sensys_services (name, service_type_id, dropdown, reminder_id)
-            VALUES (?, ?, ?, ?)
-        """, (name, stid, dropdown, reminder_id))
+            INSERT INTO sensys_services (name, service_type_id, service_type, dropdown, reminder_id)
+            VALUES (?, ?, ?, ?, ?)
+        """, (name, stid, st_code, dropdown, reminder_id))
 
     conn.commit()
     return {"ok": True}
@@ -22377,6 +22394,8 @@ def sensys_my_admissions(request: Request, admitted_only: int = 0):
                 a.patient_id,
                 (p.last_name || ', ' || p.first_name) AS patient_name,
                 p.dob AS patient_dob,
+                p.insurance_name1 AS insurance_name1,
+                p.insurance_number1 AS insurance_number1,
 
                 -- admission's main agency (still useful context)
                 a.agency_id,
@@ -22424,6 +22443,8 @@ def sensys_my_admissions(request: Request, admitted_only: int = 0):
             a.patient_id,
             (p.last_name || ', ' || p.first_name) AS patient_name,
             p.dob AS patient_dob,
+            p.insurance_name1 AS insurance_name1,
+            p.insurance_number1 AS insurance_number1,
 
             a.agency_id,
             ag.agency_name AS agency_name,
