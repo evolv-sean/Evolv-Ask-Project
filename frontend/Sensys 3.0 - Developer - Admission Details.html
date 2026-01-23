@@ -1895,7 +1895,7 @@
       api('/api/sensys/care-team', { method:'GET' }),
       api('/api/sensys/agencies', { method:'GET' }),
       api('/api/sensys/note-templates', { method:'GET' }),
-      api('/api/sensys/admission-sms/' + ADMISSION_ID, { method:'GET' }),
+      api('/api/sensys/admission-sms/' + ADMISSION_ID, { method:'GET' }).catch(() => ({ sms: [] })),
       api('/api/sensys/admission-fax/' + ADMISSION_ID, { method:'GET' }).catch(() => ({ fax: [] })),
       api('/api/sensys/admissions/' + ADMISSION_ID + '/pdfs', { method:'GET' }).catch(() => ({ pdfs: [] })),
       api('/api/sensys/service-types', { method:'GET' }).catch(() => ({ service_types: [] }))
