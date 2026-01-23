@@ -152,6 +152,40 @@
       pointer-events:auto;
       box-shadow:0 18px 36px rgba(13,59,102,.18);
     }
+    .confirm-backdrop{
+      position:fixed;
+      inset:0;
+      background:rgba(15,23,42,.45);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:18px;
+      z-index:9999;
+    }
+    .confirm-card{
+      width:min(520px, 92vw);
+      background:#fff;
+      border:1px solid rgba(13,59,102,.12);
+      border-radius:18px;
+      box-shadow:0 26px 60px rgba(13,59,102,.22);
+      padding:22px 22px 20px;
+      text-align:center;
+    }
+    .confirm-emoji{
+      font-size:30px;
+      margin-bottom:6px;
+    }
+    .confirm-title{
+      font-size:18px;
+      font-weight:800;
+      color:var(--navy);
+      margin:0 0 6px;
+    }
+    .confirm-sub{
+      font-size:13px;
+      color:var(--muted);
+      margin:0;
+    }
     .section{
       margin-top:24px;
       padding:20px;
@@ -514,6 +548,14 @@
     <div class="msg" id="msg"></div>
   </div>
 
+  <div id="confirmBackdrop" class="confirm-backdrop" aria-live="polite">
+    <div class="confirm-card">
+      <div class="confirm-emoji">✨</div>
+      <div class="confirm-title">Discharge plan sent!</div>
+      <p class="confirm-sub">Success! Your discharge plan is in our hands. Go grab a coffee.</p>
+    </div>
+  </div>
+
   <!-- Care Compare (Home Health) Search modal -->
   <div id="careCompareModalBackdrop" style="position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;padding:16px;z-index:9999;">
     <div style="width:min(980px,96vw);background:#fff;border-radius:16px;border:1px solid #e6e8ef;box-shadow:0 18px 60px rgba(0,0,0,.25);overflow:hidden;">
@@ -583,6 +625,8 @@
 
   const pageTitle = document.getElementById("pageTitle");
   const msg = document.getElementById("msg");
+  const confirmBackdrop = document.getElementById("confirmBackdrop");
+  const saveBtn = document.getElementById("saveBtn");
 
   const confirmChips = document.getElementById("confirmChips");
   const urgentChips = document.getElementById("urgentChips");
@@ -627,6 +671,12 @@
     if(!t){ msg.style.display = "none"; msg.textContent = ""; return; }
     msg.style.display = "block";
     msg.textContent = t;
+  }
+  function showConfirmation(){
+    confirmBackdrop.style.display = "flex";
+    setTimeout(() => {
+      window.location.href = "/sensys/snf-user";
+    }, 1200);
   }
 
   async function apiGet(path){
@@ -1101,6 +1151,8 @@
   async function save(){
     try{
       showMsg("");
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving...";
       const hhRaw = (hhAgencySelect.value || "").trim();
       const isCareCompare = hhRaw.startsWith("carecompare|");
       const hhId = (!isCareCompare && hhRaw) ? Number(hhRaw) : null;
@@ -1151,10 +1203,11 @@
         });
       }
 
-      showMsg("Discharge plan saved.");
-      await load();
+      showConfirmation();
     }catch(e){
       showMsg(e.message || String(e));
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Submit";
     }
   }
 
