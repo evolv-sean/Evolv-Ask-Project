@@ -1,0 +1,1253 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sensys - DC Submission</title>
+  <style>
+    :root{
+      --navy:#0D3B66;
+      --mint:#A8E6CF;
+      --mint-strong:#86d9ba;
+      --bg:#ffffff;
+      --bg-2:#F5F7FA;
+      --text:#0f172a;
+      --muted:#5b6b84;
+      --line: rgba(13,59,102,.14);
+      --shadow:0 18px 36px rgba(13,59,102,.08);
+      --r-lg:20px;
+      --r-md:12px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    html,body{
+      margin:0;
+      background:
+        radial-gradient(900px 320px at 50% 1%, rgba(15,23,42,.035), rgba(255,255,255,0) 80%),
+        linear-gradient(180deg, #ffffff 0%, #f5f7fa 100%);
+      background-repeat:no-repeat;
+      background-attachment:fixed;
+      color:var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    .page{
+      min-height:100vh;
+      padding:24px 22px 120px;
+      max-width:1100px;
+      margin:0 auto;
+    }
+    .topbar{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:16px;
+      margin-bottom:6px;
+    }
+    .brand{
+      display:flex;
+      align-items:flex-start;
+      gap:16px;
+    }
+    .brand .icon{
+      margin-top:7px;
+    }
+    .brand img{height:120px;width:auto;display:block}
+    .brand .icon{
+      width:84px;
+      height:84px;
+      color:var(--mint-strong);
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .brand .icon svg{width:100%;height:100%}
+    .brand .icon .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:2.1px;
+    }
+    .title h1{
+      margin:0 0 6px;
+      font-size:44px;
+      font-weight:400;
+      color:var(--navy);
+      letter-spacing:.2px;
+    }
+    .title p{
+      margin:0;
+      font-size:14px;
+      color:var(--muted);
+    }
+    .back{
+      display:none;
+    }
+    .back svg{width:18px;height:18px}
+    .back .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:6px;
+    }
+    .close{
+      border:0;
+      background:transparent;
+      padding:4px;
+      cursor:pointer;
+      color:var(--navy);
+    }
+    .close svg{width:22px;height:22px}
+    .close .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:6px;
+    }
+    .actions{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .btn{
+      border:1px solid var(--line);
+      background:#fff;
+      padding:10px 14px;
+      border-radius:12px;
+      font-size:13px;
+      font-weight:800;
+      color:var(--navy);
+      cursor:pointer;
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .btn:hover{
+      border-color: rgba(168,230,207,.9);
+      box-shadow:0 10px 18px rgba(13,59,102,.10);
+      transform: translateY(-1px);
+    }
+    .btn.primary{
+      background:var(--navy);
+      color:#fff;
+      border-color:transparent;
+    }
+    .btn.submit{
+      padding:14px 22px;
+      font-size:15px;
+      letter-spacing:.2px;
+      border-radius:14px;
+      box-shadow:0 18px 36px rgba(13,59,102,.22);
+    }
+    .submit-bar{
+      position:sticky;
+      bottom:16px;
+      display:flex;
+      justify-content:flex-end;
+      pointer-events:none;
+      margin-top:18px;
+    }
+    .submit-bar .btn{
+      pointer-events:auto;
+      box-shadow:0 18px 36px rgba(13,59,102,.18);
+    }
+    .section{
+      margin-top:24px;
+      padding:20px;
+      border-radius:var(--r-lg);
+      background:#fff;
+      box-shadow:var(--shadow);
+      border:1px solid rgba(13,59,102,.10);
+    }
+    .q{
+      font-size:20px;
+      font-weight:700;
+      color:#0f172a;
+      margin:0 0 12px;
+    }
+    .row{
+      display:flex;
+      flex-wrap:wrap;
+      gap:14px;
+      align-items:center;
+    }
+    .field{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    .label{
+      font-size:12px;
+      font-weight:800;
+      color:#334155;
+      letter-spacing:.2px;
+    }
+    .input, .select, .textarea{
+      width:100%;
+      padding:12px 14px;
+      border:1px solid rgba(13,59,102,.18);
+      border-radius:12px;
+      font-size:14px;
+      outline:none;
+      background:#fff;
+    }
+    .textarea{min-height:90px;resize:vertical}
+    .chips{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+    }
+    .chip{
+      padding:12px 18px;
+      border-radius:999px;
+      border:1px solid rgba(13,59,102,.14);
+      background:#fff;
+      font-size:14px;
+      font-weight:800;
+      color:#42526b;
+      cursor:pointer;
+      user-select:none;
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .chip:hover{
+      border-color:rgba(168,230,207,.85);
+      box-shadow:0 10px 18px rgba(13,59,102,.08);
+      transform: translateY(-1px);
+    }
+    .chip.on{
+      background:rgba(168,230,207,.45);
+      border-color:rgba(168,230,207,.95);
+      color:var(--navy);
+    }
+    .link{
+      font-size:12px;
+      color:var(--navy);
+      font-weight:800;
+      cursor:pointer;
+      text-decoration:underline;
+    }
+    .subtle{
+      font-size:12px;
+      color:var(--muted);
+    }
+    .dropdown{
+      position:relative;
+      width:100%;
+      max-width:420px;
+    }
+    .dropdown-list{
+      position:absolute;
+      left:0;
+      right:0;
+      top:48px;
+      background:#fff;
+      border:1px solid rgba(13,59,102,.12);
+      border-radius:12px;
+      box-shadow:var(--shadow);
+      max-height:240px;
+      overflow:auto;
+      display:none;
+      z-index:6;
+    }
+    .dropdown-item{
+      padding:10px 12px;
+      border-bottom:1px solid rgba(13,59,102,.08);
+      cursor:pointer;
+      font-size:13px;
+    }
+    .dropdown-item:last-child{border-bottom:0}
+    .dropdown-item:hover{background:rgba(168,230,207,.12)}
+    .msg{
+      margin-top:10px;
+      font-size:12px;
+      color:#b42318;
+      display:none;
+    }
+    .hidden{display:none}
+    .iconbtn{
+      width:42.5px;
+      height:42.5px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background:#fff;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .iconbtn:hover{
+      border-color: rgba(168,230,207,.9);
+      box-shadow:0 10px 18px rgba(13,59,102,.10);
+      transform: translateY(-1px);
+    }
+    .iconbtn svg{width:18px;height:18px}
+    .iconbtn .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:5px;
+    }
+    @media (max-width: 980px){
+      .brand img{height:90px}
+      .title h1{font-size:34px}
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="topbar">
+      <div class="brand">
+        <span class="icon" aria-hidden="true">
+          <svg viewBox="0 0 83.92 75.06">
+            <g>
+              <g>
+                <g>
+                  <g>
+                    <path class="cls-1" d="M72.39,10.9l-35.5,35.5-3.11,11.52,11.52-3.11,35.5-35.5c2.32-2.32,2.32-6.09,0-8.41h0c-2.32-2.32-6.09-2.32-8.41,0Z" />
+                    <path class="cls-1" d="M76.73,23.71l2.11,2.11c1.49,1.49,1.49,3.91,0,5.4l-10.06,10.06" />
+                  </g>
+                  <line class="cls-1" x1="33.77" y1="57.93" x2="30.75" y2="60.95" />
+                </g>
+                <polyline class="cls-1" points="60.87 46.97 60.87 73.67 1.39 73.67 1.39 18.52 19.51 1.39 60.87 1.39 60.87 15.15" />
+                <line class="cls-1" x1="14.38" y1="34.58" x2="39.07" y2="34.58" />
+                <line class="cls-1" x1="14.38" y1="47.32" x2="29.52" y2="47.32" />
+                <line class="cls-1" x1="14.38" y1="60.06" x2="25.2" y2="60.06" />
+              </g>
+              <polyline class="cls-1" points="7.59 20.48 21.52 20.48 21.52 7.59" />
+              <line class="cls-1" x1="64.14" y1="36.3" x2="55.54" y2="27.7" />
+            </g>
+          </svg>
+        </span>
+        <div class="title">
+          <h1 id="pageTitle">Patient's Discharge Plan</h1>
+          <p>Please provide all transitional services and equipment details below.</p>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="close" id="closeBtn" aria-label="Close">
+          <svg viewBox="0 0 183.48 183.48" aria-hidden="true">
+            <g>
+              <line class="cls-1" x1="180.73" y1="2.75" x2="2.75" y2="180.73"/>
+              <line class="cls-1" x1="180.73" y1="180.73" x2="2.75" y2="2.75"/>
+            </g>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="q">When will the patient be leaving?</div>
+      <div class="row">
+        <div class="field" style="max-width:220px;">
+          <div class="label">Date</div>
+          <input class="input" id="dcDate" type="date" />
+        </div>
+        <div class="field" style="max-width:180px;">
+          <div class="label">Time</div>
+          <input class="input" id="dcTime" type="time" />
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="q">Is the date confirmed?</div>
+      <div class="chips" id="confirmChips">
+        <div class="chip" data-value="1">Yes</div>
+        <div class="chip on" data-value="0">No</div>
+      </div>
+      <input id="dcConfirmed" type="checkbox" class="hidden" />
+    </div>
+
+    <div class="section">
+      <div class="q">Is this an Urgent Request?</div>
+      <div class="chips" id="urgentChips">
+        <div class="chip" data-value="1">Yes</div>
+        <div class="chip on" data-value="0">No</div>
+      </div>
+      <input id="dcUrgent" type="checkbox" class="hidden" />
+      <div class="link" id="toggleUrgentDetails" style="margin-top:10px;">Add urgency details?</div>
+      <div id="urgentDetails" class="hidden" style="margin-top:10px;">
+        <div class="label">Additional details</div>
+        <textarea class="textarea" id="urgentComments" placeholder="Additional details..."></textarea>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="q">What is their disposition?</div>
+      <div class="chips" id="dispoChips">
+        <div class="chip on" data-value="Home">Home</div>
+        <div class="chip" data-value="ILF">ILF</div>
+        <div class="chip" data-value="ALF">ALF</div>
+        <div class="chip" data-value="LTC">LTC</div>
+        <div class="chip" data-value="AMA">AMA</div>
+        <div class="chip" data-value="Hospital">Hospital</div>
+        <div class="chip" data-value="Other">Other</div>
+      </div>
+      <select id="dcDestination" class="hidden">
+        <option>Home</option>
+        <option>ILF</option>
+        <option>ALF</option>
+        <option>LTC</option>
+        <option>AMA</option>
+        <option>Hospital</option>
+        <option>Other</option>
+      </select>
+      <div class="link" id="toggleFacilityDetails" style="margin-top:10px;"></div>
+      <div id="facilityDetails" class="hidden" style="margin-top:10px;">
+        <div class="label" id="facilityDetailsLabel">Facility Details</div>
+        <input class="input" id="destinationComments" placeholder="Facility name..." />
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="q">Will they be staying with anyone upon discharge?</div>
+      <div class="chips" id="withChips">
+        <div class="chip on" data-value="alone">Alone</div>
+        <div class="chip" data-value="spouse">Spouse</div>
+        <div class="chip" data-value="other family">Other Family</div>
+        <div class="chip" data-value="caregiver">Caregiver</div>
+      </div>
+      <select id="dcWith" class="hidden">
+        <option>alone</option>
+        <option>spouse</option>
+        <option>other family</option>
+        <option>caregiver</option>
+      </select>
+    </div>
+
+    <div class="section">
+      <div class="q">Will they require Home Health related services?</div>
+      <div class="chips" id="hhServiceChips"></div>
+      <div style="margin-top:12px;">
+        <div class="label">Other Home Health Services</div>
+        <div class="dropdown">
+          <input class="input" id="hhServiceSearch" placeholder="Search Home Health services..." />
+          <div id="hhServiceDropdown" class="dropdown-list"></div>
+        </div>
+      </div>
+      <div class="link" id="toggleHhDetails" style="margin-top:10px;">Additional details?</div>
+      <div id="hhDetails" class="hidden" style="margin-top:10px;">
+        <div class="label">Additional details</div>
+        <textarea class="textarea" id="hhComments" placeholder="Additional details..."></textarea>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="q">Which agency would you like to use?</div>
+      <div class="chips" id="hhPreferredChips"></div>
+      <div class="link" id="toggleOtherAgency" style="margin-top:10px;">Other?</div>
+      <div id="otherAgencyWrap" class="hidden" style="margin-top:10px;">
+        <div class="label">Search Home Health Agencies</div>
+        <div class="row">
+          <div class="dropdown" style="flex:1;min-width:240px;">
+            <input class="input" id="hhAgencySearch" placeholder="Search agencies..." />
+            <div id="hhAgencyDropdown" class="dropdown-list"></div>
+          </div>
+          <button class="iconbtn" id="careCompareOpenBtn" title="Search CMS">
+            <svg viewBox="0 0 200 200" aria-hidden="true">
+              <circle class="cls-1" cx="82" cy="82" r="58" />
+              <line class="cls-1" x1="122" y1="122" x2="180" y2="180" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <input type="hidden" id="hhAgencySelect" />
+      <div class="subtle" id="hhSelectedLabel" style="margin-top:8px;">Selected: -</div>
+    </div>
+
+    <div class="section">
+      <div class="q">Will they require medical equipment (DME)?</div>
+      <div class="chips" id="dmeServiceChips"></div>
+      <div style="margin-top:12px;">
+        <div class="label">Other DME Services</div>
+        <div class="dropdown">
+          <input class="input" id="dmeServiceSearch" placeholder="Search DME services..." />
+          <div id="dmeServiceDropdown" class="dropdown-list"></div>
+        </div>
+      </div>
+      <div class="link" id="toggleDmeDetails" style="margin-top:10px;">Additional details?</div>
+      <div id="dmeDetails" class="hidden" style="margin-top:10px;">
+        <div class="label">Additional details</div>
+        <textarea class="textarea" id="dmeComments" placeholder="Additional details..."></textarea>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="q">Please confirm PCP name</div>
+      <input class="input" id="pcpFreetext" placeholder="PCP name" />
+    </div>
+
+    <div class="section">
+      <div class="q">Will we be coordinating with a caregiver?</div>
+      <div class="chips" id="caregiverChips">
+        <div class="chip" data-value="1">Yes</div>
+        <div class="chip on" data-value="0">No</div>
+      </div>
+      <input id="coordinateCaregiver" type="checkbox" class="hidden" />
+      <div id="caregiverDetails" class="hidden" style="margin-top:12px;">
+        <div class="label">Person's Name</div>
+        <input class="input" id="caregiverName" placeholder="Full name" />
+        <div class="label" style="margin-top:10px;">Contact Info</div>
+        <input class="input" id="caregiverNumber" placeholder="Phone or email" />
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="q">Is the patient appealing the discharge?</div>
+      <div class="chips" id="appealChips">
+        <div class="chip" data-value="1">Yes</div>
+        <div class="chip on" data-value="0">No</div>
+      </div>
+      <input id="appealingDc" type="checkbox" class="hidden" />
+      <div id="appealDetails" class="hidden" style="margin-top:12px;">
+        <div class="label">Additional details</div>
+        <textarea class="textarea" id="appealComments" placeholder="Explain the appeal..." ></textarea>
+      </div>
+    </div>
+
+    <div class="submit-bar">
+      <button class="btn primary submit" id="saveBtn">Submit</button>
+    </div>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <!-- Care Compare (Home Health) Search modal -->
+  <div id="careCompareModalBackdrop" style="position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;padding:16px;z-index:9999;">
+    <div style="width:min(980px,96vw);background:#fff;border-radius:16px;border:1px solid #e6e8ef;box-shadow:0 18px 60px rgba(0,0,0,.25);overflow:hidden;">
+      <div style="padding:14px 16px;border-bottom:1px solid #eef0f4;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+        <div>
+          <div style="font-size:14px;font-weight:900;color:#111827;">CMS Care Compare - Home Health Agency Search</div>
+          <div style="margin-top:2px;font-size:12px;color:#667085;">Search national CMS provider data by name/DBA, county, city, zip, CCN.</div>
+        </div>
+        <button id="careCompareCloseBtn" style="width:40px;height:40px;border-radius:12px;border:1px solid #d0d5dd;background:#fff;cursor:pointer;font-weight:900;">X</button>
+      </div>
+
+      <div style="padding:14px 16px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <input id="cc_q" placeholder="Agency name or DBA"
+            style="width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+          <input id="cc_county" placeholder="County"
+            style="width:160px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+          <input id="cc_city" placeholder="City"
+            style="width:160px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+          <input id="cc_state" placeholder="State"
+            style="width:90px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+          <input id="cc_zip" placeholder="Zip"
+            style="width:120px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+          <input id="cc_ccn" placeholder="CCN"
+            style="width:120px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+
+          <button id="ccSearchBtn"
+            style="padding:10px 12px;border-radius:12px;border:1px solid #0d3b66;background:#0d3b66;color:#fff;cursor:pointer;font-size:12px;font-weight:900;">
+            Search
+          </button>
+        </div>
+
+        <div id="ccErr" style="display:none;margin-top:10px;padding:10px;border-radius:12px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);color:#991b1b;font-size:12px;"></div>
+
+        <div id="ccStatus" style="display:none;margin-top:10px;padding:10px;border-radius:12px;background:#f9fafb;border:1px solid #eef0f4;color:#475467;font-size:12px;">
+          -
+        </div>
+
+        <div style="margin-top:12px;border:1px solid #eef0f4;border-radius:14px;overflow:hidden;">
+          <div style="max-height:360px;overflow:auto;">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead>
+                <tr style="background:#f8fafc;">
+                  <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Name / DBA</th>
+                  <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">CCN</th>
+                  <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="ccTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:12px 16px;border-top:1px solid #eef0f4;display:flex;justify-content:flex-end;gap:10px;">
+        <button id="ccCancelBtn" style="padding:10px 12px;border-radius:12px;border:1px solid #d0d5dd;background:#fff;cursor:pointer;font-size:12px;font-weight:800;">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const qs = (k) => new URLSearchParams(window.location.search).get(k);
+  const admissionId = Number(qs("admission_id") || 0);
+
+  const pageTitle = document.getElementById("pageTitle");
+  const msg = document.getElementById("msg");
+
+  const confirmChips = document.getElementById("confirmChips");
+  const urgentChips = document.getElementById("urgentChips");
+  const dispoChips = document.getElementById("dispoChips");
+  const withChips = document.getElementById("withChips");
+  const caregiverChips = document.getElementById("caregiverChips");
+  const appealChips = document.getElementById("appealChips");
+
+  const hhServiceChips = document.getElementById("hhServiceChips");
+  const dmeServiceChips = document.getElementById("dmeServiceChips");
+  const hhPreferredChips = document.getElementById("hhPreferredChips");
+  const hhSelectedLabel = document.getElementById("hhSelectedLabel");
+  const hhAgencySelect = document.getElementById("hhAgencySelect");
+
+  const hhServiceSearch = document.getElementById("hhServiceSearch");
+  const hhServiceDropdown = document.getElementById("hhServiceDropdown");
+  const dmeServiceSearch = document.getElementById("dmeServiceSearch");
+  const dmeServiceDropdown = document.getElementById("dmeServiceDropdown");
+  const hhAgencySearch = document.getElementById("hhAgencySearch");
+  const hhAgencyDropdown = document.getElementById("hhAgencyDropdown");
+
+  let SERVICES = [];
+  let SERVICE_MAP = {};
+  let SERVICE_TYPE_MAP = {};
+  let SELECTED = new Set();
+  let AGENCIES = [];
+  let PREFERRED_HH = new Set();
+  let selectedHhAgencyId = null;
+  let CARE_COMPARE_SELECTED = null;
+  let CC_SEARCH_SEQ = 0;
+
+  function token(){
+    return (localStorage.getItem("sensys_token") || "").trim();
+  }
+  function authHeaders(){
+    return { "Authorization": "Bearer " + token() };
+  }
+  function esc(s){
+    return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+  function showMsg(t){
+    if(!t){ msg.style.display = "none"; msg.textContent = ""; return; }
+    msg.style.display = "block";
+    msg.textContent = t;
+  }
+
+  async function apiGet(path){
+    const t = token();
+    if(!t) throw new Error("Missing token");
+    const res = await fetch(path, { headers: authHeaders() });
+    if(!res.ok) throw new Error(await res.text());
+    return await res.json();
+  }
+
+  function serviceTypeKey(s){
+    const raw = (s.service_type_code || s.service_type || s.service_type_name || "").toString().toLowerCase();
+    if(raw.includes("hh") || raw.includes("home")) return "hh";
+    if(raw.includes("dme")) return "dme";
+    return "";
+  }
+
+  function setYesNo(groupEl, value, hiddenInput){
+    const items = Array.from(groupEl.querySelectorAll(".chip"));
+    items.forEach(ch => ch.classList.toggle("on", ch.getAttribute("data-value") === String(value)));
+    hiddenInput.checked = String(value) === "1";
+  }
+
+  function setChipGroup(groupEl, value, hiddenSelect){
+    const items = Array.from(groupEl.querySelectorAll(".chip"));
+    items.forEach(ch => ch.classList.toggle("on", ch.getAttribute("data-value") === String(value)));
+    hiddenSelect.value = value || "";
+  }
+
+  function wireYesNo(groupEl, hiddenInput, onChange){
+    groupEl.querySelectorAll(".chip").forEach(ch => {
+      ch.addEventListener("click", () => {
+        setYesNo(groupEl, ch.getAttribute("data-value"), hiddenInput);
+        if(onChange) onChange();
+      });
+    });
+  }
+
+  function wireChipGroup(groupEl, hiddenSelect){
+    groupEl.querySelectorAll(".chip").forEach(ch => {
+      ch.addEventListener("click", () => {
+        setChipGroup(groupEl, ch.getAttribute("data-value"), hiddenSelect);
+        if(hiddenSelect.id === "dcDestination"){
+          syncFacilityDetails();
+        }
+      });
+    });
+  }
+
+  function renderServiceChips(host, items){
+    host.innerHTML = "";
+    if(!items.length){
+      host.innerHTML = '<div class="subtle">No services available.</div>';
+      return;
+    }
+    items.forEach(s => {
+      const chip = document.createElement("div");
+      chip.className = "chip" + (SELECTED.has(String(s.id)) ? " on" : "");
+      chip.textContent = s.name || "Service";
+      chip.addEventListener("click", () => {
+        const key = String(s.id);
+        if(SELECTED.has(key)) SELECTED.delete(key);
+        else SELECTED.add(key);
+        renderServiceChips(hhServiceChips, getHhCommon());
+        renderServiceChips(dmeServiceChips, getDmeCommon());
+      });
+      host.appendChild(chip);
+    });
+  }
+
+  function getHhCommon(){
+    return SERVICES.filter(s => SERVICE_TYPE_MAP[s.id] === "hh" && String(s.dropdown || 0) !== "1");
+  }
+  function getDmeCommon(){
+    return SERVICES.filter(s => SERVICE_TYPE_MAP[s.id] === "dme" && String(s.dropdown || 0) !== "1");
+  }
+  function getHhDropdown(){
+    return SERVICES.filter(s => SERVICE_TYPE_MAP[s.id] === "hh" && String(s.dropdown || 0) === "1");
+  }
+  function getDmeDropdown(){
+    return SERVICES.filter(s => SERVICE_TYPE_MAP[s.id] === "dme" && String(s.dropdown || 0) === "1");
+  }
+
+  function renderSearchList(listEl, items, onPick){
+    if(!items.length){
+      listEl.style.display = "none";
+      listEl.innerHTML = "";
+      return;
+    }
+    listEl.innerHTML = items.map(i => `<div class="dropdown-item" data-id="${i.id}">${esc(i.name || i.agency_name || "")}</div>`).join("");
+    listEl.style.display = "block";
+    listEl.querySelectorAll(".dropdown-item").forEach(item => {
+      item.addEventListener("click", () => {
+        onPick(item.getAttribute("data-id"));
+      });
+    });
+  }
+
+  function setSelectedHhAgency(id){
+    CARE_COMPARE_SELECTED = null;
+    selectedHhAgencyId = id ? Number(id) : null;
+    hhAgencySelect.value = selectedHhAgencyId ? String(selectedHhAgencyId) : "";
+    const ag = AGENCIES.find(a => Number(a.id) === Number(selectedHhAgencyId));
+    hhSelectedLabel.textContent = ag ? ("Selected: " + (ag.agency_name || "Agency")) : "Selected: -";
+    renderPreferredAgencies();
+  }
+
+  function setCareCompareSelection(obj){
+    CARE_COMPARE_SELECTED = obj || null;
+    selectedHhAgencyId = null;
+    if(CARE_COMPARE_SELECTED){
+      const key = CARE_COMPARE_SELECTED.ccn || CARE_COMPARE_SELECTED.name || "carecompare";
+      hhAgencySelect.value = "carecompare|" + key;
+      const label = CARE_COMPARE_SELECTED.dba || CARE_COMPARE_SELECTED.name || "Care Compare";
+      hhSelectedLabel.textContent = "Selected: Care Compare - " + label;
+      document.getElementById("otherAgencyWrap").classList.remove("hidden");
+    }else{
+      hhAgencySelect.value = "";
+      hhSelectedLabel.textContent = "Selected: -";
+    }
+    renderPreferredAgencies();
+  }
+
+  function renderPreferredAgencies(){
+    hhPreferredChips.innerHTML = "";
+    const prefList = AGENCIES.filter(a => PREFERRED_HH.has(Number(a.id)));
+    if(!prefList.length){
+      hhPreferredChips.innerHTML = '<div class="subtle">No preferred providers set.</div>';
+      return;
+    }
+    prefList.forEach(ag => {
+      const chip = document.createElement("div");
+      chip.className = "chip" + (Number(selectedHhAgencyId) === Number(ag.id) ? " on" : "");
+      chip.textContent = ag.agency_name || "Agency";
+      chip.addEventListener("click", () => setSelectedHhAgency(ag.id));
+      hhPreferredChips.appendChild(chip);
+    });
+  }
+
+  function wireDropdownSearch(inputEl, listEl, items, onPick){
+    inputEl.addEventListener("input", () => {
+      const q = (inputEl.value || "").trim().toLowerCase();
+      if(q.length < 2){
+        renderSearchList(listEl, [], onPick);
+        return;
+      }
+      const matches = items.filter(s => String(s.name || s.agency_name || "").toLowerCase().includes(q));
+      renderSearchList(listEl, matches.slice(0, 30), onPick);
+    });
+  }
+
+  function initPlaceholders(){
+    if(!hhPreferredChips.children.length){
+      hhPreferredChips.innerHTML = [
+        '<div class="chip on">Heritage Home Health</div>',
+        '<div class="chip">Palm Valley Care</div>',
+        '<div class="chip">Sunrise Skilled Nursing</div>'
+      ].join("");
+    }
+    if(!hhServiceChips.children.length){
+      hhServiceChips.innerHTML = [
+        '<div class="chip">Skilled Nursing</div>',
+        '<div class="chip">PT</div>',
+        '<div class="chip">OT</div>',
+        '<div class="chip">Speech</div>',
+        '<div class="chip">Wound Care</div>',
+        '<div class="chip">IV Therapy</div>'
+      ].join("");
+    }
+    if(!dmeServiceChips.children.length){
+      dmeServiceChips.innerHTML = [
+        '<div class="chip">Wheelchair</div>',
+        '<div class="chip">Walker</div>',
+        '<div class="chip">Oxygen</div>',
+        '<div class="chip">Hospital Bed</div>',
+        '<div class="chip">Shower Chair</div>',
+        '<div class="chip">CPAP</div>'
+      ].join("");
+    }
+  }
+
+  function setCcStatus(text, isBusy){
+    const st = document.getElementById("ccStatus");
+    const btn = document.getElementById("ccSearchBtn");
+    if(st){
+      st.style.display = text ? "block" : "none";
+      st.textContent = text || "";
+    }
+    if(btn){
+      btn.disabled = !!isBusy;
+      btn.style.opacity = isBusy ? "0.75" : "1";
+      btn.style.cursor = isBusy ? "not-allowed" : "pointer";
+      btn.textContent = isBusy ? "Searching..." : "Search";
+    }
+  }
+
+  function resetCareCompareModal(){
+    ["cc_q","cc_county","cc_city","cc_state","cc_zip","cc_ccn"].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el) el.value = "";
+    });
+    const err = document.getElementById("ccErr");
+    if(err){
+      err.style.display = "none";
+      err.textContent = "";
+    }
+    setCcStatus("", false);
+    const tbody = document.getElementById("ccTbody");
+    if(tbody) tbody.innerHTML = "";
+  }
+
+  function openCareCompareModal(){
+    document.getElementById("careCompareModalBackdrop").style.display = "flex";
+    resetCareCompareModal();
+    document.getElementById("cc_q").focus();
+  }
+
+  function closeCareCompareModal(){
+    document.getElementById("careCompareModalBackdrop").style.display = "none";
+    resetCareCompareModal();
+  }
+
+  async function runCareCompareSearch(){
+    const err = document.getElementById("ccErr");
+    err.style.display = "none";
+    err.textContent = "";
+
+    const tbody = document.getElementById("ccTbody");
+    if(tbody) tbody.innerHTML = "";
+
+    const q = (document.getElementById("cc_q").value || "").trim();
+    const county = (document.getElementById("cc_county").value || "").trim();
+    const city = (document.getElementById("cc_city").value || "").trim();
+    const state = (document.getElementById("cc_state").value || "").trim();
+    const zip = (document.getElementById("cc_zip").value || "").trim();
+    const ccn = (document.getElementById("cc_ccn").value || "").trim();
+
+    if(!q && !county && !city && !state && !zip && !ccn){
+      err.style.display = "block";
+      err.textContent = "Enter at least one search field (name/DBA, county, city, state, zip, or CCN).";
+      setCcStatus("", false);
+      return;
+    }
+
+    const qs = new URLSearchParams({ q, county, city, state, zip, ccn });
+    const mySeq = ++CC_SEARCH_SEQ;
+    setCcStatus("Searching provider library.", true);
+
+    let resp;
+    try{
+      resp = await apiGet(`/api/sensys/care-compare/hha-search?${qs.toString()}`);
+    }catch(e){
+      if(mySeq !== CC_SEARCH_SEQ) return;
+      err.style.display = "block";
+      err.textContent = "Search failed. Try again or narrow the search.";
+      setCcStatus("", false);
+      return;
+    }
+
+    if(mySeq !== CC_SEARCH_SEQ) return;
+
+    const results = (resp && resp.results) ? resp.results : [];
+    if(!results.length){
+      if(tbody){
+        tbody.innerHTML = `<tr><td colspan="3" style="padding:12px;color:#667085;font-size:12px;">No results</td></tr>`;
+      }
+      setCcStatus("Done - 0 results", false);
+      return;
+    }
+
+    setCcStatus(`Loaded ${results.length} result${results.length===1?"":"s"} - Scroll to view`, false);
+
+    results.forEach((row) => {
+      const name = String(row.provider_name || "").trim();
+      const dba = String(row.dba || "").trim();
+      const ccnV = String(row.ccn || "").trim();
+      const cityV = String(row.city || "").trim();
+      const stateV = String(row.state || "").trim();
+      const zipV = String(row.zip || "").trim();
+      const countyV = String(row.county || "").trim();
+      const phoneV = String(row.phone || "").trim();
+      const faxV = String(row.fax || "").trim();
+
+      const matchedAgencyId = row.matched_agency_id ? Number(row.matched_agency_id) : null;
+      const matchedAgencyName = String(row.matched_agency_name || "").trim();
+      const matchedAgencyFax = String(row.matched_agency_fax || "").trim();
+      const matchedAgencyPhone = String(row.matched_agency_phone || "").trim();
+
+      const displayName = dba ? `${dba} (DBA)` : name;
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td style="padding:10px;border-top:1px solid #eef0f4;">
+          <div style="font-weight:900;color:#111827;font-size:12px;">
+            ${esc(displayName || "-")}
+            ${matchedAgencyId ? `<span style="margin-left:8px;font-size:11px;font-weight:900;padding:3px 8px;border-radius:999px;border:1px solid #b7ebc6;background:#ecfdf3;color:#027a48;">Saved Agency</span>` : ``}
+          </div>
+          <div style="font-size:11px;color:#667085;margin-top:2px;">
+            ${esc([cityV,stateV,zipV].filter(Boolean).join(", "))}${countyV ? ` - ${esc(countyV)} County` : ``}
+          </div>
+          ${(phoneV || faxV || matchedAgencyPhone || matchedAgencyFax) ? `
+            <div style="font-size:11px;color:#111827;margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;">
+              ${(matchedAgencyPhone || phoneV) ? `<span>Phone: ${esc(matchedAgencyPhone || phoneV)}</span>` : ``}
+              ${(matchedAgencyFax || faxV) ? `<span>Fax: ${esc(matchedAgencyFax || faxV)}</span>` : ``}
+            </div>` : ``}
+        </td>
+        <td style="padding:10px;border-top:1px solid #eef0f4;font-size:12px;color:#475467;">${esc(ccnV || "-")}</td>
+        <td style="padding:10px;border-top:1px solid #eef0f4;text-align:right;">
+          <button style="padding:8px 10px;border-radius:10px;border:1px solid #0d3b66;background:#fff;color:#0d3b66;cursor:pointer;font-size:12px;font-weight:900;">
+            ${matchedAgencyId ? "Select Saved" : "Select"}
+          </button>
+        </td>
+      `;
+
+      tr.querySelector("button").onclick = () => {
+        if(matchedAgencyId){
+          setSelectedHhAgency(String(matchedAgencyId));
+          closeCareCompareModal();
+          return;
+        }
+        setCareCompareSelection({
+          name: name,
+          dba: dba,
+          ccn: ccnV,
+          city: cityV,
+          state: stateV,
+          zip: zipV,
+          county: countyV,
+          phone: phoneV,
+          fax: faxV
+        });
+        closeCareCompareModal();
+      };
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function load(){
+    if(!token()){
+      window.location.href = "/sensys/login";
+      return;
+    }
+    if(!admissionId){
+      window.location.href = "/sensys/snf-user/patient-search";
+      return;
+    }
+
+    try{
+      showMsg("");
+      initPlaceholders();
+
+      const [detailsResp, servicesResp, agenciesResp] = await Promise.all([
+        fetch("/api/sensys/admission-details/" + admissionId, { headers: authHeaders() }),
+        fetch("/api/sensys/services", { headers: authHeaders() }),
+        fetch("/api/sensys/agencies", { headers: authHeaders() })
+      ]);
+
+      const details = await detailsResp.json();
+      const services = await servicesResp.json();
+      const agencies = await agenciesResp.json();
+
+      if(!detailsResp.ok || !details.ok) throw new Error(details.detail || "Failed to load admission.");
+      if(!servicesResp.ok || !services.ok) throw new Error("Failed to load services.");
+      if(!agenciesResp.ok || !agencies.ok) throw new Error("Failed to load agencies.");
+
+      const a = details.admission || {};
+      const name = a.patient_name || "Patient";
+      pageTitle.textContent = name + "'s Discharge Plan";
+
+      SERVICES = (services.services || []).slice();
+      SERVICE_MAP = {};
+      SERVICE_TYPE_MAP = {};
+      SERVICES.forEach(s => {
+        SERVICE_MAP[String(s.id)] = s;
+        SERVICE_TYPE_MAP[s.id] = serviceTypeKey(s);
+      });
+
+      renderServiceChips(hhServiceChips, getHhCommon());
+      renderServiceChips(dmeServiceChips, getDmeCommon());
+
+      wireDropdownSearch(hhServiceSearch, hhServiceDropdown, getHhDropdown().map(s => ({
+        id: s.id,
+        name: s.name
+      })), (id) => {
+        SELECTED.add(String(id));
+        hhServiceSearch.value = "";
+        renderServiceChips(hhServiceChips, getHhCommon());
+        renderSearchList(hhServiceDropdown, [], () => {});
+      });
+
+      wireDropdownSearch(dmeServiceSearch, dmeServiceDropdown, getDmeDropdown().map(s => ({
+        id: s.id,
+        name: s.name
+      })), (id) => {
+        SELECTED.add(String(id));
+        dmeServiceSearch.value = "";
+        renderServiceChips(dmeServiceChips, getDmeCommon());
+        renderSearchList(dmeServiceDropdown, [], () => {});
+      });
+
+      AGENCIES = (agencies.agencies || []).filter(ag => {
+        const t = (ag.agency_type || "").toLowerCase();
+        return !t || t.includes("home");
+      });
+      PREFERRED_HH = new Set((details.preferred_provider_ids || []).map(x => Number(x)));
+      renderPreferredAgencies();
+
+      wireDropdownSearch(hhAgencySearch, hhAgencyDropdown, AGENCIES.map(a2 => ({
+        id: a2.id,
+        name: a2.agency_name
+      })), (id) => {
+        setSelectedHhAgency(id);
+        hhAgencySearch.value = "";
+        renderSearchList(hhAgencyDropdown, [], () => {});
+      });
+
+      const last = (details.dc_submissions && details.dc_submissions.length) ? details.dc_submissions[0] : null;
+      if(last){
+        document.getElementById("dcDate").value = last.dc_date || "";
+        document.getElementById("dcTime").value = last.dc_time || "";
+        setYesNo(confirmChips, String(Number(last.dc_confirmed || 0)), document.getElementById("dcConfirmed"));
+        setYesNo(urgentChips, String(Number(last.dc_urgent || 0)), document.getElementById("dcUrgent"));
+        setChipGroup(dispoChips, last.dc_destination || "Home", document.getElementById("dcDestination"));
+        setChipGroup(withChips, last.dc_with || "alone", document.getElementById("dcWith"));
+        document.getElementById("urgentComments").value = last.urgent_comments || "";
+        document.getElementById("destinationComments").value = last.destination_comments || "";
+        document.getElementById("hhComments").value = last.hh_comments || "";
+        document.getElementById("dmeComments").value = last.dme_comments || "";
+        document.getElementById("pcpFreetext").value = last.pcp_freetext || "";
+        setYesNo(caregiverChips, String(Number(last.coordinate_caregiver || 0)), document.getElementById("coordinateCaregiver"));
+        document.getElementById("caregiverName").value = last.caregiver_name || "";
+        document.getElementById("caregiverNumber").value = last.caregiver_number || "";
+        setYesNo(appealChips, String(Number(last.apealling_dc || 0)), document.getElementById("appealingDc"));
+        document.getElementById("appealComments").value = last.appeal_comments || "";
+        if(last.hh_agency_id){
+          setSelectedHhAgency(String(last.hh_agency_id));
+        }else if(last.hh_carecompare_name || last.hh_carecompare_ccn){
+          setCareCompareSelection({
+            name: last.hh_carecompare_name || "",
+            dba: last.hh_carecompare_dba || "",
+            ccn: last.hh_carecompare_ccn || "",
+            city: last.hh_carecompare_city || "",
+            state: last.hh_carecompare_state || "",
+            zip: last.hh_carecompare_zip || "",
+            county: last.hh_carecompare_county || ""
+          });
+        }
+        const svc = last.services || [];
+        SELECTED = new Set(svc.map(x => String(x.services_id || x.id)));
+        renderServiceChips(hhServiceChips, getHhCommon());
+        renderServiceChips(dmeServiceChips, getDmeCommon());
+      }else{
+        setYesNo(confirmChips, "0", document.getElementById("dcConfirmed"));
+        setYesNo(urgentChips, "0", document.getElementById("dcUrgent"));
+        setChipGroup(dispoChips, "Home", document.getElementById("dcDestination"));
+        setChipGroup(withChips, "alone", document.getElementById("dcWith"));
+      }
+
+      syncExpandedFromData();
+      if(!document.getElementById("dcTime").value){
+        document.getElementById("dcTime").value = "11:00";
+      }
+    }catch(e){
+      showMsg(e.message || String(e));
+    }
+  }
+
+  async function save(){
+    try{
+      showMsg("");
+      const hhRaw = (hhAgencySelect.value || "").trim();
+      const isCareCompare = hhRaw.startsWith("carecompare|");
+      const hhId = (!isCareCompare && hhRaw) ? Number(hhRaw) : null;
+      const payload = {
+        admission_id: admissionId,
+        dc_date: document.getElementById("dcDate").value.trim(),
+        dc_time: document.getElementById("dcTime").value.trim(),
+        dc_confirmed: document.getElementById("dcConfirmed").checked ? 1 : 0,
+        dc_urgent: document.getElementById("dcUrgent").checked ? 1 : 0,
+        urgent_comments: document.getElementById("urgentComments").value.trim(),
+        dc_destination: document.getElementById("dcDestination").value,
+        destination_comments: document.getElementById("destinationComments").value.trim(),
+        dc_with: document.getElementById("dcWith").value,
+        hh_agency_id: (Number.isFinite(hhId) ? hhId : null),
+        hh_preferred: (hhId && PREFERRED_HH.has(hhId)) ? 1 : 0,
+        hh_comments: document.getElementById("hhComments").value.trim(),
+        dme_comments: document.getElementById("dmeComments").value.trim(),
+        pcp_freetext: document.getElementById("pcpFreetext").value.trim(),
+        coordinate_caregiver: document.getElementById("coordinateCaregiver").checked ? 1 : 0,
+        caregiver_name: document.getElementById("caregiverName").value.trim(),
+        caregiver_number: document.getElementById("caregiverNumber").value.trim(),
+        apealling_dc: document.getElementById("appealingDc").checked ? 1 : 0,
+        appeal_comments: document.getElementById("appealComments").value.trim(),
+        hh_carecompare_ccn: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.ccn) || "") : "",
+        hh_carecompare_name: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.name) || "") : "",
+        hh_carecompare_dba: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.dba) || "") : "",
+        hh_carecompare_city: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.city) || "") : "",
+        hh_carecompare_state: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.state) || "") : "",
+        hh_carecompare_zip: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.zip) || "") : "",
+        hh_carecompare_county: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.county) || "") : ""
+      };
+
+      const res = await fetch("/api/sensys/admission-dc-submissions/upsert", {
+        method:"POST",
+        headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()),
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if(!res.ok || !data.ok) throw new Error((data && data.detail) ? data.detail : "Save failed.");
+
+      const dcId = data.id ? Number(data.id) : null;
+      const servicesIds = Array.from(SELECTED).map(x => Number(x)).filter(n => Number.isFinite(n) && n > 0);
+      if(dcId){
+        await fetch("/api/sensys/dc-submission-services/set", {
+          method:"POST",
+          headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()),
+          body: JSON.stringify({ admission_dc_submission_id: dcId, services_ids: servicesIds })
+        });
+      }
+
+      showMsg("Discharge plan saved.");
+      await load();
+    }catch(e){
+      showMsg(e.message || String(e));
+    }
+  }
+
+  wireYesNo(confirmChips, document.getElementById("dcConfirmed"));
+  wireYesNo(urgentChips, document.getElementById("dcUrgent"), () => {
+    const isOn = document.getElementById("dcUrgent").checked;
+    document.getElementById("urgentDetails").classList.toggle("hidden", !isOn);
+  });
+  wireChipGroup(dispoChips, document.getElementById("dcDestination"));
+  wireChipGroup(withChips, document.getElementById("dcWith"));
+  wireYesNo(caregiverChips, document.getElementById("coordinateCaregiver"), () => {
+    const isOn = document.getElementById("coordinateCaregiver").checked;
+    document.getElementById("caregiverDetails").classList.toggle("hidden", !isOn);
+  });
+  wireYesNo(appealChips, document.getElementById("appealingDc"), () => {
+    const isOn = document.getElementById("appealingDc").checked;
+    document.getElementById("appealDetails").classList.toggle("hidden", !isOn);
+  });
+
+  document.getElementById("toggleUrgentDetails").addEventListener("click", () => {
+    document.getElementById("urgentDetails").classList.toggle("hidden");
+  });
+  function syncFacilityDetails(){
+    const val = document.getElementById("dcDestination").value;
+    const showFacility = ["ILF","ALF","LTC","Hospital"].includes(val);
+    const showOther = val === "Other";
+    const wrap = document.getElementById("facilityDetails");
+    const label = document.getElementById("facilityDetailsLabel");
+    const input = document.getElementById("destinationComments");
+    if(showFacility || showOther){
+      wrap.classList.remove("hidden");
+      label.textContent = showOther ? "Details" : "Facility Details";
+      input.placeholder = showOther ? "Details..." : "Facility name...";
+    }else{
+      wrap.classList.add("hidden");
+    }
+  }
+
+  function syncExpandedFromData(){
+    const urgentText = (document.getElementById("urgentComments").value || "").trim();
+    const hhText = (document.getElementById("hhComments").value || "").trim();
+    const dmeText = (document.getElementById("dmeComments").value || "").trim();
+    const appealText = (document.getElementById("appealComments").value || "").trim();
+    const caregiverName = (document.getElementById("caregiverName").value || "").trim();
+    const caregiverNumber = (document.getElementById("caregiverNumber").value || "").trim();
+
+    document.getElementById("urgentDetails").classList.toggle("hidden", !(document.getElementById("dcUrgent").checked || urgentText));
+    document.getElementById("hhDetails").classList.toggle("hidden", !hhText);
+    document.getElementById("dmeDetails").classList.toggle("hidden", !dmeText);
+    document.getElementById("appealDetails").classList.toggle("hidden", !(document.getElementById("appealingDc").checked || appealText));
+    document.getElementById("caregiverDetails").classList.toggle("hidden", !(document.getElementById("coordinateCaregiver").checked || caregiverName || caregiverNumber));
+    syncFacilityDetails();
+  }
+
+  document.getElementById("toggleFacilityDetails").addEventListener("click", () => {
+    document.getElementById("facilityDetails").classList.toggle("hidden");
+  });
+  document.getElementById("toggleOtherAgency").addEventListener("click", () => {
+    document.getElementById("otherAgencyWrap").classList.toggle("hidden");
+  });
+  document.getElementById("toggleHhDetails").addEventListener("click", () => {
+    document.getElementById("hhDetails").classList.toggle("hidden");
+  });
+  document.getElementById("toggleDmeDetails").addEventListener("click", () => {
+    document.getElementById("dmeDetails").classList.toggle("hidden");
+  });
+
+  document.getElementById("careCompareOpenBtn").addEventListener("click", openCareCompareModal);
+  document.getElementById("careCompareCloseBtn").addEventListener("click", closeCareCompareModal);
+  document.getElementById("ccCancelBtn").addEventListener("click", closeCareCompareModal);
+  document.getElementById("ccSearchBtn").addEventListener("click", runCareCompareSearch);
+  ["cc_q","cc_county","cc_city","cc_state","cc_zip","cc_ccn"].forEach(id=>{
+    document.getElementById(id).addEventListener("keydown", (e)=>{
+      if(e.key === "Enter" && !document.getElementById("ccSearchBtn").disabled) runCareCompareSearch();
+    });
+  });
+
+  document.getElementById("saveBtn").addEventListener("click", save);
+  document.getElementById("closeBtn").addEventListener("click", () => {
+    window.location.href = "/sensys/snf-user/patient-search";
+  });
+
+  document.addEventListener("click", (e) => {
+    if(!hhServiceDropdown.contains(e.target) && e.target !== hhServiceSearch){
+      renderSearchList(hhServiceDropdown, [], () => {});
+    }
+    if(!dmeServiceDropdown.contains(e.target) && e.target !== dmeServiceSearch){
+      renderSearchList(dmeServiceDropdown, [], () => {});
+    }
+    if(!hhAgencyDropdown.contains(e.target) && e.target !== hhAgencySearch){
+      renderSearchList(hhAgencyDropdown, [], () => {});
+    }
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>
