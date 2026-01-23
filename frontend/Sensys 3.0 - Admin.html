@@ -3682,12 +3682,17 @@
       return true;
     });
 
+    const roleMap = new Map((rolesMaster || []).map(r => [String(r.role_key || ""), String(r.role_name || "")]));
+
     items.forEach(u => {
       const row = document.createElement("div");
       row.className = "user-row";
       row.onclick = () => selectUser(u);
 
-      const roles = (u.role_keys || []).map(r => String(r)).filter(Boolean);
+      const roles = (u.role_keys || []).map(r => {
+        const key = String(r);
+        return roleMap.get(key) || key;
+      }).filter(Boolean);
       const lastLogin = u.last_login_at
         ? new Date(u.last_login_at.replace(" ", "T") + "Z").toLocaleString()
         : "-";
