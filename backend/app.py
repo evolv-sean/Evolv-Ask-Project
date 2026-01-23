@@ -453,8 +453,10 @@ SENSYS_LOGIN_HTML = FRONTEND_DIR / "Sensys 3.0 - Login.html"
 SENSYS_SNF_SW_HTML = FRONTEND_DIR / "Sensys 3.0 - Developer.html"
 SENSYS_SNF_USER_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Landing.html"
 SENSYS_SNF_USER_CALENDAR_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Calendar.html"
+SENSYS_SNF_USER_PATIENT_LIST_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Patient List.html"
 SENSYS_SNF_USER_PATIENT_SEARCH_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Patient Search.html"
 SENSYS_SNF_USER_DC_SUBMISSION_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - DC Submission.html"
+SENSYS_SNF_USER_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Admission Details.html"
 SENSYS_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - Developer - Admission Details.html"
 SENSYS_HOME_HEALTH_HTML = FRONTEND_DIR / "Sensys 3.0 - Home Health.html"
 SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - Home Health - Admission Details.html"
@@ -27485,6 +27487,10 @@ async def sensys_snf_user_ui():
 async def sensys_snf_user_calendar_ui():
     return HTMLResponse(content=read_html(SENSYS_SNF_USER_CALENDAR_HTML))
 
+@app.get("/sensys/snf-user/patient-list", response_class=HTMLResponse)
+async def sensys_snf_user_patient_list_ui():
+    return HTMLResponse(content=read_html(SENSYS_SNF_USER_PATIENT_LIST_HTML))
+
 @app.get("/sensys/snf-user/patient-search", response_class=HTMLResponse)
 async def sensys_snf_user_patient_search_ui():
     return HTMLResponse(content=read_html(SENSYS_SNF_USER_PATIENT_SEARCH_HTML))
@@ -27492,6 +27498,10 @@ async def sensys_snf_user_patient_search_ui():
 @app.get("/sensys/snf-user/discharge-plan", response_class=HTMLResponse)
 async def sensys_snf_user_dc_submission_ui():
     return HTMLResponse(content=read_html(SENSYS_SNF_USER_DC_SUBMISSION_HTML))
+
+@app.get("/sensys/snf-user/admission-details", response_class=HTMLResponse)
+async def sensys_snf_user_admission_details_ui():
+    return HTMLResponse(content=read_html(SENSYS_SNF_USER_ADMISSION_DETAILS_HTML))
 
 
 @app.get("/sensys/admission-details", response_class=HTMLResponse)
