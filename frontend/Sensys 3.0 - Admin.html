@@ -2917,15 +2917,40 @@
   document.addEventListener("dragover", (e) => e.preventDefault());
   document.addEventListener("drop", (e) => e.preventDefault());
 
-  function openServiceModal(service){
+  function applyServiceModal(service){
     $("svc_id").value = service ? String(service.id || "") : "";
     $("selServiceId").textContent = service && service.id ? String(service.id) : "-";
     $("svc_name").value = service ? (service.name || "") : "";
-    $("svc_type").value = service ? (service.service_type || "dme") : "dme";
+
+    let stVal = "";
+    if(service){
+      if(service.service_type_id){
+        stVal = String(service.service_type_id);
+      }else{
+        const code = String(service.service_type_code || service.service_type || "").toLowerCase();
+        const match = serviceTypesCache.find(t => String(t.code || "").toLowerCase() === code);
+        if(match) stVal = String(match.id);
+      }
+    }else{
+      const dme = serviceTypesCache.find(t => String(t.code || "").toLowerCase() === "dme");
+      if(dme) stVal = String(dme.id);
+    }
+
+    $("svc_type").value = stVal || "";
     $("svc_dropdown").value = service ? String(service.dropdown ? 1 : 0) : "1";
     $("svc_reminder_id").value = service ? (service.reminder_id || "") : "";
     setMsg($("svcMsg"), "", true);
     $("serviceModalBackdrop").classList.add("on");
+  }
+
+  function openServiceModal(service){
+    if(!serviceTypesCache.length){
+      refreshServiceTypes()
+        .then(() => applyServiceModal(service))
+        .catch(() => applyServiceModal(service));
+      return;
+    }
+    applyServiceModal(service);
   }
   function closeServiceModal(){ $("serviceModalBackdrop").classList.remove("on"); }
   $("closeServiceModal").onclick = closeServiceModal;
