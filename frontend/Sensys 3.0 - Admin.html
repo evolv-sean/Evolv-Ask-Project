@@ -218,6 +218,61 @@
       font-size:12px;
       color:#0f172a;
     }
+    .user-list{
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      margin-top:6px;
+    }
+    .user-row{
+      background:#fff;
+      border:1px solid rgba(168,230,207,.55);
+      border-radius:14px;
+      padding:14px 16px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+      cursor:pointer;
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .user-row:hover{
+      border-color:rgba(168,230,207,.95);
+      box-shadow:0 10px 18px rgba(13,59,102,.10);
+      transform: translateY(-1px);
+    }
+    .user-main{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      min-width:0;
+    }
+    .user-name{
+      font-size:14px;
+      font-weight:900;
+      color:var(--navy);
+    }
+    .user-meta{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      font-size:12px;
+      color:var(--muted);
+    }
+    .user-pill{
+      padding:6px 10px;
+      border-radius:999px;
+      background:rgba(168,230,207,.35);
+      color:var(--navy);
+      font-weight:800;
+      font-size:11px;
+    }
+    .user-actions{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      opacity:.7;
+    }
     .toast.ok{color:#065f46}
     .toast.err{color:#991b1b}
     .mini{
@@ -667,22 +722,7 @@
             </div>
           </div>
           <div class="body">
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Login</th>
-                    <th>Email</th>
-                    <th>Name</th>
-                    <th>Active</th>
-                    <th>Roles</th>
-                    <th>Last Login</th>
-                    <th>Locked</th>
-                  </tr>
-                </thead>
-                <tbody id="tbody"></tbody>
-              </table>
-            </div>
+            <div id="usersList" class="user-list"></div>
             <div id="listMsg" class="toast"></div>
           </div>
         </div>
@@ -3609,8 +3649,8 @@
   }
 
   function renderUsersTable(){
-    const tbody = $("tbody");
-    tbody.innerHTML = "";
+    const list = $("usersList");
+    list.innerHTML = "";
 
     const q = ($("userSearch")?.value || "").trim().toLowerCase();
     const roleFilter = (userFilterState.role || "").trim().toLowerCase();
@@ -3643,18 +3683,31 @@
     });
 
     items.forEach(u => {
-      const tr = document.createElement("tr");
-      tr.style.cursor = "pointer";
-      tr.onclick = () => selectUser(u);
+      const row = document.createElement("div");
+      row.className = "user-row";
+      row.onclick = () => selectUser(u);
 
-      const roles = (u.role_keys || []).join(", ");
-
+      const roles = (u.role_keys || []).map(r => String(r)).filter(Boolean);
       const lastLogin = u.last_login_at
         ? new Date(u.last_login_at.replace(" ", "T") + "Z").toLocaleString()
         : "-";
+      const activeLabel = u.is_active ? "Active" : "Inactive";
+      const lockedLabel = u.account_locked ? "Locked" : "Unlocked";
 
-      tr.innerHTML = `
-        <td style="width:110px;">
+      row.innerHTML = `
+        <div class="user-main">
+          <div class="user-name">${escapeHtml(u.display_name || u.email || "User")}</div>
+          <div class="user-meta">
+            <span class="user-pill">${escapeHtml(u.email || "no-email")}</span>
+            <span class="user-pill">${activeLabel}</span>
+            <span class="user-pill">${lockedLabel}</span>
+          </div>
+          <div class="user-meta">
+            <span><b>Roles:</b> ${escapeHtml(roles.join(", ") || "—")}</span>
+            <span><b>Last login:</b> ${escapeHtml(lastLogin)}</span>
+          </div>
+        </div>
+        <div class="user-actions">
           <button class="iconbtn sm"
                   title="Login As"
                   aria-label="Login As"
@@ -3727,16 +3780,10 @@
               </g>
             </g></svg>
           </button>
-        </td>
-        <td><b>${escapeHtml(u.email || "")}</b></td>
-        <td>${escapeHtml(u.display_name || "")}</td>
-        <td>${u.is_active ? "Yes" : "No"}</td>
-        <td>${escapeHtml(roles)}</td>
-        <td>${escapeHtml(lastLogin)}</td>
-        <td>${u.account_locked ? "Yes" : "No"}</td>
+        </div>
       `;
 
-      tbody.appendChild(tr);
+      list.appendChild(row);
     });
   }
 
@@ -6537,6 +6584,7 @@
 
   $("saveAdmission").onclick = async () => {
     try{
+      const nextAgencyRaw = ($("a_next_agency_id").value || "").trim();
       const payload = {
         id: selectedAdmissionId,
         patient_id: parseInt($("a_patient_id").value, 10),
