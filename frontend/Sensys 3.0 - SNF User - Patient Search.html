@@ -150,7 +150,7 @@
       </svg>
     </div>
 
-    <img class="sensys-logo" src="Logos/Sensys S blue2.svg" alt="Sensys" />
+    <img class="sensys-logo" src="/static/images/Sensys-S-blue2.svg" alt="Sensys" />
 
     <div>
       <div class="kicker">Enter Discharge Plan</div>
@@ -184,21 +184,26 @@
     return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   }
 
-  function showDropdown(items){
-    if(!items.length){
+  function showDropdown(items, showEmpty){
+    if(!items.length && !showEmpty){
       dropdown.style.display = "none";
       dropdown.innerHTML = "";
       return;
     }
-    dropdown.innerHTML = items.map(r => `
-      <div class="row" data-id="${esc(r.id)}">
-        <div class="name">${esc(r.patient_name || "Patient")}</div>
-        <div class="dob">DOB: ${esc(r.patient_dob || "—")}</div>
-      </div>
-    `).join("");
+    dropdown.innerHTML = items.length
+      ? items.map(r => `
+          <div class="row" data-id="${esc(r.id)}">
+            <div class="name">${esc(r.patient_name || "Patient")}</div>
+            <div class="dob">DOB: ${esc(r.patient_dob || "—")}</div>
+          </div>
+        `).join("")
+      : `<div class="row" style="cursor:default;">
+          <div class="name" style="color:#6b7280;">No patients found</div>
+          <div class="dob">Try a different spelling.</div>
+        </div>`;
     dropdown.style.display = "block";
 
-    dropdown.querySelectorAll(".row").forEach(row => {
+    dropdown.querySelectorAll(".row[data-id]").forEach(row => {
       row.addEventListener("click", () => {
         const id = row.getAttribute("data-id");
         if(id){
@@ -218,7 +223,7 @@
       const hay = `${r.patient_name || ""}`.toLowerCase();
       return hay.includes(q);
     });
-    showDropdown(matches.slice(0, 30));
+    showDropdown(matches.slice(0, 30), true);
   }
 
   async function load(){
