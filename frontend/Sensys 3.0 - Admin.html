@@ -262,9 +262,10 @@
     .user-pill{
       padding:6px 10px;
       border-radius:999px;
-      background:rgba(168,230,207,.35);
-      color:var(--navy);
-      font-weight:800;
+      background:transparent;
+      border:1px solid rgba(168,230,207,.85);
+      color:var(--muted);
+      font-weight:600;
       font-size:11px;
     }
     .user-actions{
@@ -440,6 +441,14 @@
      stroke-linecap:round;
      stroke-linejoin:round;
      stroke-width:5.5px;
+   }
+   .iconbtn.n-named svg{
+     width:18px;
+     height:18px;
+   }
+   .iconbtn.n-named svg .cls-1{
+     stroke:currentColor;
+     stroke-width:4.5px;
    }
    .iconbtn:hover{ box-shadow: 0 0 0 3px rgba(168,230,207,.45); border-color: rgba(168,230,207,.95); }
    .iconbtn.sm{
@@ -1630,43 +1639,6 @@
 
       <div style="height:14px"></div>
 
-      <div class="label">Agencies (multi-select)</div>
-      <div class="checkwrap">
-        <input class="checksearch" id="agencySearch" placeholder="Search agencies." />
-        <div class="checklist" id="agencyChecklist"></div>
-      </div>
-
-      <div style="height:14px"></div>
-
-      <!-- ✅ NEW: Notification Preferences -->
-      <div class="label">Notification Preferences</div>
-      <div class="notif-pref-wrap">
-        <div class="notif-pref-top">
-          <div class="hint">Assign which notifications this user receives + delivery methods.</div>
-          <div class="notif-pref-addrow">
-            <select class="select" id="userNotifSelect" style="width:min(360px, 70vw);">
-              <option value="">Loading notifications…</option>
-            </select>
-
-            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;font-weight:800;">
-              <input type="checkbox" id="userNotifEmail" /> Email
-            </label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;font-weight:800;">
-              <input type="checkbox" id="userNotifSms" /> SMS
-            </label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;font-weight:800;">
-              <input type="checkbox" id="userNotifDash" checked /> Dashboard
-            </label>
-
-            <button class="btn" id="addUserNotifBtn" style="padding:10px 12px;">+ Add</button>
-          </div>
-        </div>
-
-        <div class="notif-pref-list" id="userNotifList"></div>
-      </div>
-
-      <div style="height:14px"></div>
-
       <div class="stack">
         <button class="btn primary" id="saveUser">Save User</button>
       </div>
@@ -2036,12 +2008,12 @@
       <div style="height:10px"></div>
 
       <div class="label">Admit Date</div>
-      <input class="input" id="a_admit_date" placeholder="YYYY-MM-DD" />
+      <input class="input" id="a_admit_date" type="date" placeholder="YYYY-MM-DD" />
 
       <div style="height:10px"></div>
 
       <div class="label">DC Date</div>
-      <input class="input" id="a_dc_date" placeholder="YYYY-MM-DD" />
+      <input class="input" id="a_dc_date" type="date" placeholder="YYYY-MM-DD" />
 
       <div style="height:10px"></div>
 
@@ -2924,6 +2896,74 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="userAgenciesModalBackdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="userAgenciesModalTitle">
+    <div class="modal-hd">
+      <div>
+        <h3 class="modal-title" id="userAgenciesModalTitle">User Agencies</h3>
+        <div class="modal-sub">User: <b id="userAgenciesName">—</b></div>
+      </div>
+      <button class="xbtn" id="closeUserAgenciesModal" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="label">Agencies (multi-select)</div>
+      <div class="checkwrap">
+        <input class="checksearch" id="agencySearch" placeholder="Search agencies." />
+        <div class="checklist" id="agencyChecklist"></div>
+      </div>
+      <div style="height:14px"></div>
+      <div class="stack">
+        <button class="btn primary" id="saveUserAgencies">Save Agencies</button>
+      </div>
+      <div id="userAgenciesMsg" class="toast"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="userNotifsModalBackdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="userNotifsModalTitle">
+    <div class="modal-hd">
+      <div>
+        <h3 class="modal-title" id="userNotifsModalTitle">User Notifications</h3>
+        <div class="modal-sub">User: <b id="userNotifsName">—</b></div>
+      </div>
+      <button class="xbtn" id="closeUserNotifsModal" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="label">Notification Preferences</div>
+      <div class="notif-pref-wrap">
+        <div class="notif-pref-top">
+          <div class="hint">Assign which notifications this user receives + delivery methods.</div>
+          <div class="notif-pref-addrow">
+            <select class="select" id="userNotifSelect" style="width:min(360px, 70vw);">
+              <option value="">Loading notifications…</option>
+            </select>
+
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;font-weight:800;">
+              <input type="checkbox" id="userNotifEmail" /> Email
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;font-weight:800;">
+              <input type="checkbox" id="userNotifSms" /> SMS
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;font-weight:800;">
+              <input type="checkbox" id="userNotifDash" checked /> Dashboard
+            </label>
+
+            <button class="btn" id="addUserNotifBtn" style="padding:10px 12px;">+ Add</button>
+          </div>
+        </div>
+
+        <div class="notif-pref-list" id="userNotifList"></div>
+      </div>
+      <div style="height:14px"></div>
+      <div class="stack">
+        <button class="btn primary" id="saveUserNotifs">Save Notifications</button>
+      </div>
+      <div id="userNotifsMsg" class="toast"></div>
+    </div>
+  </div>
+</div>
+
 <!-- =========================
      Survey Preferences Modal (Agency)
 ========================= -->
@@ -3121,6 +3161,12 @@
   $("userModalBackdrop").addEventListener("click", (e) => {
     if(e.target.id === "userModalBackdrop") closeUserModal();
   });
+  $("userAgenciesModalBackdrop").addEventListener("click", (e) => {
+    if(e.target.id === "userAgenciesModalBackdrop") closeUserAgenciesModal();
+  });
+  $("userNotifsModalBackdrop").addEventListener("click", (e) => {
+    if(e.target.id === "userNotifsModalBackdrop") closeUserNotifsModal();
+  });
   $("agencyModalBackdrop").addEventListener("click", (e) => {
     if(e.target.id === "agencyModalBackdrop") closeAgencyModal();
   });
@@ -3141,6 +3187,8 @@
 
   // Close buttons
   $("closeUserModal").onclick = closeUserModal;
+  $("closeUserAgenciesModal").onclick = closeUserAgenciesModal;
+  $("closeUserNotifsModal").onclick = closeUserNotifsModal;
   $("closeAgencyModal").onclick = closeAgencyModal;
   $("closeUsersFilterModal").onclick = closeUsersFilterModal;
   $("closeUserLoginLogModal").onclick = closeUserLoginLogModal;
@@ -3623,6 +3671,46 @@
     openUserModal();
   }
 
+  async function openUserAgenciesModal(userId){
+    const u = (usersCache || []).find(x => Number(x.user_id) === Number(userId));
+    if(!u) return;
+    selectedUserId = u.user_id;
+    $("userAgenciesName").textContent = u.display_name || u.email || "-";
+    selectedAgencyIds = new Set(u.agency_ids || []);
+
+    if(!agenciesMaster.length){
+      const ag = await apiGet("/api/sensys/admin/agencies");
+      agenciesMaster = ag.agencies || [];
+    }
+    renderAgencyChecklist();
+    setMsg($("userAgenciesMsg"), "", true);
+    $("userAgenciesModalBackdrop").classList.add("on");
+  }
+
+  function closeUserAgenciesModal(){ $("userAgenciesModalBackdrop").classList.remove("on"); }
+
+  async function openUserNotifsModal(userId){
+    const u = (usersCache || []).find(x => Number(x.user_id) === Number(userId));
+    if(!u) return;
+    selectedUserId = u.user_id;
+    $("userNotifsName").textContent = u.display_name || u.email || "-";
+
+    selectedUserNotifPrefs = Array.isArray(u.notification_prefs) ? (u.notification_prefs || []).map(p => ({
+      notif_key: p.notif_key,
+      deliver_email: Number(p.deliver_email ?? p.email ?? 0),
+      deliver_sms: Number(p.deliver_sms ?? p.sms ?? 0),
+      deliver_dashboard: Number(p.deliver_dashboard ?? p.dashboard ?? 0),
+    })) : [];
+
+    await ensureNotificationsMasterLoaded();
+    renderUserNotifSelectOptions();
+    renderUserNotifPrefs();
+    setMsg($("userNotifsMsg"), "", true);
+    $("userNotifsModalBackdrop").classList.add("on");
+  }
+
+  function closeUserNotifsModal(){ $("userNotifsModalBackdrop").classList.remove("on"); }
+
   function renderEsignLinkChecklist(){
     const wrap = $("esignLinkChecklist");
     if(!wrap) return;
@@ -3737,6 +3825,50 @@
         </td>
         <td style="text-align:right;">
           <div class="user-actions">
+            <button class="iconbtn sm"
+                    title="User Linking"
+                    aria-label="User Linking"
+                    onclick="event.stopPropagation(); openUserAgenciesModal(${Number(u.user_id)})">
+              <svg viewBox="0 0 78.99 74.57" aria-hidden="true"><g>
+                <g>
+                  <g>
+                    <g>
+                      <line class="cls-1" x1="58.08" y1="55.98" x2="70.42" y2="43.64" />
+                      <polyline class="cls-1" points="70.79 52.6 70.79 43.27 61.45 43.27" />
+                    </g>
+                    <g>
+                      <line class="cls-1" x1="6.96" y1="43.27" x2="19.3" y2="55.6" />
+                      <polyline class="cls-1" points="10.33 55.97 19.67 55.98 19.67 46.64" />
+                    </g>
+                  </g>
+                  <g>
+                    <line class="cls-1" x1="49.04" y1="14.51" x2="31.59" y2="14.51" />
+                    <polyline class="cls-1" points="37.67 7.91 31.07 14.51 37.67 21.1" />
+                  </g>
+                </g>
+                <g>
+                  <path class="cls-1" d="M77.6,33.6v-9.5s-4.36-3.71-13.15-3.71-13.12,3.68-13.15,3.71h0s0,9.5,0,9.5h26.3Z" />
+                  <path class="cls-1" d="M70.25,7.52c0,3.89-2.56,6.94-5.72,6.94s-5.72-3.06-5.72-6.94,2.56-6.13,5.72-6.13,5.72,2.24,5.72,6.13Z" />
+                </g>
+                <g>
+                  <path class="cls-1" d="M52.6,73.18v-9.5s-4.36-3.71-13.15-3.71-13.12,3.68-13.15,3.71h0v9.5h26.3Z" />
+                  <path class="cls-1" d="M45.25,47.1c0,3.89-2.56,6.94-5.72,6.94s-5.72-3.06-5.72-6.94,2.56-6.13,5.72-6.13,5.72,2.24,5.72,6.13Z" />
+                </g>
+                <g>
+                  <path class="cls-1" d="M27.69,33.6v-9.5s-4.36-3.71-13.15-3.71-13.12,3.68-13.15,3.71h0v9.5h26.3Z" />
+                  <path class="cls-1" d="M20.34,7.52c0,3.89-2.56,6.94-5.72,6.94s-5.72-3.06-5.72-6.94S11.46,1.39,14.62,1.39s5.72,2.24,5.72,6.13Z" />
+                </g>
+              </g></svg>
+            </button>
+            <button class="iconbtn sm n-named"
+                    title="Notifications"
+                    aria-label="Notifications"
+                    onclick="event.stopPropagation(); openUserNotifsModal(${Number(u.user_id)})">
+              <svg viewBox="0 0 216.18 263.34" aria-hidden="true"><g>
+                <path class="cls-1" d="M211.75,204.56l-13.8-20.09c-8.42-12.26-12.93-26.79-12.93-41.66v-28.8c0-32.92-20.67-61-49.75-71.98-3.98-1.5-6.61-5.3-6.61-9.55v-9.15c0-11.36-9.21-20.57-20.57-20.57h0c-11.36,0-20.57,9.21-20.57,20.57v9.15c0,4.25-2.64,8.05-6.61,9.55-29.07,10.98-49.75,39.07-49.75,71.98v28.8c0,14.88-4.51,29.4-12.93,41.66l-13.8,20.09c-4.33,6.31.18,14.89,7.84,14.89h191.63c7.65,0,12.17-8.58,7.84-14.89Z" />
+                <path class="cls-1" d="M78.75,238.56c3.69,12.73,15.43,22.03,29.34,22.03s25.66-9.3,29.34-22.03" />
+              </g></svg>
+            </button>
             <button class="iconbtn sm"
                     title="Login As"
                     aria-label="Login As"
@@ -4096,6 +4228,39 @@
       closeUserModal();
     }catch(e){
       setMsg($("editMsg"), String(e.message || e), false);
+    }
+  };
+
+  $("saveUserAgencies").onclick = async () => {
+    try{
+      await apiPost("/api/sensys/admin/users/set-agencies", {
+        user_id: selectedUserId,
+        agency_ids: Array.from(selectedAgencyIds)
+      });
+      setMsg($("userAgenciesMsg"), "Saved.", true);
+      await refreshAll();
+      closeUserAgenciesModal();
+    }catch(e){
+      setMsg($("userAgenciesMsg"), String(e.message || e), false);
+    }
+  };
+
+  $("saveUserNotifs").onclick = async () => {
+    try{
+      await apiPost("/api/sensys/admin/users/set-notification-prefs", {
+        user_id: selectedUserId,
+        prefs: (selectedUserNotifPrefs || []).map(p => ({
+          notif_key: p.notif_key,
+          deliver_email: Number(p.deliver_email ?? p.email ?? 0),
+          deliver_sms: Number(p.deliver_sms ?? p.sms ?? 0),
+          deliver_dashboard: Number(p.deliver_dashboard ?? p.dashboard ?? 0),
+        }))
+      });
+      setMsg($("userNotifsMsg"), "Saved.", true);
+      await refreshAll();
+      closeUserNotifsModal();
+    }catch(e){
+      setMsg($("userNotifsMsg"), String(e.message || e), false);
     }
   };
 
