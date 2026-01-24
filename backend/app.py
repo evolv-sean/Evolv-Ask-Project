@@ -3970,6 +3970,8 @@ def init_db():
     cols = [r["name"] for r in conn.execute("PRAGMA table_info(sensys_services)").fetchall()]
     if "service_type_id" not in cols:
         conn.execute("ALTER TABLE sensys_services ADD COLUMN service_type_id INTEGER;")
+    if "aliases" not in cols:
+        conn.execute("ALTER TABLE sensys_services ADD COLUMN aliases TEXT;")
 
     # Backfill service_type_id from existing string service_type values ("dme"/"hh") if present
     # (keeps old column for backward compatibility)
@@ -4130,6 +4132,7 @@ def init_db():
             -- NEW FK-style column used by the UI/admin endpoints
             service_type_id INTEGER,                      -- FK -> sensys_service_type.id
 
+            aliases       TEXT,
             dropdown      INTEGER DEFAULT 1,              -- 1/0
             reminder_id   TEXT,
             deleted_at    TEXT,
@@ -20806,6 +20809,7 @@ class SensysServiceUpsert(BaseModel):
     service_type_id: int          # NEW (FK to sensys_service_type.id)
     dropdown: int = 1             # 1/0
     reminder_id: Optional[str] = None
+    aliases: Optional[str] = None
 
 @app.get("/api/sensys/admin/services")
 def sensys_admin_services(token: str):
@@ -20815,6 +20819,7 @@ def sensys_admin_services(token: str):
         SELECT s.id,
                s.name,
                s.service_type_id,
+               s.aliases,
                st.name AS service_type_name,
                st.code AS service_type_code,
                s.dropdown,
@@ -20855,6 +20860,7 @@ def sensys_admin_services_upsert(payload: SensysServiceUpsert, token: str):
 
     dropdown = 1 if int(payload.dropdown or 0) == 1 else 0
     reminder_id = (payload.reminder_id or "").strip() or None
+    aliases = (payload.aliases or "").strip() or None
 
     if payload.id:
         conn.execute("""
@@ -20864,14 +20870,15 @@ def sensys_admin_services_upsert(payload: SensysServiceUpsert, token: str):
                    service_type = ?,
                    dropdown = ?,
                    reminder_id = ?,
+                   aliases = ?,
                    updated_at = datetime('now')
              WHERE id = ?
-        """, (name, stid, st_code, dropdown, reminder_id, int(payload.id)))
+        """, (name, stid, st_code, dropdown, reminder_id, aliases, int(payload.id)))
     else:
         conn.execute("""
-            INSERT INTO sensys_services (name, service_type_id, service_type, dropdown, reminder_id)
-            VALUES (?, ?, ?, ?, ?)
-        """, (name, stid, st_code, dropdown, reminder_id))
+            INSERT INTO sensys_services (name, service_type_id, service_type, dropdown, reminder_id, aliases)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (name, stid, st_code, dropdown, reminder_id, aliases))
 
     conn.commit()
     return {"ok": True}
@@ -20936,6 +20943,7 @@ async def sensys_admin_services_bulk(token: str, file: UploadFile = File(...)):
 
             dropdown = _to_bool_int(r.get("dropdown"), 1)
             reminder_id = (r.get("reminder_id", "") or "").strip() or None
+            aliases = (r.get("aliases", "") or "").strip() or None
 
             if sid:
                 conn.execute(
@@ -20946,19 +20954,20 @@ async def sensys_admin_services_bulk(token: str, file: UploadFile = File(...)):
                            service_type = ?,              -- keep legacy column updated too
                            dropdown = ?,
                            reminder_id = ?,
+                           aliases = ?,
                            updated_at = datetime('now')
                      WHERE id = ?
                     """,
-                    (name, int(stid), st, int(dropdown), reminder_id, int(sid)),
+                    (name, int(stid), st, int(dropdown), reminder_id, aliases, int(sid)),
                 )
                 updated += 1
             else:
                 conn.execute(
                     """
-                    INSERT INTO sensys_services (name, service_type_id, service_type, dropdown, reminder_id)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO sensys_services (name, service_type_id, service_type, dropdown, reminder_id, aliases)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    (name, int(stid), st, int(dropdown), reminder_id),
+                    (name, int(stid), st, int(dropdown), reminder_id, aliases),
                 )
                 inserted += 1
 
@@ -24977,6 +24986,7 @@ def sensys_services(request: Request):
             s.name,
             s.name AS service_name,                -- keep legacy-friendly key
             s.service_type_id,
+            s.aliases,
             st.name AS service_type_name,
             st.code AS service_type_code,
             COALESCE(st.code, s.service_type) AS service_type,  -- keep legacy key too
@@ -27313,8 +27323,8 @@ def sensys_care_compare_hha_search(
     def add_eq_upper(val: str, col: str):
         vv = (val or "").strip()
         if vv:
-            wh.append(f"UPPER({col}) = ?")
-            params.append(vv.upper())
+            wh.append(f"UPPER({col}) LIKE ?")
+            params.append(f"%{vv.upper()}%")
 
     # Name search hits provider_name OR dba
     if q_merged:
