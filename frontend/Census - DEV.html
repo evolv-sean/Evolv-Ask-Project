@@ -1,0 +1,1380 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Census</title>
+  <style>
+    :root{
+      --navy:#0D3B66;
+      --mint:#A8E6CF;
+      --mint-2: rgba(168,230,207,.35); /* matches Hospital_Discharge */
+      --bg:#F5F7FA;
+      --text:#111827;
+      --muted:#6b7280;
+      --line:#e5e7eb;
+      --card:#ffffff;
+      --shadow:0 10px 28px rgba(0,0,0,.08);
+    }
+
+    /* Matches the mint ring circle used on Hospital_Discharge */
+    .mint-accent{
+      width:10px;
+      height:10px;
+      border-radius:999px;
+      background:var(--mint);
+      box-shadow:0 0 0 4px var(--mint-2);
+      display:inline-block;
+    }
+    
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:var(--text)}
+    .topbar{
+      background:var(--navy);
+      color:#fff;
+      padding:14px 18px;
+      font-weight:900;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
+
+    .topbar-btn{
+      background:transparent;
+      border:1px solid rgba(255,255,255,.28);
+    }
+    .topbar-btn svg{stroke:#fff}
+    .topbar-btn:hover{
+      border-color: rgba(168,230,207,.9);
+      box-shadow: 0 0 0 4px rgba(168,230,207,.25);
+    }
+    .shell{max-width:1320px;margin:0 auto;padding:16px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}
+    .hdr{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+    label{font-size:12px;color:var(--muted);font-weight:800}
+    .ipt{height:38px;border-radius:12px;border:1px solid #d1d5db;padding:0 12px;background:#fff;min-width:260px}
+    .btn{height:38px;border-radius:12px;border:1px solid #d1d5db;background:#fff;padding:0 12px;font-weight:900;cursor:pointer}
+    .btn-primary{background:var(--navy);border-color:var(--navy);color:#fff}
+    .pillrow{display:flex;gap:8px;align-items:center}
+    .pill{border-radius:999px;border:1px solid #d1d5db;background:#fff;padding:8px 12px;font-weight:900;font-size:12px;cursor:pointer}
+    .pill[aria-pressed="true"]{border-color:var(--mint);box-shadow:0 10px 18px rgba(168,230,207,.25)}
+    .split{
+      display:grid;
+      grid-template-columns:420px 1fr;
+      height:calc(100vh - 260px); /* locks panel height under header */
+    }
+    .list{
+      border-right:1px solid var(--line);
+      background:#fff;
+      overflow-y:auto;      /* ✅ left side scrolls */
+      overscroll-behavior: contain;
+    }
+    .item{padding:12px 14px;border-bottom:1px solid #f1f5f9;cursor:pointer}
+    .item:hover{background:#f8fafc}
+    .item.active{outline:2px solid var(--mint);box-shadow:0 10px 18px rgba(168,230,207,.25)}
+    .list::after{
+      content:"";
+      display:block;
+      height:12px;
+    }
+    .title{font-weight:900}
+    .sub{font-size:12px;color:var(--muted);margin-top:3px}
+    .detail{
+      padding:14px 16px;
+      overflow-y:auto;     /* ✅ right side scrolls (page stays fixed) */
+      overscroll-behavior: contain;
+    }
+    .kv{display:grid;grid-template-columns:180px 1fr;gap:8px 12px;font-size:13px}
+    .kv div:nth-child(odd){color:var(--muted);font-weight:900}
+    .divider{height:1px;background:#eef2f7;margin:12px 0}
+    .hint{font-size:12px;color:var(--muted)}
+
+    .rawbox{
+      margin-top:12px;
+      padding:12px;
+      border:1px solid #eef2f7;
+      border-radius:14px;
+      background:#f8fafc;
+      font-size:12px;
+      line-height:1.35;
+      white-space:pre-wrap;
+      word-break:break-word;
+    }
+    .rawlabel{
+      margin-top:12px;
+      font-size:12px;
+      color:var(--muted);
+      font-weight:900;
+    }
+
+    /* ✅ Loading overlay */
+    .loading-overlay{
+      position:fixed; inset:0;
+      background:rgba(245,247,250,.72);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:9999;
+      backdrop-filter: blur(2px);
+    }
+    .loading-box{
+      background:#fff;
+      border:1px solid var(--line);
+      border-radius:18px;
+      box-shadow: var(--shadow);
+      padding:16px 18px;
+      display:flex;
+      gap:12px;
+      align-items:center;
+      min-width: 320px;
+    }
+    .spinner{
+      width:22px; height:22px;
+      border-radius:999px;
+      border:3px solid #d1d5db;
+      border-top-color: var(--navy);
+      animation: spin 0.9s linear infinite;
+      flex:0 0 auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text{
+      font-weight:900;
+      color: var(--text);
+      font-size:13px;
+      line-height:1.2;
+    }
+    .loading-sub{
+      margin-top:3px;
+      font-size:12px;
+      color: var(--muted);
+      font-weight:800;
+    }
+
+    /* ✅ Icon button (matches Evolv template) */
+    .icon-btn{
+      display:inline-flex; align-items:center; justify-content:center;
+      width:42px; height:38px;
+      border-radius:12px;
+      border:1px solid rgba(13,59,102,.22);
+      background:#fff;
+      cursor:pointer;
+      transition: box-shadow .15s ease, border-color .15s ease, transform .15s ease;
+    }
+    .icon-btn svg{width:18px;height:18px;stroke:var(--navy);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+    .icon-btn:hover{border-color: rgba(168,230,207,.9); box-shadow: 0 0 0 4px rgba(168,230,207,.35); transform: translateY(-1px);}
+    .icon-btn:active{transform: translateY(0px)}
+
+    /* ✅ Settings modal (matches Evolv template) */
+    .modal-overlay{
+      position:fixed; inset:0;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      background:rgba(245,247,250,.72);
+      backdrop-filter: blur(2px);
+      z-index:10000;
+      padding:16px;
+    }
+    .modal{
+      width:min(720px, 100%);
+      border-radius:18px;
+      border:1px solid rgba(13,59,102,.14);
+      background:#fff;
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .modal-bar{
+      background: var(--navy);
+      color:#fff;
+      padding:14px 16px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      font-weight:900;
+      letter-spacing:.2px;
+    }
+    .modal-body{padding:14px 16px}
+    .modal-actions{
+      padding:0 16px 16px;
+      display:flex;
+      justify-content:flex-end;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .btn-ghost{background:transparent}
+    .help{margin-top:6px;font-size:12px;color:var(--muted);font-weight:800}
+    
+        .help{margin-top:6px;font-size:12px;color:var(--muted);font-weight:800}
+
+    /* ✅ Success toast (Upload complete) — matches Evolv palette */
+    .toast{
+      position:fixed;
+      right:16px;
+      bottom:16px;
+      width:min(420px, calc(100vw - 32px));
+      background:#fff;
+      border:1px solid rgba(13,59,102,.14);
+      border-radius:18px;
+      box-shadow: var(--shadow);
+      padding:12px 12px;
+      z-index:11000;
+      display:none;
+      transform: translateY(8px);
+      opacity:0;
+      transition: opacity .18s ease, transform .18s ease;
+    }
+    .toast.show{
+      display:block;
+      opacity:1;
+      transform: translateY(0);
+    }
+    .toast-top{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .toast-title{
+      font-weight:900;
+      color: var(--navy);
+      font-size:13px;
+      letter-spacing:.2px;
+    }
+    .toast-sub{
+      margin-top:3px;
+      font-size:12px;
+      color: var(--muted);
+      font-weight:800;
+      line-height:1.35;
+    }
+    .toast-badge{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(168,230,207,.95);
+      background: rgba(168,230,207,.18);
+      color: var(--navy);
+      font-weight:900;
+      font-size:12px;
+      white-space:nowrap;
+      box-shadow: 0 10px 18px rgba(168,230,207,.18);
+    }
+    .toast-dot{
+      width:8px;height:8px;border-radius:999px;background: rgba(77,168,218,.9);
+    }
+    .toast-close{
+      border:1px solid rgba(13,59,102,.18);
+      background:#fff;
+      border-radius:12px;
+      width:38px;height:34px;
+      cursor:pointer;
+    }
+    .toast-close:hover{
+      border-color: rgba(168,230,207,.9);
+      box-shadow: 0 0 0 4px rgba(168,230,207,.25);
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div>Census — Full / New Admissions / Discharges</div>
+
+    <!-- moved settings button into top blue bar -->
+    <button class="icon-btn topbar-btn" id="btnSettings" title="Settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24">
+        <path d="M7 10V8a5 5 0 0 1 10 0v2"></path>
+        <rect x="5" y="10" width="14" height="10" rx="2"></rect>
+      </svg>
+    </button>
+  </div>
+  <!-- ✅ Loading overlay -->
+  <div class="loading-overlay" id="loadingOverlay" aria-live="polite" aria-busy="true">
+    <div class="loading-box">
+      <div class="spinner"></div>
+      <div>
+        <div class="loading-text" id="loadingText">Loading…</div>
+        <div class="loading-sub" id="loadingSub">Please wait</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ Settings modal -->
+  <div class="modal-overlay" id="settingsOverlay" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="modal">
+      <div class="modal-bar">
+        <div id="settingsTitle">Settings</div>
+        <button class="icon-btn" id="btnSettingsClose" title="Close" aria-label="Close">
+          <svg viewBox="0 0 24 24">
+            <path d="M6 6l12 12"></path>
+            <path d="M18 6l-12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <label>Admin Token</label>
+        <input id="adminToken" class="ipt" placeholder="Paste ADMIN_TOKEN (saved in browser)" />
+        <div class="help">Required for upload / view / export.</div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="btnSettingsCancel" type="button">Cancel</button>
+        <button class="btn btn-primary" id="btnSettingsSave" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ Upload PDFs modal (drag + drop, multi-file) -->
+  <div class="modal-overlay" id="uploadOverlay" role="dialog" aria-modal="true" aria-labelledby="uploadTitle">
+    <div class="modal">
+      <div class="modal-bar">
+        <div id="uploadTitle">Upload PDFs</div>
+        <button class="icon-btn" id="btnUploadClose" type="button" title="Close" aria-label="Close">
+          <svg viewBox="0 0 24 24">
+            <path d="M6 6l12 12"></path>
+            <path d="M18 6l-12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div id="dropzone" style="
+          border:1px dashed rgba(13,59,102,.22);
+          border-radius:16px;
+          padding:14px;
+          background: rgba(13,59,102,.03);
+          font-weight:900;
+          color: var(--navy);
+          text-align:center;
+
+          min-height:180px;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          flex-direction:column;
+        ">
+          Drag files here<br/>
+          <span style="font-weight:800;color:var(--muted);font-size:12px;">or use Browse</span>
+        </div>
+
+        <input id="uploadFiles" type="file" accept="application/pdf" multiple style="display:none"/>
+
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;">
+          <button class="btn" id="btnBrowse" type="button">Browse</button>
+          <div class="hint" id="fileCount">No files selected.</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="hint" id="uploadStatusText"></div>
+        <div style="height:10px;border-radius:999px;border:1px solid rgba(13,59,102,.14);overflow:hidden;background:#fff;">
+          <div id="uploadBar" style="height:100%;width:0%;background: var(--mint);"></div>
+        </div>
+
+        <!-- ✅ Actions -->
+        <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;flex-wrap:wrap;margin-top:14px;">
+          <button class="btn" id="btnUploadCancel" type="button">Cancel</button>
+          <button class="btn btn-primary" id="btnUploadProcess" type="button">Process PDFs</button>
+        </div>
+      </div>
+    </div> <!-- closes .modal -->
+  </div> <!-- closes #uploadOverlay -->
+  <!-- ✅ Sensys Census modal (matches Evolv modal template) -->
+  <div class="modal-overlay" id="sensysOverlay" role="dialog" aria-modal="true" aria-labelledby="sensysTitle">
+    <div class="modal" style="width:min(900px, 100%);">
+      <div class="modal-bar">
+        <div>
+          <div id="sensysTitle">Sensys Census</div>
+          <div style="font-size:12px;font-weight:800;opacity:.92;margin-top:2px;">
+            Upload a Sensys CSV and compare to the latest census runs across ALL facilities.
+          </div>
+        </div>
+
+        <button class="icon-btn" id="btnSensysClose" title="Close" aria-label="Close" type="button">
+          <svg viewBox="0 0 24 24">
+            <path d="M6 6l12 12"></path>
+            <path d="M18 6l-12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="help" style="margin-bottom:10px;">
+          System-wide check. Matching is done by normalized First/Last + DOB across the latest run for every facility.
+        </div>
+
+        <!-- Dropzone (inline styling so we don't depend on missing .dropzone CSS) -->
+        <div id="sensysDropzone" style="
+          border:1px dashed rgba(13,59,102,.22);
+          border-radius:16px;
+          padding:14px;
+          background: rgba(13,59,102,.03);
+          font-weight:900;
+          color: var(--navy);
+          text-align:center;
+          min-height:160px;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          flex-direction:column;
+        ">
+          Drag & drop a CSV here<br/>
+          <span style="font-weight:800;color:var(--muted);font-size:12px;">or use Browse</span>
+
+          <div style="margin-top:10px;">
+            <button class="btn" id="btnSensysBrowse" type="button">Browse</button>
+            <input id="sensysFile" type="file" accept=".csv,text/csv" style="display:none" />
+          </div>
+
+          <div class="help" id="sensysFileName" style="margin-top:10px;">No file selected.</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="hint" id="sensysStatusText"></div>
+        <div style="height:10px;border-radius:999px;border:1px solid rgba(13,59,102,.14);overflow:hidden;background:#fff;">
+          <div id="sensysBar" style="height:100%;width:0%;background: var(--mint);"></div>
+        </div>
+
+        <!-- Results -->
+        <div id="sensysResults" style="display:none;margin-top:14px;">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <div class="card" style="padding:12px;min-width:200px;">
+              <div class="help">Missing Admissions</div>
+              <div style="font-size:22px;font-weight:800;" id="sensysMissingAdmissions">0</div>
+              <button class="btn" id="btnSensysExportMissingAdmissions" type="button" style="margin-top:10px;" disabled>Export CSV</button>
+            </div>
+
+            <div class="card" style="padding:12px;min-width:200px;">
+              <div class="help">Missing Discharges</div>
+              <div style="font-size:22px;font-weight:800;" id="sensysMissingDischarges">0</div>
+              <button class="btn" id="btnSensysExportMissingDischarges" type="button" style="margin-top:10px;" disabled>Export CSV</button>
+            </div>
+
+            <div class="card" style="padding:12px;min-width:200px;">
+              <div class="help">Duplicate Admissions (Sensys)</div>
+              <div style="font-size:22px;font-weight:800;" id="sensysDuplicates">0</div>
+              <button class="btn" id="btnSensysExportDuplicates" type="button" style="margin-top:10px;" disabled>Export CSV</button>
+            </div>
+          </div>
+
+          <div class="help" style="margin-top:10px;">
+            Duplicates include “exact” (same First/Last/DOB) and “possible” (same DOB + similar name).
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="btnSensysCancel" type="button">Cancel</button>
+          <button class="btn btn-primary" id="btnSensysProcess" type="button">Process CSV</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ Success toast (shows patient upload count) -->
+  <div class="toast" id="uploadToast" role="status" aria-live="polite">
+    <div class="toast-top">
+      <div style="min-width:0">
+        <div class="toast-title" id="uploadToastTitle">Upload complete</div>
+        <div class="toast-sub" id="uploadToastSub">0 patients uploaded</div>
+      </div>
+
+      <div style="display:flex;gap:10px;align-items:center;flex:0 0 auto;">
+        <div class="toast-badge" id="uploadToastBadge">
+          <span class="toast-dot"></span>
+          <span id="uploadToastBadgeText">Done</span>
+        </div>
+        <button class="toast-close" id="uploadToastClose" aria-label="Close">
+          <svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:var(--navy);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round">
+            <path d="M6 6l12 12"></path>
+            <path d="M18 6l-12 12"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="shell">
+    <div class="card">
+      <div class="hdr">
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+          <div>
+            <label>Facility</label><br/>
+            <select id="facility" class="ipt">
+              <option value="">Select facility…</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Patient</label><br/>
+            <input id="patientSearch" class="ipt" placeholder="Search patient…" />
+          </div>
+
+          <!-- Icon Load (circle arrow) -->
+          <button class="icon-btn" id="btnLoad" type="button" title="Load" aria-label="Load">
+            <svg viewBox="0 0 24 24">
+              <path d="M21 12a9 9 0 1 1-3-6.7"></path>
+              <path d="M21 3v7h-7"></path>
+            </svg>
+          </button>
+
+          <!-- New: All facilities New Admissions export -->
+          <button class="btn btn-primary" id="btnExportAllNewAdmissions" type="button">
+            Export ALL New Admissions (CSV)
+          </button>
+        </div>
+
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn" id="btnOpenUpload" type="button">Upload PDFs</button>
+          <button class="btn" id="btnOpenSensys" type="button">Sensys Census</button>
+        </div>
+      </div>
+
+      <div class="split">
+        <div class="list" id="list"></div>
+        <div class="detail" id="detail">
+          <div class="hint">Select a patient to review details.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ✅ We are now always showing New Admissions on this page
+  const currentView = "new";
+
+  let rows = [];
+  let filteredRows = [];
+  let selectedIndex = -1;
+  let patientSearchTerm = "";
+
+  function setLoading(isLoading, text, sub){
+    const ov = document.getElementById("loadingOverlay");
+    const t = document.getElementById("loadingText");
+    const s = document.getElementById("loadingSub");
+
+    if(t) t.textContent = text || "Loading…";
+    if(s) s.textContent = sub || "Please wait";
+
+    if(ov) ov.style.display = isLoading ? "flex" : "none";
+
+    // Disable key buttons while loading (prevents double submits)
+    const btnLoad = document.getElementById("btnLoad");
+    const btnExportAll = document.getElementById("btnExportAllNewAdmissions");
+    const uploadOpenBtn = document.getElementById("btnOpenUpload");
+
+    if(btnLoad) btnLoad.disabled = isLoading;
+    if(btnExportAll) btnExportAll.disabled = isLoading;
+    if(uploadOpenBtn) uploadOpenBtn.disabled = isLoading;
+  }
+
+  function openSettings(){
+    const ov = document.getElementById("settingsOverlay");
+    if(ov) ov.style.display = "flex";
+    const inp = document.getElementById("adminToken");
+    if(inp){
+      inp.value = getAdminToken();
+      setTimeout(() => inp.focus(), 0);
+    }
+  }
+
+  function closeSettings(){
+    const ov = document.getElementById("settingsOverlay");
+    if(ov) ov.style.display = "none";
+  }
+
+  function getAdminToken(){
+    return (localStorage.getItem("census_admin_token") || "").trim();
+  }
+
+  function setAdminToken(v){
+    localStorage.setItem("census_admin_token", (v || "").trim());
+  }
+
+  async function adminFetch(url, opts){
+    const token = getAdminToken();
+    if(!token){
+      openSettings();
+      throw new Error("Missing admin token");
+    }
+    const headers = Object.assign({}, (opts && opts.headers) ? opts.headers : {}, {
+      "x-admin-token": token
+    });
+    return fetch(url, Object.assign({}, opts || {}, { headers }));
+  }
+
+  // ✅ Always give a readable error if the server returns non-JSON (HTML/proxy/etc)
+  async function readJsonStrict(res, label){
+    const ct = String(res.headers.get("content-type") || "").toLowerCase();
+
+    // If server didn't return JSON, show a snippet of what it DID return
+    if(!ct.includes("application/json")){
+      const text = await res.text().catch(() => "");
+      const snippet = (text || "").slice(0, 300).replace(/\s+/g, " ").trim();
+      throw new Error(`${label} returned non-JSON (${res.status}). ${snippet || "(empty body)"}`);
+    }
+
+    const data = await res.json();
+
+    // If HTTP status is not ok, surface the JSON detail/message
+    if(!res.ok){
+      const msg = (data && (data.detail || data.message)) ? (data.detail || data.message) : "";
+      throw new Error(`${label} failed (${res.status}). ${msg}`);
+    }
+
+    return data;
+  }
+
+  function initTokenUI(){
+    const el = document.getElementById("adminToken");
+    if(el) el.value = getAdminToken();
+
+    const btnOpen = document.getElementById("btnSettings");
+    const btnClose = document.getElementById("btnSettingsClose");
+    const btnCancel = document.getElementById("btnSettingsCancel");
+    const btnSave = document.getElementById("btnSettingsSave");
+    const overlay = document.getElementById("settingsOverlay");
+
+    if(btnOpen) btnOpen.addEventListener("click", openSettings);
+    if(btnClose) btnClose.addEventListener("click", closeSettings);
+    if(btnCancel) btnCancel.addEventListener("click", closeSettings);
+
+    if(btnSave) btnSave.addEventListener("click", () => {
+      const v = (el ? el.value : "").trim();
+      setAdminToken(v);
+      closeSettings();
+    });
+
+    // click outside modal closes
+    if(overlay){
+      overlay.addEventListener("click", (e) => {
+        if(e.target === overlay) closeSettings();
+      });
+    }
+
+    // ESC closes
+    document.addEventListener("keydown", (e) => {
+      if(e.key === "Escape") closeSettings();
+    });
+  }
+
+  async function refreshFacilityDropdown(keepValue){
+    const sel = document.getElementById("facility");
+    if(!sel) return;
+
+    const prev = (keepValue !== undefined) ? keepValue : sel.value;
+
+    const res = await adminFetch(`/admin/census/facilities`);
+    const data = await res.json();
+
+    const facilities = (data.facilities || []).filter(Boolean);
+
+    sel.innerHTML = `<option value="">Select facility…</option>` +
+      facilities.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join("");
+
+    if(prev && facilities.includes(prev)){
+      sel.value = prev;
+    }
+  }
+
+  async function load(){
+    const facility = (document.getElementById("facility").value || "").trim();
+    if(!facility){ alert("Select a facility."); return; }
+
+    const res = await adminFetch(`/admin/census/view?facility_name=${encodeURIComponent(facility)}&view=full`);
+    const data = await res.json();
+
+    rows = (data.rows || []);
+    selectedIndex = -1;
+
+    // apply search after every load
+    applyPatientSearch();
+    renderList();
+    renderDetail();
+  }
+
+  function applyPatientSearch(){
+    const q = (patientSearchTerm || "").trim().toLowerCase();
+    if(!q){
+      filteredRows = rows.slice();
+      return;
+    }
+
+    filteredRows = rows.filter(r => {
+      const first = String(r.first_name || "").toLowerCase();
+      const last  = String(r.last_name || "").toLowerCase();
+      const full1 = `${first} ${last}`.trim();
+      const full2 = `${last} ${first}`.trim();
+      return first.includes(q) || last.includes(q) || full1.includes(q) || full2.includes(q);
+    });
+
+    // reset selection if current selection disappears
+    selectedIndex = -1;
+  }
+
+  function renderList(){
+    const el = document.getElementById("list");
+    el.innerHTML = "";
+
+    if(filteredRows.length === 0){
+      el.innerHTML = `<div class="item"><div class="title">No rows</div><div class="sub">Upload PDFs, then Load.</div></div>`;
+      return;
+    }
+
+    filteredRows.forEach((r, idx) => {
+      const name = `${r.last_name||""}, ${r.first_name||""}`.replace(/^,\s*/,"").trim() || "(No name)";
+      const sub = [
+        r.room_number ? `Room ${r.room_number}` : "",
+        r.admission_date ? `Adm ${r.admission_date}` : "",
+        r.dob ? `DOB ${r.dob}` : ""
+      ].filter(Boolean).join(" • ");
+
+      const div = document.createElement("div");
+      div.className = "item" + (idx===selectedIndex ? " active":"");
+      div.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div style="min-width:0;">
+          <div class="title">${escapeHtml(name)}</div>
+          <div class="sub">${escapeHtml(sub)}</div>
+        </div>
+
+        ${r.is_new ? `
+          <div
+            title="New admission"
+            aria-label="New admission"
+            style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;padding-right:2px;"
+          >
+            <span class="mint-accent"></span>
+          </div>
+        ` : ``}
+      </div>
+    `;
+      div.onclick = () => { selectedIndex = idx; renderList(); renderDetail(); };
+      el.appendChild(div);
+    });
+  }
+
+  function renderDetail(){
+    const el = document.getElementById("detail");
+    if(selectedIndex < 0 || !filteredRows[selectedIndex]){
+      el.innerHTML = `<div class="hint">Select a patient to review details.</div>`;
+      return;
+    }
+
+    const r = filteredRows[selectedIndex];
+
+    el.innerHTML = `
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+        <div>
+          <div class="title" style="font-size:18px">${escapeHtml((r.first_name||"") + " " + (r.last_name||""))}</div>
+          <div class="sub">${escapeHtml(r.facility_name||"")}</div>
+        </div>
+
+        <!-- Export single patient (top-right icon) -->
+        <button class="icon-btn" id="btnExportOne" type="button" title="Export patient CSV" aria-label="Export patient CSV">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 3v10"></path>
+            <path d="M8 9l4 4 4-4"></path>
+            <path d="M4 17v3h16v-3"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="divider"></div>
+      <div class="kv">
+        <div>DOB</div><div>${escapeHtml(r.dob||"")}</div>
+        <div>Phone</div><div>${escapeHtml(r.home_phone||"")}</div>
+        <div>Address</div><div>${escapeHtml([r.address,r.city,r.state,r.zip].filter(Boolean).join(", "))}</div>
+        <div>Room</div><div>${escapeHtml(r.room_number||"")}</div>
+        <div>Admission</div><div>${escapeHtml(r.admission_date||"")}</div>
+        <div>Discharge</div><div>${escapeHtml(r.discharge_date||"")}</div>
+        <div>Insurance</div><div>${escapeHtml(r.primary_ins||"")} ${escapeHtml(r.primary_number||"")}</div>
+        <div>PCP</div><div>${escapeHtml(r.primary_care_phys||"")}</div>
+        <div>Attending</div><div>${escapeHtml(r.attending_phys||"")}</div>
+        <div>Reason</div><div>${escapeHtml(r.reason_admission||"")}</div>
+      </div>
+
+      <div class="rawlabel">Raw Text</div>
+      <div class="rawbox">${escapeHtml(r.raw_text || "")}</div>
+    `;
+
+    // wire export icon AFTER the HTML is injected
+    const btn = document.getElementById("btnExportOne");
+    if(btn){
+      btn.onclick = () => exportSinglePatientCsv(r);
+    }
+  }
+
+  async function exportAllNewAdmissionsCsv(){
+    const res = await adminFetch(`/admin/census/export_all_new_admissions.csv`, { method: "GET" });
+
+    if(!res.ok){
+      const txt = await res.text().catch(()=> "");
+      alert(`Export failed (${res.status}). ${txt}`);
+      return;
+    }
+
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    const objUrl = URL.createObjectURL(blob);
+
+    a.href = objUrl;
+    a.download = `census_all_facilities_new_admissions.csv`;
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objUrl);
+  }
+
+  function exportSinglePatientCsv(r){
+    const headers = [
+      "First Name","Last Name","DOB","Home Phone","Address","City","State","Zip",
+      "Primary Ins","Primary Number","Primary Care Physician","Tag","Facility_Code",
+      "Admission Date","Discharge Date","Room Number","Reason for admission","Attending Physician"
+    ];
+
+    const row = {
+      "First Name": r?.first_name || "",
+      "Last Name": r?.last_name || "",
+      "DOB": r?.dob || "",
+      "Home Phone": r?.home_phone || "",
+      "Address": r?.address || "",
+      "City": r?.city || "",
+      "State": r?.state || "",
+      "Zip": r?.zip || "",
+      "Primary Ins": r?.primary_ins || "",
+      "Primary Number": r?.primary_number || "",
+      "Primary Care Physician": r?.primary_care_phys || "",
+      "Tag": r?.tag || "",
+      "Facility_Code": r?.facility_code || "",
+      "Admission Date": r?.admission_date || "",
+      "Discharge Date": r?.discharge_date || "",
+      "Room Number": r?.room_number || "",
+      "Reason for admission": r?.reason_admission || "",
+      "Attending Physician": r?.attending_phys || ""
+    };
+
+    // build CSV safely (quote fields)
+    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const csv = [
+      headers.join(","),
+      headers.map(h => esc(row[h])).join(",")
+    ].join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    const objUrl = URL.createObjectURL(blob);
+
+    const fname = `${(r?.last_name || "patient")}_${(r?.first_name || "")}`.replace(/\s+/g,"_").replace(/_+$/,"");
+    a.href = objUrl;
+    a.download = `census_patient_${fname || "patient"}.csv`;
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objUrl);
+  }
+
+  // patient search
+  const ps = document.getElementById("patientSearch");
+  if(ps){
+    ps.addEventListener("input", () => {
+      patientSearchTerm = ps.value || "";
+      applyPatientSearch();
+      renderList();
+      renderDetail();
+    });
+  }
+
+  // icon load
+  document.getElementById("btnLoad").onclick = load;
+
+  // export all facilities new admissions
+  document.getElementById("btnExportAllNewAdmissions").onclick = exportAllNewAdmissionsCsv;
+
+  let selectedUploadFiles = [];
+
+  function resetUploadState(){
+    // clear the in-memory list
+    selectedUploadFiles = [];
+
+    // clear the hidden file input so browser doesn't keep "3 files selected"
+    const fileInput = document.getElementById("uploadFiles");
+    if(fileInput) fileInput.value = "";
+
+    // reset UI
+    renderUploadCount();
+    setUploadProgress("", 0);
+  }
+
+  function openUpload(){
+    resetUploadState(); // ✅ always start fresh when opening
+    const ov = document.getElementById("uploadOverlay");
+    if(ov) ov.style.display = "flex";
+  }
+
+  function closeUpload(){
+    resetUploadState(); // ✅ cancel/close resets too
+    const ov = document.getElementById("uploadOverlay");
+    if(ov) ov.style.display = "none";
+  }
+
+  function renderUploadCount(){
+    const el = document.getElementById("fileCount");
+    if(!el) return;
+    const n = selectedUploadFiles.length;
+    el.textContent = n ? `${n} file(s) selected.` : "No files selected.";
+  }
+
+  function setUploadProgress(text, pct){
+    const t = document.getElementById("uploadStatusText");
+    const bar = document.getElementById("uploadBar");
+    if(t) t.textContent = text || "";
+    if(bar) bar.style.width = `${Math.max(0, Math.min(100, pct || 0))}%`;
+  }
+
+  function initUploadModal(){
+    const btnOpen = document.getElementById("btnOpenUpload");
+    const btnClose = document.getElementById("btnUploadClose");
+    const btnCancel = document.getElementById("btnUploadCancel");
+    const btnBrowse = document.getElementById("btnBrowse");
+    const btnProcess = document.getElementById("btnUploadProcess");
+    const overlay = document.getElementById("uploadOverlay");
+    const fileInput = document.getElementById("uploadFiles");
+    const drop = document.getElementById("dropzone");
+
+    if(btnOpen) btnOpen.addEventListener("click", openUpload);
+    if(btnClose) btnClose.addEventListener("click", closeUpload);
+    if(btnCancel) btnCancel.addEventListener("click", closeUpload);
+
+    if(overlay){
+      overlay.addEventListener("click", (e) => {
+        if(e.target === overlay) closeUpload();
+      });
+    }
+
+    if(btnBrowse && fileInput){
+      btnBrowse.addEventListener("click", () => fileInput.click());
+    }
+
+    if(fileInput){
+      fileInput.addEventListener("change", () => {
+        selectedUploadFiles = Array.from(fileInput.files || []);
+        renderUploadCount();
+      });
+    }
+
+    if(drop){
+      drop.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        drop.style.boxShadow = "0 0 0 4px rgba(168,230,207,.35)";
+      });
+      drop.addEventListener("dragleave", () => {
+        drop.style.boxShadow = "";
+      });
+      drop.addEventListener("drop", (e) => {
+        e.preventDefault();
+        drop.style.boxShadow = "";
+        const files = Array.from(e.dataTransfer.files || []).filter(f => f.type === "application/pdf");
+        selectedUploadFiles = files;
+        if(fileInput){
+          // keep the input consistent for the user
+          // (can't programmatically set FileList reliably across all browsers, so we track in selectedUploadFiles)
+        }
+        renderUploadCount();
+      });
+    }
+
+    if(btnProcess){
+      btnProcess.addEventListener("click", async () => {
+        if(!selectedUploadFiles.length){
+          alert("Select one or more PDFs.");
+          return;
+        }
+
+        setLoading(true, "Uploading PDFs…", "Processing and updating census runs");
+
+        try{
+          setUploadProgress("Starting upload…", 2);
+
+          const fd = new FormData();
+          for(const f of selectedUploadFiles) fd.append("files", f);
+
+          const res = await adminFetch("/admin/census/upload", { method:"POST", body: fd });
+          const data = await res.json().catch(() => null);
+
+          if(!res.ok || !data || !data.ok || !data.job_id){
+            alert(`Upload failed (${res.status}). ${(data && (data.detail || data.message)) ? (data.detail || data.message) : ""}`);
+            return;
+          }
+
+          // Poll job status
+          const jobId = data.job_id;
+          setUploadProgress("Processing…", 5);
+
+          const started = Date.now();
+          let finalStatus = null;
+
+          while(true){
+            const stRes = await adminFetch(`/admin/census/upload-status?job_id=${encodeURIComponent(jobId)}&lite=1`);
+            const st = await readJsonStrict(stRes, "Upload status");
+            finalStatus = st;
+
+            const job = st.job || {};
+            const total = Number(job.total_files || 0);
+            const done = Number(job.processed_files || 0);
+            const pct = total ? Math.round((done / total) * 100) : 0;
+
+            setUploadProgress(job.message || job.status || "Working…", Math.max(5, pct));
+
+            if(job.status === "done"){
+              setUploadProgress("Complete.", 100);
+
+              // ✅ fetch full status ONCE (includes files[]) for the toast + counts
+              const fullRes = await adminFetch(`/admin/census/upload-status?job_id=${encodeURIComponent(jobId)}`);
+              const full = await readJsonStrict(fullRes, "Upload status");
+              finalStatus = full;
+
+              // ✅ compute patient upload totals from per-file rows_inserted
+              try{
+                const files = (full && full.files) ? full.files : [];
+                const okFiles = files.filter(f => f.status === "ok").length;
+                const skippedFiles = files.filter(f => f.status === "skipped").length;
+                const errorFiles = files.filter(f => f.status === "error").length;
+
+                const patientsUploaded = files.reduce((sum, f) => {
+                  return sum + Number(f.rows_inserted || 0);
+                }, 0);
+
+                const parts = [
+                  `${patientsUploaded} patient(s) uploaded`,
+                  okFiles ? `${okFiles} file(s) processed` : null,
+                  skippedFiles ? `${skippedFiles} skipped` : null,
+                  errorFiles ? `${errorFiles} error` : null
+                ].filter(Boolean).join(" • ");
+
+                showUploadToast({
+                  title: "Upload complete",
+                  sub: parts,
+                  badgeText: `${patientsUploaded}`,
+                  autoHideMs: 7000
+                });
+              }catch(e){
+                // ignore toast failures
+              }
+
+              await new Promise(r => setTimeout(r, 1200));
+              break;
+            }
+
+            if(job.status === "error"){
+              alert(`Upload job error: ${job.message || "Unknown error"}`);
+              break;
+            }
+
+            await new Promise(r => setTimeout(r, 900));
+            if(Date.now() - started > 15 * 60 * 1000) break;
+          }
+
+          // warn about scanned PDFs we skipped
+          try{
+            const files = (finalStatus && finalStatus.files) ? finalStatus.files : [];
+            const scannedSkipped = files.filter(f =>
+              (f.status === "skipped") && String(f.detail || "").toLowerCase().includes("no extractable text")
+            );
+
+            if(scannedSkipped.length){
+              const names = scannedSkipped.map(f => `• ${f.filename}`).join("\n");
+              alert(
+                `Some PDFs appear to be scanned/image-only and were skipped:\n\n${names}\n\n` +
+                `Tip: Re-export from the EMR as a text PDF if possible.`
+              );
+            }
+          }catch(e){
+            // don't block UX if alert formatting fails
+          }
+
+          // ✅ refresh facility dropdown (new facility names may have been added by this upload)
+          await refreshFacilityDropdown(true);
+
+          // ✅ only close if we actually processed files
+          if(finalStatus && finalStatus.job && Number(finalStatus.job.total_files) > 0){
+            closeUpload();
+          }
+
+        }catch(e){
+          alert(`Upload failed: ${e && e.message ? e.message : e}`);
+        }finally{
+          setLoading(false);
+        }
+      });
+    }
+  }
+
+  // ----------------------------
+  // Sensys Census modal (CSV)
+  // ----------------------------
+  let selectedSensysFile = null;
+  let sensysJobId = null;
+
+  function resetSensysState(){
+    selectedSensysFile = null;
+    sensysJobId = null;
+
+    const inp = document.getElementById("sensysFile");
+    if(inp) inp.value = "";
+
+    const name = document.getElementById("sensysFileName");
+    if(name) name.textContent = "No file selected.";
+
+    const st = document.getElementById("sensysStatusText");
+    if(st) st.textContent = "";
+
+    const bar = document.getElementById("sensysBar");
+    if(bar) bar.style.width = "0%";
+
+    const results = document.getElementById("sensysResults");
+    if(results) results.style.display = "none";
+
+    // disable exports
+    const b1 = document.getElementById("btnSensysExportMissingAdmissions");
+    const b2 = document.getElementById("btnSensysExportMissingDischarges");
+    const b3 = document.getElementById("btnSensysExportDuplicates");
+    if(b1) b1.disabled = true;
+    if(b2) b2.disabled = true;
+    if(b3) b3.disabled = true;
+
+    // reset numbers
+    const n1 = document.getElementById("sensysMissingAdmissions");
+    const n2 = document.getElementById("sensysMissingDischarges");
+    const n3 = document.getElementById("sensysDuplicates");
+    if(n1) n1.textContent = "0";
+    if(n2) n2.textContent = "0";
+    if(n3) n3.textContent = "0";
+  }
+
+  function openSensys(){
+    resetSensysState();
+    const ov = document.getElementById("sensysOverlay");
+    if(ov) ov.style.display = "flex";
+  }
+
+  function closeSensys(){
+    resetSensysState();
+    const ov = document.getElementById("sensysOverlay");
+    if(ov) ov.style.display = "none";
+  }
+
+  // ESC closes Sensys too (matches Settings behavior)
+  document.addEventListener("keydown", (e) => {
+    if(e.key === "Escape"){
+      const ov = document.getElementById("sensysOverlay");
+      if(ov && ov.style.display === "flex") closeSensys();
+    }
+  });
+
+  function setSensysProgress(text, pct){
+    const t = document.getElementById("sensysStatusText");
+    const bar = document.getElementById("sensysBar");
+    if(t) t.textContent = text || "";
+    if(bar) bar.style.width = `${Math.max(0, Math.min(100, pct || 0))}%`;
+  }
+
+  async function sensysExport(kind){
+    if(!sensysJobId){
+      alert("No processed Sensys job found. Upload + process first.");
+      return;
+    }
+    const res = await adminFetch(`/admin/census/sensys/export.csv?job_id=${encodeURIComponent(sensysJobId)}&kind=${encodeURIComponent(kind)}`, { method:"GET" });
+    if(!res.ok){
+      const txt = await res.text().catch(()=> "");
+      alert(`Export failed (${res.status}). ${txt}`);
+      return;
+    }
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    const objUrl = URL.createObjectURL(blob);
+    a.href = objUrl;
+    a.download = `sensys_${kind}_${sensysJobId}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objUrl);
+  }
+
+  function initSensysModal(){
+    const btnOpen = document.getElementById("btnOpenSensys");
+    const btnClose = document.getElementById("btnSensysClose");
+    const btnCancel = document.getElementById("btnSensysCancel");
+    const btnBrowse = document.getElementById("btnSensysBrowse");
+    const btnProcess = document.getElementById("btnSensysProcess");
+    const overlay = document.getElementById("sensysOverlay");
+    const fileInput = document.getElementById("sensysFile");
+    const drop = document.getElementById("sensysDropzone");
+
+    const ex1 = document.getElementById("btnSensysExportMissingAdmissions");
+    const ex2 = document.getElementById("btnSensysExportMissingDischarges");
+    const ex3 = document.getElementById("btnSensysExportDuplicates");
+
+    if(btnOpen) btnOpen.addEventListener("click", openSensys);
+    if(btnClose) btnClose.addEventListener("click", closeSensys);
+    if(btnCancel) btnCancel.addEventListener("click", closeSensys);
+
+    if(overlay){
+      overlay.addEventListener("click", (e) => {
+        if(e.target === overlay) closeSensys();
+      });
+    }
+
+    if(btnBrowse && fileInput){
+      btnBrowse.addEventListener("click", () => fileInput.click());
+    }
+
+    if(fileInput){
+      fileInput.addEventListener("change", () => {
+        const f = (fileInput.files && fileInput.files[0]) ? fileInput.files[0] : null;
+        selectedSensysFile = f;
+        const name = document.getElementById("sensysFileName");
+        if(name) name.textContent = f ? f.name : "No file selected.";
+      });
+    }
+
+    if(drop){
+      drop.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        drop.style.boxShadow = "0 0 0 4px rgba(45,108,223,0.20)";
+      });
+      drop.addEventListener("dragleave", () => {
+        drop.style.boxShadow = "";
+      });
+      drop.addEventListener("drop", (e) => {
+        e.preventDefault();
+        drop.style.boxShadow = "";
+        const files = Array.from(e.dataTransfer.files || []).filter(f => (f.name || "").toLowerCase().endsWith(".csv"));
+        selectedSensysFile = files[0] || null;
+        const name = document.getElementById("sensysFileName");
+        if(name) name.textContent = selectedSensysFile ? selectedSensysFile.name : "No file selected.";
+      });
+    }
+
+    if(ex1) ex1.addEventListener("click", () => sensysExport("missing_admissions"));
+    if(ex2) ex2.addEventListener("click", () => sensysExport("missing_discharges"));
+    if(ex3) ex3.addEventListener("click", () => sensysExport("duplicates"));
+
+    if(btnProcess){
+      btnProcess.addEventListener("click", async () => {
+        if(!selectedSensysFile){
+          alert("Select a CSV file first.");
+          return;
+        }
+
+        setLoading(true, "Processing Sensys CSV…", "Comparing to latest census runs across all facilities");
+        setSensysProgress("Uploading…", 10);
+
+        try{
+          const fd = new FormData();
+          fd.append("file", selectedSensysFile);
+
+          const res = await adminFetch("/admin/census/sensys/process", { method:"POST", body: fd });
+          const data = await readJsonStrict(res, "Sensys process");
+
+          if(!data.ok || !data.job_id){
+            throw new Error(data.message || "Unknown processing error");
+          }
+
+          sensysJobId = data.job_id;
+
+          setSensysProgress("Complete.", 100);
+
+          // show numbers
+          const r = document.getElementById("sensysResults");
+          if(r) r.style.display = "block";
+
+          const n1 = document.getElementById("sensysMissingAdmissions");
+          const n2 = document.getElementById("sensysMissingDischarges");
+          const n3 = document.getElementById("sensysDuplicates");
+
+          if(n1) n1.textContent = String(data.missing_admissions_count || 0);
+          if(n2) n2.textContent = String(data.missing_discharges_count || 0);
+          if(n3) n3.textContent = String(data.duplicates_count || 0);
+
+          // enable exports
+          const b1 = document.getElementById("btnSensysExportMissingAdmissions");
+          const b2 = document.getElementById("btnSensysExportMissingDischarges");
+          const b3 = document.getElementById("btnSensysExportDuplicates");
+          if(b1) b1.disabled = false;
+          if(b2) b2.disabled = false;
+          if(b3) b3.disabled = false;
+        }catch(err){
+          alert(String(err && err.message ? err.message : err));
+        }finally{
+          setLoading(false);
+        }
+      });
+    }
+  }
+
+  // call it once (after DOM is ready)
+  document.addEventListener("DOMContentLoaded", () => {
+    initSensysModal();
+  });
+
+
+  function escapeHtml(str){
+    return (str||"").replace(/[&<>"']/g, (m) => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[m]));
+  }
+
+  // ✅ Toast helpers
+  let toastTimer = null;
+
+  function showUploadToast({ title, sub, badgeText, autoHideMs }){
+    const toast = document.getElementById("uploadToast");
+    const t = document.getElementById("uploadToastTitle");
+    const s = document.getElementById("uploadToastSub");
+    const b = document.getElementById("uploadToastBadgeText");
+
+    if(t) t.textContent = title || "Upload complete";
+    if(s) s.textContent = sub || "";
+    if(b) b.textContent = badgeText || "Done";
+
+    if(!toast) return;
+
+    toast.classList.add("show");
+
+    if(toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      toast.classList.remove("show");
+    }, Number(autoHideMs || 6000));
+  }
+
+  function initToastUI(){
+    const btn = document.getElementById("uploadToastClose");
+    const toast = document.getElementById("uploadToast");
+    if(btn && toast){
+      btn.addEventListener("click", () => toast.classList.remove("show"));
+    }
+  }
+  
+document.addEventListener("DOMContentLoaded", () => {
+  // Settings modal (Admin token)
+  initTokenUI();
+
+  // Upload PDFs modal (drag/drop + browse + process)
+  initUploadModal();
+
+  // ✅ Toast UI
+  initToastUI();
+
+  // Populate facility dropdown on first load
+  refreshFacilityDropdown();
+});
+
+</script>
+</body>
+</html>

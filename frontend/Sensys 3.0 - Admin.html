@@ -450,10 +450,19 @@
    }
    :root{
      --n-named-stroke:16px;
+     --n-alert-stroke:5.5px;
    }
    .iconbtn.n-named svg .cls-1{
      stroke:currentColor;
      stroke-width:var(--n-named-stroke);
+   }
+   .iconbtn.n-alert svg{
+     width:18px;
+     height:18px;
+   }
+   .iconbtn.n-alert svg .cls-1{
+     stroke:currentColor;
+     stroke-width:var(--n-alert-stroke);
    }
    .iconbtn:hover{ box-shadow: 0 0 0 3px rgba(168,230,207,.45); border-color: rgba(168,230,207,.95); }
    .iconbtn.sm{
@@ -470,6 +479,15 @@
    .iconbtn.sm.n-named svg{
      width:20px;
      height:20px;
+   }
+   .reminder-btn{
+     border-color:#e5e7eb;
+     color:#6b7280;
+   }
+   .reminder-btn.has-reminder{
+     border-color: var(--mint);
+     color: var(--navy);
+     box-shadow: 0 0 0 3px rgba(168,230,207,.25);
    }
    .upload-progress{
      height:10px;
@@ -1338,6 +1356,7 @@
                       <th>Name</th>
                       <th>Type</th>
                       <th>Dropdown</th>
+                      <th style="text-align:right;">Reminder</th>
                     </tr>
                   </thead>
                   <tbody id="servicesTbody"></tbody>
@@ -2540,6 +2559,70 @@
     </div>
   </div>
 </div>
+<!-- ✅ Service Reminder modal -->
+<div id="svcReminderModalBackdrop" class="modal-backdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="svcReminderModalTitle">
+    <div class="modal-hd">
+      <div>
+        <h3 class="modal-title" id="svcReminderModalTitle">Service Reminder</h3>
+        <div class="modal-sub">Service: <b id="svcReminderServiceName">—</b></div>
+      </div>
+      <button class="xbtn" id="closeSvcReminderModal" aria-label="Close">✖</button>
+    </div>
+
+    <div class="modal-body">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:240px;">
+          <div class="label">Reminder Title</div>
+          <input id="svcReminderTitle" class="input" placeholder="Optional short title" />
+        </div>
+        <div style="width:180px;">
+          <div class="label">Severity</div>
+          <select id="svcReminderSeverity" class="input">
+            <option value="info">Info</option>
+            <option value="important">Important</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
+        <div style="width:200px;">
+          <div class="label">Follow-up Window</div>
+          <select id="svcReminderFollowup" class="input">
+            <option value="na">Not specified</option>
+            <option value="Same day">Same day</option>
+            <option value="Within 48 hours">Within 48 hours</option>
+            <option value="Within 7 days">Within 7 days</option>
+          </select>
+        </div>
+        <div style="width:140px;">
+          <div class="label">Active</div>
+          <select id="svcReminderActive" class="input">
+            <option value="1">Yes</option>
+            <option value="0">No</option>
+          </select>
+        </div>
+        <div style="width:220px;">
+          <div class="label">Last Updated</div>
+          <input id="svcReminderUpdated" class="input" disabled />
+        </div>
+        <div style="flex:1;min-width:260px;">
+          <div class="label">Reminder Message</div>
+          <textarea id="svcReminderText" class="input" placeholder="Add reminder details..." style="min-height:90px;resize:vertical;"></textarea>
+        </div>
+      </div>
+
+      <div class="smallhint" style="margin-top:8px;">
+        Shown to SNF users after DC submission when this service is selected.
+      </div>
+
+      <div id="svcReminderMsg" class="toast"></div>
+
+      <div style="display:flex;justify-content:space-between;gap:10px;margin-top:12px;">
+        <button id="clearSvcReminderBtn" class="btn">Clear Reminder</button>
+        <button id="saveSvcReminderBtn" class="btn primary">Save Reminder</button>
+      </div>
+    </div>
+  </div>
+</div>
 <!-- ✅ Service Type modal -->
 <div id="serviceTypeModalBackdrop" class="modal-backdrop">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="serviceTypeModalTitle">
@@ -3125,6 +3208,13 @@
       setMsg($("svcMsg"), String(e.message || e), false);
     }
   };
+
+  $("closeSvcReminderModal").onclick = closeServiceReminderModal;
+  $("saveSvcReminderBtn").onclick = saveServiceReminder;
+  $("clearSvcReminderBtn").onclick = clearServiceReminder;
+  $("svcReminderModalBackdrop").addEventListener("click", (e) => {
+    if(e.target.id === "svcReminderModalBackdrop") closeServiceReminderModal();
+  });
 
   function $safe(id){
     return document.getElementById(id);
@@ -5821,6 +5911,70 @@
   // Services page logic
   // -----------------------------
   let servicesCache = [];
+  let editingServiceReminder = null;
+
+  function formatReminderUpdated(ts){
+    if(!ts) return "â€”";
+    const d = new Date(ts);
+    if(Number.isNaN(d.getTime())) return String(ts);
+    return d.toLocaleString();
+  }
+
+  function openServiceReminderModal(service){
+    editingServiceReminder = service || null;
+    const r = service || {};
+    $("svcReminderServiceName").textContent = service ? (service.name || "â€”") : "â€”";
+    $("svcReminderTitle").value = r.reminder_title || "";
+    $("svcReminderSeverity").value = r.reminder_severity || "info";
+    $("svcReminderFollowup").value = r.reminder_followup || "na";
+    $("svcReminderActive").value = String(r.reminder_active ?? "1");
+    $("svcReminderText").value = r.reminder_message || "";
+    $("svcReminderUpdated").value = formatReminderUpdated(r.reminder_updated_at);
+    setMsg($("svcReminderMsg"), "", true);
+    $("svcReminderModalBackdrop").classList.add("on");
+  }
+
+  function closeServiceReminderModal(){
+    $("svcReminderModalBackdrop").classList.remove("on");
+  }
+
+  async function saveServiceReminder(){
+    if(!editingServiceReminder) return;
+    try{
+      const message = ($("svcReminderText").value || "").trim();
+      const reminderActive = message ? Number($("svcReminderActive").value || "1") : 0;
+      const payload = {
+        id: Number(editingServiceReminder.id || 0),
+        name: (editingServiceReminder.name || "").trim(),
+        service_type_id: Number(editingServiceReminder.service_type_id || 0),
+        dropdown: Number(editingServiceReminder.dropdown ? 1 : 0),
+        reminder_id: (editingServiceReminder.reminder_id || "").trim(),
+        aliases: (editingServiceReminder.aliases || "").trim(),
+        reminder_title: ($("svcReminderTitle").value || "").trim(),
+        reminder_message: message,
+        reminder_severity: ($("svcReminderSeverity").value || "info").trim(),
+        reminder_followup: ($("svcReminderFollowup").value || "na").trim(),
+        reminder_active: reminderActive,
+        reminder_updated_at: message ? new Date().toISOString() : ""
+      };
+      await apiPost("/api/sensys/admin/services/upsert", payload);
+      await refreshServicesList();
+      setMsg($("svcReminderMsg"), message ? "Reminder saved." : "Reminder cleared.", true);
+    }catch(e){
+      setMsg($("svcReminderMsg"), String(e.message || e), false);
+    }
+  }
+
+  async function clearServiceReminder(){
+    if(!editingServiceReminder) return;
+    $("svcReminderTitle").value = "";
+    $("svcReminderSeverity").value = "info";
+    $("svcReminderFollowup").value = "na";
+    $("svcReminderActive").value = "1";
+    $("svcReminderText").value = "";
+    $("svcReminderUpdated").value = "â€”";
+    await saveServiceReminder();
+  }
 
   function renderServicesTable(){
     const tbody = $("servicesTbody");
@@ -5839,12 +5993,35 @@
       tr.onclick = () => openServiceModal(s);
 
       const typeLabel = (s.service_type_name || s.service_type_code || "").trim();
+      const hasReminder = !!((s.reminder_message || "").trim() && String(s.reminder_active ?? "1") === "1");
 
       tr.innerHTML = `
         <td><b>${escapeHtml(s.name||"")}</b></td>
         <td>${escapeHtml(typeLabel)}</td>
         <td>${(String(s.dropdown||0)==="1") ? "Yes" : "No"}</td>
+        <td style="text-align:right;">
+          <button class="iconbtn n-alert reminder-btn ${hasReminder ? "has-reminder" : ""}" title="${hasReminder ? "Edit reminder" : "Add reminder"}" aria-label="Service reminder">
+            <svg viewBox="0 0 261.99 261.99" aria-hidden="true">
+              <g>
+                <g>
+                  <g>
+                    <path class="cls-1" d="M259.08,137.39c-3.53,70.74-63.74,125.22-134.48,121.69C53.86,255.55-.62,195.34,2.91,124.6,6.44,53.86,66.65-.62,137.39,2.91c70.74,3.53,125.22,63.74,121.69,134.47Z"/>
+                    <path class="cls-1" d="M145.06,195.32c0,7.77-6.3,14.07-14.07,14.07s-14.07-6.3-14.07-14.07,6.3-14.07,14.07-14.07,14.07,6.3,14.07,14.07Z"/>
+                  </g>
+                  <rect class="cls-1" x="116.88" y="57.16" width="28.07" height="101.27" rx="14.04" ry="14.04"/>
+                </g>
+              </g>
+            </svg>
+          </button>
+        </td>
       `;
+      const reminderBtn = tr.querySelector(".reminder-btn");
+      if(reminderBtn){
+        reminderBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openServiceReminderModal(s);
+        });
+      }
       tbody.appendChild(tr);
     });
   }

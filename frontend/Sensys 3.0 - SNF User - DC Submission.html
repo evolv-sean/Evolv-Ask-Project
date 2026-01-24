@@ -186,6 +186,93 @@
       color:var(--muted);
       margin:0;
     }
+    .confirm-reminders{
+      margin-top:14px;
+      padding-top:12px;
+      border-top:1px dashed rgba(13,59,102,.18);
+      text-align:left;
+    }
+    .confirm-reminders-title{
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.12em;
+      color:#64748b;
+      font-weight:800;
+    }
+    .confirm-reminders-list{
+      list-style:none;
+      padding:0;
+      margin:10px 0 0;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .confirm-reminder-item{
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+      background:#f8fafc;
+      border:1px solid rgba(13,59,102,.12);
+      border-radius:12px;
+      padding:10px 12px;
+    }
+    .confirm-reminder-badge{
+      font-size:10px;
+      font-weight:800;
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      padding:4px 8px;
+      border-radius:999px;
+      background:#e2e8f0;
+      color:#0f172a;
+      white-space:nowrap;
+    }
+    .confirm-reminder-badge.important{
+      background: rgba(250, 204, 21, .18);
+      color:#92400e;
+    }
+    .confirm-reminder-badge.urgent{
+      background: rgba(239, 68, 68, .16);
+      color:#991b1b;
+    }
+    .confirm-reminder-badge.caution{
+      background: rgba(245, 158, 11, .18);
+      color:#92400e;
+    }
+    .confirm-reminder-body{flex:1}
+    .confirm-reminder-title{
+      font-size:13px;
+      font-weight:800;
+      color:var(--navy);
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .confirm-reminder-chip{
+      font-size:10px;
+      font-weight:800;
+      color:#475569;
+      background:#eef2f7;
+      padding:3px 8px;
+      border-radius:999px;
+    }
+    .confirm-reminder-message{
+      font-size:12px;
+      color:#334155;
+      margin-top:4px;
+      line-height:1.4;
+    }
+    .confirm-reminder-meta{
+      font-size:11px;
+      color:#64748b;
+      margin-top:6px;
+    }
+    .confirm-reminders-note{
+      font-size:11px;
+      color:#64748b;
+      margin-top:8px;
+    }
     .section{
       margin-top:24px;
       padding:20px;
@@ -605,6 +692,11 @@
       <div class="confirm-emoji">✨</div>
       <div class="confirm-title">Discharge plan sent!</div>
       <p class="confirm-sub">Success! Your discharge plan is in our hands. Go grab a coffee.</p>
+      <div class="confirm-reminders" id="confirmReminders" style="display:none;">
+        <div class="confirm-reminders-title">Reminders to Share</div>
+        <ul class="confirm-reminders-list" id="confirmRemindersList"></ul>
+        <div class="confirm-reminders-note" id="confirmRemindersNote"></div>
+      </div>
     </div>
   </div>
 
@@ -753,6 +845,9 @@
   const pageTitle = document.getElementById("pageTitle");
   const msg = document.getElementById("msg");
   const confirmBackdrop = document.getElementById("confirmBackdrop");
+  const confirmReminders = document.getElementById("confirmReminders");
+  const confirmRemindersList = document.getElementById("confirmRemindersList");
+  const confirmRemindersNote = document.getElementById("confirmRemindersNote");
   const saveBtn = document.getElementById("saveBtn");
 
   const confirmChips = document.getElementById("confirmChips");
@@ -813,10 +908,72 @@
     msg.textContent = t;
   }
   function showConfirmation(){
+    renderConfirmationReminders();
     confirmBackdrop.style.display = "flex";
     setTimeout(() => {
       window.location.href = "/sensys/snf-user";
-    }, 1200);
+    }, 2000);
+  }
+
+  function buildConfirmationReminders(){
+    const out = [];
+    const isConfirmed = document.getElementById("dcConfirmed").checked;
+    if(!isConfirmed){
+      out.push({
+        title: "Discharge date not confirmed",
+        message: "Please verify the discharge date/time before scheduling or confirming services.",
+        severity: "caution",
+        followup: "Same day",
+        isDefault: true
+      });
+    }
+
+    Array.from(SELECTED || []).forEach(id => {
+      const svc = SERVICE_MAP[String(id)] || {};
+      if(String(svc.reminder_active ?? "1") !== "1") return;
+      const msgText = (svc.reminder_message || "").trim();
+      if(!msgText) return;
+      const typeKey = serviceTypeKey(svc);
+      out.push({
+        title: (svc.reminder_title || svc.name || "Service Reminder").trim(),
+        message: msgText,
+        severity: svc.reminder_severity || "info",
+        followup: svc.reminder_followup || "",
+        typeLabel: typeKey === "hh" ? "Home Health" : (typeKey === "dme" ? "DME" : "")
+      });
+    });
+    return out;
+  }
+
+  function renderConfirmationReminders(){
+    if(!confirmReminders || !confirmRemindersList) return;
+    const items = buildConfirmationReminders();
+    if(!items.length){
+      confirmReminders.style.display = "none";
+      return;
+    }
+    confirmReminders.style.display = "block";
+    confirmRemindersList.innerHTML = "";
+    items.forEach(item => {
+      const li = document.createElement("li");
+      const sev = (item.severity || "info").toLowerCase();
+      const badgeText = item.isDefault ? "Not Confirmed" : (sev === "urgent" ? "Urgent" : (sev === "important" ? "Important" : "Reminder"));
+      const typeChip = item.typeLabel ? `<span class="confirm-reminder-chip">${esc(item.typeLabel)}</span>` : "";
+      const followup = (item.followup && item.followup !== "na")
+        ? `<div class="confirm-reminder-meta">Follow-up: ${esc(item.followup)}</div>`
+        : "";
+      li.className = "confirm-reminder-item";
+      li.innerHTML = `
+        <div class="confirm-reminder-badge ${esc(sev)}">${esc(badgeText)}</div>
+        <div class="confirm-reminder-body">
+          <div class="confirm-reminder-title">${esc(item.title)} ${typeChip}</div>
+          <div class="confirm-reminder-message">${esc(item.message)}</div>
+          ${followup}
+        </div>
+      `;
+      confirmRemindersList.appendChild(li);
+    });
+    confirmRemindersNote.textContent = "Please share these reminders with the care team and vendors.";
   }
 
   async function apiGet(path){
