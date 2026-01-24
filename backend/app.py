@@ -3972,6 +3972,18 @@ def init_db():
         conn.execute("ALTER TABLE sensys_services ADD COLUMN service_type_id INTEGER;")
     if "aliases" not in cols:
         conn.execute("ALTER TABLE sensys_services ADD COLUMN aliases TEXT;")
+    if "reminder_title" not in cols:
+        conn.execute("ALTER TABLE sensys_services ADD COLUMN reminder_title TEXT;")
+    if "reminder_message" not in cols:
+        conn.execute("ALTER TABLE sensys_services ADD COLUMN reminder_message TEXT;")
+    if "reminder_severity" not in cols:
+        conn.execute("ALTER TABLE sensys_services ADD COLUMN reminder_severity TEXT;")
+    if "reminder_followup" not in cols:
+        conn.execute("ALTER TABLE sensys_services ADD COLUMN reminder_followup TEXT;")
+    if "reminder_active" not in cols:
+        conn.execute("ALTER TABLE sensys_services ADD COLUMN reminder_active INTEGER DEFAULT 1;")
+    if "reminder_updated_at" not in cols:
+        conn.execute("ALTER TABLE sensys_services ADD COLUMN reminder_updated_at TEXT;")
 
     # Backfill service_type_id from existing string service_type values ("dme"/"hh") if present
     # (keeps old column for backward compatibility)
@@ -4135,6 +4147,12 @@ def init_db():
             aliases       TEXT,
             dropdown      INTEGER DEFAULT 1,              -- 1/0
             reminder_id   TEXT,
+            reminder_title     TEXT,
+            reminder_message   TEXT,
+            reminder_severity  TEXT,
+            reminder_followup  TEXT,
+            reminder_active    INTEGER DEFAULT 1,
+            reminder_updated_at TEXT,
             deleted_at    TEXT,
             created_at    TEXT DEFAULT (datetime('now')),
             updated_at    TEXT DEFAULT (datetime('now'))
@@ -20828,6 +20846,12 @@ class SensysServiceUpsert(BaseModel):
     service_type_id: int          # NEW (FK to sensys_service_type.id)
     dropdown: int = 1             # 1/0
     reminder_id: Optional[str] = None
+    reminder_title: Optional[str] = None
+    reminder_message: Optional[str] = None
+    reminder_severity: Optional[str] = None
+    reminder_followup: Optional[str] = None
+    reminder_active: Optional[int] = None
+    reminder_updated_at: Optional[str] = None
     aliases: Optional[str] = None
 
 @app.get("/api/sensys/admin/services")
@@ -20843,6 +20867,12 @@ def sensys_admin_services(token: str):
                st.code AS service_type_code,
                s.dropdown,
                s.reminder_id,
+               s.reminder_title,
+               s.reminder_message,
+               s.reminder_severity,
+               s.reminder_followup,
+               s.reminder_active,
+               s.reminder_updated_at,
                s.deleted_at,
                s.created_at,
                s.updated_at
@@ -20879,6 +20909,15 @@ def sensys_admin_services_upsert(payload: SensysServiceUpsert, token: str):
 
     dropdown = 1 if int(payload.dropdown or 0) == 1 else 0
     reminder_id = (payload.reminder_id or "").strip() or None
+    reminder_title = (payload.reminder_title or "").strip() or None
+    reminder_message = (payload.reminder_message or "").strip() or None
+    reminder_severity = (payload.reminder_severity or "").strip() or None
+    reminder_followup = (payload.reminder_followup or "").strip() or None
+    if payload.reminder_active is None:
+        reminder_active = 1
+    else:
+        reminder_active = 1 if int(payload.reminder_active or 0) == 1 else 0
+    reminder_updated_at = (payload.reminder_updated_at or "").strip() or None
     aliases = (payload.aliases or "").strip() or None
 
     if payload.id:
@@ -20889,15 +20928,21 @@ def sensys_admin_services_upsert(payload: SensysServiceUpsert, token: str):
                    service_type = ?,
                    dropdown = ?,
                    reminder_id = ?,
+                   reminder_title = ?,
+                   reminder_message = ?,
+                   reminder_severity = ?,
+                   reminder_followup = ?,
+                   reminder_active = ?,
+                   reminder_updated_at = ?,
                    aliases = ?,
                    updated_at = datetime('now')
              WHERE id = ?
-        """, (name, stid, st_code, dropdown, reminder_id, aliases, int(payload.id)))
+        """, (name, stid, st_code, dropdown, reminder_id, reminder_title, reminder_message, reminder_severity, reminder_followup, reminder_active, reminder_updated_at, aliases, int(payload.id)))
     else:
         conn.execute("""
-            INSERT INTO sensys_services (name, service_type_id, service_type, dropdown, reminder_id, aliases)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (name, stid, st_code, dropdown, reminder_id, aliases))
+            INSERT INTO sensys_services (name, service_type_id, service_type, dropdown, reminder_id, reminder_title, reminder_message, reminder_severity, reminder_followup, reminder_active, reminder_updated_at, aliases)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (name, stid, st_code, dropdown, reminder_id, reminder_title, reminder_message, reminder_severity, reminder_followup, reminder_active, reminder_updated_at, aliases))
 
     conn.commit()
     return {"ok": True}
@@ -20962,6 +21007,12 @@ async def sensys_admin_services_bulk(token: str, file: UploadFile = File(...)):
 
             dropdown = _to_bool_int(r.get("dropdown"), 1)
             reminder_id = (r.get("reminder_id", "") or "").strip() or None
+            reminder_title = (r.get("reminder_title", "") or "").strip() or None
+            reminder_message = (r.get("reminder_message", "") or "").strip() or None
+            reminder_severity = (r.get("reminder_severity", "") or "").strip() or None
+            reminder_followup = (r.get("reminder_followup", "") or "").strip() or None
+            reminder_active = _to_bool_int(r.get("reminder_active"), 1)
+            reminder_updated_at = (r.get("reminder_updated_at", "") or "").strip() or None
             aliases = (r.get("aliases", "") or "").strip() or None
 
             if sid:
@@ -20973,20 +21024,26 @@ async def sensys_admin_services_bulk(token: str, file: UploadFile = File(...)):
                            service_type = ?,              -- keep legacy column updated too
                            dropdown = ?,
                            reminder_id = ?,
+                           reminder_title = ?,
+                           reminder_message = ?,
+                           reminder_severity = ?,
+                           reminder_followup = ?,
+                           reminder_active = ?,
+                           reminder_updated_at = ?,
                            aliases = ?,
                            updated_at = datetime('now')
                      WHERE id = ?
                     """,
-                    (name, int(stid), st, int(dropdown), reminder_id, aliases, int(sid)),
+                    (name, int(stid), st, int(dropdown), reminder_id, reminder_title, reminder_message, reminder_severity, reminder_followup, int(reminder_active), reminder_updated_at, aliases, int(sid)),
                 )
                 updated += 1
             else:
                 conn.execute(
                     """
-                    INSERT INTO sensys_services (name, service_type_id, service_type, dropdown, reminder_id, aliases)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO sensys_services (name, service_type_id, service_type, dropdown, reminder_id, reminder_title, reminder_message, reminder_severity, reminder_followup, reminder_active, reminder_updated_at, aliases)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (name, int(stid), st, int(dropdown), reminder_id, aliases),
+                    (name, int(stid), st, int(dropdown), reminder_id, reminder_title, reminder_message, reminder_severity, reminder_followup, int(reminder_active), reminder_updated_at, aliases),
                 )
                 inserted += 1
 
@@ -25011,6 +25068,12 @@ def sensys_services(request: Request):
             COALESCE(st.code, s.service_type) AS service_type,  -- keep legacy key too
             s.dropdown,
             s.reminder_id,
+            s.reminder_title,
+            s.reminder_message,
+            s.reminder_severity,
+            s.reminder_followup,
+            s.reminder_active,
+            s.reminder_updated_at,
             s.deleted_at,
             s.created_at,
             s.updated_at
