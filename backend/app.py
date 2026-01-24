@@ -4237,6 +4237,7 @@ def init_db():
             hh_carecompare_county TEXT,
 
             hh_comments           TEXT,
+            hh_agency_comments    TEXT,
             dme_comments          TEXT,
 
             aid_consult           TEXT,
@@ -4276,6 +4277,24 @@ def init_db():
     ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_state",  "hh_carecompare_state TEXT")
     ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_zip",    "hh_carecompare_zip TEXT")
     ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_county", "hh_carecompare_county TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_agency_comments", "hh_agency_comments TEXT")
+
+    # Frequently used items (by client agency)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_agency_frequent_items (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            agency_id   INTEGER NOT NULL,
+            item_type   TEXT NOT NULL, -- 'hh_service' | 'dme_service' | 'hh_agency'
+            item_id     INTEGER NOT NULL,
+            cnt         INTEGER DEFAULT 0,
+            updated_at  TEXT DEFAULT (datetime('now')),
+            UNIQUE(agency_id, item_type, item_id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_freq_agency ON sensys_agency_frequent_items(agency_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_freq_type ON sensys_agency_frequent_items(item_type)")
 
     # Join table: each DC submission can have multiple services linked
     cur.execute(
@@ -25229,7 +25248,7 @@ def sensys_admission_details(admission_id: int, request: Request):
             hh_carecompare_state,
             hh_carecompare_zip,
             hh_carecompare_county,                  
-            hh_comments, dme_comments, aid_consult, pcp_freetext,
+            hh_comments, hh_agency_comments, dme_comments, aid_consult, pcp_freetext,
             coordinate_caregiver, caregiver_name, caregiver_number,
             apealling_dc, appeal_comments,
             updated_at, deleted_at
@@ -25417,6 +25436,18 @@ def sensys_admission_details(admission_id: int, request: Request):
             preferred_provider_ids = [int(r["provider_agency_id"]) for r in rows]
     except Exception:
         preferred_provider_ids = []
+
+    frequent = {"hh_services": [], "dme_services": [], "hh_agencies": []}
+    try:
+        if admission and admission["agency_id"]:
+            agency_id = int(admission["agency_id"])
+            frequent = {
+                "hh_services": _sensys_freq_top_ids(conn, agency_id, "hh_service", 5),
+                "dme_services": _sensys_freq_top_ids(conn, agency_id, "dme_service", 5),
+                "hh_agencies": _sensys_freq_top_ids(conn, agency_id, "hh_agency", 5),
+            }
+    except Exception:
+        frequent = {"hh_services": [], "dme_services": [], "hh_agencies": []}
         
     return {
         "ok": True,
@@ -25427,6 +25458,7 @@ def sensys_admission_details(admission_id: int, request: Request):
         "esigns": esign_out,
         "care_team": [dict(r) for r in care_team_links],
         "preferred_provider_ids": preferred_provider_ids,
+        "frequent": frequent,
         "referrals": [dict(r) for r in referrals],
         "appointments": [dict(r) for r in appointments],
     }
@@ -25788,6 +25820,7 @@ class DcSubmissionUpsert(BaseModel):
     hh_carecompare_county: Optional[str] = ""
 
     hh_comments: Optional[str] = ""
+    hh_agency_comments: Optional[str] = ""
     dme_comments: Optional[str] = ""
     aid_consult: Optional[str] = ""
     pcp_freetext: Optional[str] = ""
@@ -25839,6 +25872,33 @@ def _sensys_update_admission_from_latest_dc(conn: sqlite3.Connection, admission_
         """,
         (dc_date_clean, dc_confirmed, latest_id, int(admission_id)),
     )
+
+def _sensys_freq_inc(conn: sqlite3.Connection, agency_id: int, item_type: str, item_id: int):
+    if not agency_id or not item_type or not item_id:
+        return
+    conn.execute(
+        """
+        INSERT INTO sensys_agency_frequent_items (agency_id, item_type, item_id, cnt, updated_at)
+        VALUES (?, ?, ?, 1, datetime('now'))
+        ON CONFLICT(agency_id, item_type, item_id)
+        DO UPDATE SET cnt = cnt + 1, updated_at = datetime('now')
+        """,
+        (int(agency_id), item_type, int(item_id)),
+    )
+
+def _sensys_freq_top_ids(conn: sqlite3.Connection, agency_id: int, item_type: str, limit: int = 5) -> list[int]:
+    rows = conn.execute(
+        """
+        SELECT item_id
+        FROM sensys_agency_frequent_items
+        WHERE agency_id = ?
+          AND item_type = ?
+        ORDER BY cnt DESC, updated_at DESC, item_id ASC
+        LIMIT ?
+        """,
+        (int(agency_id), item_type, int(limit)),
+    ).fetchall()
+    return [int(r["item_id"]) for r in rows]
 
 @app.get("/api/sensys/dc-note/render")
 def sensys_dc_note_render(dc_submission_id: int, request: Request):
@@ -25970,6 +26030,12 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
     conn = get_db()
     _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
 
+    adm_row = conn.execute(
+        "SELECT agency_id FROM sensys_admissions WHERE id = ?",
+        (int(payload.admission_id),),
+    ).fetchone()
+    admission_agency_id = int(adm_row["agency_id"]) if adm_row and adm_row["agency_id"] else 0
+
     # If user picked a Care Compare agency, hh_agency_id should be NULL and we store carecompare fields.
     # If user picked an internal agency, we clear the carecompare fields.
     using_carecompare = (payload.hh_agency_id is None) and bool((payload.hh_carecompare_name or "").strip() or (payload.hh_carecompare_ccn or "").strip())
@@ -26007,6 +26073,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                    hh_carecompare_county = ?,
 
                    hh_comments = ?,
+                   hh_agency_comments = ?,
                    dme_comments = ?,
                    aid_consult = ?,
                    pcp_freetext = ?,
@@ -26042,6 +26109,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                 cc_county,
 
                 (payload.hh_comments or "").strip(),
+                (payload.hh_agency_comments or "").strip(),
                 (payload.dme_comments or "").strip(),
                 (payload.aid_consult or "").strip(),
                 (payload.pcp_freetext or "").strip(),
@@ -26156,6 +26224,9 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
             payload_json="",
         )
 
+        if admission_agency_id and payload.hh_agency_id and not using_carecompare:
+            _sensys_freq_inc(conn, admission_agency_id, "hh_agency", int(payload.hh_agency_id))
+
         conn.commit()
         return {"ok": True, "id": int(payload.id)}
 
@@ -26169,7 +26240,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
             hh_agency_id, hh_preferred,
             hh_carecompare_ccn, hh_carecompare_name, hh_carecompare_dba,
             hh_carecompare_city, hh_carecompare_state, hh_carecompare_zip, hh_carecompare_county,
-            hh_comments, dme_comments, aid_consult, pcp_freetext,
+            hh_comments, hh_agency_comments, dme_comments, aid_consult, pcp_freetext,
             coordinate_caregiver, caregiver_name, caregiver_number,
             apealling_dc, appeal_comments
         ) VALUES (
@@ -26178,7 +26249,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
             ?, ?, ?,
             ?, ?,
             ?, ?, ?,
-            ?, ?, ?, ?,
+            ?, ?, ?, ?, ?,
             ?, ?, ?, ?,
             ?, ?, ?,
             ?, ?
@@ -26210,6 +26281,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
             cc_county,
 
             (payload.hh_comments or "").strip(),
+            (payload.hh_agency_comments or "").strip(),
             (payload.dme_comments or "").strip(),
             (payload.aid_consult or "").strip(),
             (payload.pcp_freetext or "").strip(),
@@ -26302,6 +26374,9 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
         ctx={"patient": patient_name},
         payload_json="",
     )
+
+    if admission_agency_id and payload.hh_agency_id and not using_carecompare:
+        _sensys_freq_inc(conn, admission_agency_id, "hh_agency", int(payload.hh_agency_id))
 
     conn.commit()
     return {"ok": True, "id": int(dc_submission_id)}
@@ -26737,7 +26812,8 @@ def sensys_dc_submission_services_set(payload: DcSubmissionServicesSet, request:
         "DELETE FROM sensys_dc_submission_services WHERE admission_dc_submission_id = ?",
         (int(payload.admission_dc_submission_id),),
     )
-    for sid in payload.services_ids or []:
+    service_ids = [int(s) for s in (payload.services_ids or []) if int(s) > 0]
+    for sid in service_ids:
         conn.execute(
             """
             INSERT INTO sensys_dc_submission_services (services_id, admission_dc_submission_id)
@@ -26745,6 +26821,30 @@ def sensys_dc_submission_services_set(payload: DcSubmissionServicesSet, request:
             """,
             (int(sid), int(payload.admission_dc_submission_id)),
         )
+
+    adm_row = conn.execute(
+        "SELECT agency_id FROM sensys_admissions WHERE id = ?",
+        (int(row["admission_id"]),),
+    ).fetchone()
+    admission_agency_id = int(adm_row["agency_id"]) if adm_row and adm_row["agency_id"] else 0
+    if admission_agency_id and service_ids:
+        qmarks = ",".join(["?"] * len(service_ids))
+        svc_rows = conn.execute(
+            f"""
+            SELECT s.id,
+                   COALESCE(st.code, s.service_type) AS st_code
+            FROM sensys_services s
+            LEFT JOIN sensys_service_type st ON st.id = s.service_type_id AND st.deleted_at IS NULL
+            WHERE s.id IN ({qmarks})
+            """,
+            tuple(service_ids),
+        ).fetchall()
+        for r in svc_rows:
+            st_code = (r["st_code"] or "").strip().lower()
+            if st_code in ("hh", "home health", "homehealth"):
+                _sensys_freq_inc(conn, admission_agency_id, "hh_service", int(r["id"]))
+            elif st_code in ("dme", "durable medical equipment"):
+                _sensys_freq_inc(conn, admission_agency_id, "dme_service", int(r["id"]))
 
     conn.commit()
     return {"ok": True}
