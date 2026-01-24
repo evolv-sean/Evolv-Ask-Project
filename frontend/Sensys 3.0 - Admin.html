@@ -258,7 +258,9 @@
       gap:10px;
       font-size:12px;
       color:var(--muted);
+      align-items:center;
     }
+    .user-meta-gap{margin-left:12px;}
     .user-pill{
       padding:6px 10px;
       border-radius:999px;
@@ -446,9 +448,12 @@
      width:18px;
      height:18px;
    }
+   :root{
+     --n-named-stroke:16px;
+   }
    .iconbtn.n-named svg .cls-1{
      stroke:currentColor;
-     stroke-width:4.5px;
+     stroke-width:var(--n-named-stroke);
    }
    .iconbtn:hover{ box-shadow: 0 0 0 3px rgba(168,230,207,.45); border-color: rgba(168,230,207,.95); }
    .iconbtn.sm{
@@ -461,6 +466,10 @@
    .iconbtn.sm svg{
      width:18px;
      height:18px;
+   }
+   .iconbtn.sm.n-named svg{
+     width:20px;
+     height:20px;
    }
    .upload-progress{
      height:10px;
@@ -695,7 +704,7 @@
             <!-- Add New User (top-right icon) -->
             <div style="display:flex;gap:8px;align-items:center">
               <input class="input" id="userSearch" placeholder="Search username, email, or name." style="width:220px;max-width:220px;" />
-              <button class="iconbtn sm" id="usersFilterIcon" title="User filters" aria-label="User filters">
+              <button class="iconbtn n-named" id="usersFilterIcon" title="User filters" aria-label="User filters">
                 <svg viewBox="0 0 253.2 249.69" aria-hidden="true"><defs>
                   <style>
                     .cls-1 {
@@ -715,7 +724,7 @@
                   </g>
                 </g></svg>
               </button>
-              <button class="iconbtn" id="bulkUsersIcon" title="Bulk upload users" aria-label="Bulk upload users">
+              <button class="iconbtn n-named" id="bulkUsersIcon" title="Bulk upload users" aria-label="Bulk upload users">
                 <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
                   <style>
                     .cls-1 {
@@ -734,7 +743,12 @@
                   </g>
                 </g></svg>
               </button>
-              <button class="iconbtn" id="addUserIcon" title="Add new user" aria-label="Add new user">+</button>
+              <button class="iconbtn n-named" id="addUserIcon" title="Add new user" aria-label="Add new user">
+                <svg viewBox="0 0 218.13 218.13" aria-hidden="true"><g>
+                  <line class="cls-1" x1="109.07" y1="2.75" x2="109.07" y2="215.38"/>
+                  <line class="cls-1" x1="215.38" y1="109.07" x2="2.75" y2="109.07"/>
+                </g></svg>
+              </button>
             </div>
           </div>
           <div class="body">
@@ -887,7 +901,7 @@
 
             <!-- Add New Agency (top-right icon) -->
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="bulkAgenciesIcon" title="Bulk upload agencies" aria-label="Bulk upload agencies">
+              <button class="iconbtn n-named" id="bulkAgenciesIcon" title="Bulk upload agencies" aria-label="Bulk upload agencies">
                 <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
                   <style>
                     .cls-1 {
@@ -906,7 +920,12 @@
                   </g>
                 </g></svg>
               </button>
-              <button class="iconbtn" id="addAgencyIcon" title="Add new agency" aria-label="Add new agency">+</button>
+              <button class="iconbtn n-named" id="addAgencyIcon" title="Add new agency" aria-label="Add new agency">
+                <svg viewBox="0 0 218.13 218.13" aria-hidden="true"><g>
+                  <line class="cls-1" x1="109.07" y1="2.75" x2="109.07" y2="215.38"/>
+                  <line class="cls-1" x1="215.38" y1="109.07" x2="2.75" y2="109.07"/>
+                </g></svg>
+              </button>
             </div>
           </div>
 
@@ -950,7 +969,7 @@
           </div>
 
           <!-- Subtabs (libraries) -->
-          <div id="plSubtabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"></div>
+          <div id="plSubtabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;margin-bottom:8px;"></div>
 
           <!-- Search row -->
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px;">
@@ -994,7 +1013,7 @@
               <div class="hint">Manual add/edit for sensys_patients.</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="bulkPatientsIcon" title="Bulk upload patients" aria-label="Bulk upload patients">
+              <button class="iconbtn n-named" id="bulkPatientsIcon" title="Bulk upload patients" aria-label="Bulk upload patients">
                 <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
                   <style>
                     .cls-1 {
@@ -1013,7 +1032,12 @@
                   </g>
                 </g></svg>
               </button>
-              <button class="iconbtn" id="addPatientIcon" title="Add new patient" aria-label="Add new patient">+</button>
+              <button class="iconbtn n-named" id="addPatientIcon" title="Add new patient" aria-label="Add new patient">
+                <svg viewBox="0 0 218.13 218.13" aria-hidden="true"><g>
+                  <line class="cls-1" x1="109.07" y1="2.75" x2="109.07" y2="215.38"/>
+                  <line class="cls-1" x1="215.38" y1="109.07" x2="2.75" y2="109.07"/>
+                </g></svg>
+              </button>
             </div>
           </div>
 
@@ -1053,7 +1077,7 @@
               <div class="hint">Manual add/edit for sensys_admissions (patient + agency + dates).</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="bulkAdmissionsIcon" title="Bulk upload admissions" aria-label="Bulk upload admissions">
+              <button class="iconbtn n-named" id="bulkAdmissionsIcon" title="Bulk upload admissions" aria-label="Bulk upload admissions">
                 <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
                   <style>
                     .cls-1 {
@@ -1072,7 +1096,12 @@
                   </g>
                 </g></svg>
               </button>
-              <button class="iconbtn" id="addAdmissionIcon" title="Add new admission" aria-label="Add new admission">+</button>
+              <button class="iconbtn n-named" id="addAdmissionIcon" title="Add new admission" aria-label="Add new admission">
+                <svg viewBox="0 0 218.13 218.13" aria-hidden="true"><g>
+                  <line class="cls-1" x1="109.07" y1="2.75" x2="109.07" y2="215.38"/>
+                  <line class="cls-1" x1="215.38" y1="109.07" x2="2.75" y2="109.07"/>
+                </g></svg>
+              </button>
             </div>
           </div>
 
@@ -1112,7 +1141,7 @@
               <div class="hint">Review survey runs and results for clients.</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="clientSurveysUploadIcon" title="Upload client survey file" aria-label="Upload client survey file">
+              <button class="iconbtn n-named" id="clientSurveysUploadIcon" title="Upload client survey file" aria-label="Upload client survey file">
                 <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
                   <style>
                     .cls-1 {
@@ -1131,7 +1160,7 @@
                   </g>
                 </g></svg>
               </button>
-              <button class="iconbtn" id="clientSurveysSettingsIcon" title="Client survey settings" aria-label="Client survey settings">
+              <button class="iconbtn n-named" id="clientSurveysSettingsIcon" title="Client survey settings" aria-label="Client survey settings">
                 <svg viewBox="0 0 246.98 255.82" aria-hidden="true"><defs>
                   <style>
                     .cls-1 {
@@ -1175,7 +1204,7 @@
                 </div>
                 <div style="display:flex;gap:8px;align-items:center">
                   <input class="input" id="clientSurveySearch" placeholder="Search patient name." style="width:190px;max-width:190px;" />
-                  <button class="iconbtn" id="clientSurveyFilterIcon" title="Survey filters" aria-label="Survey filters">
+                  <button class="iconbtn n-named" id="clientSurveyFilterIcon" title="Survey filters" aria-label="Survey filters">
                     <svg viewBox="0 0 253.2 249.69" aria-hidden="true"><defs>
                       <style>
                         .cls-1 {
@@ -1195,7 +1224,7 @@
                       </g>
                     </g></svg>
                   </button>
-                  <button class="iconbtn" id="clientSurveyEmailIcon" title="Email surveys" aria-label="Email surveys">
+                  <button class="iconbtn n-named" id="clientSurveyEmailIcon" title="Email surveys" aria-label="Email surveys">
                     <svg viewBox="0 0 256.63 204.3" aria-hidden="true"><defs>
                       <style>
                         .cls-1 {
@@ -1255,7 +1284,7 @@
               <div class="hint">Reference list used for DC submissions (DME / HH) and E-Sign orders.</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="bulkServicesIcon" title="Bulk upload services" aria-label="Bulk upload services">
+              <button class="iconbtn n-named" id="bulkServicesIcon" title="Bulk upload services" aria-label="Bulk upload services">
                 <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
                   <style>
                     .cls-1 {
@@ -1274,8 +1303,18 @@
                   </g>
                 </g></svg>
               </button>
-              <button class="iconbtn" id="addServiceIcon" title="Add new service" aria-label="Add new service">+</button>
-              <button class="iconbtn" id="addServiceTypeIcon" title="Add new service type" aria-label="Add new service type" style="display:none;">＋T</button>
+              <button class="iconbtn n-named" id="addServiceIcon" title="Add new service" aria-label="Add new service">
+                <svg viewBox="0 0 218.13 218.13" aria-hidden="true"><g>
+                  <line class="cls-1" x1="109.07" y1="2.75" x2="109.07" y2="215.38"/>
+                  <line class="cls-1" x1="215.38" y1="109.07" x2="2.75" y2="109.07"/>
+                </g></svg>
+              </button>
+              <button class="iconbtn n-named" id="addServiceTypeIcon" title="Add new service type" aria-label="Add new service type" style="display:none;">
+                <svg viewBox="0 0 218.13 218.13" aria-hidden="true"><g>
+                  <line class="cls-1" x1="109.07" y1="2.75" x2="109.07" y2="215.38"/>
+                  <line class="cls-1" x1="215.38" y1="109.07" x2="2.75" y2="109.07"/>
+                </g></svg>
+              </button>
             </div>
           </div>
 
@@ -1347,7 +1386,7 @@
           </div>
 
           <!-- Notes Subtabs (pills) -->
-          <div id="notesSubtabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"></div>
+          <div id="notesSubtabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;margin-bottom:8px;"></div>
 
           <div class="body">
 
@@ -1481,7 +1520,7 @@
               <div class="hint">Reference list of providers/contacts used on admissions.</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="bulkCareTeamIcon" title="Bulk upload care team" aria-label="Bulk upload care team">
+              <button class="iconbtn n-named" id="bulkCareTeamIcon" title="Bulk upload care team" aria-label="Bulk upload care team">
                 <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
                   <style>
                     .cls-1 {
@@ -1500,7 +1539,12 @@
                   </g>
                 </g></svg>
               </button>
-              <button class="iconbtn" id="addCareTeamIcon" title="Add new care team member" aria-label="Add new care team member">+</button>
+              <button class="iconbtn n-named" id="addCareTeamIcon" title="Add new care team member" aria-label="Add new care team member">
+                <svg viewBox="0 0 218.13 218.13" aria-hidden="true"><g>
+                  <line class="cls-1" x1="109.07" y1="2.75" x2="109.07" y2="215.38"/>
+                  <line class="cls-1" x1="215.38" y1="109.07" x2="2.75" y2="109.07"/>
+                </g></svg>
+              </button>
             </div>
           </div>
 
@@ -1538,7 +1582,12 @@
               <div class="hint">Manage notification templates (subject/body) used for email/SMS/dashboard.</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="addNotifIcon" title="Add notification template" aria-label="Add notification template">+</button>
+              <button class="iconbtn n-named" id="addNotifIcon" title="Add notification template" aria-label="Add notification template">
+                <svg viewBox="0 0 218.13 218.13" aria-hidden="true"><g>
+                  <line class="cls-1" x1="109.07" y1="2.75" x2="109.07" y2="215.38"/>
+                  <line class="cls-1" x1="215.38" y1="109.07" x2="2.75" y2="109.07"/>
+                </g></svg>
+              </button>
             </div>
           </div>
 
@@ -3818,7 +3867,7 @@
               <span class="user-pill">${escapeHtml(u.email || "no-email")}</span>
               <span class="user-pill">${activeLabel}</span>
               <span class="user-pill">${lockedLabel}</span>
-              <span><b>Roles:</b> ${escapeHtml(roles.join(", ") || "—")}</span>
+              <span class="user-meta-gap"><b>Roles:</b> ${escapeHtml(roles.join(", ") || "—")}</span>
               <span><b>Last login:</b> ${escapeHtml(lastLogin)}</span>
             </div>
           </div>
@@ -4026,6 +4075,31 @@
   async function refreshAll(){
     setMsg($("listMsg"), "Loading…", true);
     try{
+      const token = getToken();
+      if(!token){
+        rolesMaster = [
+          { role_key: "admin", role_name: "Admin" },
+          { role_key: "developer", role_name: "Developer" },
+          { role_key: "snf_user", role_name: "SNF User" }
+        ];
+        agenciesMaster = [
+          { id: 1, agency_name: "Evolv Health", agency_type: "SNF", city: "Phoenix", state: "AZ" },
+          { id: 2, agency_name: "Harbor View", agency_type: "SNF", city: "Tampa", state: "FL" }
+        ];
+        usersCache = [
+          { user_id: 1, display_name: "Jamie Rivera", email: "jamie@evolvhealth.com", is_active: 1, account_locked: 0, role_keys: ["admin"], last_login_at: "2026-01-22 14:02:00", agency_ids: [1] },
+          { user_id: 2, display_name: "Taylor Nguyen", email: "taylor@harborview.com", is_active: 1, account_locked: 0, role_keys: ["snf_user"], last_login_at: "2026-01-23 09:45:00", agency_ids: [2] },
+          { user_id: 3, display_name: "Alex Morgan", email: "alex@evolvhealth.com", is_active: 0, account_locked: 1, role_keys: ["developer"], last_login_at: "", agency_ids: [1,2] }
+        ];
+        renderRolesPills();
+        renderUserFilterOptions();
+        renderAgencyChecklist();
+        renderClientSurveyEmailAgencyOptions();
+        renderUsersTable();
+        setMsg($("listMsg"), "Preview mode: sample users shown (set ADMIN_TOKEN to load live data).", true);
+        return;
+      }      
+
       const rolesResp = await apiGet("/api/sensys/admin/roles");
       rolesMaster = rolesResp.roles || [];
       renderRolesPills();
@@ -4321,9 +4395,14 @@
 
     wrap.innerHTML = "";
     tabs.forEach(t => {
-      const pill = document.createElement("span");
-      pill.className = "tag " + (notesSubtabKey === t.key ? "on" : "");
+      const pill = document.createElement("button");
+      pill.className = "btn";
       pill.textContent = t.label;
+
+      const active = (notesSubtabKey === t.key);
+      pill.style.fontWeight = active ? "900" : "800";
+      pill.style.borderColor = active ? "#7f56d9" : "#d0d5dd";
+      pill.style.background = active ? "rgba(127,86,217,.10)" : "#fff";
 
       pill.onclick = () => {
         notesSubtabKey = t.key;
@@ -4461,7 +4540,7 @@
       tr.onclick = () => selectAgency(a);
 
       const surveyPrefsBtn = a.evolv_client ? `
-          <button class="iconbtn sm" title="Survey Preferences" aria-label="Survey Preferences"
+          <button class="iconbtn sm n-named" title="Survey Preferences" aria-label="Survey Preferences"
                   onclick="event.stopPropagation(); openSurveyPrefsModal(${Number(a.id)})">
             <svg viewBox="0 0 271.18 260.93" aria-hidden="true"><defs>
               <style>
@@ -4486,7 +4565,7 @@
         <td>${a.evolv_client ? "Yes" : "No"}</td>
         <td style="text-align:right;">
           <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">
-            <button class="iconbtn sm"
+            <button class="iconbtn sm n-named"
                     title="Post-DC Preferences"
                     aria-label="Post-DC Preferences"
                     onclick="event.stopPropagation(); openPdwPrefsModal(${Number(a.id)})">
@@ -4544,6 +4623,20 @@
   async function refreshAgenciesList(){
     setMsg($("agencyListMsg"), "Loading…", true);
     try{
+      const token = getToken();
+      if(!token){
+        agenciesCache = [
+          { id: 1, agency_name: "Evolv Health - Scottsdale", agency_type: "SNF", evolv_client: 1, city: "Scottsdale", state: "AZ" },
+          { id: 2, agency_name: "Harbor View SNF", agency_type: "SNF", evolv_client: 0, city: "Tampa", state: "FL" }
+        ];
+        agenciesMaster = agenciesCache;
+        renderAgenciesTable();
+        renderAgencyChecklist();
+        renderClientSurveyEmailAgencyOptions();
+        setMsg($("agencyListMsg"), "Preview mode: sample agencies shown (set ADMIN_TOKEN to load live data).", true);
+        return;
+      }
+
       const agResp = await apiGet("/api/sensys/admin/agencies");
       agenciesCache = agResp.agencies || [];
       agenciesMaster = agenciesCache;       // keep master in sync for user checklist
@@ -5605,7 +5698,15 @@
         <td>${escapeHtml(n.name||"")}</td>
         <td>${String(n.active||0)==="1" ? "Yes" : "No"}</td>
         <td style="text-align:right;">
-          <button class="mini" onclick="event.stopPropagation(); openNotifModal(${JSON.stringify(n)})">Edit</button>
+          <button class="iconbtn sm n-named"
+                  title="Edit"
+                  aria-label="Edit"
+                  onclick="event.stopPropagation(); openNotifModal(${JSON.stringify(n)})">
+            <svg viewBox="0 0 237.85 237.86" aria-hidden="true"><g>
+              <line class="cls-1" x1="34.25" y1="178.82" x2="57.97" y2="202.54"/>
+              <path class="cls-1" d="M68.74,219.9c-3.65,3.65-8.34,6.09-13.43,6.97l-47.25,8.18c-3.09.53-5.78-2.15-5.24-5.24l8.17-47.25c.88-5.09,3.31-9.78,6.97-13.44L173.79,13.27c14.02-14.02,36.76-14.03,50.78,0h0c14.02,14.02,14.03,36.76,0,50.79L68.74,219.9Z"/>
+            </g></svg>
+          </button>
         </td>
       `;
       tb.appendChild(tr);
@@ -5615,6 +5716,17 @@
   async function refreshNotificationsAdmin(){
     setMsg($("notifMsg"), "Loading…", true);
     try{
+      const token = getToken();
+      if(!token){
+        notifTemplatesCache = [
+          { id: 1, notif_key: "new_discharge", name: "New Discharge", active: 1 },
+          { id: 2, notif_key: "updated_discharge", name: "Updated Discharge", active: 1 },
+          { id: 3, notif_key: "pending_task", name: "Pending Task", active: 0 }
+        ];
+        renderNotificationsAdminTable();
+        setMsg($("notifMsg"), "Preview mode: sample notifications shown (set ADMIN_TOKEN to load live data).", true);
+        return;
+      }
       // BACKEND TO ADD IN SEGMENT 2:
       // GET /api/sensys/admin/notifications
       const resp = await apiGet("/api/sensys/admin/notifications");
@@ -6555,11 +6667,17 @@
 
     wrap.innerHTML = "";
     tabs.forEach(t => {
-      const pill = document.createElement("span");
-      pill.className = "tag " + (plLibraryKey === t.key ? "on" : "");
+      const pill = document.createElement("button");
+      pill.className = "btn";
+      pill.textContent = t.label;
+
+      const active = (plLibraryKey === t.key);
+      pill.style.fontWeight = active ? "900" : "800";
+      pill.style.borderColor = active ? "#7f56d9" : "#d0d5dd";
+      pill.style.background = active ? "rgba(127,86,217,.10)" : "#fff";
       pill.style.cursor = t.disabled ? "not-allowed" : "pointer";
       pill.style.opacity = t.disabled ? "0.55" : "1";
-      pill.textContent = t.label;
+      pill.disabled = !!t.disabled;
 
       pill.onclick = () => {
         if(t.disabled) return;
