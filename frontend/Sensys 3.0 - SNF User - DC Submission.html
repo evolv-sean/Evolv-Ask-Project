@@ -199,6 +199,7 @@
       font-weight:700;
       color:#0f172a;
       margin:0 0 12px;
+      margin-bottom:20px;
     }
     .row{
       display:flex;
@@ -238,7 +239,7 @@
       border:1px solid rgba(13,59,102,.14);
       background:#fff;
       font-size:14px;
-      font-weight:800;
+      font-weight:600;
       color:#42526b;
       cursor:pointer;
       user-select:none;
@@ -259,7 +260,27 @@
       color:var(--navy);
       font-weight:800;
       cursor:pointer;
-      text-decoration:underline;
+      text-decoration:none;
+    }
+    .freq-wrap{
+      margin-top:12px;
+      display:none;
+    }
+    .freq-title{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-size:11px;
+      color:#667085;
+      font-weight:600;
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      margin-bottom:12px;
+    }
+    .freq-rule{
+      width:750px;
+      border-bottom:1px solid #e5e7eb;
+      height:0;
     }
     .subtle{
       font-size:12px;
@@ -454,11 +475,23 @@
     <div class="section">
       <div class="q">Will they require Home Health related services?</div>
       <div class="chips" id="hhServiceChips"></div>
+      <div class="freq-wrap" id="hhFreqWrap">
+        <div class="freq-title"><span>Frequently Used</span><span class="freq-rule"></span></div>
+        <div class="chips" id="hhFreqChips"></div>
+      </div>
       <div style="margin-top:12px;">
         <div class="label">Other Home Health Services</div>
-        <div class="dropdown">
-          <input class="input" id="hhServiceSearch" placeholder="Search Home Health services..." />
-          <div id="hhServiceDropdown" class="dropdown-list"></div>
+        <div class="row">
+          <div class="dropdown" style="flex:1;min-width:240px;">
+            <input class="input" id="hhServiceSearch" placeholder="Search Home Health services..." />
+            <div id="hhServiceDropdown" class="dropdown-list"></div>
+          </div>
+          <button class="iconbtn" id="hhListOpenBtn" title="Browse Home Health List">
+            <svg viewBox="0 0 200 200" aria-hidden="true">
+              <circle class="cls-1" cx="82" cy="82" r="58" />
+              <line class="cls-1" x1="122" y1="122" x2="180" y2="180" />
+            </svg>
+          </button>
         </div>
       </div>
       <div class="link" id="toggleHhDetails" style="margin-top:10px;">+ Add Details</div>
@@ -471,8 +504,11 @@
     <div class="section">
       <div class="q">Which agency would you like to use?</div>
       <div class="chips" id="hhPreferredChips"></div>
-      <div class="link" id="toggleOtherAgency" style="margin-top:10px;">+ Add Details</div>
-      <div id="otherAgencyWrap" class="hidden" style="margin-top:10px;">
+      <div class="freq-wrap" id="hhAgencyFreqWrap">
+        <div class="freq-title"><span>Frequently Used</span><span class="freq-rule"></span></div>
+        <div class="chips" id="hhAgencyFreqChips"></div>
+      </div>
+      <div style="margin-top:10px;">
         <div class="label">Search Home Health Agencies</div>
         <div class="row">
           <div class="dropdown" style="flex:1;min-width:240px;">
@@ -487,6 +523,11 @@
           </button>
         </div>
       </div>
+      <div class="link" id="toggleHhAgencyDetails" style="margin-top:10px;">+ Add Details</div>
+      <div id="hhAgencyDetails" class="hidden" style="margin-top:10px;">
+        <div class="label">Additional details</div>
+        <textarea class="textarea" id="hhAgencyComments" placeholder="Additional details..."></textarea>
+      </div>
       <input type="hidden" id="hhAgencySelect" />
       <div class="subtle" id="hhSelectedLabel" style="margin-top:8px;">Selected: -</div>
     </div>
@@ -494,6 +535,10 @@
     <div class="section">
       <div class="q">Will they require medical equipment (DME)?</div>
       <div class="chips" id="dmeServiceChips"></div>
+      <div class="freq-wrap" id="dmeFreqWrap">
+        <div class="freq-title"><span>Frequently Used</span><span class="freq-rule"></span></div>
+        <div class="chips" id="dmeFreqChips"></div>
+      </div>
       <div style="margin-top:12px;">
         <div class="label">Other DME Services</div>
         <div class="row">
@@ -663,6 +708,43 @@
     </div>
   </div>
 
+  <div id="hhModalBackdrop" style="position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;padding:16px;z-index:9999;">
+    <div style="width:min(860px,96vw);background:#fff;border-radius:16px;border:1px solid #e6e8ef;box-shadow:0 18px 60px rgba(0,0,0,.25);overflow:hidden;">
+      <div style="padding:14px 16px;border-bottom:1px solid #eef0f4;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+        <div>
+          <div style="font-size:14px;font-weight:900;color:#111827;">Home Health Services List</div>
+          <div style="margin-top:2px;font-size:12px;color:#667085;">Browse and add Home Health services.</div>
+        </div>
+        <button id="hhModalCloseBtn" style="width:40px;height:40px;border-radius:12px;border:1px solid #d0d5dd;background:#fff;cursor:pointer;font-weight:900;">X</button>
+      </div>
+      <div style="padding:14px 16px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <input id="hhModalSearch" placeholder="Search service name or alias"
+            style="width:280px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+        </div>
+        <div style="margin-top:12px;border:1px solid #eef0f4;border-radius:14px;overflow:hidden;">
+          <div style="max-height:360px;overflow:auto;">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead>
+                <tr style="background:#f8fafc;">
+                  <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Item</th>
+                  <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Aliases</th>
+                  <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="hhModalTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div style="padding:12px 16px;border-top:1px solid #eef0f4;display:flex;justify-content:flex-end;gap:10px;">
+        <button id="hhModalCloseBtn2" style="padding:10px 12px;border-radius:12px;border:1px solid #d0d5dd;background:#fff;cursor:pointer;font-size:12px;font-weight:800;">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
 <script>
 (function(){
   const qs = (k) => new URLSearchParams(window.location.search).get(k);
@@ -681,8 +763,14 @@
   const appealChips = document.getElementById("appealChips");
 
   const hhServiceChips = document.getElementById("hhServiceChips");
+  const hhFreqChips = document.getElementById("hhFreqChips");
+  const hhFreqWrap = document.getElementById("hhFreqWrap");
   const dmeServiceChips = document.getElementById("dmeServiceChips");
+  const dmeFreqChips = document.getElementById("dmeFreqChips");
+  const dmeFreqWrap = document.getElementById("dmeFreqWrap");
   const hhPreferredChips = document.getElementById("hhPreferredChips");
+  const hhAgencyFreqChips = document.getElementById("hhAgencyFreqChips");
+  const hhAgencyFreqWrap = document.getElementById("hhAgencyFreqWrap");
   const hhSelectedLabel = document.getElementById("hhSelectedLabel");
   const hhAgencySelect = document.getElementById("hhAgencySelect");
 
@@ -695,6 +783,9 @@
   const dmeModalBackdrop = document.getElementById("dmeModalBackdrop");
   const dmeModalSearch = document.getElementById("dmeModalSearch");
   const dmeModalTbody = document.getElementById("dmeModalTbody");
+  const hhModalBackdrop = document.getElementById("hhModalBackdrop");
+  const hhModalSearch = document.getElementById("hhModalSearch");
+  const hhModalTbody = document.getElementById("hhModalTbody");
 
   let SERVICES = [];
   let SERVICE_MAP = {};
@@ -705,6 +796,7 @@
   let selectedHhAgencyId = null;
   let CARE_COMPARE_SELECTED = null;
   let CC_SEARCH_SEQ = 0;
+  let FREQUENT = { hh_services: [], dme_services: [], hh_agencies: [] };
 
   function token(){
     return (localStorage.getItem("sensys_token") || "").trim();
@@ -795,6 +887,54 @@
     });
   }
 
+  function renderFrequent(){
+    if(!FREQUENT) FREQUENT = { hh_services: [], dme_services: [], hh_agencies: [] };
+
+    const hhCommonIds = new Set(getHhCommon().map(s => String(s.id)));
+    const dmeCommonIds = new Set(getDmeCommon().map(s => String(s.id)));
+
+    const hhFreqItems = (FREQUENT.hh_services || []).map(id => SERVICE_MAP[String(id)]).filter(Boolean)
+      .filter(s => SERVICE_TYPE_MAP[s.id] === "hh" && String(s.dropdown || 0) === "1" && !hhCommonIds.has(String(s.id)));
+    const dmeFreqItems = (FREQUENT.dme_services || []).map(id => SERVICE_MAP[String(id)]).filter(Boolean)
+      .filter(s => SERVICE_TYPE_MAP[s.id] === "dme" && String(s.dropdown || 0) === "1" && !dmeCommonIds.has(String(s.id)));
+
+    const hhAgencyFreqItems = (FREQUENT.hh_agencies || []).map(id => AGENCIES.find(a => Number(a.id) === Number(id))).filter(Boolean)
+      .filter(a => !PREFERRED_HH.has(Number(a.id)));
+
+    const renderChipList = (wrap, host, items, onClick) => {
+      if(!wrap || !host) return;
+      host.innerHTML = "";
+      if(!items.length){
+        wrap.style.display = "none";
+        return;
+      }
+      wrap.style.display = "block";
+      items.forEach(item => {
+        const chip = document.createElement("div");
+        chip.className = "chip";
+        chip.textContent = item.name || item.agency_name || "Item";
+        chip.addEventListener("click", () => onClick(item));
+        host.appendChild(chip);
+      });
+    };
+
+    renderChipList(hhFreqWrap, hhFreqChips, hhFreqItems, (s) => {
+      SELECTED.add(String(s.id));
+      renderServiceChips(hhServiceChips, getHhCommon());
+      renderServiceChips(dmeServiceChips, getDmeCommon());
+    });
+
+    renderChipList(dmeFreqWrap, dmeFreqChips, dmeFreqItems, (s) => {
+      SELECTED.add(String(s.id));
+      renderServiceChips(hhServiceChips, getHhCommon());
+      renderServiceChips(dmeServiceChips, getDmeCommon());
+    });
+
+    renderChipList(hhAgencyFreqWrap, hhAgencyFreqChips, hhAgencyFreqItems, (a) => {
+      setSelectedHhAgency(a.id);
+    });
+  }
+
   function getHhCommon(){
     return SERVICES.filter(s => SERVICE_TYPE_MAP[s.id] === "hh" && String(s.dropdown || 0) !== "1");
   }
@@ -806,6 +946,9 @@
   }
   function getDmeDropdown(){
     return SERVICES.filter(s => SERVICE_TYPE_MAP[s.id] === "dme" && String(s.dropdown || 0) === "1");
+  }
+  function getHhAll(){
+    return SERVICES.filter(s => SERVICE_TYPE_MAP[s.id] === "hh");
   }
 
   function renderSearchList(listEl, items, onPick){
@@ -840,7 +983,6 @@
       hhAgencySelect.value = "carecompare|" + key;
       const label = CARE_COMPARE_SELECTED.dba || CARE_COMPARE_SELECTED.name || "Care Compare";
       hhSelectedLabel.textContent = "Selected: Care Compare - " + label;
-      document.getElementById("otherAgencyWrap").classList.remove("hidden");
     }else{
       hhAgencySelect.value = "";
       hhSelectedLabel.textContent = "Selected: -";
@@ -905,6 +1047,30 @@
         '<div class="chip">Hospital Bed</div>',
         '<div class="chip">Shower Chair</div>',
         '<div class="chip">CPAP</div>'
+      ].join("");
+    }
+    if(!hhFreqChips.children.length){
+      hhFreqWrap.style.display = "block";
+      hhFreqChips.innerHTML = [
+        '<div class="chip">Wound Care</div>',
+        '<div class="chip">IV Therapy</div>',
+        '<div class="chip">Diabetes Mgmt</div>'
+      ].join("");
+    }
+    if(!dmeFreqChips.children.length){
+      dmeFreqWrap.style.display = "block";
+      dmeFreqChips.innerHTML = [
+        '<div class="chip">Rolling Walker</div>',
+        '<div class="chip">Nebulizer</div>',
+        '<div class="chip">Hoyer Lift</div>'
+      ].join("");
+    }
+    if(!hhAgencyFreqChips.children.length){
+      hhAgencyFreqWrap.style.display = "block";
+      hhAgencyFreqChips.innerHTML = [
+        '<div class="chip">Harmony Home Health</div>',
+        '<div class="chip">Signature Home Care</div>',
+        '<div class="chip">Legacy HH</div>'
       ].join("");
     }
   }
@@ -1102,6 +1268,51 @@
     });
   }
 
+  function renderHhModalList(){
+    if(!hhModalTbody) return;
+    const q = (hhModalSearch.value || "").trim().toLowerCase();
+    const items = getHhAll().filter(s => {
+      const hay = `${s.name || ""} ${s.aliases || ""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+    if(!items.length){
+      hhModalTbody.innerHTML = `<tr><td colspan="3" style="padding:12px;color:#667085;font-size:12px;">No results</td></tr>`;
+      return;
+    }
+    hhModalTbody.innerHTML = "";
+    items.slice(0, 200).forEach(s => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td style="padding:10px;border-top:1px solid #eef0f4;font-size:12px;color:#111827;font-weight:700;">${esc(s.name || "")}</td>
+        <td style="padding:10px;border-top:1px solid #eef0f4;font-size:12px;color:#667085;">${esc(s.aliases || "-")}</td>
+        <td style="padding:10px;border-top:1px solid #eef0f4;text-align:right;">
+          <button style="padding:8px 10px;border-radius:10px;border:1px solid #0d3b66;background:#fff;color:#0d3b66;cursor:pointer;font-size:12px;font-weight:900;">
+            Add
+          </button>
+        </td>
+      `;
+      tr.querySelector("button").onclick = () => {
+        SELECTED.add(String(s.id));
+        renderServiceChips(hhServiceChips, getHhCommon());
+        closeHhModal();
+      };
+      hhModalTbody.appendChild(tr);
+    });
+  }
+
+  function openHhModal(){
+    hhModalBackdrop.style.display = "flex";
+    if(hhModalSearch) hhModalSearch.value = "";
+    renderHhModalList();
+    if(hhModalSearch) hhModalSearch.focus();
+  }
+
+  function closeHhModal(){
+    hhModalBackdrop.style.display = "none";
+    if(hhModalSearch) hhModalSearch.value = "";
+    if(hhModalTbody) hhModalTbody.innerHTML = "";
+  }
+
   function openDmeModal(){
     dmeModalBackdrop.style.display = "flex";
     if(dmeModalSearch) dmeModalSearch.value = "";
@@ -1117,6 +1328,10 @@
 
   async function load(){
     if(!token()){
+      if(window.location.protocol === "file:" || qs("preview") === "1"){
+        initPlaceholders();
+        return;
+      }
       window.location.href = "/sensys/login";
       return;
     }
@@ -1189,6 +1404,8 @@
       });
       PREFERRED_HH = new Set((details.preferred_provider_ids || []).map(x => Number(x)));
       renderPreferredAgencies();
+      FREQUENT = details.frequent || { hh_services: [], dme_services: [], hh_agencies: [] };
+      renderFrequent();
 
       wireDropdownSearch(hhAgencySearch, hhAgencyDropdown, AGENCIES.map(a2 => ({
         id: a2.id,
@@ -1210,6 +1427,7 @@
         document.getElementById("urgentComments").value = last.urgent_comments || "";
         document.getElementById("destinationComments").value = last.destination_comments || "";
         document.getElementById("hhComments").value = last.hh_comments || "";
+        document.getElementById("hhAgencyComments").value = last.hh_agency_comments || "";
         document.getElementById("dmeComments").value = last.dme_comments || "";
         document.getElementById("pcpFreetext").value = last.pcp_freetext || "";
         setYesNo(caregiverChips, String(Number(last.coordinate_caregiver || 0)), document.getElementById("coordinateCaregiver"));
@@ -1271,6 +1489,7 @@
         hh_agency_id: (Number.isFinite(hhId) ? hhId : null),
         hh_preferred: (hhId && PREFERRED_HH.has(hhId)) ? 1 : 0,
         hh_comments: document.getElementById("hhComments").value.trim(),
+        hh_agency_comments: document.getElementById("hhAgencyComments").value.trim(),
         dme_comments: document.getElementById("dmeComments").value.trim(),
         pcp_freetext: document.getElementById("pcpFreetext").value.trim(),
         coordinate_caregiver: document.getElementById("coordinateCaregiver").checked ? 1 : 0,
@@ -1348,6 +1567,7 @@
   function syncExpandedFromData(){
     const urgentText = (document.getElementById("urgentComments").value || "").trim();
     const hhText = (document.getElementById("hhComments").value || "").trim();
+    const hhAgencyText = (document.getElementById("hhAgencyComments").value || "").trim();
     const dmeText = (document.getElementById("dmeComments").value || "").trim();
     const appealText = (document.getElementById("appealComments").value || "").trim();
     const caregiverName = (document.getElementById("caregiverName").value || "").trim();
@@ -1355,6 +1575,7 @@
 
     document.getElementById("urgentDetails").classList.toggle("hidden", !(document.getElementById("dcUrgent").checked || urgentText));
     document.getElementById("hhDetails").classList.toggle("hidden", !hhText);
+    document.getElementById("hhAgencyDetails").classList.toggle("hidden", !hhAgencyText);
     document.getElementById("dmeDetails").classList.toggle("hidden", !dmeText);
     document.getElementById("appealDetails").classList.toggle("hidden", !(document.getElementById("appealingDc").checked || appealText));
     document.getElementById("caregiverDetails").classList.toggle("hidden", !(document.getElementById("coordinateCaregiver").checked || caregiverName || caregiverNumber));
@@ -1364,11 +1585,11 @@
   document.getElementById("toggleFacilityDetails").addEventListener("click", () => {
     document.getElementById("facilityDetails").classList.toggle("hidden");
   });
-  document.getElementById("toggleOtherAgency").addEventListener("click", () => {
-    document.getElementById("otherAgencyWrap").classList.toggle("hidden");
-  });
   document.getElementById("toggleHhDetails").addEventListener("click", () => {
     document.getElementById("hhDetails").classList.toggle("hidden");
+  });
+  document.getElementById("toggleHhAgencyDetails").addEventListener("click", () => {
+    document.getElementById("hhAgencyDetails").classList.toggle("hidden");
   });
   document.getElementById("toggleDmeDetails").addEventListener("click", () => {
     document.getElementById("dmeDetails").classList.toggle("hidden");
@@ -1378,6 +1599,13 @@
   document.getElementById("careCompareCloseBtn").addEventListener("click", closeCareCompareModal);
   document.getElementById("ccCancelBtn").addEventListener("click", closeCareCompareModal);
   document.getElementById("ccSearchBtn").addEventListener("click", runCareCompareSearch);
+  document.getElementById("hhListOpenBtn").addEventListener("click", openHhModal);
+  document.getElementById("hhModalCloseBtn").addEventListener("click", closeHhModal);
+  document.getElementById("hhModalCloseBtn2").addEventListener("click", closeHhModal);
+  hhModalBackdrop.addEventListener("click", (e) => {
+    if(e.target === hhModalBackdrop) closeHhModal();
+  });
+  hhModalSearch.addEventListener("input", renderHhModalList);
   document.getElementById("dmeListOpenBtn").addEventListener("click", openDmeModal);
   document.getElementById("dmeModalCloseBtn").addEventListener("click", closeDmeModal);
   document.getElementById("dmeModalCloseBtn2").addEventListener("click", closeDmeModal);
