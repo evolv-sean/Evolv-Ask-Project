@@ -434,6 +434,13 @@
      height:20px;
      display:block;
    }
+   .iconbtn svg .cls-1{
+     fill:none;
+     stroke:currentColor;
+     stroke-linecap:round;
+     stroke-linejoin:round;
+     stroke-width:5.5px;
+   }
    .iconbtn:hover{ box-shadow: 0 0 0 3px rgba(168,230,207,.45); border-color: rgba(168,230,207,.95); }
    .iconbtn.sm{
      width:32px;
@@ -722,7 +729,17 @@
             </div>
           </div>
           <div class="body">
-            <div id="usersList" class="user-list"></div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th style="text-align:right;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="usersTbody"></tbody>
+              </table>
+            </div>
             <div id="listMsg" class="toast"></div>
           </div>
         </div>
@@ -1254,7 +1271,7 @@
           </div>
 
           <!-- Subtabs -->
-          <div id="servicesSubtabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"></div>
+          <div id="servicesSubtabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;margin-bottom:8px;"></div>
 
           <div class="body">
 
@@ -2467,10 +2484,14 @@
     <div class="modal-body">
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <input id="svc_id" type="hidden" />
-        <div style="flex:1;min-width:240px;">
-          <div class="label">Name</div>
-          <input id="svc_name" class="input" placeholder="Service name" />
-        </div>
+          <div style="flex:1;min-width:240px;">
+            <div class="label">Name</div>
+            <input id="svc_name" class="input" placeholder="Service name" />
+          </div>
+          <div style="flex:1;min-width:220px;">
+            <div class="label">Aliases</div>
+            <input id="svc_aliases" class="input" placeholder="Comma separated (optional)" />
+          </div>
         <div style="width:180px;">
           <div class="label">Type</div>
           <select id="svc_type" class="input">
@@ -2961,6 +2982,7 @@
     $("svc_id").value = service ? String(service.id || "") : "";
     $("selServiceId").textContent = service && service.id ? String(service.id) : "-";
     $("svc_name").value = service ? (service.name || "") : "";
+    $("svc_aliases").value = service ? (service.aliases || "") : "";
 
     let stVal = "";
     if(service){
@@ -3001,6 +3023,7 @@
       const payload = {
         id: $("svc_id").value ? Number($("svc_id").value) : null,
         name: ($("svc_name").value || "").trim(),
+        aliases: ($("svc_aliases").value || "").trim(),
         service_type_id: Number($("svc_type").value || 0),
         dropdown: Number($("svc_dropdown").value || 1),
         reminder_id: ($("svc_reminder_id").value || "").trim()
@@ -3649,8 +3672,8 @@
   }
 
   function renderUsersTable(){
-    const list = $("usersList");
-    list.innerHTML = "";
+    const tbody = $("usersTbody");
+    tbody.innerHTML = "";
 
     const q = ($("userSearch")?.value || "").trim().toLowerCase();
     const roleFilter = (userFilterState.role || "").trim().toLowerCase();
@@ -3685,9 +3708,9 @@
     const roleMap = new Map((rolesMaster || []).map(r => [String(r.role_key || ""), String(r.role_name || "")]));
 
     items.forEach(u => {
-      const row = document.createElement("div");
-      row.className = "user-row";
-      row.onclick = () => selectUser(u);
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.onclick = () => selectUser(u);
 
       const roles = (u.role_keys || []).map(r => {
         const key = String(r);
@@ -3699,96 +3722,60 @@
       const activeLabel = u.is_active ? "Active" : "Inactive";
       const lockedLabel = u.account_locked ? "Locked" : "Unlocked";
 
-      row.innerHTML = `
-        <div class="user-main">
-          <div class="user-name">${escapeHtml(u.display_name || u.email || "User")}</div>
-          <div class="user-meta">
-            <span class="user-pill">${escapeHtml(u.email || "no-email")}</span>
-            <span class="user-pill">${activeLabel}</span>
-            <span class="user-pill">${lockedLabel}</span>
+      tr.innerHTML = `
+        <td>
+          <div class="user-main">
+            <div class="user-name">${escapeHtml(u.display_name || u.email || "User")}</div>
+            <div class="user-meta">
+              <span class="user-pill">${escapeHtml(u.email || "no-email")}</span>
+              <span class="user-pill">${activeLabel}</span>
+              <span class="user-pill">${lockedLabel}</span>
+            </div>
+            <div class="user-meta">
+              <span><b>Roles:</b> ${escapeHtml(roles.join(", ") || "—")}</span>
+              <span><b>Last login:</b> ${escapeHtml(lastLogin)}</span>
+            </div>
           </div>
-          <div class="user-meta">
-            <span><b>Roles:</b> ${escapeHtml(roles.join(", ") || "—")}</span>
-            <span><b>Last login:</b> ${escapeHtml(lastLogin)}</span>
-          </div>
-        </div>
-        <div class="user-actions">
-          <button class="iconbtn sm"
-                  title="Login As"
-                  aria-label="Login As"
-                  onclick="event.stopPropagation(); loginAsUser(${Number(u.user_id)})">
-            <svg viewBox="0 0 200.04 246.31" aria-hidden="true"><defs>
-              <style>
-                .cls-1 {
-                  fill: none;
-                  stroke: #121212;
-                  stroke-linecap: round;
-                  stroke-miterlimit: 10;
-                  stroke-width: 5.89px;
-                }
-              </style>
-            </defs>
-            <g>
-              <path class="cls-1" d="M2.95,25.12v196.07c0,17.53,19.22,28.11,33.8,18.6l150.32-98.04c13.37-8.72,13.37-28.48,0-37.19L36.74,6.52C22.16-2.99,2.95,7.59,2.95,25.12Z"/>
-            </g></svg>
-          </button>
-          <button class="iconbtn sm"
-                  title="New User from Copy"
-                  aria-label="New User from Copy"
-                  onclick="event.stopPropagation(); startCopyUser(usersCache.find(x => Number(x.user_id)===${Number(u.user_id)}))">
-            <svg viewBox="0 0 75.98 75.98" aria-hidden="true"><defs>
-              <style>
-                .cls-1 {
-                  fill: none;
-                  stroke: #121212;
-                  stroke-linecap: round;
-                  stroke-miterlimit: 10;
-                  stroke-width: 5.5px;
-                }
-              </style>
-            </defs><g>
-              <g>
-                <polyline class="cls-1" points="57.36 44.8 74.59 27.56 74.59 14.94 61.04 1.39 48.42 1.39 24.13 25.67 24.8 38.96 33.39 47.55" />
-                <polyline class="cls-1" points="40.52 40.52 34.15 34.15 34.15 29.82 52.56 11.4 56.89 11.4 64.58 19.09 64.58 23.42 51.33 36.66" />
-              </g>
-              <g>
-                <polyline class="cls-1" points="18.12 31.68 1.39 48.42 1.39 61.04 14.94 74.59 27.56 74.59 51.85 50.31 51.18 37.02 43.03 28.87" />
-                <polyline class="cls-1" points="24.65 39.32 11.4 52.56 11.4 56.89 19.09 64.58 23.42 64.58 44 44 40.52 40.52" />
-              </g>
-            </g></svg>
-          </button>
-          <button class="iconbtn sm"
-                  title="Login History"
-                  aria-label="Login History"
-                  onclick="event.stopPropagation(); openUserLoginLogModal(${Number(u.user_id)})">
-            <svg viewBox="0 0 261.05 261.05" aria-hidden="true"><defs>
-              <style>
-                .cls-1 {
-                  fill: none;
-                  stroke: #121212;
-                  stroke-linecap: round;
-                  stroke-miterlimit: 10;
-                  stroke-width: 5.5px;
-                }
-              </style>
-            </defs>
-            <g>
-              <g>
-                <circle class="cls-1" cx="130.53" cy="130.52" r="127.77"/>
+        </td>
+        <td style="text-align:right;">
+          <div class="user-actions">
+            <button class="iconbtn sm"
+                    title="Login As"
+                    aria-label="Login As"
+                    onclick="event.stopPropagation(); loginAsUser(${Number(u.user_id)})">
+              <svg viewBox="0 0 77.14 77.14" aria-hidden="true"><g>
+                <path class="cls-1" d="M29.36,21.33v34.49c0,.26.29.42.51.28l26.72-17.25c.2-.13.2-.43,0-.56l-26.72-17.25c-.22-.14-.51.02-.51.28Z" />
+                <circle class="cls-1" cx="38.57" cy="38.57" r="37.19" />
+              </g></svg>
+            </button>
+            <button class="iconbtn sm"
+                    title="New User from Copy"
+                    aria-label="New User from Copy"
+                    onclick="event.stopPropagation(); startCopyUser(usersCache.find(x => Number(x.user_id)===${Number(u.user_id)}))">
+              <svg viewBox="0 0 75.98 75.98" aria-hidden="true"><g>
                 <g>
-                  <path class="cls-1" d="M78.7,82.88l51.47,47.32c.2.18.5.18.7,0l34.82-33.47"/>
-                  <line class="cls-1" x1="130.52" y1="54.84" x2="130.52" y2="31.86"/>
-                  <line class="cls-1" x1="206.21" y1="130.52" x2="229.19" y2="130.52"/>
-                  <line class="cls-1" x1="130.53" y1="206.21" x2="130.53" y2="229.19"/>
-                  <line class="cls-1" x1="54.84" y1="130.52" x2="31.86" y2="130.52"/>
+                  <polyline class="cls-1" points="57.36 44.8 74.59 27.56 74.59 14.94 61.04 1.39 48.42 1.39 24.13 25.67 24.8 38.96 33.39 47.55" />
+                  <polyline class="cls-1" points="40.52 40.52 34.15 34.15 34.15 29.82 52.56 11.4 56.89 11.4 64.58 19.09 64.58 23.42 51.33 36.66" />
                 </g>
-              </g>
-            </g></svg>
-          </button>
-        </div>
+                <g>
+                  <polyline class="cls-1" points="18.12 31.68 1.39 48.42 1.39 61.04 14.94 74.59 27.56 74.59 51.85 50.31 51.18 37.02 43.03 28.87" />
+                  <polyline class="cls-1" points="24.65 39.32 11.4 52.56 11.4 56.89 19.09 64.58 23.42 64.58 44 44 40.52 40.52" />
+                </g>
+              </g></svg>
+            </button>
+            <button class="iconbtn sm"
+                    title="Login History"
+                    aria-label="Login History"
+                    onclick="event.stopPropagation(); openUserLoginLogModal(${Number(u.user_id)})">
+              <svg viewBox="0 0 96.85 72.14" aria-hidden="true"><g>
+                <polyline class="cls-1" points="51.14 14.87 32.81 14.87 32.81 1.39 32.1 1.39 2.21 25.47 32.1 49.55 32.81 49.55 32.81 36.07 64.04 36.07 64.04 22.59 64.75 22.59 94.64 46.67 64.75 70.75 64.04 70.75 64.04 57.27 45.71 57.27" />
+              </g></svg>
+            </button>
+          </div>
+        </td>
       `;
 
-      list.appendChild(row);
+      tbody.appendChild(tr);
     });
   }
 
@@ -5417,7 +5404,7 @@
       label: "Services",
       endpoint: "/api/sensys/admin/services/bulk",
       filename: "sensys_services_template.csv",
-      headers: ["id","name","service_type","dropdown"]
+      headers: ["id","name","service_type","dropdown","aliases"]
     },
 
     // ✅ ADD  (NOTE: this matches your icon call openBulkModal("care-team")【turn13:0†Sensys 3.0 - Admin - DEV.html†L75-L76】)

@@ -402,7 +402,6 @@
         <div class="chip on" data-value="0">No</div>
       </div>
       <input id="dcUrgent" type="checkbox" class="hidden" />
-      <div class="link" id="toggleUrgentDetails" style="margin-top:10px;">Add urgency details?</div>
       <div id="urgentDetails" class="hidden" style="margin-top:10px;">
         <div class="label">Additional details</div>
         <textarea class="textarea" id="urgentComments" placeholder="Additional details..."></textarea>
@@ -462,7 +461,7 @@
           <div id="hhServiceDropdown" class="dropdown-list"></div>
         </div>
       </div>
-      <div class="link" id="toggleHhDetails" style="margin-top:10px;">Additional details?</div>
+      <div class="link" id="toggleHhDetails" style="margin-top:10px;">+ Add Details</div>
       <div id="hhDetails" class="hidden" style="margin-top:10px;">
         <div class="label">Additional details</div>
         <textarea class="textarea" id="hhComments" placeholder="Additional details..."></textarea>
@@ -472,7 +471,7 @@
     <div class="section">
       <div class="q">Which agency would you like to use?</div>
       <div class="chips" id="hhPreferredChips"></div>
-      <div class="link" id="toggleOtherAgency" style="margin-top:10px;">Other?</div>
+      <div class="link" id="toggleOtherAgency" style="margin-top:10px;">+ Add Details</div>
       <div id="otherAgencyWrap" class="hidden" style="margin-top:10px;">
         <div class="label">Search Home Health Agencies</div>
         <div class="row">
@@ -497,12 +496,20 @@
       <div class="chips" id="dmeServiceChips"></div>
       <div style="margin-top:12px;">
         <div class="label">Other DME Services</div>
-        <div class="dropdown">
-          <input class="input" id="dmeServiceSearch" placeholder="Search DME services..." />
-          <div id="dmeServiceDropdown" class="dropdown-list"></div>
+        <div class="row">
+          <div class="dropdown" style="flex:1;min-width:240px;">
+            <input class="input" id="dmeServiceSearch" placeholder="Search DME services..." />
+            <div id="dmeServiceDropdown" class="dropdown-list"></div>
+          </div>
+          <button class="iconbtn" id="dmeListOpenBtn" title="Browse DME List">
+            <svg viewBox="0 0 200 200" aria-hidden="true">
+              <circle class="cls-1" cx="82" cy="82" r="58" />
+              <line class="cls-1" x1="122" y1="122" x2="180" y2="180" />
+            </svg>
+          </button>
         </div>
       </div>
-      <div class="link" id="toggleDmeDetails" style="margin-top:10px;">Additional details?</div>
+      <div class="link" id="toggleDmeDetails" style="margin-top:10px;">+ Add Details</div>
       <div id="dmeDetails" class="hidden" style="margin-top:10px;">
         <div class="label">Additional details</div>
         <textarea class="textarea" id="dmeComments" placeholder="Additional details..."></textarea>
@@ -618,6 +625,44 @@
     </div>
   </div>
 
+  <!-- DME Browser modal -->
+  <div id="dmeModalBackdrop" style="position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;padding:16px;z-index:9999;">
+    <div style="width:min(820px,96vw);background:#fff;border-radius:16px;border:1px solid #e6e8ef;box-shadow:0 18px 60px rgba(0,0,0,.25);overflow:hidden;">
+      <div style="padding:14px 16px;border-bottom:1px solid #eef0f4;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+        <div>
+          <div style="font-size:14px;font-weight:900;color:#111827;">DME Services List</div>
+          <div style="margin-top:2px;font-size:12px;color:#667085;">Browse and select DME items (includes aliases).</div>
+        </div>
+        <button id="dmeModalCloseBtn" style="width:40px;height:40px;border-radius:12px;border:1px solid #d0d5dd;background:#fff;cursor:pointer;font-weight:900;">X</button>
+      </div>
+      <div style="padding:14px 16px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <input id="dmeModalSearch" placeholder="Search DME name or alias"
+            style="width:280px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+        </div>
+        <div style="margin-top:12px;border:1px solid #eef0f4;border-radius:14px;overflow:hidden;">
+          <div style="max-height:360px;overflow:auto;">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead>
+                <tr style="background:#f8fafc;">
+                  <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Item</th>
+                  <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Aliases</th>
+                  <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="dmeModalTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div style="padding:12px 16px;border-top:1px solid #eef0f4;display:flex;justify-content:flex-end;gap:10px;">
+        <button id="dmeModalCloseBtn2" style="padding:10px 12px;border-radius:12px;border:1px solid #d0d5dd;background:#fff;cursor:pointer;font-size:12px;font-weight:800;">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
 <script>
 (function(){
   const qs = (k) => new URLSearchParams(window.location.search).get(k);
@@ -647,6 +692,9 @@
   const dmeServiceDropdown = document.getElementById("dmeServiceDropdown");
   const hhAgencySearch = document.getElementById("hhAgencySearch");
   const hhAgencyDropdown = document.getElementById("hhAgencyDropdown");
+  const dmeModalBackdrop = document.getElementById("dmeModalBackdrop");
+  const dmeModalSearch = document.getElementById("dmeModalSearch");
+  const dmeModalTbody = document.getElementById("dmeModalTbody");
 
   let SERVICES = [];
   let SERVICE_MAP = {};
@@ -823,7 +871,10 @@
         renderSearchList(listEl, [], onPick);
         return;
       }
-      const matches = items.filter(s => String(s.name || s.agency_name || "").toLowerCase().includes(q));
+      const matches = items.filter(s => {
+        const hay = `${s.name || s.agency_name || ""} ${s.aliases || ""}`.toLowerCase();
+        return hay.includes(q);
+      });
       renderSearchList(listEl, matches.slice(0, 30), onPick);
     });
   }
@@ -1015,6 +1066,55 @@
     });
   }
 
+  function getDmeAll(){
+    return SERVICES.filter(s => SERVICE_TYPE_MAP[s.id] === "dme");
+  }
+
+  function renderDmeModalList(){
+    if(!dmeModalTbody) return;
+    const q = (dmeModalSearch.value || "").trim().toLowerCase();
+    const items = getDmeAll().filter(s => {
+      const hay = `${s.name || ""} ${s.aliases || ""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+    if(!items.length){
+      dmeModalTbody.innerHTML = `<tr><td colspan="3" style="padding:12px;color:#667085;font-size:12px;">No results</td></tr>`;
+      return;
+    }
+    dmeModalTbody.innerHTML = "";
+    items.slice(0, 200).forEach(s => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td style="padding:10px;border-top:1px solid #eef0f4;font-size:12px;color:#111827;font-weight:700;">${esc(s.name || "")}</td>
+        <td style="padding:10px;border-top:1px solid #eef0f4;font-size:12px;color:#667085;">${esc(s.aliases || "-")}</td>
+        <td style="padding:10px;border-top:1px solid #eef0f4;text-align:right;">
+          <button style="padding:8px 10px;border-radius:10px;border:1px solid #0d3b66;background:#fff;color:#0d3b66;cursor:pointer;font-size:12px;font-weight:900;">
+            Add
+          </button>
+        </td>
+      `;
+      tr.querySelector("button").onclick = () => {
+        SELECTED.add(String(s.id));
+        renderServiceChips(dmeServiceChips, getDmeCommon());
+        closeDmeModal();
+      };
+      dmeModalTbody.appendChild(tr);
+    });
+  }
+
+  function openDmeModal(){
+    dmeModalBackdrop.style.display = "flex";
+    if(dmeModalSearch) dmeModalSearch.value = "";
+    renderDmeModalList();
+    if(dmeModalSearch) dmeModalSearch.focus();
+  }
+
+  function closeDmeModal(){
+    dmeModalBackdrop.style.display = "none";
+    if(dmeModalSearch) dmeModalSearch.value = "";
+    if(dmeModalTbody) dmeModalTbody.innerHTML = "";
+  }
+
   async function load(){
     if(!token()){
       window.location.href = "/sensys/login";
@@ -1063,7 +1163,8 @@
 
       wireDropdownSearch(hhServiceSearch, hhServiceDropdown, getHhDropdown().map(s => ({
         id: s.id,
-        name: s.name
+        name: s.name,
+        aliases: s.aliases
       })), (id) => {
         SELECTED.add(String(id));
         hhServiceSearch.value = "";
@@ -1073,7 +1174,8 @@
 
       wireDropdownSearch(dmeServiceSearch, dmeServiceDropdown, getDmeDropdown().map(s => ({
         id: s.id,
-        name: s.name
+        name: s.name,
+        aliases: s.aliases
       })), (id) => {
         SELECTED.add(String(id));
         dmeServiceSearch.value = "";
@@ -1227,9 +1329,6 @@
     document.getElementById("appealDetails").classList.toggle("hidden", !isOn);
   });
 
-  document.getElementById("toggleUrgentDetails").addEventListener("click", () => {
-    document.getElementById("urgentDetails").classList.toggle("hidden");
-  });
   function syncFacilityDetails(){
     const val = document.getElementById("dcDestination").value;
     const showFacility = ["ILF","ALF","LTC","Hospital"].includes(val);
@@ -1279,6 +1378,13 @@
   document.getElementById("careCompareCloseBtn").addEventListener("click", closeCareCompareModal);
   document.getElementById("ccCancelBtn").addEventListener("click", closeCareCompareModal);
   document.getElementById("ccSearchBtn").addEventListener("click", runCareCompareSearch);
+  document.getElementById("dmeListOpenBtn").addEventListener("click", openDmeModal);
+  document.getElementById("dmeModalCloseBtn").addEventListener("click", closeDmeModal);
+  document.getElementById("dmeModalCloseBtn2").addEventListener("click", closeDmeModal);
+  dmeModalBackdrop.addEventListener("click", (e) => {
+    if(e.target === dmeModalBackdrop) closeDmeModal();
+  });
+  dmeModalSearch.addEventListener("input", renderDmeModalList);
   ["cc_q","cc_county","cc_city","cc_state","cc_zip","cc_ccn"].forEach(id=>{
     document.getElementById(id).addEventListener("keydown", (e)=>{
       if(e.key === "Enter" && !document.getElementById("ccSearchBtn").disabled) runCareCompareSearch();
