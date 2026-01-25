@@ -1132,7 +1132,7 @@
     const hhAgencyFreqItems = (FREQUENT.hh_agencies || []).map(id => AGENCIES.find(a => Number(a.id) === Number(id))).filter(Boolean)
       .filter(a => !PREFERRED_HH.has(Number(a.id)));
 
-    const renderChipList = (wrap, host, items, onClick, useSelected) => {
+    const renderChipList = (wrap, host, items, onClick, getIsOn, dataKey) => {
       if(!wrap || !host) return;
       host.innerHTML = "";
       if(!items.length){
@@ -1142,9 +1142,10 @@
       wrap.style.display = "block";
       items.forEach(item => {
         const chip = document.createElement("div");
-        const itemId = (item && item.id != null) ? String(item.id) : "";
-        chip.className = "chip" + (useSelected && itemId && SELECTED.has(itemId) ? " on" : "");
-        if(useSelected && itemId) chip.dataset.id = itemId;
+        const rawId = (item && dataKey && item[dataKey] != null) ? String(item[dataKey]) : "";
+        const isOn = getIsOn ? !!getIsOn(item) : false;
+        chip.className = "chip" + (isOn ? " on" : "");
+        if(rawId) chip.dataset.id = rawId;
         chip.textContent = item.name || item.agency_name || "Item";
         chip.addEventListener("click", () => onClick(item));
         host.appendChild(chip);
@@ -1159,7 +1160,7 @@
       renderServiceChips(dmeServiceChips, getDmeCommon());
       syncFrequentSelection();
       renderSelectedDropdownChips();
-    }, true);
+    }, null, "id");
 
     renderChipList(dmeFreqWrap, dmeFreqChips, dmeFreqItems, (s) => {
       const key = String(s.id);
@@ -1169,12 +1170,14 @@
       renderServiceChips(dmeServiceChips, getDmeCommon());
       syncFrequentSelection();
       renderSelectedDropdownChips();
-    }, true);
+    }, null, "id");
 
     renderChipList(hhAgencyFreqWrap, hhAgencyFreqChips, hhAgencyFreqItems, (a) => {
       setSelectedHhAgency(a.id);
-    }, false);
+    }, null, "id");
 
+    syncFrequentSelection();
+    syncAgencySelection();
     renderSelectedDropdownChips(hhFreqIds, dmeFreqIds);
   }
 
@@ -1185,6 +1188,14 @@
         const id = chip.getAttribute("data-id") || "";
         chip.classList.toggle("on", !!id && SELECTED.has(id));
       });
+    });
+  }
+
+  function syncAgencySelection(){
+    if(!hhAgencyFreqChips) return;
+    hhAgencyFreqChips.querySelectorAll(".chip[data-id]").forEach(chip => {
+      const id = chip.getAttribute("data-id") || "";
+      chip.classList.toggle("on", !!id && Number(id) === Number(selectedHhAgencyId));
     });
   }
 
@@ -1280,6 +1291,7 @@
     const ag = AGENCIES.find(a => Number(a.id) === Number(selectedHhAgencyId));
     hhSelectedLabel.textContent = ag ? ("Selected: " + (ag.agency_name || "Agency")) : "Selected: -";
     renderPreferredAgencies();
+    syncAgencySelection();
   }
 
   function setCareCompareSelection(obj){
@@ -1295,6 +1307,7 @@
       hhSelectedLabel.textContent = "Selected: -";
     }
     renderPreferredAgencies();
+    syncAgencySelection();
   }
 
   function renderPreferredAgencies(){
