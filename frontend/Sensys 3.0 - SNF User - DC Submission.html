@@ -171,9 +171,24 @@
       padding:22px 22px 20px;
       text-align:center;
     }
-    .confirm-emoji{
-      font-size:30px;
+    .confirm-icon{
+      display:flex;
+      align-items:center;
+      justify-content:center;
       margin-bottom:6px;
+      color:var(--mint-strong);
+    }
+    .confirm-icon svg{
+      width:44px; /* size control: adjust this value to scale the icon */
+      height:44px; /* size control: adjust this value to scale the icon */
+      display:block;
+    }
+    .confirm-icon .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:5.5px;
     }
     .confirm-title{
       font-size:18px;
@@ -721,7 +736,21 @@
 
   <div id="confirmBackdrop" class="confirm-backdrop" aria-live="polite">
     <div class="confirm-card">
-      <div class="confirm-emoji">✨</div>
+      <div class="confirm-icon" aria-hidden="true">
+        <svg viewBox="0 0 78.62 78.58" aria-hidden="true">
+          <g>
+            <path class="cls-1" d="M15.7,77.19h53.85c4.25,0,7.69-3.44,7.69-7.69h0c0-4.25-3.44-7.69-7.69-7.69h-22.33c-3.55,0-6.43-2.88-6.43-6.43h0c0-3.55,2.88-6.43,6.43-6.43h15.8" />
+            <g>
+              <path class="cls-1" d="M61.74,1.39h0c13.11,0,20.27,15.28,11.88,25.35l-11.63,13.98h-.49l-11.63-13.98c-8.38-10.07-1.22-25.35,11.88-25.35Z" />
+              <path class="cls-1" d="M68.65,16.88c0,3.82-3.09,6.91-6.91,6.91s-6.91-3.09-6.91-6.91,3.09-6.91,6.91-6.91,6.91,3.09,6.91,6.91Z" />
+            </g>
+            <g>
+              <path class="cls-1" d="M16.88,30.16h0c13.11,0,20.27,15.28,11.88,25.35l-11.63,13.98h-.49l-11.63-13.98c-8.38-10.07-1.22-25.35,11.88-25.35Z" />
+              <path class="cls-1" d="M23.79,45.64c0,3.82-3.09,6.91-6.91,6.91s-6.91-3.09-6.91-6.91,3.09-6.91,6.91-6.91,6.91,3.09,6.91,6.91Z" />
+            </g>
+          </g>
+        </svg>
+      </div>
       <div class="confirm-title">Discharge plan sent!</div>
       <p class="confirm-sub">Success! Your discharge plan is in our hands. Go grab a coffee.</p>
       <div class="confirm-reminders" id="confirmReminders" style="display:none;">
@@ -730,7 +759,7 @@
         <div class="confirm-reminders-note" id="confirmRemindersNote"></div>
       </div>
       <div class="confirm-actions">
-        <button class="btn primary" id="confirmCloseBtn">Done</button>
+        <button class="btn primary" id="confirmCloseBtn">Let's Go!</button>
       </div>
     </div>
   </div>
@@ -932,6 +961,9 @@
   let CARE_COMPARE_SELECTED = null;
   let CC_SEARCH_SEQ = 0;
   let FREQUENT = { hh_services: [], dme_services: [], hh_agencies: [] };
+  let saveInFlight = false;
+  let pendingRedirect = false;
+  const CONFIRM_REDIRECT_URL = "/sensys/snf-user";
 
   function token(){
     return (localStorage.getItem("sensys_token") || "").trim();
@@ -996,7 +1028,7 @@
       const sev = (item.severity || "info").toLowerCase();
       const badgeText = item.isDefault ? "Not Confirmed" : (sev === "urgent" ? "Urgent" : (sev === "important" ? "Important" : "Reminder"));
       const typeChip = item.typeLabel ? `<span class="confirm-reminder-chip">${esc(item.typeLabel)}</span>` : "";
-      const followup = (item.followup && item.followup !== "na")
+      const followup = (!item.isDefault && item.followup && item.followup !== "na")
         ? `<div class="confirm-reminder-meta">Follow-up: ${esc(item.followup)}</div>`
         : "";
       li.className = "confirm-reminder-item";
@@ -1010,7 +1042,7 @@
       `;
       confirmRemindersList.appendChild(li);
     });
-    confirmRemindersNote.textContent = "Please share these reminders with the care team and vendors.";
+    confirmRemindersNote.textContent = "Please review these reminders before continuing.";
   }
 
   async function apiGet(path){
@@ -1731,6 +1763,11 @@
       showMsg("");
       saveBtn.disabled = true;
       saveBtn.textContent = "Saving...";
+      saveInFlight = true;
+      pendingRedirect = false;
+      confirmCloseBtn.disabled = false;
+      confirmCloseBtn.textContent = "Done";
+      showConfirmation();
       const hhRaw = (hhAgencySelect.value || "").trim();
       const isCareCompare = hhRaw.startsWith("carecompare|");
       const hhId = (!isCareCompare && hhRaw) ? Number(hhRaw) : null;
@@ -1782,11 +1819,19 @@
         });
       }
 
-      showConfirmation();
+      saveInFlight = false;
+      if(pendingRedirect){
+        window.location.href = CONFIRM_REDIRECT_URL;
+      }
     }catch(e){
       showMsg(e.message || String(e));
       saveBtn.disabled = false;
       saveBtn.textContent = "Submit";
+      saveInFlight = false;
+      pendingRedirect = false;
+      confirmBackdrop.style.display = "none";
+      confirmCloseBtn.disabled = false;
+      confirmCloseBtn.textContent = "Done";
     }
   }
 
@@ -1882,7 +1927,13 @@
     window.location.href = "/sensys/snf-user/patient-search";
   });
   confirmCloseBtn.addEventListener("click", () => {
-    window.location.href = "/sensys/snf-user";
+    if(saveInFlight){
+      pendingRedirect = true;
+      confirmCloseBtn.disabled = true;
+      confirmCloseBtn.textContent = "Finishing...";
+      return;
+    }
+    window.location.href = CONFIRM_REDIRECT_URL;
   });
 
   document.addEventListener("click", (e) => {
