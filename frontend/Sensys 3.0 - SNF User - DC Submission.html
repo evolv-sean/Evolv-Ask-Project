@@ -186,6 +186,14 @@
       color:var(--muted);
       margin:0;
     }
+    .confirm-actions{
+      margin-top:14px;
+      display:flex;
+      justify-content:center;
+    }
+    .confirm-actions .btn{
+      min-width:140px;
+    }
     .confirm-reminders{
       margin-top:14px;
       padding-top:12px;
@@ -347,6 +355,16 @@
       background:rgba(168,230,207,.45);
       border-color:rgba(168,230,207,.95);
       color:var(--navy);
+    }
+    #confirmChips .chip[data-value="0"]{
+      border-color: rgba(148,163,184,.6);
+      color:#64748b;
+      background:#fff;
+    }
+    #confirmChips .chip[data-value="0"].on{
+      background: rgba(239,68,68,.16);
+      border-color: rgba(239,68,68,.45);
+      color:#991b1b;
     }
     .link{
       font-size:12px;
@@ -568,6 +586,10 @@
     <div class="section">
       <div class="q">Will they require Home Health related services?</div>
       <div class="chips" id="hhServiceChips"></div>
+      <div id="hhSelectedWrap" style="margin-top:10px;display:none;">
+        <div class="label">Selected Home Health (from list)</div>
+        <div class="chips" id="hhSelectedChips"></div>
+      </div>
       <div class="freq-wrap" id="hhFreqWrap">
         <div class="freq-title"><span>Frequently Used</span><span class="freq-rule"></span></div>
         <div class="chips" id="hhFreqChips"></div>
@@ -628,6 +650,10 @@
     <div class="section">
       <div class="q">Will they require medical equipment (DME)?</div>
       <div class="chips" id="dmeServiceChips"></div>
+      <div id="dmeSelectedWrap" style="margin-top:10px;display:none;">
+        <div class="label">Selected DME (from list)</div>
+        <div class="chips" id="dmeSelectedChips"></div>
+      </div>
       <div class="freq-wrap" id="dmeFreqWrap">
         <div class="freq-title"><span>Frequently Used</span><span class="freq-rule"></span></div>
         <div class="chips" id="dmeFreqChips"></div>
@@ -702,6 +728,9 @@
         <div class="confirm-reminders-title">Reminders to Share</div>
         <ul class="confirm-reminders-list" id="confirmRemindersList"></ul>
         <div class="confirm-reminders-note" id="confirmRemindersNote"></div>
+      </div>
+      <div class="confirm-actions">
+        <button class="btn primary" id="confirmCloseBtn">Done</button>
       </div>
     </div>
   </div>
@@ -854,6 +883,7 @@
   const confirmReminders = document.getElementById("confirmReminders");
   const confirmRemindersList = document.getElementById("confirmRemindersList");
   const confirmRemindersNote = document.getElementById("confirmRemindersNote");
+  const confirmCloseBtn = document.getElementById("confirmCloseBtn");
   const saveBtn = document.getElementById("saveBtn");
 
   const confirmChips = document.getElementById("confirmChips");
@@ -864,9 +894,13 @@
   const appealChips = document.getElementById("appealChips");
 
   const hhServiceChips = document.getElementById("hhServiceChips");
+  const hhSelectedWrap = document.getElementById("hhSelectedWrap");
+  const hhSelectedChips = document.getElementById("hhSelectedChips");
   const hhFreqChips = document.getElementById("hhFreqChips");
   const hhFreqWrap = document.getElementById("hhFreqWrap");
   const dmeServiceChips = document.getElementById("dmeServiceChips");
+  const dmeSelectedWrap = document.getElementById("dmeSelectedWrap");
+  const dmeSelectedChips = document.getElementById("dmeSelectedChips");
   const dmeFreqChips = document.getElementById("dmeFreqChips");
   const dmeFreqWrap = document.getElementById("dmeFreqWrap");
   const hhPreferredChips = document.getElementById("hhPreferredChips");
@@ -916,9 +950,6 @@
   function showConfirmation(){
     renderConfirmationReminders();
     confirmBackdrop.style.display = "flex";
-    setTimeout(() => {
-      window.location.href = "/sensys/snf-user";
-    }, 2000);
   }
 
   function buildConfirmationReminders(){
@@ -1056,6 +1087,9 @@
     const hhCommonIds = new Set(getHhCommon().map(s => String(s.id)));
     const dmeCommonIds = new Set(getDmeCommon().map(s => String(s.id)));
 
+    const hhFreqIds = new Set((FREQUENT.hh_services || []).map(id => String(id)));
+    const dmeFreqIds = new Set((FREQUENT.dme_services || []).map(id => String(id)));
+
     const hhFreqItems = (FREQUENT.hh_services || []).map(id => SERVICE_MAP[String(id)]).filter(Boolean)
       .filter(s => SERVICE_TYPE_MAP[s.id] === "hh" && String(s.dropdown || 0) === "1" && !hhCommonIds.has(String(s.id)));
     const dmeFreqItems = (FREQUENT.dme_services || []).map(id => SERVICE_MAP[String(id)]).filter(Boolean)
@@ -1074,7 +1108,7 @@
       wrap.style.display = "block";
       items.forEach(item => {
         const chip = document.createElement("div");
-        chip.className = "chip";
+        chip.className = "chip" + (SELECTED.has(String(item.id)) ? " on" : "");
         chip.textContent = item.name || item.agency_name || "Item";
         chip.addEventListener("click", () => onClick(item));
         host.appendChild(chip);
@@ -1091,11 +1125,66 @@
       SELECTED.add(String(s.id));
       renderServiceChips(hhServiceChips, getHhCommon());
       renderServiceChips(dmeServiceChips, getDmeCommon());
+      renderSelectedDropdownChips();
     });
 
     renderChipList(hhAgencyFreqWrap, hhAgencyFreqChips, hhAgencyFreqItems, (a) => {
       setSelectedHhAgency(a.id);
     });
+
+    renderSelectedDropdownChips(hhFreqIds, dmeFreqIds);
+  }
+
+  function renderSelectedDropdownChips(hhFreqIdsOverride, dmeFreqIdsOverride){
+    const hhFreqIds = hhFreqIdsOverride || new Set((FREQUENT.hh_services || []).map(id => String(id)));
+    const dmeFreqIds = dmeFreqIdsOverride || new Set((FREQUENT.dme_services || []).map(id => String(id)));
+
+    const hhSelected = getHhDropdown()
+      .filter(s => SELECTED.has(String(s.id)) && !hhFreqIds.has(String(s.id)));
+    const dmeSelected = getDmeDropdown()
+      .filter(s => SELECTED.has(String(s.id)) && !dmeFreqIds.has(String(s.id)));
+
+    if(hhSelectedWrap && hhSelectedChips){
+      hhSelectedChips.innerHTML = "";
+      if(!hhSelected.length){
+        hhSelectedWrap.style.display = "none";
+      }else{
+        hhSelectedWrap.style.display = "block";
+        hhSelected.forEach(s => {
+          const chip = document.createElement("div");
+          chip.className = "chip on";
+          chip.textContent = s.name || "Service";
+          chip.addEventListener("click", () => {
+            SELECTED.delete(String(s.id));
+            renderServiceChips(hhServiceChips, getHhCommon());
+            renderServiceChips(dmeServiceChips, getDmeCommon());
+            renderSelectedDropdownChips();
+          });
+          hhSelectedChips.appendChild(chip);
+        });
+      }
+    }
+
+    if(dmeSelectedWrap && dmeSelectedChips){
+      dmeSelectedChips.innerHTML = "";
+      if(!dmeSelected.length){
+        dmeSelectedWrap.style.display = "none";
+      }else{
+        dmeSelectedWrap.style.display = "block";
+        dmeSelected.forEach(s => {
+          const chip = document.createElement("div");
+          chip.className = "chip on";
+          chip.textContent = s.name || "Service";
+          chip.addEventListener("click", () => {
+            SELECTED.delete(String(s.id));
+            renderServiceChips(hhServiceChips, getHhCommon());
+            renderServiceChips(dmeServiceChips, getDmeCommon());
+            renderSelectedDropdownChips();
+          });
+          dmeSelectedChips.appendChild(chip);
+        });
+      }
+    }
   }
 
   function getHhCommon(){
@@ -1425,6 +1514,7 @@
       tr.querySelector("button").onclick = () => {
         SELECTED.add(String(s.id));
         renderServiceChips(dmeServiceChips, getDmeCommon());
+        renderSelectedDropdownChips();
         closeDmeModal();
       };
       dmeModalTbody.appendChild(tr);
@@ -1457,6 +1547,7 @@
       tr.querySelector("button").onclick = () => {
         SELECTED.add(String(s.id));
         renderServiceChips(hhServiceChips, getHhCommon());
+        renderSelectedDropdownChips();
         closeHhModal();
       };
       hhModalTbody.appendChild(tr);
@@ -1538,6 +1629,7 @@
 
       renderServiceChips(hhServiceChips, getHhCommon());
       renderServiceChips(dmeServiceChips, getDmeCommon());
+      renderSelectedDropdownChips();
 
       wireDropdownSearch(hhServiceSearch, hhServiceDropdown, getHhDropdown().map(s => ({
         id: s.id,
@@ -1548,6 +1640,7 @@
         hhServiceSearch.value = "";
         renderServiceChips(hhServiceChips, getHhCommon());
         renderSearchList(hhServiceDropdown, [], () => {});
+        renderSelectedDropdownChips();
       });
 
       wireDropdownSearch(dmeServiceSearch, dmeServiceDropdown, getDmeDropdown().map(s => ({
@@ -1559,6 +1652,7 @@
         dmeServiceSearch.value = "";
         renderServiceChips(dmeServiceChips, getDmeCommon());
         renderSearchList(dmeServiceDropdown, [], () => {});
+        renderSelectedDropdownChips();
       });
 
       AGENCIES = (agencies.agencies || []).filter(ag => {
@@ -1615,6 +1709,7 @@
         SELECTED = new Set(svc.map(x => String(x.services_id || x.id)));
         renderServiceChips(hhServiceChips, getHhCommon());
         renderServiceChips(dmeServiceChips, getDmeCommon());
+        renderSelectedDropdownChips();
       }else{
         setYesNo(confirmChips, "0", document.getElementById("dcConfirmed"));
         setYesNo(urgentChips, "0", document.getElementById("dcUrgent"));
@@ -1785,6 +1880,9 @@
   document.getElementById("saveBtn").addEventListener("click", save);
   document.getElementById("closeBtn").addEventListener("click", () => {
     window.location.href = "/sensys/snf-user/patient-search";
+  });
+  confirmCloseBtn.addEventListener("click", () => {
+    window.location.href = "/sensys/snf-user";
   });
 
   document.addEventListener("click", (e) => {
