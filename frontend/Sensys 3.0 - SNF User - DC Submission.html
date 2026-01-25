@@ -1108,6 +1108,8 @@
         else SELECTED.add(key);
         renderServiceChips(hhServiceChips, getHhCommon());
         renderServiceChips(dmeServiceChips, getDmeCommon());
+        renderFrequent();
+        renderSelectedDropdownChips();
       });
       host.appendChild(chip);
     });
@@ -1151,12 +1153,15 @@
       SELECTED.add(String(s.id));
       renderServiceChips(hhServiceChips, getHhCommon());
       renderServiceChips(dmeServiceChips, getDmeCommon());
+      renderFrequent();
+      renderSelectedDropdownChips();
     });
 
     renderChipList(dmeFreqWrap, dmeFreqChips, dmeFreqItems, (s) => {
       SELECTED.add(String(s.id));
       renderServiceChips(hhServiceChips, getHhCommon());
       renderServiceChips(dmeServiceChips, getDmeCommon());
+      renderFrequent();
       renderSelectedDropdownChips();
     });
 
@@ -1190,6 +1195,7 @@
             SELECTED.delete(String(s.id));
             renderServiceChips(hhServiceChips, getHhCommon());
             renderServiceChips(dmeServiceChips, getDmeCommon());
+            renderFrequent();
             renderSelectedDropdownChips();
           });
           hhSelectedChips.appendChild(chip);
@@ -1211,6 +1217,7 @@
             SELECTED.delete(String(s.id));
             renderServiceChips(hhServiceChips, getHhCommon());
             renderServiceChips(dmeServiceChips, getDmeCommon());
+            renderFrequent();
             renderSelectedDropdownChips();
           });
           dmeSelectedChips.appendChild(chip);
@@ -1546,6 +1553,7 @@
       tr.querySelector("button").onclick = () => {
         SELECTED.add(String(s.id));
         renderServiceChips(dmeServiceChips, getDmeCommon());
+        renderFrequent();
         renderSelectedDropdownChips();
         closeDmeModal();
       };
@@ -1579,6 +1587,7 @@
       tr.querySelector("button").onclick = () => {
         SELECTED.add(String(s.id));
         renderServiceChips(hhServiceChips, getHhCommon());
+        renderFrequent();
         renderSelectedDropdownChips();
         closeHhModal();
       };
@@ -1672,6 +1681,7 @@
         hhServiceSearch.value = "";
         renderServiceChips(hhServiceChips, getHhCommon());
         renderSearchList(hhServiceDropdown, [], () => {});
+        renderFrequent();
         renderSelectedDropdownChips();
       });
 
@@ -1684,6 +1694,7 @@
         dmeServiceSearch.value = "";
         renderServiceChips(dmeServiceChips, getDmeCommon());
         renderSearchList(dmeServiceDropdown, [], () => {});
+        renderFrequent();
         renderSelectedDropdownChips();
       });
 
