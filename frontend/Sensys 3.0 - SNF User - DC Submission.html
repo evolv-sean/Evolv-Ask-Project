@@ -1108,7 +1108,7 @@
         else SELECTED.add(key);
         renderServiceChips(hhServiceChips, getHhCommon());
         renderServiceChips(dmeServiceChips, getDmeCommon());
-        renderFrequent();
+        syncFrequentSelection();
         renderSelectedDropdownChips();
       });
       host.appendChild(chip);
@@ -1132,7 +1132,7 @@
     const hhAgencyFreqItems = (FREQUENT.hh_agencies || []).map(id => AGENCIES.find(a => Number(a.id) === Number(id))).filter(Boolean)
       .filter(a => !PREFERRED_HH.has(Number(a.id)));
 
-    const renderChipList = (wrap, host, items, onClick) => {
+    const renderChipList = (wrap, host, items, onClick, useSelected) => {
       if(!wrap || !host) return;
       host.innerHTML = "";
       if(!items.length){
@@ -1142,7 +1142,9 @@
       wrap.style.display = "block";
       items.forEach(item => {
         const chip = document.createElement("div");
-        chip.className = "chip" + (SELECTED.has(String(item.id)) ? " on" : "");
+        const itemId = (item && item.id != null) ? String(item.id) : "";
+        chip.className = "chip" + (useSelected && itemId && SELECTED.has(itemId) ? " on" : "");
+        if(useSelected && itemId) chip.dataset.id = itemId;
         chip.textContent = item.name || item.agency_name || "Item";
         chip.addEventListener("click", () => onClick(item));
         host.appendChild(chip);
@@ -1150,26 +1152,40 @@
     };
 
     renderChipList(hhFreqWrap, hhFreqChips, hhFreqItems, (s) => {
-      SELECTED.add(String(s.id));
+      const key = String(s.id);
+      if(SELECTED.has(key)) SELECTED.delete(key);
+      else SELECTED.add(key);
       renderServiceChips(hhServiceChips, getHhCommon());
       renderServiceChips(dmeServiceChips, getDmeCommon());
-      renderFrequent();
+      syncFrequentSelection();
       renderSelectedDropdownChips();
-    });
+    }, true);
 
     renderChipList(dmeFreqWrap, dmeFreqChips, dmeFreqItems, (s) => {
-      SELECTED.add(String(s.id));
+      const key = String(s.id);
+      if(SELECTED.has(key)) SELECTED.delete(key);
+      else SELECTED.add(key);
       renderServiceChips(hhServiceChips, getHhCommon());
       renderServiceChips(dmeServiceChips, getDmeCommon());
-      renderFrequent();
+      syncFrequentSelection();
       renderSelectedDropdownChips();
-    });
+    }, true);
 
     renderChipList(hhAgencyFreqWrap, hhAgencyFreqChips, hhAgencyFreqItems, (a) => {
       setSelectedHhAgency(a.id);
-    });
+    }, false);
 
     renderSelectedDropdownChips(hhFreqIds, dmeFreqIds);
+  }
+
+  function syncFrequentSelection(){
+    [hhFreqChips, dmeFreqChips].forEach(host => {
+      if(!host) return;
+      host.querySelectorAll(".chip[data-id]").forEach(chip => {
+        const id = chip.getAttribute("data-id") || "";
+        chip.classList.toggle("on", !!id && SELECTED.has(id));
+      });
+    });
   }
 
   function renderSelectedDropdownChips(hhFreqIdsOverride, dmeFreqIdsOverride){
@@ -1195,7 +1211,7 @@
             SELECTED.delete(String(s.id));
             renderServiceChips(hhServiceChips, getHhCommon());
             renderServiceChips(dmeServiceChips, getDmeCommon());
-            renderFrequent();
+            syncFrequentSelection();
             renderSelectedDropdownChips();
           });
           hhSelectedChips.appendChild(chip);
@@ -1217,7 +1233,7 @@
             SELECTED.delete(String(s.id));
             renderServiceChips(hhServiceChips, getHhCommon());
             renderServiceChips(dmeServiceChips, getDmeCommon());
-            renderFrequent();
+            syncFrequentSelection();
             renderSelectedDropdownChips();
           });
           dmeSelectedChips.appendChild(chip);
@@ -1553,7 +1569,7 @@
       tr.querySelector("button").onclick = () => {
         SELECTED.add(String(s.id));
         renderServiceChips(dmeServiceChips, getDmeCommon());
-        renderFrequent();
+        syncFrequentSelection();
         renderSelectedDropdownChips();
         closeDmeModal();
       };
@@ -1587,7 +1603,7 @@
       tr.querySelector("button").onclick = () => {
         SELECTED.add(String(s.id));
         renderServiceChips(hhServiceChips, getHhCommon());
-        renderFrequent();
+        syncFrequentSelection();
         renderSelectedDropdownChips();
         closeHhModal();
       };
@@ -1681,7 +1697,7 @@
         hhServiceSearch.value = "";
         renderServiceChips(hhServiceChips, getHhCommon());
         renderSearchList(hhServiceDropdown, [], () => {});
-        renderFrequent();
+        syncFrequentSelection();
         renderSelectedDropdownChips();
       });
 
@@ -1694,7 +1710,7 @@
         dmeServiceSearch.value = "";
         renderServiceChips(dmeServiceChips, getDmeCommon());
         renderSearchList(dmeServiceDropdown, [], () => {});
-        renderFrequent();
+        syncFrequentSelection();
         renderSelectedDropdownChips();
       });
 
