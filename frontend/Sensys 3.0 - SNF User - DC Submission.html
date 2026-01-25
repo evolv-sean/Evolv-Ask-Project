@@ -1132,7 +1132,7 @@
     const hhAgencyFreqItems = (FREQUENT.hh_agencies || []).map(id => AGENCIES.find(a => Number(a.id) === Number(id))).filter(Boolean)
       .filter(a => !PREFERRED_HH.has(Number(a.id)));
 
-    const renderChipList = (wrap, host, items, onClick, getIsOn, dataKey) => {
+    const renderChipList = (wrap, host, items, onClick, getIsOn, dataKey, dataType) => {
       if(!wrap || !host) return;
       host.innerHTML = "";
       if(!items.length){
@@ -1146,6 +1146,7 @@
         const isOn = getIsOn ? !!getIsOn(item) : false;
         chip.className = "chip" + (isOn ? " on" : "");
         if(rawId) chip.dataset.id = rawId;
+        if(dataType) chip.dataset.type = dataType;
         chip.textContent = item.name || item.agency_name || "Item";
         chip.addEventListener("click", () => onClick(item));
         host.appendChild(chip);
@@ -1160,7 +1161,7 @@
       renderServiceChips(dmeServiceChips, getDmeCommon());
       syncFrequentSelection();
       renderSelectedDropdownChips();
-    }, null, "id");
+    }, null, "id", "hh");
 
     renderChipList(dmeFreqWrap, dmeFreqChips, dmeFreqItems, (s) => {
       const key = String(s.id);
@@ -1170,11 +1171,11 @@
       renderServiceChips(dmeServiceChips, getDmeCommon());
       syncFrequentSelection();
       renderSelectedDropdownChips();
-    }, null, "id");
+    }, null, "id", "dme");
 
     renderChipList(hhAgencyFreqWrap, hhAgencyFreqChips, hhAgencyFreqItems, (a) => {
       setSelectedHhAgency(a.id);
-    }, null, "id");
+    }, null, "id", "agency");
 
     syncFrequentSelection();
     syncAgencySelection();
@@ -1186,7 +1187,9 @@
       if(!host) return;
       host.querySelectorAll(".chip[data-id]").forEach(chip => {
         const id = chip.getAttribute("data-id") || "";
-        chip.classList.toggle("on", !!id && SELECTED.has(id));
+        const type = chip.getAttribute("data-type") || "";
+        const matchesType = !type || SERVICE_TYPE_MAP[id] === type;
+        chip.classList.toggle("on", !!id && SELECTED.has(id) && matchesType);
       });
     });
   }

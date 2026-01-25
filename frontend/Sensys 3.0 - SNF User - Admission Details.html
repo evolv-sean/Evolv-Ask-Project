@@ -1,0 +1,656 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sensys - Admission Details</title>
+  <style>
+    :root{
+      --navy:#0D3B66;
+      --mint:#A8E6CF;
+      --mint-strong:#86d9ba;
+      --bg:#ffffff;
+      --bg-2:#F5F7FA;
+      --text:#0f172a;
+      --muted:#5b6b84;
+      --line: rgba(13,59,102,.14);
+      --shadow:0 18px 36px rgba(13,59,102,.08);
+      --r-lg:20px;
+      --r-md:12px;
+      --sidebar-w:78px;
+      --logo-offset-x:-68px;
+      --logo-offset-y:-58px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    html,body{
+      margin:0;
+      background:
+        radial-gradient(900px 320px at 50% 1%, rgba(15,23,42,.035), rgba(255,255,255,0) 80%),
+        linear-gradient(180deg, #ffffff 0%, #f5f7fa 100%);
+      background-repeat:no-repeat;
+      background-attachment:fixed;
+      color:var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    .layout{
+      min-height:100vh;
+      display:flex;
+    }
+    .sidebar{
+      width:var(--sidebar-w);
+      background:#fff;
+      border-right:1px solid rgba(13,59,102,.08);
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      padding:0 0 14px;
+      position:relative;
+    }
+    .sidebar-logo{
+      width:100%;
+      height:92px;
+      overflow:hidden;
+      margin-bottom:18px;
+      position:relative;
+    }
+    .sidebar-logo img{
+      width:150px;
+      height:150px;
+      position:absolute;
+      left:-6px;
+      top:-6px;
+      transform: translate(var(--logo-offset-x), var(--logo-offset-y));
+      display:block;
+    }
+    .side-nav{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:14px;
+      margin-top:6px;
+    }
+    .side-btn{
+      width:42px;
+      height:42px;
+      border-radius:14px;
+      border:0;
+      background:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:var(--navy);
+      cursor:pointer;
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .side-btn:hover{
+      box-shadow:0 0 0 2px rgba(168,230,207,.35);
+      transform: translateY(-1px);
+    }
+    .side-btn svg{
+      width:35px;
+      height:35px;
+    }
+    .side-btn .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:3.2px;
+    }
+    .side-spacer{flex:1}
+    .profile-wrap{
+      position:relative;
+      margin-bottom:6px;
+    }
+    .profile-menu{
+      position:absolute;
+      left:52px;
+      bottom:0;
+      background:#fff;
+      border:1px solid rgba(13,59,102,.12);
+      border-radius:12px;
+      box-shadow:0 18px 36px rgba(13,59,102,.16);
+      padding:8px;
+      min-width:170px;
+      display:none;
+      z-index:10;
+    }
+    .profile-menu button{
+      width:100%;
+      border:0;
+      background:#fff;
+      text-align:left;
+      padding:8px 10px;
+      border-radius:10px;
+      font-size:12px;
+      font-weight:800;
+      color:#111827;
+      cursor:pointer;
+    }
+    .profile-menu button:hover{
+      background:rgba(168,230,207,.18);
+    }
+    .page{
+      min-height:100vh;
+      padding:28px 28px 24px;
+      max-width:1400px;
+      margin:0 auto;
+      display:flex;
+      flex-direction:column;
+      flex:1;
+    }
+    .topbar{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:16px;
+      margin-bottom:18px;
+    }
+    .title h1{
+      margin:0 0 6px;
+      font-size:40px;
+      font-weight:400;
+      color:var(--navy);
+      letter-spacing:.2px;
+    }
+    .title p{
+      margin:0;
+      font-size:14px;
+      color:var(--muted);
+    }
+    .icon-btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:44px;
+      height:44px;
+      border-radius:14px;
+      border:1px solid var(--line);
+      background:#fff;
+      cursor:pointer;
+      color:var(--navy);
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .icon-btn:hover{
+      border-color: rgba(168,230,207,.9);
+      box-shadow:0 0 0 3px rgba(168,230,207,.35);
+      transform: translateY(-1px);
+    }
+    .icon-btn svg{width:24px;height:24px}
+    .icon-btn .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:5.5px;
+    }
+
+    .main-grid{
+      display:grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap:16px;
+      align-items:stretch;
+      min-height:calc(100vh - 190px);
+    }
+    .left-col{
+      display:flex;
+      flex-direction:column;
+      gap:16px;
+      min-height:100%;
+    }
+    .top-row{
+      display:grid;
+      grid-template-columns: 280px 1fr;
+      gap:16px;
+    }
+    .card{
+      background:#fff;
+      border:1px solid rgba(13,59,102,.12);
+      border-radius:18px;
+      box-shadow:none;
+      padding:18px;
+    }
+    .card.square{
+      border-radius:16px;
+      text-align:center;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:10px;
+    }
+    .card.no-hover{
+      border-color:rgba(168,230,207,.95);
+      box-shadow:none;
+    }
+    .card.no-hover:hover{
+      border-color:rgba(168,230,207,.95);
+      box-shadow:none;
+      transform:none;
+    }
+    .avatar{
+      width:140px;
+      height:140px;
+      border-radius:999px;
+      border:2px solid rgba(168,230,207,.9);
+      background:rgba(168,230,207,.12);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:var(--mint-strong);
+    }
+    .avatar svg{width:110px;height:110px}
+    .avatar .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:3.2px;
+    }
+    .patient-name{
+      font-size:20px;
+      font-weight:800;
+      color:var(--navy);
+      margin:0;
+    }
+    .patient-dob{
+      font-size:12px;
+      color:var(--muted);
+      margin:0;
+    }
+    .meta-grid{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap:12px 16px;
+      margin-top:6px;
+    }
+    .meta-item{
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+    }
+    .meta-item .label{
+      font-size:11px;
+      font-weight:800;
+      color:#334155;
+      letter-spacing:.2px;
+      text-transform:uppercase;
+    }
+    .meta-item .value{
+      font-size:14px;
+      font-weight:700;
+      color:#0f172a;
+    }
+    .bottom-card{
+      flex:1;
+      min-height:360px;
+    }
+    .card-title{
+      font-size:14px;
+      font-weight:900;
+      color:var(--navy);
+      margin:0 0 8px;
+    }
+    .card-sub{
+      font-size:12px;
+      color:var(--muted);
+      margin:0 0 12px;
+    }
+    .right-card{
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      min-height:100%;
+    }
+    .mini-card{
+      border-radius:16px;
+      border:1px solid rgba(168,230,207,.85);
+      background:#fff;
+      padding:14px;
+      min-height:120px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+    .mini-card h4{
+      margin:0;
+      font-size:13px;
+      font-weight:900;
+      color:var(--navy);
+    }
+    .mini-card p{
+      margin:0;
+      font-size:12px;
+      color:var(--muted);
+    }
+    @media (max-width: 1100px){
+      .main-grid{grid-template-columns:1fr}
+      .top-row{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <img src="/static/images/Evolv-Health-E-Color.svg" alt="Evolv Health" onerror="this.onerror=null;this.src='Logos/Evolv-Health-E-Color.svg';" />
+      </div>
+      <div class="side-nav">
+        <button class="side-btn" id="navHome" title="Home" aria-label="Home">
+          <svg viewBox="0 0 84.28 75.71" aria-hidden="true">
+            <g>
+              <polygon class="cls-1" points="72.76 74.32 72.76 41.92 82.89 41.92 82.89 35.62 71 25.54 71 7.55 58.75 7.55 58.75 15.16 42.14 1.79 1.39 35.62 1.39 41.92 11.52 41.92 11.52 74.31 32.09 74.32 32.09 52.8 52.18 52.8 52.18 74.32 72.76 74.32" />
+              <polyline class="cls-1" points="11.52 41.92 42.14 16.92 72.76 41.92" />
+            </g>
+          </svg>
+        </button>
+        <button class="side-btn" id="navInpatient" title="Inpatient List" aria-label="Inpatient List">
+          <svg viewBox="0 0 77.02 76.67" aria-hidden="true">
+            <g>
+              <g>
+                <path class="cls-1" d="M75.63,58.69v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06v-14.55c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                <line class="cls-1" x1="65.85" y1="66.01" x2="58.74" y2="66.01" />
+              </g>
+              <g>
+                <path class="cls-1" d="M75.63,31.08v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06v-14.55c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                <line class="cls-1" x1="65.85" y1="38.4" x2="58.74" y2="38.4" />
+              </g>
+              <g>
+                <path class="cls-1" d="M75.63,3.46v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06V3.45c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                <line class="cls-1" x1="65.85" y1="10.78" x2="58.74" y2="10.78" />
+              </g>
+            </g>
+          </svg>
+        </button>
+        <button class="side-btn" id="navDischarged" title="Discharged Patients" aria-label="Discharged Patients">
+          <svg viewBox="0 0 63.35 80.07" aria-hidden="true">
+            <g>
+              <g>
+                <path class="cls-1" d="M14.34,33.31l-3.49,3.35v20.24l-5.37,8.59c-1.29,2.06-.6,4.78,1.52,5.97l.05.03c1.96,1.11,4.44.5,5.67-1.38l6.59-10.08.07-10.59,8.37,5.92,2.54,6.78c.53,1.41,2.19,2.56,3.69,2.56h.44c2.9,0,4.88-2.91,3.83-5.61l-3.91-9.97-9.06-6.49.03-16.43" />
+                <path class="cls-1" d="M25.68,10.8c.39,3.99-2.52,7.54-6.51,7.93-3.99.39-7.54-2.52-7.93-6.51-.39-3.99,2.52-7.54,6.51-7.93,3.99-.39,7.54,2.52,7.93,6.51Z" />
+                <path class="cls-1" d="M25.6,35.54l4.38,2.32c2,1.06,4.48.27,5.5-1.75h0c.99-1.96.23-4.35-1.71-5.39l-12.71-6.8h-8.41s-9.81,8.84-9.81,8.84v9.8c0,2.68,2.17,4.86,4.86,4.86h3.14" />
+              </g>
+              <polyline class="cls-1" points="0 78.69 21.94 78.69 21.94 71.37 44.55 71.37 44.55 62.95 61.96 62.95 61.96 1.39 41.17 1.39 46.02 9.76 41.17 18.33 61.96 18.33" />
+            </g>
+          </svg>
+        </button>
+        <button class="side-btn" id="navCalendar" title="Discharge Calendar" aria-label="Discharge Calendar">
+          <svg viewBox="0 0 74.16 76.04" aria-hidden="true">
+            <g>
+              <g>
+                <g>
+                  <line class="cls-1" x1="26.55" y1="10.08" x2="52.53" y2="10.08" />
+                  <path class="cls-1" d="M66.54,10.08h2.08c2.3,0,4.16,1.86,4.16,4.16v56.27c0,2.3-1.86,4.16-4.16,4.16H5.54c-2.3,0-4.16-1.86-4.16-4.16V14.23c0-2.3,1.86-4.16,4.16-4.16h7.14" />
+                  <line class="cls-1" x1="1.39" y1="26.73" x2="72.78" y2="26.73" />
+                </g>
+                <line class="cls-1" x1="32.51" y1="50.58" x2="41.55" y2="50.58" />
+                <line class="cls-1" x1="32.51" y1="63.68" x2="41.55" y2="63.68" />
+                <line class="cls-1" x1="12.09" y1="63.68" x2="21.13" y2="63.68" />
+                <line class="cls-1" x1="52.93" y1="37.47" x2="61.97" y2="37.47" />
+                <line class="cls-1" x1="32.51" y1="37.47" x2="41.55" y2="37.47" />
+                <line class="cls-1" x1="12.09" y1="37.47" x2="21.13" y2="37.47" />
+                <line class="cls-1" x1="52.93" y1="50.58" x2="61.97" y2="50.58" />
+                <line class="cls-1" x1="12.09" y1="50.58" x2="21.13" y2="50.58" />
+              </g>
+              <rect class="cls-1" x="13.22" y="1.39" width="7.89" height="17.38" rx="3.94" ry="3.94" />
+              <path class="cls-1" d="M57,18.77h0c-2.18,0-3.94-1.77-3.94-3.94V5.33c0-2.18,1.77-3.94,3.94-3.94h0c2.18,0,3.94,1.77,3.94,3.94v9.5c0,2.18-1.77,3.94-3.94,3.94Z" />
+            </g>
+          </svg>
+        </button>
+      </div>
+      <div class="side-spacer"></div>
+      <div class="profile-wrap">
+        <button class="side-btn" id="profileBtn" title="Account" aria-label="Account">
+          <svg viewBox="0 0 65.83 73.85" aria-hidden="true">
+            <g>
+              <g>
+                <path class="cls-1" d="M64.44,73.85v-21.35c-.11-.1-10.45-8.89-31.53-8.89S1.47,52.43,1.39,52.5h0v21.35" />
+                <path class="cls-1" d="M46.83,16.09c0,9.32-6.14,16.65-13.71,16.65s-13.71-7.32-13.71-16.65S25.55,1.39,33.12,1.39s13.71,5.38,13.71,14.7Z" />
+              </g>
+              <line class="cls-1" x1="17.42" y1="73.85" x2="17.42" y2="60.4" />
+              <line class="cls-1" x1="48.82" y1="73.85" x2="48.82" y2="60.4" />
+            </g>
+          </svg>
+        </button>
+        <div class="profile-menu" id="profileMenu">
+          <button id="changePasswordBtn">Change Password</button>
+          <button id="signOutBtn">Sign Out</button>
+        </div>
+      </div>
+    </aside>
+
+    <div class="page">
+      <div class="topbar">
+        <div class="title">
+          <h1>Patient Details</h1>
+          <p>Admission overview and quick actions.</p>
+        </div>
+        <button class="icon-btn" id="bellBtn" aria-label="Notifications">
+          <svg viewBox="0 0 216.18 263.34" aria-hidden="true">
+            <g>
+              <path class="cls-1" d="M211.75,204.56l-13.8-20.09c-8.42-12.26-12.93-26.79-12.93-41.66v-28.8c0-32.92-20.67-61-49.75-71.98-3.98-1.5-6.61-5.3-6.61-9.55v-9.15c0-11.36-9.21-20.57-20.57-20.57h0c-11.36,0-20.57,9.21-20.57,20.57v9.15c0,4.25-2.64,8.05-6.61,9.55-29.07,10.98-49.75,39.07-49.75,71.98v28.8c0,14.88-4.51,29.4-12.93,41.66l-13.8,20.09c-4.33,6.31.18,14.89,7.84,14.89h191.63c7.65,0,12.17-8.58,7.84-14.89Z"/>
+              <path class="cls-1" d="M78.75,238.56c3.69,12.73,15.43,22.03,29.34,22.03s25.66-9.3,29.34-22.03"/>
+            </g>
+          </svg>
+        </button>
+      </div>
+
+      <div class="main-grid">
+        <div class="left-col">
+          <div class="top-row">
+            <div class="card square no-hover">
+              <div class="avatar" aria-hidden="true">
+                <svg viewBox="0 0 74.42 77.39">
+                  <g>
+                    <g>
+                      <path class="cls-1" d="M29.76,41.57c-.05,3.12-.88,5.84-2.57,8.1l-16.67,4.74c-5.41,1.54-9.14,6.48-9.14,12.1v9.49h71.65v-9.49c0-5.62-3.73-10.56-9.14-12.1l-16.67-4.74c-1.69-2.27-2.52-4.98-2.57-8.1" />
+                      <line class="cls-1" x1="16.08" y1="75.15" x2="16.08" y2="67.05" />
+                      <line class="cls-1" x1="58.34" y1="75.15" x2="58.34" y2="67.05" />
+                      <polyline class="cls-1" points="47.43 50.22 37.21 66.4 26.99 50.22" />
+                      <line class="cls-1" x1="37.21" y1="66.4" x2="37.21" y2="75.17" />
+                    </g>
+                    <g>
+                      <path class="cls-1" d="M53.48,20.19S56.92,1.39,37.06,1.39s-16.52,18.81-16.52,18.81" />
+                      <path class="cls-1" d="M27.97,17.86c-1.92,1.59-4.24,2.6-7.2,2.6-1.55.02-2.82,1.12-3.12,2.56-.11.51-.05,1.04.09,1.54l.99,3.45c.3,1.04,1.11,1.83,2.11,2.13h0c.82.24,1.48.83,1.8,1.62,2.75,6.89,8.17,12.11,14.43,12.11s11.59-5.13,14.36-11.95c.35-.87,1.07-1.53,1.96-1.81h0c.95-.32,1.72-1.1,2.01-2.1l.99-3.45c.14-.5.2-1.03.09-1.54-.31-1.43-1.57-2.54-3.12-2.56-7.81,0-15.44-1.64-20.89-8.18" />
+                    </g>
+                  </g>
+                </svg>
+              </div>
+              <p class="patient-name" id="patientName">Taylor Adams</p>
+              <p class="patient-dob" id="patientDob">DOB: 06/12/1943</p>
+            </div>
+
+            <div class="card no-hover">
+              <div class="card-title">Demographics</div>
+              <div class="meta-grid">
+                <div class="meta-item">
+                  <span class="label">Admit Date</span>
+                  <span class="value" id="admitDate">01/08/2026</span>
+                </div>
+                <div class="meta-item">
+                  <span class="label">Discharge Date</span>
+                  <span class="value" id="dcDate">01/28/2026</span>
+                </div>
+                <div class="meta-item">
+                  <span class="label">Insurance Name</span>
+                  <span class="value" id="insuranceName">Aetna</span>
+                </div>
+                <div class="meta-item">
+                  <span class="label">Insurance Number</span>
+                  <span class="value" id="insuranceNumber">AE-443201</span>
+                </div>
+                <div class="meta-item">
+                  <span class="label">Room</span>
+                  <span class="value" id="roomNumber">101A</span>
+                </div>
+                <div class="meta-item">
+                  <span class="label">Attending</span>
+                  <span class="value" id="attendingName">Dr. Morgan Keller</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card bottom-card no-hover">
+            <div class="card-title">Care Plan (TBD)</div>
+            <div class="card-sub">This area will expand with care goals, notes, and status updates.</div>
+            <div class="meta-grid">
+              <div class="meta-item">
+                <span class="label">Primary Goal</span>
+                <span class="value">Safe discharge planning</span>
+              </div>
+              <div class="meta-item">
+                <span class="label">Barriers</span>
+                <span class="value">Pending DME delivery</span>
+              </div>
+              <div class="meta-item">
+                <span class="label">Caregiver</span>
+                <span class="value">Family notified</span>
+              </div>
+              <div class="meta-item">
+                <span class="label">Next Step</span>
+                <span class="value">Finalize Home Health referral</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card right-card no-hover">
+          <div class="mini-card">
+            <h4>Documents</h4>
+            <p>3 items uploaded - Discharge summary, PT notes, DME order.</p>
+          </div>
+          <div class="mini-card">
+            <h4>Appointments</h4>
+            <p>Follow-up with PCP in 7 days. Cardiology referral pending.</p>
+          </div>
+          <div class="mini-card">
+            <h4>Tasks</h4>
+            <p>2 open tasks - Confirm HH agency, verify transport.</p>
+          </div>
+          <div class="mini-card">
+            <h4>Messages</h4>
+            <p>Latest update from CCC: awaiting insurance auth.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const qs = (k) => new URLSearchParams(window.location.search).get(k);
+  const admissionId = Number(qs("admission_id") || 0);
+  const patientName = document.getElementById("patientName");
+  const patientDob = document.getElementById("patientDob");
+  const admitDate = document.getElementById("admitDate");
+  const dcDate = document.getElementById("dcDate");
+  const insuranceName = document.getElementById("insuranceName");
+  const insuranceNumber = document.getElementById("insuranceNumber");
+  const roomNumber = document.getElementById("roomNumber");
+  const attendingName = document.getElementById("attendingName");
+
+  const profileBtn = document.getElementById("profileBtn");
+  const profileMenu = document.getElementById("profileMenu");
+  const signOutBtn = document.getElementById("signOutBtn");
+  const changePasswordBtn = document.getElementById("changePasswordBtn");
+  const navHome = document.getElementById("navHome");
+  const navInpatient = document.getElementById("navInpatient");
+  const navDischarged = document.getElementById("navDischarged");
+  const navCalendar = document.getElementById("navCalendar");
+
+  const SAMPLE = {
+    patient_name: "Adams, Taylor",
+    patient_dob: "1943-06-12",
+    admit_date: "2026-01-08",
+    dc_date: "2026-01-28",
+    room: "101A",
+    insurance_name: "Aetna",
+    insurance_number: "AE-443201",
+    attending_name: "Dr. Morgan Keller"
+  };
+
+  function token(){
+    return (localStorage.getItem("sensys_token") || "").trim();
+  }
+  function authHeaders(){
+    return { "Authorization": "Bearer " + token() };
+  }
+  function fmtDate(s){
+    if(!s) return "-";
+    const d = new Date(s);
+    if(Number.isNaN(d.getTime())) return s;
+    return d.toLocaleDateString();
+  }
+  function setData(d){
+    const rawName = d.patient_name || "Patient";
+    const name = rawName.includes(",")
+      ? rawName.split(",").slice(0, 2).reverse().map(s => s.trim()).filter(Boolean).join(" ")
+      : rawName;
+    patientName.textContent = name;
+    patientDob.textContent = "DOB: " + (d.patient_dob ? fmtDate(d.patient_dob) : "-");
+    admitDate.textContent = fmtDate(d.admit_date);
+    dcDate.textContent = d.dc_date ? fmtDate(d.dc_date) : "-";
+    insuranceName.textContent = d.insurance_name || "-";
+    insuranceNumber.textContent = d.insurance_number || "-";
+    roomNumber.textContent = d.room || "-";
+    attendingName.textContent = d.attending_name || d.latest_pcp || "-";
+  }
+
+  async function load(){
+    if(!token() || !admissionId){
+      setData(SAMPLE);
+      return;
+    }
+    try{
+      const res = await fetch("/api/sensys/admission-details/" + admissionId, { headers: authHeaders() });
+      const data = await res.json();
+      if(!res.ok || !data || !data.admission) throw new Error("Load failed");
+      const admission = data.admission || {};
+      setData({
+        patient_name: admission.patient_name,
+        patient_dob: admission.patient_dob,
+        admit_date: admission.admit_date,
+        dc_date: admission.dc_date,
+        room: admission.room,
+        attending_name: admission.latest_pcp
+      });
+    }catch(e){
+      setData(SAMPLE);
+    }
+  }
+
+  profileBtn.addEventListener("click", () => {
+    const isOpen = profileMenu.style.display === "block";
+    profileMenu.style.display = isOpen ? "none" : "block";
+  });
+  document.addEventListener("click", (e) => {
+    if(!profileMenu.contains(e.target) && !profileBtn.contains(e.target)){
+      profileMenu.style.display = "none";
+    }
+  });
+  signOutBtn.addEventListener("click", () => {
+    localStorage.removeItem("sensys_token");
+    window.location.href = "/sensys/login";
+  });
+  changePasswordBtn.addEventListener("click", () => {
+    window.location.href = "/sensys/change-password";
+  });
+  navHome.addEventListener("click", () => {
+    window.location.href = "/sensys/snf-user";
+  });
+  navInpatient.addEventListener("click", () => {
+    window.location.href = "/sensys/snf-user/patient-list";
+  });
+  navDischarged.addEventListener("click", () => {
+    window.location.href = "/sensys/snf-user/discharged-patients";
+  });
+  navCalendar.addEventListener("click", () => {
+    window.location.href = "/sensys/snf-user/calendar";
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>
