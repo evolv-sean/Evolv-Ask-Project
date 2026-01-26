@@ -932,24 +932,24 @@
                   </g>
                 </svg>
               </div>
-              <p class="patient-name" id="patientName">Taylor Adams</p>
+              <p class="patient-name" id="patientName"></p>
               </div>
               <div class="mini-demographics">
                 <div class="meta-item">
                   <span class="label">Admit</span>
-                  <span class="value"><span id="admitDateMini">01/08/2026</span> - <span id="dcDateMini">01/28/2026</span></span>
+                  <span class="value"><span id="admitDateMini"></span> - <span id="dcDateMini"></span></span>
                 </div>
                 <div class="meta-item">
                   <span class="label">DOB</span>
-                  <span class="value" id="patientDobMini">06/12/1943</span>
+                  <span class="value" id="patientDobMini"></span>
                 </div>
                 <div class="meta-item">
                   <span class="label">Ins</span>
-                  <span class="value"><span id="insuranceNameMini">Aetna</span> (<span id="insuranceNumberMini">AE-443201</span>)</span>
+                  <span class="value"><span id="insuranceNameMini"></span> (<span id="insuranceNumberMini"></span>)</span>
                 </div>
                 <div class="meta-item">
                   <span class="label">Attend</span>
-                  <span class="value" id="attendingNameMini">Dr. Morgan Keller</span>
+                  <span class="value" id="attendingNameMini"></span>
                 </div>
               </div>
             </div>
@@ -1106,7 +1106,7 @@
               <div class="dc-plan-date">
                 <div class="dc-plan-label">Discharge Date</div>
                 <div class="dc-plan-date-row">
-                  <span id="dcPlanDate">01/28/2026</span>
+                  <span id="dcPlanDate"></span>
                   <span class="dc-plan-confirm confirmed" id="dcPlanConfirm" title="Confirmed">
                     <svg viewBox="0 0 90 90" aria-hidden="true">
                       <polyline class="cls-1" points="19 48 38 66 70 28" />
@@ -1133,31 +1133,24 @@
                     <span>Home Health</span>
                     <span class="dc-plan-title-inline">
                       <span class="dc-plan-label lowercase">with</span>
-                      <span class="dc-plan-value" id="dcPlanAgencyName">Expert Home Health</span>
+                      <span class="dc-plan-value" id="dcPlanAgencyName"></span>
                     </span>
                   </div>
-                  <div class="dc-plan-chips" id="dcPlanHhChips">
-                    <span class="dc-plan-chip hh">Skilled Nursing</span>
-                    <span class="dc-plan-chip hh">PT</span>
-                    <span class="dc-plan-chip hh">OT</span>
-                  </div>
+                  <div class="dc-plan-chips" id="dcPlanHhChips"></div>
                 </div>
                 <div class="dc-plan-line">
                   <span class="dc-plan-label">SOC:</span>
-                  <span class="dc-plan-value" id="dcPlanSocDate">01/30/2026</span>
+                  <span class="dc-plan-value" id="dcPlanSocDate"></span>
                 </div>
               </div>
               <div class="dc-plan-section dc-plan-row">
                 <div class="dc-plan-row-split">
                   <div class="dc-plan-section-title">DME</div>
-                  <div class="dc-plan-chips" id="dcPlanDmeChips">
-                    <span class="dc-plan-chip dme">Walker</span>
-                    <span class="dc-plan-chip dme">Oxygen</span>
-                  </div>
+                  <div class="dc-plan-chips" id="dcPlanDmeChips"></div>
                 </div>
                 <div class="dc-plan-line">
                   <span class="dc-plan-label">Delivery Date:</span>
-                  <span class="dc-plan-value" id="dcPlanDmeDate">02/01/2026</span>
+                  <span class="dc-plan-value" id="dcPlanDmeDate"></span>
                 </div>
               </div>
             </div>
@@ -1255,30 +1248,7 @@
   const navCalendar = document.getElementById("navCalendar");
   const dischargePlanBtn = document.getElementById("dischargePlanBtn");
 
-  const SAMPLE = {
-    patient_first_name: "Taylor",
-    patient_last_name: "Adams",
-    patient_dob: "1943-06-12",
-    admit_date: "2026-01-08",
-    dc_date: "2026-01-28",
-    room: "101A",
-    patient_insurance_name1: "Aetna",
-    patient_insurance_number1: "AE-443201",
-    snf_physician_name: "Dr. Morgan Keller",
-    latest_dc_submission: {
-      dc_date: "2026-01-28",
-      dc_confirmed: 1,
-      dc_urgent: 1,
-      hh_agency_name: "Expert Home Health",
-      services: [
-        { service_name: "Skilled Nursing", service_type_code: "HH" },
-        { service_name: "PT", service_type_code: "HH" },
-        { service_name: "OT", service_type_code: "HH" },
-        { service_name: "Walker", service_type_code: "DME" },
-        { service_name: "Oxygen", service_type_code: "DME" }
-      ]
-    }
-  };
+  const SAMPLE = {};
 
   function token(){
     return (localStorage.getItem("sensys_token") || "").trim();
@@ -1310,7 +1280,7 @@
   }
   function setDcPlan(admission, d){
     if(!dcPlanDate || !dcPlanConfirm || !dcPlanUrgent) return;
-    const dateVal = admission && admission.dc_date ? fmtDate(admission.dc_date) : "-";
+    const dateVal = admission && admission.dc_date ? fmtDate(admission.dc_date) : "";
     dcPlanDate.textContent = dateVal;
     const confirmed = String(d && d.dc_confirmed) === "1" || d.dc_confirmed === true;
     dcPlanConfirm.classList.toggle("confirmed", confirmed);
@@ -1319,7 +1289,7 @@
     dcPlanUrgent.classList.toggle("on", urgent);
     if(dcPlanAgencyName){
       const agency = d.hh_agency_name || d.hh_carecompare_name || d.hh_carecompare_dba || "";
-      dcPlanAgencyName.textContent = agency || "Not selected";
+      dcPlanAgencyName.textContent = agency || "";
       dcPlanAgencyName.classList.toggle("muted", !agency);
     }
     if(dcPlanSocDate){
@@ -1332,9 +1302,11 @@
   }
 
   function serviceTypeKey(s){
-    const raw = (s.service_type_code || s.service_type || s.service_type_name || "").toString().toLowerCase();
-    if(raw.includes("hh") || raw.includes("home")) return "hh";
-    if(raw.includes("dme")) return "dme";
+    const rawCode = (s.service_type_code || "").toString().trim().toLowerCase();
+    const rawType = (s.service_type || "").toString().trim().toLowerCase();
+    const raw = rawCode || rawType;
+    if(raw === "hh" || raw === "home health" || raw === "homehealth" || raw === "home_health") return "hh";
+    if(raw === "dme" || raw === "durable medical equipment" || raw === "durable_medical_equipment") return "dme";
     return "";
   }
 
@@ -1346,7 +1318,7 @@
     dcPlanHhChips.innerHTML = "";
     dcPlanDmeChips.innerHTML = "";
     if(!hh.length){
-      dcPlanHhChips.innerHTML = '<span class="dc-plan-pill muted">None selected</span>';
+      dcPlanHhChips.innerHTML = "";
     }else{
       hh.forEach(s => {
         const chip = document.createElement("span");
@@ -1356,7 +1328,7 @@
       });
     }
     if(!dme.length){
-      dcPlanDmeChips.innerHTML = '<span class="dc-plan-pill muted">None selected</span>';
+      dcPlanDmeChips.innerHTML = "";
     }else{
       dme.forEach(s => {
         const chip = document.createElement("span");
@@ -1370,14 +1342,18 @@
   function setData(d){
     const first = d.patient_first_name || "";
     const last = d.patient_last_name || "";
-    const name = [first, last].filter(Boolean).join(" ") || "Patient";
+    const nameFromParts = [first, last].filter(Boolean).join(" ");
+    const nameFromLegacy = d.patient_name || "";
+    const name = nameFromParts || (nameFromLegacy.includes(",")
+      ? nameFromLegacy.split(",").slice(0, 2).reverse().map(s => s.trim()).filter(Boolean).join(" ")
+      : nameFromLegacy) || "";
     patientName.textContent = name;
-    admitDateMini.textContent = fmtDate(d.admit_date);
-    dcDateMini.textContent = d.dc_date ? fmtDate(d.dc_date) : "-";
-    patientDobMini.textContent = d.patient_dob ? fmtDate(d.patient_dob) : "-";
-    insuranceNameMini.textContent = d.patient_insurance_name1 || "-";
-    insuranceNumberMini.textContent = d.patient_insurance_number1 || "-";
-    attendingNameMini.textContent = d.snf_physician_name || "-";
+    admitDateMini.textContent = d.admit_date ? fmtDate(d.admit_date) : "";
+    dcDateMini.textContent = d.dc_date ? fmtDate(d.dc_date) : "";
+    patientDobMini.textContent = d.patient_dob ? fmtDate(d.patient_dob) : "";
+    insuranceNameMini.textContent = d.patient_insurance_name1 || "";
+    insuranceNumberMini.textContent = d.patient_insurance_number1 || "";
+    attendingNameMini.textContent = d.snf_physician_name || "";
     setDcPlan(d, d.latest_dc_submission || {});
   }
 
@@ -1396,6 +1372,7 @@
       const dcSubmissions = Array.isArray(data.dc_submissions) ? data.dc_submissions : [];
       const latestDc = dcSubmissions.length ? dcSubmissions[0] : null;
       setData({
+        patient_name: admission.patient_name,
         patient_first_name: admission.patient_first_name,
         patient_last_name: admission.patient_last_name,
         patient_dob: admission.patient_dob,

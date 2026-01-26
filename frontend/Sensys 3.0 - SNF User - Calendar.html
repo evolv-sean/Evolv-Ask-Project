@@ -617,8 +617,8 @@
         const confirmed = Number(r.dc_confirmed || 0) === 1;
         card.innerHTML = `
           <div class="content">
-            <div class="patient">${esc(r.patient_name || "Patient")}</div>
-            <div class="meta">Insurance: ${esc(r.insurance_name1 || "Not listed")}</div>
+            <div class="patient">${esc(r.patient_name || "")}</div>
+            <div class="meta">Insurance: ${esc(r.insurance_name1 || "")}</div>
             <div class="badge ${confirmed ? "confirmed" : "unconfirmed"}">
               <span class="dot ${confirmed ? "confirmed" : "unconfirmed"}"></span>
               ${confirmed ? "Confirmed" : "Unconfirmed"}

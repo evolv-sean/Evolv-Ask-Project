@@ -1056,9 +1056,11 @@
   }
 
   function serviceTypeKey(s){
-    const raw = (s.service_type_code || s.service_type || "").toString().trim().toLowerCase();
-    if(raw === "hh") return "hh";
-    if(raw === "dme") return "dme";
+    const rawCode = (s.service_type_code || "").toString().trim().toLowerCase();
+    const rawType = (s.service_type || "").toString().trim().toLowerCase();
+    const raw = rawCode || rawType;
+    if(raw === "hh" || raw === "home health" || raw === "homehealth" || raw === "home_health") return "hh";
+    if(raw === "dme" || raw === "durable medical equipment" || raw === "durable_medical_equipment") return "dme";
     return "";
   }
 
@@ -1350,59 +1352,6 @@
     });
   }
 
-  function initPlaceholders(){
-    if(!hhPreferredChips.children.length){
-      hhPreferredChips.innerHTML = [
-        '<div class="chip on">Heritage Home Health</div>',
-        '<div class="chip">Palm Valley Care</div>',
-        '<div class="chip">Sunrise Skilled Nursing</div>'
-      ].join("");
-    }
-    if(!hhServiceChips.children.length){
-      hhServiceChips.innerHTML = [
-        '<div class="chip">Skilled Nursing</div>',
-        '<div class="chip">PT</div>',
-        '<div class="chip">OT</div>',
-        '<div class="chip">Speech</div>',
-        '<div class="chip">Wound Care</div>',
-        '<div class="chip">IV Therapy</div>'
-      ].join("");
-    }
-    if(!dmeServiceChips.children.length){
-      dmeServiceChips.innerHTML = [
-        '<div class="chip">Wheelchair</div>',
-        '<div class="chip">Walker</div>',
-        '<div class="chip">Oxygen</div>',
-        '<div class="chip">Hospital Bed</div>',
-        '<div class="chip">Shower Chair</div>',
-        '<div class="chip">CPAP</div>'
-      ].join("");
-    }
-    if(!hhFreqChips.children.length){
-      hhFreqWrap.style.display = "block";
-      hhFreqChips.innerHTML = [
-        '<div class="chip">Wound Care</div>',
-        '<div class="chip">IV Therapy</div>',
-        '<div class="chip">Diabetes Mgmt</div>'
-      ].join("");
-    }
-    if(!dmeFreqChips.children.length){
-      dmeFreqWrap.style.display = "block";
-      dmeFreqChips.innerHTML = [
-        '<div class="chip">Rolling Walker</div>',
-        '<div class="chip">Nebulizer</div>',
-        '<div class="chip">Hoyer Lift</div>'
-      ].join("");
-    }
-    if(!hhAgencyFreqChips.children.length){
-      hhAgencyFreqWrap.style.display = "block";
-      hhAgencyFreqChips.innerHTML = [
-        '<div class="chip">Harmony Home Health</div>',
-        '<div class="chip">Signature Home Care</div>',
-        '<div class="chip">Legacy HH</div>'
-      ].join("");
-    }
-  }
 
   function setCcStatus(text, isBusy){
     const st = document.getElementById("ccStatus");
@@ -1662,7 +1611,6 @@
   async function load(){
     if(!token()){
       if(window.location.protocol === "file:" || qs("preview") === "1"){
-        initPlaceholders();
         return;
       }
       window.location.href = "/sensys/login";
@@ -1675,7 +1623,6 @@
 
     try{
       showMsg("");
-      initPlaceholders();
 
       const [detailsResp, servicesResp, agenciesResp] = await Promise.all([
         fetch("/api/sensys/admission-details/" + admissionId, { headers: authHeaders() }),
