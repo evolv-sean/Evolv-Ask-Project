@@ -777,8 +777,36 @@
       width:60px;
       height:60px;
       border-radius:50%;
-      border:2px dashed rgba(168,230,207,.9);
       flex:0 0 auto;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:var(--mint-strong);
+    }
+    .mini-card-icon svg{
+      overflow:visible;
+    }
+    .mini-card-icon.n-name svg{
+      width:var(--mini-icon-name-size, 48px);
+      height:var(--mini-icon-name-size, 48px);
+    }
+    .mini-card-icon.n-asset svg{
+      width:var(--mini-icon-asset-size, 48px);
+      height:var(--mini-icon-asset-size, 48px);
+    }
+    .mini-card-icon.n-name .cls-1{
+      stroke:currentColor !important;
+      stroke-width:var(--mini-icon-name-stroke, 5.5px) !important;
+    }
+    .mini-card-icon.n-asset .cls-1{
+      stroke:currentColor !important;
+      stroke-width:var(--mini-icon-asset-stroke, 2px) !important;
+    }
+    .mini-card-icon svg :where(path, line, polyline, polygon, rect, circle, ellipse){
+      fill:none !important;
+      stroke:currentColor !important;
+      stroke-linecap:round !important;
+      stroke-linejoin:round !important;
     }
     .mini-card-text{
       display:flex;
@@ -926,6 +954,11 @@
       font-size:13px;
       color:#111827;
       border-bottom:1px solid #eef0f5;
+    }
+    .doc-actions{
+      display:flex;
+      justify-content:flex-end;
+      gap:8px;
     }
     .doc-modal-table tbody tr:last-child td{
       border-bottom:0;
@@ -1415,7 +1448,14 @@
           <div class="card right-card no-hover">
           <div class="mini-card clickable" id="documentsCard">
             <div class="mini-card-content">
-              <div class="mini-card-icon" aria-hidden="true"></div>
+              <div class="mini-card-icon n-name" aria-hidden="true">
+                <svg viewBox="0 0 239.95 243.92" aria-hidden="true">
+                  <g>
+                    <path class="cls-1" d="M118.15,33.54l-23.86-27.42c-1.86-2.14-4.56-3.37-7.4-3.37H12.56C7.14,2.75,2.75,7.14,2.75,12.56v218.8c0,5.42,4.39,9.81,9.81,9.81h214.82c5.42,0,9.81-4.39,9.81-9.81V46.72c0-5.42-4.39-9.81-9.81-9.81h-101.84c-2.84,0-5.54-1.23-7.4-3.37Z"/>
+                    <path class="cls-1" d="M24.85,81.53h155.98c5.42,0,9.81,4.39,9.81,9.81v127.73"/>
+                  </g>
+                </svg>
+              </div>
               <div class="mini-card-text">
                 <h4>Documents</h4>
                 <p><span id="docsCount">0</span> items uploaded - Last file uploaded: <span id="docsLatest">—</span></p>
@@ -1424,7 +1464,17 @@
           </div>
           <div class="mini-card clickable" id="appointmentsCard">
             <div class="mini-card-content">
-              <div class="mini-card-icon" aria-hidden="true"></div>
+              <div class="mini-card-icon n-asset" aria-hidden="true">
+                <svg viewBox="0 0 53.91 76.32" aria-hidden="true">
+                  <g>
+                    <path class="cls-1" d="M42.31,58.1c6.2,1.71,10.22,4.42,10.22,7.48,0,5.17-11.45,9.35-25.57,9.35S1.39,70.75,1.39,65.58c0-3.06,4.01-5.77,10.22-7.48" />
+                    <g>
+                      <path class="cls-1" d="M27.09,1.39h0c20.85,0,32.25,24.31,18.91,40.34l-18.51,22.24h-.79l-18.51-22.24C-5.16,25.7,6.24,1.39,27.09,1.39Z" />
+                      <path class="cls-1" d="M38.08,26.03c0,6.07-4.92,10.99-10.99,10.99s-10.99-4.92-10.99-10.99,4.92-10.99,10.99-10.99,10.99,4.92,10.99,10.99Z" />
+                    </g>
+                  </g>
+                </svg>
+              </div>
               <div class="mini-card-text">
                 <h4>Appointments</h4>
                 <p><span id="apptsCount">0</span> upcoming - Last scheduled: <span id="apptsLatest">—</span></p>
@@ -1433,7 +1483,27 @@
           </div>
           <div class="mini-card">
             <div class="mini-card-content">
-              <div class="mini-card-icon" aria-hidden="true"></div>
+              <div class="mini-card-icon n-asset" aria-hidden="true">
+                <svg viewBox="0 0 83.92 75.06" aria-hidden="true">
+                  <g>
+                    <g>
+                      <g>
+                        <g>
+                          <path class="cls-1" d="M72.39,10.9l-35.5,35.5-3.11,11.52,11.52-3.11,35.5-35.5c2.32-2.32,2.32-6.09,0-8.41h0c-2.32-2.32-6.09-2.32-8.41,0Z" />
+                          <path class="cls-1" d="M76.73,23.71l2.11,2.11c1.49,1.49,1.49,3.91,0,5.4l-10.06,10.06" />
+                        </g>
+                        <line class="cls-1" x1="33.77" y1="57.93" x2="30.75" y2="60.95" />
+                      </g>
+                      <polyline class="cls-1" points="60.87 46.97 60.87 73.67 1.39 73.67 1.39 18.52 19.51 1.39 60.87 1.39 60.87 15.15" />
+                      <line class="cls-1" x1="14.38" y1="34.58" x2="39.07" y2="34.58" />
+                      <line class="cls-1" x1="14.38" y1="47.32" x2="29.52" y2="47.32" />
+                      <line class="cls-1" x1="14.38" y1="60.06" x2="25.2" y2="60.06" />
+                    </g>
+                    <polyline class="cls-1" points="7.59 20.48 21.52 20.48 21.52 7.59" />
+                    <line class="cls-1" x1="64.14" y1="36.3" x2="55.54" y2="27.7" />
+                  </g>
+                </svg>
+              </div>
               <div class="mini-card-text">
                 <h4>Post-DC Notes</h4>
                 <p>2 open tasks - Confirm HH agency, verify transport.</p>
@@ -1442,7 +1512,22 @@
           </div>
           <div class="mini-card">
             <div class="mini-card-content">
-              <div class="mini-card-icon" aria-hidden="true"></div>
+              <div class="mini-card-icon n-asset" aria-hidden="true">
+                <svg viewBox="0 0 80.2 78.11" aria-hidden="true">
+                  <g>
+                    <g>
+                      <polygon class="cls-1" points="51.34 9.59 43.52 8.6 40.14 1.39 40.06 1.39 36.68 8.6 28.86 9.59 28.86 9.74 34.59 15.18 33.08 22.96 33.24 22.96 40.1 19.17 46.95 22.96 47.11 22.96 45.61 15.18 51.34 9.74 51.34 9.59" />
+                      <polygon class="cls-1" points="78.81 9.59 70.99 8.6 67.62 1.39 67.53 1.39 64.16 8.6 56.33 9.59 56.33 9.74 62.06 15.18 60.56 22.96 60.72 22.96 67.57 19.17 74.43 22.96 74.59 22.96 73.08 15.18 78.81 9.74 78.81 9.59" />
+                      <polygon class="cls-1" points="1.39 9.59 9.21 8.6 12.58 1.39 12.67 1.39 16.04 8.6 23.86 9.59 23.86 9.74 18.13 15.18 19.64 22.96 19.48 22.96 12.62 19.17 5.77 22.96 5.61 22.96 7.12 15.18 1.39 9.74 1.39 9.59" />
+                    </g>
+                    <g>
+                      <path class="cls-1" d="M40.65,45.83l-10.29-14.83c-1.22-1.75-3.62-2.18-5.37-.97h0c-1.75,1.21-2.18,3.62-.97,5.37l16.11,23.21-.2.14-8.11-2.61c-1.72-.55-3.59.14-4.53,1.69h0c-1.23,2.02-.4,4.66,1.76,5.61l19.61,8.62c1.79.79,3.33,2.05,4.44,3.66h0c.73,1.05,2.18,1.32,3.24.58l17.86-12.4c1.05-.73,1.32-2.18.58-3.24l-.05-.07c-.76-1.1-1.25-2.36-1.41-3.69-.04-.36-.08-.72-.12-1.1-.33-2.9-1.38-5.68-3.05-8.07l-9.65-13.9c-1.21-1.75-3.62-2.18-5.37-.97h0c-1.75,1.21-2.18,3.62-.97,5.37l3.77,5.43" />
+                      <path class="cls-1" d="M49.45,44.97l-3.77-5.43c-1.22-1.75-3.62-2.18-5.37-.97h0c-1.75,1.22-2.18,3.62-.97,5.37l3.77,5.43" />
+                      <path class="cls-1" d="M55.4,40.02l-2.46-3.55c-1.21-1.75-3.62-2.18-5.37-.97h0c-1.75,1.21-2.18,3.62-.97,5.37l3.77,5.43" />
+                    </g>
+                  </g>
+                </svg>
+              </div>
               <div class="mini-card-text">
                 <h4>Survey</h4>
                 <p>Latest update from CCC: awaiting insurance auth.</p>
@@ -1451,7 +1536,23 @@
           </div>
           <div class="mini-card">
             <div class="mini-card-content">
-              <div class="mini-card-icon" aria-hidden="true"></div>
+              <div class="mini-card-icon n-asset" aria-hidden="true">
+                <svg viewBox="0 0 66.61 85.63" aria-hidden="true">
+                  <g>
+                    <polyline class="cls-1" points="51.08 15.78 65.22 15.78 65.22 84.25 1.39 84.25 1.39 15.78 15.53 15.78" />
+                    <g>
+                      <polyline class="cls-1" points="25.06 36.76 18.86 42.95 14.82 38.91" />
+                      <polyline class="cls-1" points="25.06 49.89 18.86 56.09 14.82 52.05" />
+                      <polyline class="cls-1" points="25.06 63.03 18.86 69.23 14.82 65.18" />
+                      <line class="cls-1" x1="30.85" y1="40.39" x2="51.79" y2="40.39" />
+                      <line class="cls-1" x1="30.85" y1="53.53" x2="51.79" y2="53.53" />
+                      <line class="cls-1" x1="30.85" y1="66.66" x2="51.79" y2="66.66" />
+                    </g>
+                    <path class="cls-1" d="M26.13,8.56v1.85h-6.13c-2.47,0-4.47,2-4.47,4.47v8.93h35.55v-8.93c0-2.47-2-4.47-4.47-4.47h-6.13v-1.85c0-3.96-3.21-7.17-7.17-7.17h0c-3.96,0-7.17,3.21-7.17,7.17Z" />
+                    <line class="cls-1" x1="33.3" y1="8.95" x2="33.3" y2="11.95" />
+                  </g>
+                </svg>
+              </div>
               <div class="mini-card-text">
                 <h4>Forms</h4>
                 <p>Insurance verification in progress.</p>
@@ -1460,7 +1561,24 @@
           </div>
           <div class="mini-card">
             <div class="mini-card-content">
-              <div class="mini-card-icon" aria-hidden="true"></div>
+              <div class="mini-card-icon n-asset" aria-hidden="true">
+                <svg viewBox="0 0 77.02 76.67" aria-hidden="true">
+                  <g>
+                    <g>
+                      <path class="cls-1" d="M75.63,58.69v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06v-14.55c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                      <line class="cls-1" x1="65.85" y1="66.01" x2="58.74" y2="66.01" />
+                    </g>
+                    <g>
+                      <path class="cls-1" d="M75.63,31.08v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06v-14.55c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                      <line class="cls-1" x1="65.85" y1="38.4" x2="58.74" y2="38.4" />
+                    </g>
+                    <g>
+                      <path class="cls-1" d="M75.63,3.46v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06V3.45c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                      <line class="cls-1" x1="65.85" y1="10.78" x2="58.74" y2="10.78" />
+                    </g>
+                  </g>
+                </svg>
+              </div>
               <div class="mini-card-text">
                 <h4>Historical Admissions</h4>
                 <p>DME delivery window not confirmed.</p>
@@ -1741,23 +1859,25 @@
         <tr>
           <td>${type}</td>
           <td>${name}</td>
-          <td style="text-align:right;">
-            <button class="doc-iconbtn" data-doc-edit="${r.id}" title="Edit document type">
+          <td>
+            <div class="doc-actions">
+              <button class="doc-iconbtn" data-doc-edit="${r.id}" title="Edit document type">
               <svg viewBox="0 0 237.85 237.86" aria-hidden="true">
                 <g>
                   <line class="cls-1" x1="34.25" y1="178.82" x2="57.97" y2="202.54"/>
                   <path class="cls-1" d="M68.74,219.9c-3.65,3.65-8.34,6.09-13.43,6.97l-47.25,8.18c-3.09.53-5.78-2.15-5.24-5.24l8.17-47.25c.88-5.09,3.31-9.78,6.97-13.44L173.79,13.27c14.02-14.02,36.76-14.03,50.78,0h0c14.02,14.02,14.03,36.76,0,50.79L68.74,219.9Z"/>
                 </g>
               </svg>
-            </button>
-            <a class="doc-iconbtn" href="${dl}" title="Download PDF">
+              </button>
+              <a class="doc-iconbtn" href="${dl}" title="Download PDF">
               <svg viewBox="0 0 251.6 261.78" aria-hidden="true">
                 <g>
                   <path class="cls-1" d="M168.79,110.02V12.56c0-5.42-4.39-9.81-9.81-9.81h-66.35c-5.42,0-9.81,4.39-9.81,9.81v97.45h-45.05c-5.55,0-8.32,6.7-4.4,10.63l88.43,91.63c2.21,2.21,5.81,2.21,8.02,0l88.43-91.63c3.92-3.92,1.14-10.63-4.4-10.63h-45.05Z"/>
                   <path class="cls-1" d="M2.75,202.34v41.97c0,8.13,6.59,14.72,14.72,14.72h216.66c8.13,0,14.72-6.59,14.72-14.72v-41.97"/>
                 </g>
               </svg>
-            </a>
+              </a>
+            </div>
           </td>
         </tr>`;
     }).join("");
@@ -2105,11 +2225,16 @@
         showDocsMsg("Upload unavailable: missing admission.");
         return;
       }
-      if(!docsTypeInput || !docsTypeInput.value.trim()){
-        showDocsTypeError(true);
+      const hasType = docsTypeInput && docsTypeInput.value.trim();
+      showDocsTypeError(!hasType);
+      if(!hasType){
+        if(docsTypeInput) docsTypeInput.focus();
         return;
       }
-      if(docsFileInput) docsFileInput.click();
+      if(docsFileInput){
+        docsFileInput.value = "";
+        docsFileInput.click();
+      }
     });
   }
   if(docsFileInput){
@@ -2123,10 +2248,11 @@
         return;
       }
       showDocsTypeError(false);
-      showDocsMsg("");
+      showDocsMsg("Uploading...");
       try{
         const fd = new FormData();
         fd.append("doc_type", docType);
+        fd.append("retention_hours", "0");
         fd.append("file", f);
         const resp = await fetch("/api/sensys/admissions/" + admissionId + "/pdfs/upload", {
           method:"POST",
@@ -2138,6 +2264,7 @@
         docsFileInput.value = "";
         if(docsTypeInput) docsTypeInput.value = "";
         await loadPdfs();
+        showDocsMsg("");
       }catch(e){
         showDocsMsg(e.message || "Upload failed.");
       }
