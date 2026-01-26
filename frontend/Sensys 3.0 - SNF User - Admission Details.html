@@ -155,7 +155,7 @@
       padding:5.5px 14px 10px;
       border-radius:14px;
       border:1px solid rgba(192,107,107,.35);
-      background:linear-gradient(90deg, rgba(192,107,107,.18) 0%, rgba(192,107,107,.08) 65%, #ffffff 100%);
+      background:linear-gradient(90deg, rgba(192,107,107,.18) 0%, rgba(192,107,107,.08) 100%, #ffffff 100%);
       color:#5b2c2c;
       font-size:13px;
       margin:0;
@@ -1607,7 +1607,7 @@
           <input id="docsSearch" class="doc-input" placeholder="Search document type or name" style="flex:1 1 220px;min-width:220px;max-width:320px;" />
           <div class="doc-upload-group">
             <input id="docsTypeInput" class="doc-input" placeholder="Document type (e.g., Discharge Summary)" style="flex:0 1 260px;min-width:200px;max-width:260px;" />
-            <button id="docsUploadBtn" class="doc-iconbtn" title="Upload document">
+          <button id="docsUploadBtn" class="doc-iconbtn" title="Upload document" type="button">
             <svg viewBox="0 0 251.6 261.78" aria-hidden="true">
               <g>
                 <path class="cls-1" d="M82.81,106.67v97.45c0,5.42,4.39,9.81,9.81,9.81h66.35c5.42,0,9.81-4.39,9.81-9.81v-97.45h45.05c5.55,0,8.32-6.7,4.4-10.63L129.81,4.41c-2.21-2.21-5.81-2.21-8.02,0L33.36,96.05c-3.92,3.92-1.14,10.63,4.4,10.63h45.05Z"/>
@@ -1817,6 +1817,18 @@
     }
     docsMsg.style.display = "block";
     docsMsg.textContent = text;
+  }
+  function showDocsTypeError(on){
+    if(!docsTypeInput || !docsTypeMsg) return;
+    docsTypeInput.classList.toggle("error", !!on);
+    docsTypeMsg.style.display = on ? "block" : "none";
+    if(on){
+      docsTypeInput.style.borderColor = "rgba(199,107,107,.8)";
+      docsTypeInput.style.boxShadow = "0 0 0 2px rgba(199,107,107,.15)";
+    }else{
+      docsTypeInput.style.borderColor = "";
+      docsTypeInput.style.boxShadow = "";
+    }
   }
   function updateDocsMiniCard(){
     if(!docsCount || !docsLatest) return;
@@ -2374,15 +2386,3 @@
 </script>
 </body>
 </html>
-  function showDocsTypeError(on){
-    if(!docsTypeInput || !docsTypeMsg) return;
-    docsTypeInput.classList.toggle("error", !!on);
-    docsTypeMsg.style.display = on ? "block" : "none";
-    if(on){
-      docsTypeInput.style.borderColor = "rgba(199,107,107,.8)";
-      docsTypeInput.style.boxShadow = "0 0 0 2px rgba(199,107,107,.15)";
-    }else{
-      docsTypeInput.style.borderColor = "";
-      docsTypeInput.style.boxShadow = "";
-    }
-  }
