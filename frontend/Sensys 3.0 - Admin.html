@@ -5571,7 +5571,8 @@
 
     const q = ($("admissionListSearch").value || "").trim().toLowerCase();
     const items = (admissionsCache || []).filter(a => {
-      const hay = `${a.patient_name||""} ${a.agency_name||""} ${a.admit_date||""} ${a.dc_date||""}`.toLowerCase();
+      const fullName = a.patient_name || `${a.patient_first_name||""} ${a.patient_last_name||""}`.trim();
+      const hay = `${fullName} ${a.agency_name||""} ${a.admit_date||""} ${a.dc_date||""}`.toLowerCase();
       return !q || hay.includes(q);
     });
 
@@ -5579,8 +5580,9 @@
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
       tr.onclick = () => selectAdmission(a);
+      const fullName = a.patient_name || `${a.patient_first_name||""} ${a.patient_last_name||""}`.trim();
       tr.innerHTML = `
-        <td><b>${escapeHtml(a.patient_name||"")}</b></td>
+        <td><b>${escapeHtml(fullName||"")}</b></td>
         <td>${escapeHtml(a.agency_name||"")}</td>
         <td>${escapeHtml(a.admit_date||"")}</td>
         <td>${escapeHtml(a.dc_date||"")}</td>

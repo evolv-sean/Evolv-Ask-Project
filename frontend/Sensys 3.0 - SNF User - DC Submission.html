@@ -177,11 +177,13 @@
       justify-content:center;
       margin-bottom:6px;
       color:var(--mint-strong);
+      padding:4px;
     }
     .confirm-icon svg{
       width:44px; /* size control: adjust this value to scale the icon */
       height:44px; /* size control: adjust this value to scale the icon */
       display:block;
+      overflow:visible;
     }
     .confirm-icon .cls-1{
       stroke:currentColor;
@@ -1195,8 +1197,8 @@
       if(!host) return;
       host.querySelectorAll(".chip[data-id]").forEach(chip => {
         const id = chip.getAttribute("data-id") || "";
-        const type = chip.getAttribute("data-type") || expectedType;
-        const matchesType = !expectedType || (type === expectedType && SERVICE_TYPE_MAP[id] === expectedType);
+        const type = chip.getAttribute("data-type") || "";
+        const matchesType = !expectedType || type === expectedType;
         chip.classList.toggle("on", !!id && SELECTED.has(id) && matchesType);
       });
     });
@@ -1737,6 +1739,7 @@
         SELECTED = new Set(svc.map(x => String(x.services_id || x.id)));
         renderServiceChips(hhServiceChips, getHhCommon());
         renderServiceChips(dmeServiceChips, getDmeCommon());
+        syncFrequentSelection();
         renderSelectedDropdownChips();
       }else{
         setYesNo(confirmChips, "0", document.getElementById("dcConfirmed"));

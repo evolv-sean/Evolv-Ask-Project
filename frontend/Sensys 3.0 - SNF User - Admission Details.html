@@ -1273,10 +1273,19 @@
     return { "Authorization": "Bearer " + token() };
   }
   function fmtDate(s){
-    if(!s) return "-";
-    const d = new Date(s);
-    if(Number.isNaN(d.getTime())) return s;
-    return d.toLocaleDateString();
+    if(!s) return "";
+    const raw = String(s).trim();
+    if(!raw) return "";
+    const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if(dateOnlyMatch){
+      const [_, y, m, d] = dateOnlyMatch;
+      const dt = new Date(Number(y), Number(m) - 1, Number(d));
+      if(!Number.isNaN(dt.getTime())) return dt.toLocaleDateString();
+      return `${m}/${d}/${y}`;
+    }
+    const dt = new Date(raw);
+    if(Number.isNaN(dt.getTime())) return raw;
+    return dt.toLocaleDateString();
   }
   function setDcPlan(admission, d){
     if(!dcPlanDate || !dcPlanConfirm || !dcPlanUrgent) return;
