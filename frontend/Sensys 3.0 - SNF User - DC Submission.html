@@ -1163,7 +1163,7 @@
       renderServiceChips(dmeServiceChips, getDmeCommon());
       syncFrequentSelection();
       renderSelectedDropdownChips();
-    }, null, "id", "hh");
+    }, (s) => !!s && SELECTED.has(String(s.id)) && SERVICE_TYPE_MAP[s.id] === "hh", "id", "hh");
 
     renderChipList(dmeFreqWrap, dmeFreqChips, dmeFreqItems, (s) => {
       const key = String(s.id);
@@ -1173,7 +1173,7 @@
       renderServiceChips(dmeServiceChips, getDmeCommon());
       syncFrequentSelection();
       renderSelectedDropdownChips();
-    }, null, "id", "dme");
+    }, (s) => !!s && SELECTED.has(String(s.id)) && SERVICE_TYPE_MAP[s.id] === "dme", "id", "dme");
 
     renderChipList(hhAgencyFreqWrap, hhAgencyFreqChips, hhAgencyFreqItems, (a) => {
       setSelectedHhAgency(a.id);
@@ -1194,7 +1194,7 @@
       host.querySelectorAll(".chip[data-id]").forEach(chip => {
         const id = chip.getAttribute("data-id") || "";
         const type = chip.getAttribute("data-type") || expectedType;
-        const matchesType = !expectedType || type === expectedType;
+        const matchesType = !expectedType || (type === expectedType && SERVICE_TYPE_MAP[id] === expectedType);
         chip.classList.toggle("on", !!id && SELECTED.has(id) && matchesType);
       });
     });
