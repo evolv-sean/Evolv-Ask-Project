@@ -1185,12 +1185,16 @@
   }
 
   function syncFrequentSelection(){
-    [hhFreqChips, dmeFreqChips].forEach(host => {
+    const hostTypes = new Map([
+      [hhFreqChips, "hh"],
+      [dmeFreqChips, "dme"]
+    ]);
+    hostTypes.forEach((expectedType, host) => {
       if(!host) return;
       host.querySelectorAll(".chip[data-id]").forEach(chip => {
         const id = chip.getAttribute("data-id") || "";
-        const type = chip.getAttribute("data-type") || "";
-        const matchesType = !type || SERVICE_TYPE_MAP[id] === type;
+        const type = chip.getAttribute("data-type") || expectedType;
+        const matchesType = !expectedType || type === expectedType;
         chip.classList.toggle("on", !!id && SELECTED.has(id) && matchesType);
       });
     });
