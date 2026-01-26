@@ -78,7 +78,6 @@
       background:#fff;
       display:flex;
       align-items:center;
-      justify-content:center;
       color:var(--navy);
       cursor:pointer;
       transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
@@ -106,7 +105,7 @@
     .profile-menu{
       position:absolute;
       left:52px;
-      bottom:0;
+      bottom:-12px;
       background:#fff;
       border:1px solid rgba(13,59,102,.12);
       border-radius:12px;
@@ -133,7 +132,7 @@
     }
     .page{
       min-height:100vh;
-      padding:28px 28px 24px;
+      padding:18px 28px 24px;
       max-width:1400px;
       margin:0 auto;
       display:flex;
@@ -141,14 +140,46 @@
       flex:1;
     }
     .topbar{
-      display:flex;
-      align-items:flex-start;
-      justify-content:space-between;
+      display:grid;
+      grid-template-columns: 320px 1fr auto;
+      align-items:center;
       gap:16px;
-      margin-bottom:18px;
+      margin-bottom:8px;
+    }
+    .alert-banner{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:10px 14px;
+      height:44px;
+      padding:5.5px 14px 10px;
+      border-radius:14px;
+      border:1px solid rgba(192,107,107,.35);
+      background:linear-gradient(90deg, rgba(192,107,107,.18) 0%, rgba(192,107,107,.08) 65%, #ffffff 100%);
+      color:#5b2c2c;
+      font-size:13px;
+      margin:0;
+      width:100%;
+    }
+    .alert-banner-title{
+      font-weight:800;
+      letter-spacing:.04em;
+      text-transform:uppercase;
+      font-size:12px;
+    }
+    .alert-banner-item{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(192,107,107,.35);
+      background:#fff;
+      font-weight:600;
+      color:#7a3a3a;
     }
     .title h1{
-      margin:0 0 6px;
+      margin:-14px 0 2px;
       font-size:40px;
       font-weight:400;
       color:var(--navy);
@@ -188,7 +219,7 @@
 
     .main-grid{
       display:grid;
-      grid-template-columns: 1.15fr 0.85fr;
+      grid-template-columns: 320px 1fr;
       gap:16px;
       align-items:stretch;
       min-height:calc(100vh - 190px);
@@ -197,11 +228,12 @@
       display:flex;
       flex-direction:column;
       gap:16px;
-      min-height:100%;
+      min-height:calc(100vh - 190px);
+      max-width:320px;
     }
     .top-row{
       display:grid;
-      grid-template-columns: 280px 1fr;
+      grid-template-columns: 1fr;
       gap:16px;
     }
     .card{
@@ -213,11 +245,35 @@
     }
     .card.square{
       border-radius:16px;
-      text-align:center;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+    }
+    .identity{
       display:flex;
       flex-direction:column;
       align-items:center;
+      gap:8px;
+      min-width:160px;
+    }
+    .mini-demographics{
+      flex:1;
+      display:grid;
+      grid-template-columns: 1fr;
       gap:10px;
+    }
+    .mini-demographics .label{
+      font-size:11px;
+      font-weight:600;
+      color:#334155;
+      letter-spacing:.2px;
+      text-transform:uppercase;
+    }
+    .mini-demographics .value{
+      font-size:13px;
+      font-weight:100;
+      color:#0f172a;
     }
     .card.no-hover{
       border-color:rgba(168,230,207,.95);
@@ -232,12 +288,13 @@
       width:140px;
       height:140px;
       border-radius:999px;
-      border:2px solid rgba(168,230,207,.9);
-      background:rgba(168,230,207,.12);
+      border:2px solid #7C6D8A;
+      background:#fff;
+      overflow:hidden;
       display:flex;
       align-items:center;
       justify-content:center;
-      color:var(--mint-strong);
+      color:#7C6D8A;
     }
     .avatar svg{width:110px;height:110px}
     .avatar .cls-1{
@@ -245,7 +302,7 @@
       fill:none;
       stroke-linecap:round;
       stroke-linejoin:round;
-      stroke-width:3.2px;
+      stroke-width:1.2px;
     }
     .patient-name{
       font-size:20px;
@@ -267,7 +324,7 @@
     .meta-item{
       display:flex;
       flex-direction:column;
-      gap:4px;
+      gap:0px;
     }
     .meta-item .label{
       font-size:11px;
@@ -281,36 +338,450 @@
       font-weight:700;
       color:#0f172a;
     }
+    .mini-demographics .meta-item .value{
+      font-size:13px;
+      font-weight:500;
+      color:#0f172a;
+    }
+    .screen-compact .left-col{max-width:320px;}
+    .screen-compact .patient-name{font-size:18px;}
+    .screen-compact .avatar{width:128px;height:128px;}
+    .screen-compact .avatar svg{width:100px;height:100px;}
+    .screen-compact .mini-demographics .label{font-size:10px;}
+    .screen-compact .mini-demographics .meta-item .value{font-size:12px;}
+    .screen-compact .status-list{gap:var(--status-gap);}
+    .screen-compact .status-dot{width:20px;height:20px;}
+    .screen-compact .status-ico svg{width:24px;height:24px;}
+    .screen-compact .page{padding:22px 22px 18px;}
+    .screen-compact .topbar{margin-bottom:12px;}
+    .screen-compact .card{padding:14px;}
+    .screen-compact .bottom-card{min-height:425px;}
     .bottom-card{
       flex:1;
-      min-height:360px;
+      min-height:430px;
     }
-    .card-title{
+    .status-card{
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+    }
+    .status-title{
       font-size:14px;
       font-weight:900;
       color:var(--navy);
+      margin:0;
+    }
+    .status-list{
+      display:grid;
+      gap: var(--status-gap);
+      position:relative;
+      padding-left:6px;
+    }
+    .status-list{
+      --status-gap: 28px;
+      --status-dot: 20px;
+      --status-track: rgba(13,59,102,.2);
+      --status-track-right: 19px;
+      flex:1;
+      padding-top:14px;
+      padding-bottom:14px;
+    }
+    .screen-compact .status-list{
+      --status-gap: 24px;
+    }
+    .screen-wide .status-list{
+      --status-gap: 36px;
+    }
+    .status-list::before{
+      content:"";
+      position:absolute;
+      right:var(--status-track-right);
+      top:8px;
+      bottom:8px;
+      width:2px;
+      background:var(--status-track);
+      border-radius:999px;
+    }
+    .status-track-progress{
+      position:absolute;
+      right:var(--status-track-right);
+      top:8px;
+      width:2px;
+      height:0;
+      background:rgba(168,230,207,.7);
+      border-radius:999px;
+    }
+    .status-item{
+      display:grid;
+      grid-template-columns: 44px 1fr 18px;
+      gap:12px;
+      align-items:center;
+      position:relative;
+    }
+    .status-ico{
+      width:42px;
+      height:42px;
+      border-radius:14px;
+      border:0;
+      background:transparent;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:var(--navy);
+    }
+    .status-ico svg{
+      width:26px;
+      height:26px;
+    }
+    .status-ico .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:5.5px;
+    }
+    .status-text{
+      display:flex;
+      flex-direction:column;
+      gap:2px;
+    }
+    .status-label{
+      font-size:11px;
+      font-weight:800;
+      color:#64748b;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+    }
+    .status-value{
+      font-size:14px;
+      font-weight:700;
+      color:#0f172a;
+    }
+    .status-dot{
+      width:var(--status-dot);
+      height:var(--status-dot);
+      border-radius:999px;
+      border:2px solid rgba(13,59,102,.25);
+      background:#fff;
+      position:relative;
+      justify-self:start;
+      margin-left:-12px;
+      color: rgba(13,59,102,.25);
+    }
+    .status-dot::after{display:none;}
+    .status-item.done .status-dot{
+      border-color:rgba(134,217,186,.95);
+      background:rgba(134,217,186,.95);
+      color:rgba(134,217,186,.95);
+    }
+    .status-item.done .status-dot::before{
+      content:"";
+      position:absolute;
+      left:50%;
+      top:50%;
+      width:8px;
+      height:4px;
+      border-left:2px solid #fff;
+      border-bottom:2px solid #fff;
+      transform:translate(-50%,-60%) rotate(-45deg);
+    }
+    .status-item.done .status-dot::after{
+      background:rgba(168,230,207,.6);
+    }
+    .status-item.pending .status-dot{
+      border-color:rgba(168,230,207,.95);
+      background:#fff;
+      color:rgba(168,230,207,.95);
+    }
+    .status-item.pending .status-dot::before{
+      content:"";
+    }
+    .status-item.todo .status-dot{
+      border-color:rgba(13,59,102,.25);
+      background:#fff;
+      color:rgba(13,59,102,.25);
+    }
+    .card-title{
+      font-size:18px;
+      font-weight:600;
+      color:var(--navy);
       margin:0 0 8px;
+      padding-left:6px;
+    }
+    .card-title-row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:8px;
+    }
+    .card-title-row .card-title{
+      margin:0;
+      padding-left:6px;
+    }
+    .icon-btn.compact{
+      width:34px;
+      height:34px;
+      border-radius:10px;
+    }
+    .icon-btn.compact svg{width:16px;height:16px}
+    .icon-btn.compact .cls-1{stroke-width:5.5px}
+    .dc-plan-meta{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+      padding:6px 8px 0;
+    }
+    .dc-plan-date{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    .dc-plan-label{
+      font-size:11px;
+      font-weight:700;
+      color:#64748b;
+      letter-spacing:.14em;
+      text-transform:uppercase;
+    }
+    .dc-plan-date-row{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-size:16px;
+      font-weight:700;
+      color:#0f172a;
+    }
+    .dc-plan-confirm{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:22px;
+      height:22px;
+      border-radius:999px;
+      border:2px solid #94a3b8;
+      color:#94a3b8;
+    }
+    .dc-plan-confirm.confirmed{
+      color:rgba(168,230,207,.95);
+      border-color:rgba(168,230,207,.95);
+    }
+    .dc-plan-confirm svg{
+      width:14px;
+      height:14px;
+    }
+    .dc-plan-confirm .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:16px;
+    }
+    .dc-plan-urgent{
+      display:none;
+      align-items:center;
+      justify-content:center;
+      color:#C06B6B;
+    }
+    .dc-plan-urgent.on{
+      display:inline-flex;
+    }
+    .dc-plan-urgent svg{
+      width:22px;
+      height:22px;
+    }
+    .dc-plan-urgent .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:12px;
+    }
+    .dc-plan-grid{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:10px;
+      padding:16px 8px 8px;
+      position:relative;
+    }
+    .dc-plan-row{
+      position:relative;
+      background:linear-gradient(90deg, rgba(124,109,138,.08) 0%, rgba(124,109,138,.08) 92%, #ffffff 100%);
+      border-radius:0 14px 14px 0;
+      padding:10px 14px;
+    }
+    .dc-plan-row::before{
+      content:"";
+      position:absolute;
+      left:0;
+      top:0;
+      bottom:0;
+      width:2px;
+      background:#7C6D8A;
+    }
+    .dc-plan-row.dme{
+      background:linear-gradient(90deg, rgba(77,168,218,.12) 0%, rgba(77,168,218,.12) 92%, #ffffff 100%);
+    }
+    .dc-plan-row.dme::before{
+      background:#4DA8DA;
+    }
+    .dc-plan-grid > .dc-plan-section{
+      min-width:0;
+    }
+    .dc-plan-section{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    .dc-plan-row-split{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:10px 14px;
+    }
+    .dc-plan-section-title{
+      font-size:14px;
+      font-weight:600;
+      color:#334155;
+      letter-spacing:.16em;
+      text-transform:uppercase;
+      display:flex;
+      align-items:baseline;
+      gap:6px;
+      flex-wrap:wrap;
+    }
+    .dc-plan-title-inline{
+      display:inline-flex;
+      align-items:baseline;
+      gap:6px;
+      letter-spacing:normal;
+      text-transform:none;
+      color:#0f172a;
+      font-weight:600;
+      font-size:13px;
+    }
+    .dc-plan-line{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:baseline;
+      gap:8px 12px;
+      font-size:14px;
+      color:#0f172a;
+    }
+    .dc-plan-label{
+      font-size:11px;
+      font-weight:700;
+      color:#64748b;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+    }
+    .dc-plan-label.lowercase{
+      text-transform:none;
+      letter-spacing:.04em;
+    }
+    .dc-plan-value{
+      font-size:15px;
+      font-weight:700;
+      color:#0f172a;
+    }
+    .dc-plan-chips{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+    .dc-plan-section{
+      padding-right:8px;
+    }
+    .dc-plan-section + .dc-plan-section{
+      padding-left:16px;
+      padding-right:0;
+    }
+    .dc-plan-chip{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(15,23,42,.12);
+      background:#fff;
+      font-size:12px;
+      font-weight:700;
+      color:#0f172a;
+      box-shadow:none;
+    }
+    .dc-plan-chip.hh{
+      border-color:rgba(168,230,207,.8);
+      background:rgba(168,230,207,.2);
+    }
+    .dc-plan-chip.dme{
+      border-color:rgba(168,230,207,.8);
+      background:rgba(168,230,207,.2);
     }
     .card-sub{
       font-size:12px;
       color:var(--muted);
       margin:0 0 12px;
     }
-    .right-card{
+    .right-col{
       display:flex;
       flex-direction:column;
-      gap:12px;
-      min-height:100%;
+      gap:16px;
+      height:calc(100vh - 190px);
+    }
+    .right-card{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap:16px;
+      grid-auto-rows: minmax(0, 1fr);
+      flex:0 0 321px;
+      height:321px;
+      min-height:0;
+      align-content:space-between;
+      align-self:stretch;
+      padding-top:20px;
+      padding-bottom:20px;
+    }
+    .right-card-top{
+      min-height:300px;
+      flex:1;
     }
     .mini-card{
       border-radius:16px;
-      border:1px solid rgba(168,230,207,.85);
+      border:1px solid rgba(15,23,42,.12);
       background:#fff;
       padding:14px;
-      min-height:120px;
+      min-height:80px;
       display:flex;
       flex-direction:column;
       gap:8px;
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .mini-card:hover{
+      border-color: rgba(168,230,207,.9);
+      box-shadow:0 0 0 3px rgba(168,230,207,.25);
+      transform: translateY(-1px);
+    }
+    .mini-card-content{
+      display:flex;
+      align-items:center;
+      gap:24px;
+      padding-top:0;
+      padding-left:10px;
+      margin-top:-2px;
+    }
+    .mini-card-icon{
+      width:60px;
+      height:60px;
+      border-radius:50%;
+      border:2px dashed rgba(168,230,207,.9);
+      flex:0 0 auto;
+    }
+    .mini-card-text{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      min-width:0;
     }
     .mini-card h4{
       margin:0;
@@ -333,7 +804,7 @@
   <div class="layout">
     <aside class="sidebar">
       <div class="sidebar-logo">
-        <img src="/static/images/Evolv-Health-E-Color.svg" alt="Evolv Health" onerror="this.onerror=null;this.src='Logos/Evolv-Health-E-Color.svg';" />
+        <img id="sidebarLogo" src="../backend/static/images/Evolv-Health-E-Color.svg" alt="Evolv Health" />
       </div>
       <div class="side-nav">
         <button class="side-btn" id="navHome" title="Home" aria-label="Home">
@@ -423,7 +894,11 @@
       <div class="topbar">
         <div class="title">
           <h1>Patient Details</h1>
-          <p>Admission overview and quick actions.</p>
+        </div>
+        <div class="alert-banner" aria-live="polite">
+          <span class="alert-banner-title">Waiting On</span>
+          <span class="alert-banner-item">O2 walk test</span>
+          <span class="alert-banner-item">Hospital Bed Order</span>
         </div>
         <button class="icon-btn" id="bellBtn" aria-label="Notifications">
           <svg viewBox="0 0 216.18 263.34" aria-hidden="true">
@@ -439,7 +914,8 @@
         <div class="left-col">
           <div class="top-row">
             <div class="card square no-hover">
-              <div class="avatar" aria-hidden="true">
+              <div class="identity">
+                <div class="avatar" aria-hidden="true">
                 <svg viewBox="0 0 74.42 77.39">
                   <g>
                     <g>
@@ -457,80 +933,290 @@
                 </svg>
               </div>
               <p class="patient-name" id="patientName">Taylor Adams</p>
-              <p class="patient-dob" id="patientDob">DOB: 06/12/1943</p>
-            </div>
-
-            <div class="card no-hover">
-              <div class="card-title">Demographics</div>
-              <div class="meta-grid">
+              </div>
+              <div class="mini-demographics">
                 <div class="meta-item">
-                  <span class="label">Admit Date</span>
-                  <span class="value" id="admitDate">01/08/2026</span>
+                  <span class="label">Admit</span>
+                  <span class="value"><span id="admitDateMini">01/08/2026</span> - <span id="dcDateMini">01/28/2026</span></span>
                 </div>
                 <div class="meta-item">
-                  <span class="label">Discharge Date</span>
-                  <span class="value" id="dcDate">01/28/2026</span>
+                  <span class="label">DOB</span>
+                  <span class="value" id="patientDobMini">06/12/1943</span>
                 </div>
                 <div class="meta-item">
-                  <span class="label">Insurance Name</span>
-                  <span class="value" id="insuranceName">Aetna</span>
+                  <span class="label">Ins</span>
+                  <span class="value"><span id="insuranceNameMini">Aetna</span> (<span id="insuranceNumberMini">AE-443201</span>)</span>
                 </div>
                 <div class="meta-item">
-                  <span class="label">Insurance Number</span>
-                  <span class="value" id="insuranceNumber">AE-443201</span>
-                </div>
-                <div class="meta-item">
-                  <span class="label">Room</span>
-                  <span class="value" id="roomNumber">101A</span>
-                </div>
-                <div class="meta-item">
-                  <span class="label">Attending</span>
-                  <span class="value" id="attendingName">Dr. Morgan Keller</span>
+                  <span class="label">Attend</span>
+                  <span class="value" id="attendingNameMini">Dr. Morgan Keller</span>
                 </div>
               </div>
             </div>
+
           </div>
 
-          <div class="card bottom-card no-hover">
-            <div class="card-title">Care Plan (TBD)</div>
-            <div class="card-sub">This area will expand with care goals, notes, and status updates.</div>
-            <div class="meta-grid">
-              <div class="meta-item">
-                <span class="label">Primary Goal</span>
-                <span class="value">Safe discharge planning</span>
+          <div class="card bottom-card no-hover status-card">
+            <div class="status-list" id="statusList">
+              <div class="status-track-progress" id="statusTrackProgress" aria-hidden="true"></div>
+              <div class="status-item done">
+                <div class="status-ico" aria-hidden="true">
+                  <svg viewBox="0 0 65.83 73.85">
+                    <g>
+                      <g>
+                        <path class="cls-1" d="M64.44,73.85v-21.35c-.11-.1-10.45-8.89-31.53-8.89S1.47,52.43,1.39,52.5h0v21.35" />
+                        <path class="cls-1" d="M46.83,16.09c0,9.32-6.14,16.65-13.71,16.65s-13.71-7.32-13.71-16.65S25.55,1.39,33.12,1.39s13.71,5.38,13.71,14.7Z" />
+                      </g>
+                      <line class="cls-1" x1="17.42" y1="73.85" x2="17.42" y2="60.4" />
+                      <line class="cls-1" x1="48.82" y1="73.85" x2="48.82" y2="60.4" />
+                    </g>
+                  </svg>
+                </div>
+                <div class="status-text">
+                  <div class="status-label">Step 1</div>
+                  <div class="status-value">Discharge Submitted</div>
+                </div>
+                <div class="status-dot" aria-hidden="true"></div>
               </div>
-              <div class="meta-item">
-                <span class="label">Barriers</span>
-                <span class="value">Pending DME delivery</span>
+
+              <div class="status-item done">
+                <div class="status-ico" aria-hidden="true">
+                  <svg viewBox="0 0 77.02 76.67">
+                    <g>
+                      <g>
+                        <path class="cls-1" d="M75.63,58.69v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06v-14.55c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                        <line class="cls-1" x1="65.85" y1="66.01" x2="58.74" y2="66.01" />
+                      </g>
+                      <g>
+                        <path class="cls-1" d="M75.63,31.08v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06v-14.55c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                        <line class="cls-1" x1="65.85" y1="38.4" x2="58.74" y2="38.4" />
+                      </g>
+                      <g>
+                        <path class="cls-1" d="M75.63,3.46v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06V3.45c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                        <line class="cls-1" x1="65.85" y1="10.78" x2="58.74" y2="10.78" />
+                      </g>
+                    </g>
+                  </svg>
+                </div>
+                <div class="status-text">
+                  <div class="status-label">Step 2</div>
+                  <div class="status-value">Referrals Created</div>
+                </div>
+                <div class="status-dot" aria-hidden="true"></div>
               </div>
-              <div class="meta-item">
-                <span class="label">Caregiver</span>
-                <span class="value">Family notified</span>
+
+              <div class="status-item pending">
+                <div class="status-ico" aria-hidden="true">
+                  <svg viewBox="0 0 74.16 76.04">
+                    <g>
+                      <g>
+                        <g>
+                          <line class="cls-1" x1="26.55" y1="10.08" x2="52.53" y2="10.08" />
+                          <path class="cls-1" d="M66.54,10.08h2.08c2.3,0,4.16,1.86,4.16,4.16v56.27c0,2.3-1.86,4.16-4.16,4.16H5.54c-2.3,0-4.16-1.86-4.16-4.16V14.23c0-2.3,1.86-4.16,4.16-4.16h7.14" />
+                          <line class="cls-1" x1="1.39" y1="26.73" x2="72.78" y2="26.73" />
+                        </g>
+                        <line class="cls-1" x1="32.51" y1="50.58" x2="41.55" y2="50.58" />
+                        <line class="cls-1" x1="32.51" y1="63.68" x2="41.55" y2="63.68" />
+                        <line class="cls-1" x1="12.09" y1="63.68" x2="21.13" y2="63.68" />
+                        <line class="cls-1" x1="52.93" y1="37.47" x2="61.97" y2="37.47" />
+                        <line class="cls-1" x1="32.51" y1="37.47" x2="41.55" y2="37.47" />
+                        <line class="cls-1" x1="12.09" y1="37.47" x2="21.13" y2="37.47" />
+                        <line class="cls-1" x1="52.93" y1="50.58" x2="61.97" y2="50.58" />
+                        <line class="cls-1" x1="12.09" y1="50.58" x2="21.13" y2="50.58" />
+                      </g>
+                      <rect class="cls-1" x="13.22" y="1.39" width="7.89" height="17.38" rx="3.94" ry="3.94" />
+                      <path class="cls-1" d="M57,18.77h0c-2.18,0-3.94-1.77-3.94-3.94V5.33c0-2.18,1.77-3.94,3.94-3.94h0c2.18,0,3.94,1.77,3.94,3.94v9.5c0,2.18-1.77,3.94-3.94,3.94Z" />
+                    </g>
+                  </svg>
+                </div>
+                <div class="status-text">
+                  <div class="status-label">Step 3</div>
+                  <div class="status-value">Patient Contacted</div>
+                </div>
+                <div class="status-dot" aria-hidden="true"></div>
               </div>
-              <div class="meta-item">
-                <span class="label">Next Step</span>
-                <span class="value">Finalize Home Health referral</span>
+
+              <div class="status-item todo">
+                <div class="status-ico" aria-hidden="true">
+                  <svg viewBox="0 0 63.35 80.07">
+                    <g>
+                      <g>
+                        <path class="cls-1" d="M14.34,33.31l-3.49,3.35v20.24l-5.37,8.59c-1.29,2.06-.6,4.78,1.52,5.97l.05.03c1.96,1.11,4.44.5,5.67-1.38l6.59-10.08.07-10.59,8.37,5.92,2.54,6.78c.53,1.41,2.19,2.56,3.69,2.56h.44c2.9,0,4.88-2.91,3.83-5.61l-3.91-9.97-9.06-6.49.03-16.43" />
+                        <path class="cls-1" d="M25.68,10.8c.39,3.99-2.52,7.54-6.51,7.93-3.99.39-7.54-2.52-7.93-6.51-.39-3.99,2.52-7.54,6.51-7.93,3.99-.39,7.54,2.52,7.93,6.51Z" />
+                        <path class="cls-1" d="M25.6,35.54l4.38,2.32c2,1.06,4.48.27,5.5-1.75h0c.99-1.96.23-4.35-1.71-5.39l-12.71-6.8h-8.41s-9.81,8.84-9.81,8.84v9.8c0,2.68,2.17,4.86,4.86,4.86h3.14" />
+                      </g>
+                      <polyline class="cls-1" points="0 78.69 21.94 78.69 21.94 71.37 44.55 71.37 44.55 62.95 61.96 62.95 61.96 1.39 41.17 1.39 46.02 9.76 41.17 18.33 61.96 18.33" />
+                    </g>
+                  </svg>
+                </div>
+                <div class="status-text">
+                  <div class="status-label">Step 4</div>
+                  <div class="status-value">Home Health Booked</div>
+                </div>
+                <div class="status-dot" aria-hidden="true"></div>
+              </div>
+              <div class="status-item todo">
+                <div class="status-ico" aria-hidden="true">
+                  <svg viewBox="0 0 74.16 76.04">
+                    <g>
+                      <g>
+                        <g>
+                          <line class="cls-1" x1="26.55" y1="10.08" x2="52.53" y2="10.08" />
+                          <path class="cls-1" d="M66.54,10.08h2.08c2.3,0,4.16,1.86,4.16,4.16v56.27c0,2.3-1.86,4.16-4.16,4.16H5.54c-2.3,0-4.16-1.86-4.16-4.16V14.23c0-2.3,1.86-4.16,4.16-4.16h7.14" />
+                          <line class="cls-1" x1="1.39" y1="26.73" x2="72.78" y2="26.73" />
+                        </g>
+                        <line class="cls-1" x1="32.51" y1="50.58" x2="41.55" y2="50.58" />
+                        <line class="cls-1" x1="32.51" y1="63.68" x2="41.55" y2="63.68" />
+                        <line class="cls-1" x1="12.09" y1="63.68" x2="21.13" y2="63.68" />
+                        <line class="cls-1" x1="52.93" y1="37.47" x2="61.97" y2="37.47" />
+                        <line class="cls-1" x1="32.51" y1="37.47" x2="41.55" y2="37.47" />
+                        <line class="cls-1" x1="12.09" y1="37.47" x2="21.13" y2="37.47" />
+                        <line class="cls-1" x1="52.93" y1="50.58" x2="61.97" y2="50.58" />
+                        <line class="cls-1" x1="12.09" y1="50.58" x2="21.13" y2="50.58" />
+                      </g>
+                      <rect class="cls-1" x="13.22" y="1.39" width="7.89" height="17.38" rx="3.94" ry="3.94" />
+                      <path class="cls-1" d="M57,18.77h0c-2.18,0-3.94-1.77-3.94-3.94V5.33c0-2.18,1.77-3.94,3.94-3.94h0c2.18,0,3.94,1.77,3.94,3.94v9.5c0,2.18-1.77,3.94-3.94,3.94Z" />
+                    </g>
+                  </svg>
+                </div>
+                <div class="status-text">
+                  <div class="status-label">Step 5</div>
+                  <div class="status-value">DME Booked</div>
+                </div>
+                <div class="status-dot" aria-hidden="true"></div>
               </div>
             </div>
           </div>
         </div>
 
-        <div class="card right-card no-hover">
+        <div class="right-col">
+          <div class="card right-card-top no-hover">
+            <div class="card-title-row">
+              <h3 class="card-title">Discharge Planning</h3>
+              <button class="icon-btn compact" id="dischargePlanBtn" aria-label="Edit discharge plan">
+                <svg viewBox="0 0 237.85 237.86" aria-hidden="true">
+                  <g>
+                    <line class="cls-1" x1="34.25" y1="178.82" x2="57.97" y2="202.54"/>
+                    <path class="cls-1" d="M68.74,219.9c-3.65,3.65-8.34,6.09-13.43,6.97l-47.25,8.18c-3.09.53-5.78-2.15-5.24-5.24l8.17-47.25c.88-5.09,3.31-9.78,6.97-13.44L173.79,13.27c14.02-14.02,36.76-14.03,50.78,0h0c14.02,14.02,14.03,36.76,0,50.79L68.74,219.9Z"/>
+                  </g>
+                </svg>
+              </button>
+            </div>
+            <div class="dc-plan-meta">
+              <div class="dc-plan-date">
+                <div class="dc-plan-label">Discharge Date</div>
+                <div class="dc-plan-date-row">
+                  <span id="dcPlanDate">01/28/2026</span>
+                  <span class="dc-plan-confirm confirmed" id="dcPlanConfirm" title="Confirmed">
+                    <svg viewBox="0 0 90 90" aria-hidden="true">
+                      <polyline class="cls-1" points="19 48 38 66 70 28" />
+                    </svg>
+                  </span>
+                  <span class="dc-plan-urgent" id="dcPlanUrgent" title="Urgent">
+                    <svg viewBox="0 0 261.99 261.99" aria-hidden="true">
+                      <g>
+                        <g>
+                          <path class="cls-1" d="M259.08,137.39c-3.53,70.74-63.74,125.22-134.48,121.69C53.86,255.55-.62,195.34,2.91,124.6,6.44,53.86,66.65-.62,137.39,2.91c70.74,3.53,125.22,63.74,121.69,134.47Z"/>
+                          <path class="cls-1" d="M145.06,195.32c0,7.77-6.3,14.07-14.07,14.07s-14.07-6.3-14.07-14.07,6.3-14.07,14.07-14.07,14.07,6.3,14.07,14.07Z"/>
+                        </g>
+                        <rect class="cls-1" x="116.88" y="57.16" width="28.07" height="101.27" rx="14.04" ry="14.04"/>
+                      </g>
+                    </svg>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="dc-plan-grid">
+              <div class="dc-plan-section dc-plan-row dme">
+                <div class="dc-plan-row-split">
+                  <div class="dc-plan-section-title">
+                    <span>Home Health</span>
+                    <span class="dc-plan-title-inline">
+                      <span class="dc-plan-label lowercase">with</span>
+                      <span class="dc-plan-value" id="dcPlanAgencyName">Expert Home Health</span>
+                    </span>
+                  </div>
+                  <div class="dc-plan-chips" id="dcPlanHhChips">
+                    <span class="dc-plan-chip hh">Skilled Nursing</span>
+                    <span class="dc-plan-chip hh">PT</span>
+                    <span class="dc-plan-chip hh">OT</span>
+                  </div>
+                </div>
+                <div class="dc-plan-line">
+                  <span class="dc-plan-label">SOC:</span>
+                  <span class="dc-plan-value" id="dcPlanSocDate">01/30/2026</span>
+                </div>
+              </div>
+              <div class="dc-plan-section dc-plan-row">
+                <div class="dc-plan-row-split">
+                  <div class="dc-plan-section-title">DME</div>
+                  <div class="dc-plan-chips" id="dcPlanDmeChips">
+                    <span class="dc-plan-chip dme">Walker</span>
+                    <span class="dc-plan-chip dme">Oxygen</span>
+                  </div>
+                </div>
+                <div class="dc-plan-line">
+                  <span class="dc-plan-label">Delivery Date:</span>
+                  <span class="dc-plan-value" id="dcPlanDmeDate">02/01/2026</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card right-card no-hover">
           <div class="mini-card">
-            <h4>Documents</h4>
-            <p>3 items uploaded - Discharge summary, PT notes, DME order.</p>
+            <div class="mini-card-content">
+              <div class="mini-card-icon" aria-hidden="true"></div>
+              <div class="mini-card-text">
+                <h4>Documents</h4>
+                <p>3 items uploaded - Discharge summary, PT notes, DME order.</p>
+              </div>
+            </div>
           </div>
           <div class="mini-card">
-            <h4>Appointments</h4>
-            <p>Follow-up with PCP in 7 days. Cardiology referral pending.</p>
+            <div class="mini-card-content">
+              <div class="mini-card-icon" aria-hidden="true"></div>
+              <div class="mini-card-text">
+                <h4>Appointments</h4>
+                <p>Follow-up with PCP in 7 days. Cardiology referral pending.</p>
+              </div>
+            </div>
           </div>
           <div class="mini-card">
-            <h4>Tasks</h4>
-            <p>2 open tasks - Confirm HH agency, verify transport.</p>
+            <div class="mini-card-content">
+              <div class="mini-card-icon" aria-hidden="true"></div>
+              <div class="mini-card-text">
+                <h4>Post-DC Notes</h4>
+                <p>2 open tasks - Confirm HH agency, verify transport.</p>
+              </div>
+            </div>
           </div>
           <div class="mini-card">
-            <h4>Messages</h4>
-            <p>Latest update from CCC: awaiting insurance auth.</p>
+            <div class="mini-card-content">
+              <div class="mini-card-icon" aria-hidden="true"></div>
+              <div class="mini-card-text">
+                <h4>Survey</h4>
+                <p>Latest update from CCC: awaiting insurance auth.</p>
+              </div>
+            </div>
+          </div>
+          <div class="mini-card">
+            <div class="mini-card-content">
+              <div class="mini-card-icon" aria-hidden="true"></div>
+              <div class="mini-card-text">
+                <h4>Forms</h4>
+                <p>Insurance verification in progress.</p>
+              </div>
+            </div>
+          </div>
+          <div class="mini-card">
+            <div class="mini-card-content">
+              <div class="mini-card-icon" aria-hidden="true"></div>
+              <div class="mini-card-text">
+                <h4>Historical Admissions</h4>
+                <p>DME delivery window not confirmed.</p>
+              </div>
+            </div>
+          </div>
           </div>
         </div>
       </div>
@@ -541,14 +1227,23 @@
 (function(){
   const qs = (k) => new URLSearchParams(window.location.search).get(k);
   const admissionId = Number(qs("admission_id") || 0);
+  const sidebarLogo = document.getElementById("sidebarLogo");
   const patientName = document.getElementById("patientName");
   const patientDob = document.getElementById("patientDob");
-  const admitDate = document.getElementById("admitDate");
-  const dcDate = document.getElementById("dcDate");
-  const insuranceName = document.getElementById("insuranceName");
-  const insuranceNumber = document.getElementById("insuranceNumber");
-  const roomNumber = document.getElementById("roomNumber");
-  const attendingName = document.getElementById("attendingName");
+  const admitDateMini = document.getElementById("admitDateMini");
+  const dcDateMini = document.getElementById("dcDateMini");
+  const patientDobMini = document.getElementById("patientDobMini");
+  const insuranceNameMini = document.getElementById("insuranceNameMini");
+  const insuranceNumberMini = document.getElementById("insuranceNumberMini");
+  const attendingNameMini = document.getElementById("attendingNameMini");
+  const dcPlanDate = document.getElementById("dcPlanDate");
+  const dcPlanConfirm = document.getElementById("dcPlanConfirm");
+  const dcPlanUrgent = document.getElementById("dcPlanUrgent");
+  const dcPlanAgencyName = document.getElementById("dcPlanAgencyName");
+  const dcPlanSocDate = document.getElementById("dcPlanSocDate");
+  const dcPlanDmeDate = document.getElementById("dcPlanDmeDate");
+  const dcPlanHhChips = document.getElementById("dcPlanHhChips");
+  const dcPlanDmeChips = document.getElementById("dcPlanDmeChips");
 
   const profileBtn = document.getElementById("profileBtn");
   const profileMenu = document.getElementById("profileMenu");
@@ -558,6 +1253,7 @@
   const navInpatient = document.getElementById("navInpatient");
   const navDischarged = document.getElementById("navDischarged");
   const navCalendar = document.getElementById("navCalendar");
+  const dischargePlanBtn = document.getElementById("dischargePlanBtn");
 
   const SAMPLE = {
     patient_name: "Adams, Taylor",
@@ -567,11 +1263,42 @@
     room: "101A",
     insurance_name: "Aetna",
     insurance_number: "AE-443201",
-    attending_name: "Dr. Morgan Keller"
+    attending_name: "Dr. Morgan Keller",
+    latest_dc_submission: {
+      dc_date: "2026-01-28",
+      dc_confirmed: 1,
+      dc_urgent: 1,
+      hh_agency_name: "Expert Home Health",
+      hh_start_of_care_date: "2026-01-30",
+      dme_delivery_date: "2026-02-01",
+      services: [
+        { service_name: "Skilled Nursing", service_type_code: "HH" },
+        { service_name: "PT", service_type_code: "HH" },
+        { service_name: "OT", service_type_code: "HH" },
+        { service_name: "Walker", service_type_code: "DME" },
+        { service_name: "Oxygen", service_type_code: "DME" }
+      ]
+    }
   };
 
   function token(){
     return (localStorage.getItem("sensys_token") || "").trim();
+  }
+  function syncLogo(){
+    if(!sidebarLogo) return;
+    if(token()){
+      sidebarLogo.src = "/static/images/Evolv-Health-E-Color.svg";
+      sidebarLogo.onerror = () => {
+        sidebarLogo.onerror = null;
+        sidebarLogo.src = "../backend/static/images/Evolv-Health-E-Color.svg";
+      };
+    }else{
+      sidebarLogo.src = "../backend/static/images/Evolv-Health-E-Color.svg";
+      sidebarLogo.onerror = () => {
+        sidebarLogo.onerror = null;
+        sidebarLogo.src = "/static/images/Evolv-Health-E-Color.svg";
+      };
+    }
   }
   function authHeaders(){
     return { "Authorization": "Bearer " + token() };
@@ -582,22 +1309,83 @@
     if(Number.isNaN(d.getTime())) return s;
     return d.toLocaleDateString();
   }
+  function setDcPlan(d){
+    if(!dcPlanDate || !dcPlanConfirm || !dcPlanUrgent) return;
+    const dateVal = d && d.dc_date ? fmtDate(d.dc_date) : "-";
+    dcPlanDate.textContent = dateVal;
+    const confirmed = String(d && d.dc_confirmed) === "1" || d.dc_confirmed === true;
+    dcPlanConfirm.classList.toggle("confirmed", confirmed);
+    dcPlanConfirm.classList.toggle("unconfirmed", !confirmed);
+    const urgent = String(d && d.dc_urgent) === "1" || d.dc_urgent === true;
+    dcPlanUrgent.classList.toggle("on", urgent);
+    if(dcPlanAgencyName){
+      const agency = d.hh_agency_name || d.hh_carecompare_name || d.hh_carecompare_dba || "";
+      dcPlanAgencyName.textContent = agency || "Not selected";
+      dcPlanAgencyName.classList.toggle("muted", !agency);
+    }
+    if(dcPlanSocDate){
+      dcPlanSocDate.textContent = d.hh_start_of_care_date ? fmtDate(d.hh_start_of_care_date) : "";
+    }
+    if(dcPlanDmeDate){
+      dcPlanDmeDate.textContent = d.dme_delivery_date ? fmtDate(d.dme_delivery_date) : "";
+    }
+    renderPlanChips(d);
+  }
+
+  function serviceTypeKey(s){
+    const raw = (s.service_type_code || s.service_type || s.service_type_name || "").toString().toLowerCase();
+    if(raw.includes("hh") || raw.includes("home")) return "hh";
+    if(raw.includes("dme")) return "dme";
+    return "";
+  }
+
+  function renderPlanChips(d){
+    if(!dcPlanHhChips || !dcPlanDmeChips) return;
+    const services = Array.isArray(d.services) ? d.services : [];
+    const hh = services.filter(s => serviceTypeKey(s) === "hh");
+    const dme = services.filter(s => serviceTypeKey(s) === "dme");
+    dcPlanHhChips.innerHTML = "";
+    dcPlanDmeChips.innerHTML = "";
+    if(!hh.length){
+      dcPlanHhChips.innerHTML = '<span class="dc-plan-pill muted">None selected</span>';
+    }else{
+      hh.forEach(s => {
+        const chip = document.createElement("span");
+        chip.className = "dc-plan-chip hh";
+        chip.textContent = s.service_name || s.name || "Service";
+        dcPlanHhChips.appendChild(chip);
+      });
+    }
+    if(!dme.length){
+      dcPlanDmeChips.innerHTML = '<span class="dc-plan-pill muted">None selected</span>';
+    }else{
+      dme.forEach(s => {
+        const chip = document.createElement("span");
+        chip.className = "dc-plan-chip dme";
+        chip.textContent = s.service_name || s.name || "Item";
+        dcPlanDmeChips.appendChild(chip);
+      });
+    }
+  }
+
   function setData(d){
     const rawName = d.patient_name || "Patient";
     const name = rawName.includes(",")
       ? rawName.split(",").slice(0, 2).reverse().map(s => s.trim()).filter(Boolean).join(" ")
       : rawName;
     patientName.textContent = name;
-    patientDob.textContent = "DOB: " + (d.patient_dob ? fmtDate(d.patient_dob) : "-");
-    admitDate.textContent = fmtDate(d.admit_date);
-    dcDate.textContent = d.dc_date ? fmtDate(d.dc_date) : "-";
-    insuranceName.textContent = d.insurance_name || "-";
-    insuranceNumber.textContent = d.insurance_number || "-";
-    roomNumber.textContent = d.room || "-";
-    attendingName.textContent = d.attending_name || d.latest_pcp || "-";
+    admitDateMini.textContent = fmtDate(d.admit_date);
+    dcDateMini.textContent = d.dc_date ? fmtDate(d.dc_date) : "-";
+    patientDobMini.textContent = d.patient_dob ? fmtDate(d.patient_dob) : "-";
+    insuranceNameMini.textContent = d.insurance_name || "-";
+    insuranceNumberMini.textContent = d.insurance_number || "-";
+    attendingNameMini.textContent = d.attending_name || d.latest_pcp || "-";
+    setDcPlan(d.latest_dc_submission || {});
   }
 
   async function load(){
+    syncScreenClass();
+    syncLogo();
     if(!token() || !admissionId){
       setData(SAMPLE);
       return;
@@ -607,13 +1395,16 @@
       const data = await res.json();
       if(!res.ok || !data || !data.admission) throw new Error("Load failed");
       const admission = data.admission || {};
+      const dcSubmissions = Array.isArray(data.dc_submissions) ? data.dc_submissions : [];
+      const latestDc = dcSubmissions.length ? dcSubmissions[0] : null;
       setData({
         patient_name: admission.patient_name,
         patient_dob: admission.patient_dob,
         admit_date: admission.admit_date,
         dc_date: admission.dc_date,
         room: admission.room,
-        attending_name: admission.latest_pcp
+        attending_name: admission.latest_pcp,
+        latest_dc_submission: latestDc || {}
       });
     }catch(e){
       setData(SAMPLE);
@@ -648,8 +1439,51 @@
   navCalendar.addEventListener("click", () => {
     window.location.href = "/sensys/snf-user/calendar";
   });
+  if(dischargePlanBtn){
+    dischargePlanBtn.addEventListener("click", () => {
+      const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+      const base = "/sensys/snf-user/discharge-plan";
+      const target = admissionId
+        ? `${base}?admission_id=${admissionId}&return_to=${returnTo}`
+        : `${base}?return_to=${returnTo}`;
+      window.location.href = target;
+    });
+  }
+
+  function syncScreenClass(){
+    const w = window.innerWidth || 0;
+    const h = window.innerHeight || 0;
+    const isCompact = w <= 2880 && h <= 1800;
+    document.documentElement.classList.toggle("screen-compact", isCompact);
+    document.documentElement.classList.toggle("screen-wide", !isCompact);
+  }
+
+  function syncStatusTrack(){
+    const list = document.getElementById("statusList");
+    const progress = document.getElementById("statusTrackProgress");
+    if(!list || !progress) return;
+    const steps = Array.from(list.querySelectorAll(".status-item"));
+    const target = steps.find(step => step.classList.contains("pending"))
+      || steps.slice().reverse().find(step => step.classList.contains("done"))
+      || steps[0];
+    if(!target) return;
+    const dot = target.querySelector(".status-dot");
+    if(!dot) return;
+    const listRect = list.getBoundingClientRect();
+    const dotRect = dot.getBoundingClientRect();
+    const center = dotRect.top - listRect.top + (dotRect.height / 2);
+    progress.style.height = Math.max(0, Math.round(center)) + "px";
+    const color = getComputedStyle(dot).borderColor || "rgba(168,230,207,.7)";
+    progress.style.background = color;
+  }
+
+  window.addEventListener("resize", () => {
+    syncScreenClass();
+    syncStatusTrack();
+  });
 
   load();
+  window.requestAnimationFrame(syncStatusTrack);
 })();
 </script>
 </body>

@@ -905,6 +905,8 @@
 (function(){
   const qs = (k) => new URLSearchParams(window.location.search).get(k);
   const admissionId = Number(qs("admission_id") || 0);
+  const returnToParam = qs("return_to");
+  const returnTo = returnToParam ? decodeURIComponent(returnToParam) : "";
 
   const pageTitle = document.getElementById("pageTitle");
   const msg = document.getElementById("msg");
@@ -963,7 +965,7 @@
   let FREQUENT = { hh_services: [], dme_services: [], hh_agencies: [] };
   let saveInFlight = false;
   let pendingRedirect = false;
-  const CONFIRM_REDIRECT_URL = "/sensys/snf-user";
+  const CONFIRM_REDIRECT_URL = returnTo || "/sensys/snf-user";
 
   function token(){
     return (localStorage.getItem("sensys_token") || "").trim();
@@ -1967,7 +1969,7 @@
 
   document.getElementById("saveBtn").addEventListener("click", save);
   document.getElementById("closeBtn").addEventListener("click", () => {
-    window.location.href = "/sensys/snf-user/patient-search";
+    window.location.href = CONFIRM_REDIRECT_URL;
   });
   confirmCloseBtn.addEventListener("click", () => {
     if(saveInFlight){
