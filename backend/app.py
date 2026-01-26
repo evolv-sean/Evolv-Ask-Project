@@ -19909,8 +19909,11 @@ def sensys_admin_admissions(token: str):
         SELECT
             a.id,
             a.patient_id,
-            (p.last_name || ', ' || p.first_name) AS patient_name,
+            p.first_name AS patient_first_name,
+            p.last_name AS patient_last_name,
             p.dob AS patient_dob,
+            p.insurance_name1 AS patient_insurance_name1,
+            p.insurance_number1 AS patient_insurance_number1,
             p.insurance_name1 AS insurance_name1,
 
             a.agency_id,
@@ -25379,6 +25382,27 @@ def sensys_admission_details(admission_id: int, request: Request):
         (int(admission_id),),
     ).fetchall()
 
+    snf_physician_name = ""
+    try:
+        row = conn.execute(
+            """
+            SELECT ct.name
+            FROM sensys_admission_care_team act
+            JOIN sensys_care_team ct ON ct.id = act.care_team_id
+            WHERE act.admission_id = ?
+              AND act.deleted_at IS NULL
+              AND ct.deleted_at IS NULL
+              AND LOWER(ct.type) = LOWER('SNF Physician')
+            ORDER BY act.id DESC
+            LIMIT 1
+            """,
+            (int(admission_id),),
+        ).fetchone()
+        if row and row["name"]:
+            snf_physician_name = row["name"]
+    except Exception:
+        snf_physician_name = ""
+
     referrals = conn.execute(
         """
         SELECT
@@ -25522,6 +25546,7 @@ def sensys_admission_details(admission_id: int, request: Request):
         "dc_submissions": dc_out,
         "esigns": esign_out,
         "care_team": [dict(r) for r in care_team_links],
+        "snf_physician_name": snf_physician_name,
         "preferred_provider_ids": preferred_provider_ids,
         "frequent": frequent,
         "referrals": [dict(r) for r in referrals],
