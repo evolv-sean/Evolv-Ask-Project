@@ -1840,7 +1840,8 @@
     const opts = ['<option value="">Select care team…</option>']
       .concat((CARE_TEAM || []).map(c => {
         const label = `${c.name || ""}${c.type ? " — " + c.type : ""}`;
-        return `<option value="${c.id}">${label}</option>`;
+        const id = c.care_team_id || c.id;
+        return `<option value="${id}">${label}</option>`;
       }));
     apptsCareTeamSelect.innerHTML = opts.join("");
   }
@@ -2250,4 +2251,11 @@
     if(!docsTypeInput || !docsTypeMsg) return;
     docsTypeInput.classList.toggle("error", !!on);
     docsTypeMsg.style.display = on ? "block" : "none";
+    if(on){
+      docsTypeInput.style.borderColor = "rgba(199,107,107,.8)";
+      docsTypeInput.style.boxShadow = "0 0 0 2px rgba(199,107,107,.15)";
+    }else{
+      docsTypeInput.style.borderColor = "";
+      docsTypeInput.style.boxShadow = "";
+    }
   }
