@@ -627,7 +627,7 @@
         `;
         card.addEventListener("click", () => {
           if(!r.admission_id) return;
-          window.location.href = "/sensys/admission-details?admission_id=" + encodeURIComponent(String(r.admission_id));
+          window.location.href = "/sensys/snf-user/admission-details?admission_id=" + encodeURIComponent(String(r.admission_id));
         });
         wrap.appendChild(card);
       });

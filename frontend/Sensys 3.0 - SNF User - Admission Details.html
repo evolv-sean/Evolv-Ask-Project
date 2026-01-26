@@ -1256,21 +1256,20 @@
   const dischargePlanBtn = document.getElementById("dischargePlanBtn");
 
   const SAMPLE = {
-    patient_name: "Adams, Taylor",
+    patient_first_name: "Taylor",
+    patient_last_name: "Adams",
     patient_dob: "1943-06-12",
     admit_date: "2026-01-08",
     dc_date: "2026-01-28",
     room: "101A",
-    insurance_name: "Aetna",
-    insurance_number: "AE-443201",
-    attending_name: "Dr. Morgan Keller",
+    patient_insurance_name1: "Aetna",
+    patient_insurance_number1: "AE-443201",
+    snf_physician_name: "Dr. Morgan Keller",
     latest_dc_submission: {
       dc_date: "2026-01-28",
       dc_confirmed: 1,
       dc_urgent: 1,
       hh_agency_name: "Expert Home Health",
-      hh_start_of_care_date: "2026-01-30",
-      dme_delivery_date: "2026-02-01",
       services: [
         { service_name: "Skilled Nursing", service_type_code: "HH" },
         { service_name: "PT", service_type_code: "HH" },
@@ -1309,9 +1308,9 @@
     if(Number.isNaN(d.getTime())) return s;
     return d.toLocaleDateString();
   }
-  function setDcPlan(d){
+  function setDcPlan(admission, d){
     if(!dcPlanDate || !dcPlanConfirm || !dcPlanUrgent) return;
-    const dateVal = d && d.dc_date ? fmtDate(d.dc_date) : "-";
+    const dateVal = admission && admission.dc_date ? fmtDate(admission.dc_date) : "-";
     dcPlanDate.textContent = dateVal;
     const confirmed = String(d && d.dc_confirmed) === "1" || d.dc_confirmed === true;
     dcPlanConfirm.classList.toggle("confirmed", confirmed);
@@ -1324,10 +1323,10 @@
       dcPlanAgencyName.classList.toggle("muted", !agency);
     }
     if(dcPlanSocDate){
-      dcPlanSocDate.textContent = d.hh_start_of_care_date ? fmtDate(d.hh_start_of_care_date) : "";
+      dcPlanSocDate.textContent = "";
     }
     if(dcPlanDmeDate){
-      dcPlanDmeDate.textContent = d.dme_delivery_date ? fmtDate(d.dme_delivery_date) : "";
+      dcPlanDmeDate.textContent = "";
     }
     renderPlanChips(d);
   }
@@ -1369,18 +1368,17 @@
   }
 
   function setData(d){
-    const rawName = d.patient_name || "Patient";
-    const name = rawName.includes(",")
-      ? rawName.split(",").slice(0, 2).reverse().map(s => s.trim()).filter(Boolean).join(" ")
-      : rawName;
+    const first = d.patient_first_name || "";
+    const last = d.patient_last_name || "";
+    const name = [first, last].filter(Boolean).join(" ") || "Patient";
     patientName.textContent = name;
     admitDateMini.textContent = fmtDate(d.admit_date);
     dcDateMini.textContent = d.dc_date ? fmtDate(d.dc_date) : "-";
     patientDobMini.textContent = d.patient_dob ? fmtDate(d.patient_dob) : "-";
-    insuranceNameMini.textContent = d.insurance_name || "-";
-    insuranceNumberMini.textContent = d.insurance_number || "-";
-    attendingNameMini.textContent = d.attending_name || d.latest_pcp || "-";
-    setDcPlan(d.latest_dc_submission || {});
+    insuranceNameMini.textContent = d.patient_insurance_name1 || "-";
+    insuranceNumberMini.textContent = d.patient_insurance_number1 || "-";
+    attendingNameMini.textContent = d.snf_physician_name || "-";
+    setDcPlan(d, d.latest_dc_submission || {});
   }
 
   async function load(){
@@ -1398,12 +1396,15 @@
       const dcSubmissions = Array.isArray(data.dc_submissions) ? data.dc_submissions : [];
       const latestDc = dcSubmissions.length ? dcSubmissions[0] : null;
       setData({
-        patient_name: admission.patient_name,
+        patient_first_name: admission.patient_first_name,
+        patient_last_name: admission.patient_last_name,
         patient_dob: admission.patient_dob,
         admit_date: admission.admit_date,
         dc_date: admission.dc_date,
         room: admission.room,
-        attending_name: admission.latest_pcp,
+        patient_insurance_name1: admission.patient_insurance_name1,
+        patient_insurance_number1: admission.patient_insurance_number1,
+        snf_physician_name: data.snf_physician_name,
         latest_dc_submission: latestDc || {}
       });
     }catch(e){
