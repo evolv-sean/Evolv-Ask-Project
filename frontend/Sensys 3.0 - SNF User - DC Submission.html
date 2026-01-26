@@ -1056,9 +1056,9 @@
   }
 
   function serviceTypeKey(s){
-    const raw = (s.service_type_code || s.service_type || s.service_type_name || "").toString().toLowerCase();
-    if(raw.includes("hh") || raw.includes("home")) return "hh";
-    if(raw.includes("dme")) return "dme";
+    const raw = (s.service_type_code || s.service_type || "").toString().trim().toLowerCase();
+    if(raw === "hh") return "hh";
+    if(raw === "dme") return "dme";
     return "";
   }
 
