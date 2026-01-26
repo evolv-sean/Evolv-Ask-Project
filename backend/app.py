@@ -25304,6 +25304,7 @@ def sensys_admission_details(admission_id: int, request: Request):
             dc_date, dc_time, dc_confirmed, dc_urgent, urgent_comments,
             dc_destination, destination_comments, dc_with,
             hh_agency_id, hh_preferred,    
+            ha.agency_name AS hh_agency_name,
             hh_carecompare_ccn,
             hh_carecompare_name,
             hh_carecompare_dba,
@@ -25315,10 +25316,11 @@ def sensys_admission_details(admission_id: int, request: Request):
             coordinate_caregiver, caregiver_name, caregiver_number,
             apealling_dc, appeal_comments,
             updated_at, deleted_at
-        FROM sensys_admission_dc_submissions
-        WHERE admission_id = ?
+        FROM sensys_admission_dc_submissions dcs
+        LEFT JOIN sensys_agencies ha ON ha.id = dcs.hh_agency_id
+        WHERE dcs.admission_id = ?
           AND deleted_at IS NULL
-        ORDER BY id DESC
+        ORDER BY dcs.id DESC
         """,
         (int(admission_id),),
     ).fetchall()
