@@ -22534,7 +22534,11 @@ def sensys_my_admissions(request: Request, admitted_only: int = 0):
             a.id,
             a.patient_id,
             (p.last_name || ', ' || p.first_name) AS patient_name,
+            p.first_name AS patient_first_name,
+            p.last_name AS patient_last_name,
             p.dob AS patient_dob,
+            p.insurance_name1 AS patient_insurance_name1,
+            p.insurance_number1 AS patient_insurance_number1,
             p.insurance_name1 AS insurance_name1,
             p.insurance_number1 AS insurance_number1,
 
@@ -25231,7 +25235,11 @@ def sensys_admission_details(admission_id: int, request: Request):
             a.id,
             a.patient_id,
             (p.last_name || ', ' || p.first_name) AS patient_name,
+            p.first_name AS patient_first_name,
+            p.last_name AS patient_last_name,
             p.dob AS patient_dob,
+            p.insurance_name1 AS patient_insurance_name1,
+            p.insurance_number1 AS patient_insurance_number1,
 
             -- patient contact
             p.phone1   AS patient_phone1,
