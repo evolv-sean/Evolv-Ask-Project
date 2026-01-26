@@ -25303,26 +25303,26 @@ def sensys_admission_details(admission_id: int, request: Request):
     dc = conn.execute(
         """
         SELECT
-            id, admission_id, created_at, created_by,
-            dc_date, dc_time, dc_confirmed, dc_urgent, urgent_comments,
-            dc_destination, destination_comments, dc_with,
-            hh_agency_id, hh_preferred,    
+            dcs.id, dcs.admission_id, dcs.created_at, dcs.created_by,
+            dcs.dc_date, dcs.dc_time, dcs.dc_confirmed, dcs.dc_urgent, dcs.urgent_comments,
+            dcs.dc_destination, dcs.destination_comments, dcs.dc_with,
+            dcs.hh_agency_id, dcs.hh_preferred,    
             ha.agency_name AS hh_agency_name,
-            hh_carecompare_ccn,
-            hh_carecompare_name,
-            hh_carecompare_dba,
-            hh_carecompare_city,
-            hh_carecompare_state,
-            hh_carecompare_zip,
-            hh_carecompare_county,                  
-            hh_comments, hh_agency_comments, dme_comments, aid_consult, pcp_freetext,
-            coordinate_caregiver, caregiver_name, caregiver_number,
-            apealling_dc, appeal_comments,
-            updated_at, deleted_at
+            dcs.hh_carecompare_ccn,
+            dcs.hh_carecompare_name,
+            dcs.hh_carecompare_dba,
+            dcs.hh_carecompare_city,
+            dcs.hh_carecompare_state,
+            dcs.hh_carecompare_zip,
+            dcs.hh_carecompare_county,                  
+            dcs.hh_comments, dcs.hh_agency_comments, dcs.dme_comments, dcs.aid_consult, dcs.pcp_freetext,
+            dcs.coordinate_caregiver, dcs.caregiver_name, dcs.caregiver_number,
+            dcs.apealling_dc, dcs.appeal_comments,
+            dcs.updated_at, dcs.deleted_at
         FROM sensys_admission_dc_submissions dcs
         LEFT JOIN sensys_agencies ha ON ha.id = dcs.hh_agency_id
         WHERE dcs.admission_id = ?
-          AND deleted_at IS NULL
+          AND dcs.deleted_at IS NULL
         ORDER BY dcs.id DESC
         """,
         (int(admission_id),),
