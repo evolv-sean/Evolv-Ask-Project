@@ -533,38 +533,118 @@
       gap:14px;
       overflow:auto;
     }
-    .order-frame{
-      background:#FBFCFE;
-      border:1px solid rgba(13,59,102,.16);
+    .order-sheet{
+      background:#fff;
+      border:1px solid #e2e8f0;
+      border-radius:18px;
+      box-shadow:0 16px 40px rgba(2, 6, 23, .10);
+      overflow:hidden;
+      position:relative;
+    }
+    .order-header{
+      padding:22px 26px 18px 26px;
+      background: linear-gradient(180deg, #ffffff 0%, #fbfdff 60%, #f8fafc 100%);
+      border-bottom:1px solid #e2e8f0;
+    }
+    .order-brand{
+      display:flex;
+      align-items:center;
+      gap:14px;
+    }
+    .order-rx{
+      width:62px;
+      height:62px;
       border-radius:16px;
-      padding:18px;
-      box-shadow:0 10px 22px rgba(13,59,102,.08);
+      background: linear-gradient(135deg, rgba(37,99,235,.18), rgba(37,99,235,.06));
+      border:1px solid rgba(37,99,235,.18);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      flex:0 0 auto;
     }
-    .order-title{
-      font-size:18px;
-      font-weight:900;
-      color:var(--navy);
-      margin:0 0 6px;
+    .order-rx span{
+      font-family: "Brush Script MT","Segoe Script","Snell Roundhand",cursive;
+      font-size:38px;
+      font-weight:700;
+      color: rgba(37,99,235,.90);
+      transform: rotate(-8deg);
+      line-height:1;
+      user-select:none;
     }
-    .order-sub{
-      font-size:12px;
-      color:var(--muted);
-      margin-bottom:12px;
+    .order-facility{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
     }
-    .order-grid{
+    .order-facility-name{
+      font-size:22px;
+      font-weight:850;
+      line-height:1.1;
+    }
+    .order-facility-meta{
+      display:flex;
+      gap:14px;
+      font-size:13.5px;
+      color:#475569;
+      flex-wrap:wrap;
+    }
+    .order-facility-meta b{color:#0f172a}
+    .order-content{
+      padding:22px 26px 42px 26px;
       display:grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap:10px 18px;
-      margin-bottom:12px;
+      grid-template-columns: 1fr;
+      gap:16px;
     }
-    .order-field{
+    .order-section-title{
+      margin:0 0 10px 0;
       font-size:13px;
+      letter-spacing:.12em;
+      text-transform: uppercase;
+      color:#475569;
+    }
+    .order-card{
+      background:#f8fafc;
+      border:1px solid #e2e8f0;
+      border-radius:14px;
+      padding:14px;
+    }
+    .order-field-row{
+      display:grid;
+      grid-template-columns: 140px 1fr;
+      gap:10px;
+      padding:10px 0;
+      border-top:1px solid rgba(226,232,240,.7);
+    }
+    .order-field-row:first-of-type{ border-top:none; padding-top:0; }
+    .order-label{ color:#475569; font-size:13px; }
+    .order-value{ font-weight:650; font-size:14px; }
+    .order-block{
+      background:#fff;
+      border:1px solid #e2e8f0;
+      border-radius:16px;
+      padding:14px 16px;
+    }
+    .order-divider{
+      height:1px;
+      background:#e2e8f0;
+      margin:12px 0;
+      width:100%;
+    }
+    .order-divider.short{
+      width:50%;
+      margin:14px 0 10px 0;
+    }
+    .order-line{
+      display:grid;
+      grid-template-columns: 140px 1fr;
+      gap:12px;
+      padding:8px 0 2px 0;
+    }
+    .order-service-label{
+      font-weight:750;
       color:#0f172a;
     }
-    .order-field b{
-      color:#1f2937;
-      font-weight:800;
-    }
+    .order-service-label::after{ content: ":"; }
     .order-comments{
       border:1px solid rgba(13,59,102,.16);
       border-radius:12px;
@@ -582,10 +662,24 @@
       border-color: rgba(168,230,207,.95);
       box-shadow:0 10px 18px rgba(13,59,102,.10);
     }
-    .order-divider{
-      height:1px;
-      background:rgba(13,59,102,.12);
-      margin:12px 0;
+    .order-sig{
+      display:flex;
+      align-items:baseline;
+      gap:10px;
+      flex-wrap:wrap;
+      font-size:13px;
+      color:#0f172a;
+      margin-top:2px;
+    }
+    .order-sig .at{
+      font-weight:650;
+    }
+    .order-doc-stamp{
+      position:absolute;
+      right:18px;
+      bottom:14px;
+      font-size:12.5px;
+      color:#475569;
     }
     .edit-actions{
       display:flex;
@@ -759,24 +853,60 @@
         <button id="editCloseBtn" class="btn" type="button">Close</button>
       </div>
       <div class="edit-body">
-        <div class="order-frame">
-          <div class="order-title" id="editAgencyName">Admission Agency</div>
-          <div class="order-sub">
-            Phone: <span id="editAgencyPhone">--</span> | Fax: <span id="editAgencyFax">--</span>
+        <div class="order-sheet">
+          <div class="order-header">
+            <div class="order-brand">
+              <div class="order-rx"><span>Rx</span></div>
+              <div class="order-facility">
+                <div class="order-facility-name" id="editAgencyName">Admission Agency</div>
+                <div class="order-facility-meta">
+                  <div><b>Phone:</b> <span id="editAgencyPhone">--</span></div>
+                  <div><b>Fax:</b> <span id="editAgencyFax">--</span></div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="order-grid">
-            <div class="order-field"><b>Patient Name:</b> <span id="editPatientName"></span></div>
-            <div class="order-field"><b>DOB:</b> <span id="editPatientDob"></span></div>
-            <div class="order-field"><b>Address:</b> <span id="editPatientAddress"></span></div>
-            <div class="order-field"><b>Order Date:</b> <span id="editOrderDate"></span></div>
-            <div class="order-field"><b>Service Type:</b> <span id="editServiceType"></span></div>
-            <div class="order-field"><b>E-Sign Services:</b> <span id="editServices"></span></div>
+
+          <div class="order-content">
+            <section class="order-card">
+              <h3 class="order-section-title">Patient Information</h3>
+              <div class="order-field-row">
+                <div class="order-label">Patient Name</div>
+                <div class="order-value" id="editPatientName"></div>
+              </div>
+              <div class="order-field-row">
+                <div class="order-label">DOB</div>
+                <div class="order-value" id="editPatientDob"></div>
+              </div>
+              <div class="order-field-row">
+                <div class="order-label">Address</div>
+                <div class="order-value" id="editPatientAddress"></div>
+              </div>
+              <div class="order-field-row">
+                <div class="order-label">Order Date</div>
+                <div class="order-value" id="editOrderDate"></div>
+              </div>
+            </section>
+
+            <section class="order-block">
+              <h3 class="order-section-title" style="margin-bottom:0;">Order Details</h3>
+              <div class="order-divider"></div>
+              <div class="order-line">
+                <div class="order-service-label" id="editServiceType">Service</div>
+                <div class="order-value" id="editServices"></div>
+              </div>
+              <div class="order-divider"></div>
+              <div class="order-label" style="margin-bottom:6px;">Order Comments</div>
+              <textarea id="editOrderComments" class="order-comments" placeholder="Enter order comments..."></textarea>
+              <div class="order-divider short"></div>
+              <div class="order-sig">
+                <div>Electronically signed by <b id="editSignedBy"></b></div>
+                <div class="at" id="editSignedAt"></div>
+              </div>
+            </section>
           </div>
-          <div class="order-divider"></div>
-          <div class="order-field" style="margin-bottom:6px;"><b>Order Comments</b></div>
-          <textarea id="editOrderComments" class="order-comments" placeholder="Enter order comments..."></textarea>
-          <div class="order-divider"></div>
-          <div class="order-field"><b>Signed By:</b> <span id="editSignedBy"></span></div>
+
+          <div class="order-doc-stamp">DOC: EPAD-1.0</div>
         </div>
         <div id="editMsg" class="edit-msg"></div>
         <div class="edit-actions">
@@ -1110,6 +1240,7 @@
   const editServiceType = document.getElementById("editServiceType");
   const editServices = document.getElementById("editServices");
   const editSignedBy = document.getElementById("editSignedBy");
+  const editSignedAt = document.getElementById("editSignedAt");
   let ACTIVE_ESIGN_ID = null;
   let ACTIVE_EDIT_ROW = null;
 
@@ -1172,9 +1303,10 @@
     if(editPatientDob) editPatientDob.textContent = row.patient_dob || "--";
     if(editPatientAddress) editPatientAddress.textContent = formatAddress(row) || "--";
     if(editOrderDate) editOrderDate.textContent = orderDate || "--";
-    if(editServiceType) editServiceType.textContent = row.service_type_name || "--";
+    if(editServiceType) editServiceType.textContent = row.service_type_name || "Service";
     if(editServices) editServices.textContent = (row.esign_services || []).join(", ") || "--";
     if(editSignedBy) editSignedBy.textContent = row.signed_by || "";
+    if(editSignedAt) editSignedAt.textContent = row.signed_at || "";
     if(editOrderComments) editOrderComments.value = row.esign_comments || "";
     showEditMsg("");
     if(editBackdrop) editBackdrop.style.display = "flex";
