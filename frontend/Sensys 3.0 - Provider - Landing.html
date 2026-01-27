@@ -448,6 +448,12 @@
     .icon-btn.esign{color:var(--mint-strong);}
     .icon-btn.edit{color:#94a3b8;}
     .icon-btn.decline{color:#C76B6B;}
+    .icon-btn.disabled{
+      color:#94a3b8;
+      border-color:#94a3b8;
+      cursor:not-allowed;
+      pointer-events:none;
+    }
     .icon-btn.decline svg{transform: rotate(180deg);}
     .confirm-backdrop{
       position:fixed;
@@ -487,6 +493,108 @@
     .confirm-msg{
       display:none;
       margin-top:10px;
+      padding:10px;
+      border-radius:12px;
+      background:rgba(239,68,68,.08);
+      border:1px solid rgba(239,68,68,.25);
+      color:#991b1b;
+      font-size:12px;
+    }
+    .edit-modal{
+      width:min(980px, 96vw);
+      background:#fff;
+      border:1px solid rgba(13,59,102,.12);
+      border-radius:18px;
+      box-shadow:0 26px 60px rgba(13,59,102,.22);
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+      max-height:92vh;
+    }
+    .edit-header{
+      background:#E6EBF2;
+      border-bottom:1px solid rgba(13,59,102,.12);
+      padding:12px 16px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
+    .edit-header h3{
+      margin:0;
+      font-size:16px;
+      font-weight:900;
+      color:#0f172a;
+    }
+    .edit-body{
+      padding:16px;
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+      overflow:auto;
+    }
+    .order-frame{
+      background:#FBFCFE;
+      border:1px solid rgba(13,59,102,.16);
+      border-radius:16px;
+      padding:18px;
+      box-shadow:0 10px 22px rgba(13,59,102,.08);
+    }
+    .order-title{
+      font-size:18px;
+      font-weight:900;
+      color:var(--navy);
+      margin:0 0 6px;
+    }
+    .order-sub{
+      font-size:12px;
+      color:var(--muted);
+      margin-bottom:12px;
+    }
+    .order-grid{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap:10px 18px;
+      margin-bottom:12px;
+    }
+    .order-field{
+      font-size:13px;
+      color:#0f172a;
+    }
+    .order-field b{
+      color:#1f2937;
+      font-weight:800;
+    }
+    .order-comments{
+      border:1px solid rgba(13,59,102,.16);
+      border-radius:12px;
+      padding:10px 12px;
+      background:#fff;
+      width:100%;
+      min-height:90px;
+      resize:vertical;
+      font-size:13px;
+      color:#0f172a;
+      font-family: inherit;
+      outline:none;
+    }
+    .order-comments:focus{
+      border-color: rgba(168,230,207,.95);
+      box-shadow:0 10px 18px rgba(13,59,102,.10);
+    }
+    .order-divider{
+      height:1px;
+      background:rgba(13,59,102,.12);
+      margin:12px 0;
+    }
+    .edit-actions{
+      display:flex;
+      justify-content:flex-end;
+      gap:10px;
+    }
+    .edit-msg{
+      display:none;
+      margin-top:6px;
       padding:10px;
       border-radius:12px;
       background:rgba(239,68,68,.08);
@@ -644,6 +752,42 @@
     </div>
   </div>
 
+  <div id="editBackdrop" class="confirm-backdrop" aria-hidden="true">
+    <div class="edit-modal" role="dialog" aria-modal="true">
+      <div class="edit-header">
+        <h3>Edit Order</h3>
+        <button id="editCloseBtn" class="btn" type="button">Close</button>
+      </div>
+      <div class="edit-body">
+        <div class="order-frame">
+          <div class="order-title" id="editAgencyName">Admission Agency</div>
+          <div class="order-sub">
+            Phone: <span id="editAgencyPhone">--</span> | Fax: <span id="editAgencyFax">--</span>
+          </div>
+          <div class="order-grid">
+            <div class="order-field"><b>Patient Name:</b> <span id="editPatientName"></span></div>
+            <div class="order-field"><b>DOB:</b> <span id="editPatientDob"></span></div>
+            <div class="order-field"><b>Address:</b> <span id="editPatientAddress"></span></div>
+            <div class="order-field"><b>Order Date:</b> <span id="editOrderDate"></span></div>
+            <div class="order-field"><b>Service Type:</b> <span id="editServiceType"></span></div>
+            <div class="order-field"><b>E-Sign Services:</b> <span id="editServices"></span></div>
+          </div>
+          <div class="order-divider"></div>
+          <div class="order-field" style="margin-bottom:6px;"><b>Order Comments</b></div>
+          <textarea id="editOrderComments" class="order-comments" placeholder="Enter order comments..."></textarea>
+          <div class="order-divider"></div>
+          <div class="order-field"><b>Signed By:</b> <span id="editSignedBy"></span></div>
+        </div>
+        <div id="editMsg" class="edit-msg"></div>
+        <div class="edit-actions">
+          <button id="editCancelBtn" class="btn" type="button">Cancel</button>
+          <button id="editSaveBtn" class="btn" type="button">Save</button>
+          <button id="editSaveSignBtn" class="btn" type="button" style="background:var(--navy);color:#fff;border-color:transparent;">Save &amp; E-Sign</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 <script>
 (function(){
   const listEl = document.getElementById("list");
@@ -738,11 +882,11 @@
         ? services.map(s => `<span class="service-pill">${esc(s)}</span>`).join("")
         : `<span class="service-pill">--</span>`;
       const signedMeta = status === "signed"
-        ? `<div class="signed-meta">Signed By: ${esc(r.signed_by || "--")} · ${esc(r.signed_at || "--")}</div>`
+        ? `<div class="signed-meta">Signed By: ${esc(r.signed_by || "--")} | Datetime: ${esc(r.signed_at || "--")}</div>`
         : "";
       const actions = status === "signed"
         ? `
-            <button class="icon-btn esign" type="button" title="E-Sign" aria-label="E-Sign" data-esign-sign="${esc(String(r.esign_id || ""))}">
+            <button class="icon-btn esign disabled" type="button" title="Electronically Sign" aria-label="Electronically Sign" aria-disabled="true">
               <svg viewBox="0 0 75.21 75.69" aria-hidden="true">
                 <g>
                   <path class="cls-1" d="M17.37,70.01H2.78c-.77,0-1.39-.62-1.39-1.39V30.8c0-.77.62-1.39,1.39-1.39h13.82c2.28,0,4.5-.86,6.12-2.45,6.52-6.39,13.88-21.06,16.68-24.19,1.27-1.5,3-1.5,4.16-1.28.02,0,.04.01.06.02,8.04,1.86,4.72,14.71,1.7,21.18h0c-1.26,2.45.51,5.37,3.27,5.37h17.33c5.44,0,9.25,5.38,7.44,10.51l-10.54,29.96c-1.22,3.46-4.48,5.77-8.15,5.77h-20.55c-3.57,0-7.11-.65-10.45-1.91l-6.32-2.39V29.37" />
@@ -754,7 +898,7 @@
             </button>
           `
         : `
-            <button class="icon-btn esign" type="button" title="E-Sign" aria-label="E-Sign" data-esign-sign="${esc(String(r.esign_id || ""))}">
+            <button class="icon-btn esign" type="button" title="Electronically Sign" aria-label="Electronically Sign" data-esign-sign="${esc(String(r.esign_id || ""))}">
               <svg viewBox="0 0 75.21 75.69" aria-hidden="true">
                 <g>
                   <path class="cls-1" d="M17.37,70.01H2.78c-.77,0-1.39-.62-1.39-1.39V30.8c0-.77.62-1.39,1.39-1.39h13.82c2.28,0,4.5-.86,6.12-2.45,6.52-6.39,13.88-21.06,16.68-24.19,1.27-1.5,3-1.5,4.16-1.28.02,0,.04.01.06.02,8.04,1.86,4.72,14.71,1.7,21.18h0c-1.26,2.45.51,5.37,3.27,5.37h17.33c5.44,0,9.25,5.38,7.44,10.51l-10.54,29.96c-1.22,3.46-4.48,5.77-8.15,5.77h-20.55c-3.57,0-7.11-.65-10.45-1.91l-6.32-2.39V29.37" />
@@ -764,7 +908,7 @@
                 </g>
               </svg>
             </button>
-            <button class="icon-btn edit" type="button" title="Edit" aria-label="Edit">
+            <button class="icon-btn edit" type="button" title="Edit" aria-label="Edit" data-esign-edit="${esc(String(r.esign_id || ""))}">
               <svg viewBox="0 0 83.92 75.06" aria-hidden="true">
                 <g>
                   <g>
@@ -852,6 +996,15 @@
         if(id) openDeclineConfirm(id);
       });
     });
+    listEl.querySelectorAll("[data-esign-edit]").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = Number(btn.getAttribute("data-esign-edit"));
+        if(!id) return;
+        const row = ALL_ROWS.find(r => Number(r.esign_id) === id);
+        if(row) openEditModal(row);
+      });
+    });
   }
 
   async function load(){
@@ -884,9 +1037,18 @@
           admit_date: e.admit_date,
           dc_date: e.dc_date,
           admission_agency: e.agency_name,
+          agency_phone: e.agency_phone,
+          agency_fax: e.agency_fax,
           esign_status: e.status || "",
           esign_services: services.map(s => s.service_name || s.name).filter(Boolean),
-          signed_by: e.signed_by,
+          service_type_name: e.service_type_name || "",
+          esign_comments: e.comments || "",
+          patient_address1: e.patient_address1 || "",
+          patient_address2: e.patient_address2 || "",
+          patient_city: e.patient_city || "",
+          patient_state: e.patient_state || "",
+          patient_zip: e.patient_zip || "",
+          signed_by: e.signed_by_name || e.signed_by,
           signed_at: e.signed_at
         };
       });
@@ -931,7 +1093,25 @@
   const declineConfirmOk = document.getElementById("declineConfirmOk");
   const declineConfirmCancel = document.getElementById("declineConfirmCancel");
   const declineConfirmMsg = document.getElementById("declineConfirmMsg");
+  const editBackdrop = document.getElementById("editBackdrop");
+  const editCloseBtn = document.getElementById("editCloseBtn");
+  const editCancelBtn = document.getElementById("editCancelBtn");
+  const editSaveBtn = document.getElementById("editSaveBtn");
+  const editSaveSignBtn = document.getElementById("editSaveSignBtn");
+  const editMsg = document.getElementById("editMsg");
+  const editOrderComments = document.getElementById("editOrderComments");
+  const editAgencyName = document.getElementById("editAgencyName");
+  const editAgencyPhone = document.getElementById("editAgencyPhone");
+  const editAgencyFax = document.getElementById("editAgencyFax");
+  const editPatientName = document.getElementById("editPatientName");
+  const editPatientDob = document.getElementById("editPatientDob");
+  const editPatientAddress = document.getElementById("editPatientAddress");
+  const editOrderDate = document.getElementById("editOrderDate");
+  const editServiceType = document.getElementById("editServiceType");
+  const editServices = document.getElementById("editServices");
+  const editSignedBy = document.getElementById("editSignedBy");
   let ACTIVE_ESIGN_ID = null;
+  let ACTIVE_EDIT_ROW = null;
 
   function showConfirmMsg(el, text){
     if(!el) return;
@@ -961,6 +1141,48 @@
     if(declineConfirmBackdrop) declineConfirmBackdrop.style.display = "none";
     ACTIVE_ESIGN_ID = null;
   }
+  function showEditMsg(text){
+    if(!editMsg) return;
+    if(!text){
+      editMsg.style.display = "none";
+      editMsg.textContent = "";
+      return;
+    }
+    editMsg.style.display = "block";
+    editMsg.textContent = text;
+  }
+  function formatAddress(row){
+    const parts = [];
+    if(row.patient_address1) parts.push(row.patient_address1);
+    if(row.patient_address2) parts.push(row.patient_address2);
+    const cityState = [row.patient_city, row.patient_state].filter(Boolean).join(", ");
+    const zip = row.patient_zip || "";
+    const line2 = [cityState, zip].filter(Boolean).join(" ");
+    if(line2) parts.push(line2);
+    return parts.join(", ");
+  }
+  function openEditModal(row){
+    if(!row || rowStatus(row) === "signed") return;
+    ACTIVE_EDIT_ROW = row;
+    const orderDate = row.signed_at ? row.signed_at : new Date().toLocaleDateString();
+    if(editAgencyName) editAgencyName.textContent = row.admission_agency || "--";
+    if(editAgencyPhone) editAgencyPhone.textContent = row.agency_phone || "--";
+    if(editAgencyFax) editAgencyFax.textContent = row.agency_fax || "--";
+    if(editPatientName) editPatientName.textContent = row.patient_name || "--";
+    if(editPatientDob) editPatientDob.textContent = row.patient_dob || "--";
+    if(editPatientAddress) editPatientAddress.textContent = formatAddress(row) || "--";
+    if(editOrderDate) editOrderDate.textContent = orderDate || "--";
+    if(editServiceType) editServiceType.textContent = row.service_type_name || "--";
+    if(editServices) editServices.textContent = (row.esign_services || []).join(", ") || "--";
+    if(editSignedBy) editSignedBy.textContent = row.signed_by || "";
+    if(editOrderComments) editOrderComments.value = row.esign_comments || "";
+    showEditMsg("");
+    if(editBackdrop) editBackdrop.style.display = "flex";
+  }
+  function closeEditModal(){
+    if(editBackdrop) editBackdrop.style.display = "none";
+    ACTIVE_EDIT_ROW = null;
+  }
 
   if(esignConfirmCancel){
     esignConfirmCancel.addEventListener("click", closeEsignConfirm);
@@ -977,6 +1199,51 @@
     declineConfirmBackdrop.addEventListener("click", (e) => {
       if(e.target === declineConfirmBackdrop) closeDeclineConfirm();
     });
+  }
+  if(editBackdrop){
+    editBackdrop.addEventListener("click", (e) => {
+      if(e.target === editBackdrop) closeEditModal();
+    });
+  }
+  if(editCloseBtn){
+    editCloseBtn.addEventListener("click", closeEditModal);
+  }
+  if(editCancelBtn){
+    editCancelBtn.addEventListener("click", closeEditModal);
+  }
+  async function saveEdit(signAfter){
+    if(!ACTIVE_EDIT_ROW) return;
+    try{
+      showEditMsg("");
+      const res = await fetch("/api/sensys/provider/esigns/update", {
+        method:"POST",
+        headers: { "Content-Type":"application/json", ...authHeaders() },
+        body: JSON.stringify({
+          esign_id: ACTIVE_EDIT_ROW.esign_id,
+          comments: (editOrderComments ? editOrderComments.value : "") || ""
+        })
+      });
+      const data = await res.json();
+      if(!res.ok || !data.ok){
+        showEditMsg(data.detail || "Unable to save order.");
+        return;
+      }
+      if(signAfter){
+        closeEditModal();
+        openEsignConfirm(ACTIVE_EDIT_ROW.esign_id);
+        return;
+      }
+      closeEditModal();
+      await load();
+    }catch(e){
+      showEditMsg(e.message || "Unable to save order.");
+    }
+  }
+  if(editSaveBtn){
+    editSaveBtn.addEventListener("click", () => saveEdit(false));
+  }
+  if(editSaveSignBtn){
+    editSaveSignBtn.addEventListener("click", () => saveEdit(true));
   }
   if(esignConfirmOk){
     esignConfirmOk.addEventListener("click", async () => {
