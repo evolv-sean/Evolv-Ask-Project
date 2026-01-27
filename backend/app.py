@@ -26857,7 +26857,8 @@ def sensys_provider_esigns(request: Request):
             ag.agency_name,
             ag.phone1 AS agency_phone,
             ag.fax AS agency_fax,
-            su.display_name AS signed_by_name
+            su.display_name AS signed_by_name,
+            su.npi AS signed_by_npi
         FROM sensys_admission_esigns ae
         JOIN sensys_admissions a ON a.id = ae.admission_id
         JOIN sensys_patients p ON p.id = a.patient_id
