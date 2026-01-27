@@ -3511,6 +3511,7 @@ def init_db():
     ensure_column(conn, "sensys_client_surveys", "nursing_score", "nursing_score REAL")
     ensure_column(conn, "sensys_client_surveys", "md_score", "md_score REAL")
     ensure_column(conn, "sensys_client_surveys", "ss_score", "ss_score REAL")
+    ensure_column(conn, "sensys_client_surveys", "deleted_at", "deleted_at TEXT")
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_sensys_client_surveys_name ON sensys_client_surveys(abv_name)"
     )
@@ -20189,6 +20190,7 @@ def sensys_admin_client_surveys(token: str):
             ai_summary,
             ai_summary_override
         FROM sensys_client_surveys
+        WHERE deleted_at IS NULL
         ORDER BY
             CASE WHEN survey_updated_at IS NULL OR TRIM(survey_updated_at) = '' THEN 1 ELSE 0 END,
             survey_updated_at DESC,
@@ -20245,6 +20247,27 @@ def sensys_admin_client_surveys_delete_all(token: str):
     finally:
         conn.close()
 
+@app.post("/api/sensys/admin/client-surveys/delete")
+def sensys_admin_client_surveys_delete(payload: Dict[str, Any] = Body(...), token: str = ""):
+    _require_admin_token(token)
+    conn = get_db()
+    try:
+        sid = int(payload.get("id") or 0)
+        if sid <= 0:
+            raise HTTPException(status_code=400, detail="id is required")
+        conn.execute(
+            """
+            UPDATE sensys_client_surveys
+            SET deleted_at = datetime('now')
+            WHERE id = ? AND deleted_at IS NULL
+            """,
+            (sid,),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
 
 @app.post("/api/sensys/admin/client-surveys/summary-override")
 def sensys_admin_client_surveys_summary_override(payload: Dict[str, Any] = Body(...), token: str = ""):
@@ -20260,7 +20283,7 @@ def sensys_admin_client_surveys_summary_override(payload: Dict[str, Any] = Body(
             UPDATE sensys_client_surveys
             SET ai_summary_override = ?,
                 updated_at = datetime('now')
-            WHERE id = ?
+            WHERE id = ? AND deleted_at IS NULL
             """,
             (override, int(row_id)),
         )
@@ -20303,7 +20326,7 @@ def sensys_admin_client_surveys_scores_update(payload: Dict[str, Any] = Body(...
                 ss_score = ?,
                 overall_score = ?,
                 updated_at = datetime('now')
-            WHERE id = ?
+            WHERE id = ? AND deleted_at IS NULL
             """,
             (therapy_score, nursing_score, md_score, ss_score, overall_score, int(row_id)),
         )
@@ -20796,7 +20819,7 @@ async def client_surveys_secure_list(token: str, request: Request):
                 md_score,
                 ss_score
             FROM sensys_client_surveys
-            WHERE agency_name = ?
+            WHERE agency_name = ? AND deleted_at IS NULL
             """,
             (agency,),
         ).fetchall()
