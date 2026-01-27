@@ -461,6 +461,7 @@ SENSYS_SNF_USER_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User -
 SENSYS_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - Developer - Admission Details.html"
 SENSYS_HOME_HEALTH_HTML = FRONTEND_DIR / "Sensys 3.0 - Home Health.html"
 SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - Home Health - Admission Details.html"
+SENSYS_HOME_HEALTH_FINALIZED_HTML = FRONTEND_DIR / "Sensys 3.0 - HH - Finalized Patients.html"
 SENSYS_PROVIDER_ESIGN_HTML = FRONTEND_DIR / "Sensys 3.0 - Provider E-Sign.html"
 SENSYS_POST_DISCHARGE_HTML = FRONTEND_DIR / "Sensys 3.0 - Post-Discharge Workspace.html"
 SENSYS_CCC_STAFF_HTML = FRONTEND_DIR / "Sensys 3.0 - CCC Staff Workspace.html"
@@ -4548,6 +4549,10 @@ def init_db():
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             admission_id INTEGER NOT NULL,
             agency_id    INTEGER NOT NULL,
+            acceptance_status TEXT DEFAULT 'New',
+            acceptance_decline_reason TEXT,
+            acceptance_decline_other TEXT,
+            soc_date TEXT,
 
             created_at   TEXT DEFAULT (datetime('now')),
             updated_at   TEXT DEFAULT (datetime('now')),
@@ -5961,6 +5966,12 @@ def init_db():
     
     # ✅ ensure new columns exist (safe migration)
     ensure_column(conn, "sensys_agencies", "aliases", "aliases TEXT")
+
+    # ✅ ensure new columns exist (safe migration)
+    ensure_column(conn, "sensys_admission_referrals", "acceptance_status", "acceptance_status TEXT DEFAULT 'New'")
+    ensure_column(conn, "sensys_admission_referrals", "acceptance_decline_reason", "acceptance_decline_reason TEXT")
+    ensure_column(conn, "sensys_admission_referrals", "acceptance_decline_other", "acceptance_decline_other TEXT")
+    ensure_column(conn, "sensys_admission_referrals", "soc_date", "soc_date TEXT")
     
     # ✅ ensure new columns exist (safe migration)
     ensure_column(conn, "sensys_admissions", "mrn", "mrn TEXT")
@@ -18715,6 +18726,16 @@ class AdmissionReferralUpsert(BaseModel):
     admission_id: int
     agency_id: int
 
+class AdmissionReferralStatusUpdate(BaseModel):
+    id: int
+    acceptance_status: str
+    acceptance_decline_reason: Optional[str] = ""
+    acceptance_decline_other: Optional[str] = ""
+
+class AdmissionReferralSocUpdate(BaseModel):
+    id: int
+    soc_date: Optional[str] = ""
+
 
 @app.post("/api/sensys/admission-referrals/upsert")
 def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request: Request):
@@ -18853,6 +18874,74 @@ def sensys_admission_referrals_delete(payload: IdOnly, request: Request):
          WHERE id = ?
         """,
         (int(payload.id),),
+    )
+    conn.commit()
+    return {"ok": True}
+
+@app.post("/api/sensys/admission-referrals/update-status")
+def sensys_admission_referrals_update_status(payload: AdmissionReferralStatusUpdate, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    row = conn.execute(
+        """
+        SELECT admission_id
+        FROM sensys_admission_referrals
+        WHERE id = ?
+          AND deleted_at IS NULL
+        """,
+        (int(payload.id),),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Referral not found")
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(row["admission_id"]))
+
+    conn.execute(
+        """
+        UPDATE sensys_admission_referrals
+           SET acceptance_status = ?,
+               acceptance_decline_reason = ?,
+               acceptance_decline_other = ?,
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (
+            (payload.acceptance_status or "").strip() or "New",
+            (payload.acceptance_decline_reason or "").strip(),
+            (payload.acceptance_decline_other or "").strip(),
+            int(payload.id),
+        ),
+    )
+    conn.commit()
+    return {"ok": True}
+
+@app.post("/api/sensys/admission-referrals/update-soc")
+def sensys_admission_referrals_update_soc(payload: AdmissionReferralSocUpdate, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    row = conn.execute(
+        """
+        SELECT admission_id
+        FROM sensys_admission_referrals
+        WHERE id = ?
+          AND deleted_at IS NULL
+        """,
+        (int(payload.id),),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Referral not found")
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(row["admission_id"]))
+
+    conn.execute(
+        """
+        UPDATE sensys_admission_referrals
+           SET soc_date = ?,
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (
+            (payload.soc_date or "").strip(),
+            int(payload.id),
+        ),
     )
     conn.commit()
     return {"ok": True}
@@ -23799,6 +23888,10 @@ def sensys_my_referrals(request: Request):
         SELECT
             ar.id AS referral_id,
             ar.admission_id,
+            ar.acceptance_status,
+            ar.acceptance_decline_reason,
+            ar.acceptance_decline_other,
+            ar.soc_date,
 
             -- referral agency (the HH agency)
             ar.agency_id AS referral_agency_id,
@@ -27731,6 +27824,10 @@ async def sensys_home_health_ui():
 @app.get("/sensys/home-health/admission-details", response_class=HTMLResponse)
 async def sensys_home_health_admission_details_ui():
     return HTMLResponse(content=read_html(SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML))
+
+@app.get("/sensys/home-health/finalized-referrals", response_class=HTMLResponse)
+async def sensys_home_health_finalized_referrals_ui():
+    return HTMLResponse(content=read_html(SENSYS_HOME_HEALTH_FINALIZED_HTML))
 
 # ✅ NEW: Provider E-Sign list page
 @app.get("/sensys/provider-esign", response_class=HTMLResponse)
