@@ -1,0 +1,2019 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sensys - Home Health Workspace</title>
+  <style>
+    :root{
+      --navy:#0D3B66;
+      --mint:#A8E6CF;
+      --mint-strong:#86d9ba;
+      --bg:#ffffff;
+      --bg-2:#F5F7FA;
+      --text:#0f172a;
+      --muted:#5b6b84;
+      --line: rgba(13,59,102,.14);
+      --shadow:0 18px 36px rgba(13,59,102,.08);
+      --r-lg:20px;
+      --r-md:12px;
+      --sidebar-w:78px;
+      --logo-offset-x:-68px;
+      --logo-offset-y:-58px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    html,body{
+      margin:0;
+      background:
+        radial-gradient(900px 320px at 50% 1%, rgba(15,23,42,.035), rgba(255,255,255,0) 80%),
+        linear-gradient(180deg, #ffffff 0%, #f5f7fa 100%);
+      background-repeat:no-repeat;
+      background-attachment:fixed;
+      color:var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    .layout{
+      min-height:100vh;
+      display:flex;
+    }
+    .sidebar{
+      width:var(--sidebar-w);
+      background:#fff;
+      border-right:1px solid rgba(13,59,102,.08);
+      display:flex;
+      flex-direction:column;
+      align-items:flex-start;
+      padding:0 0 14px;
+      position:relative;
+      overflow:hidden;
+    }
+    .sidebar-logo{
+      width:100%;
+      height:92px;
+      overflow:hidden;
+      margin-bottom:18px;
+      position:relative;
+      overflow:hidden;
+    }
+    .sidebar-logo img{
+      width:150px;
+      height:150px;
+      position:absolute;
+      left:-6px;
+      top:-6px;
+      transform: translate(var(--logo-offset-x), var(--logo-offset-y));
+      display:block;
+      margin:0;
+      overflow:visible;
+    }
+    .side-nav{
+      display:flex;
+      flex-direction:column;
+      align-items:flex-start;
+      gap:12px;
+      margin-top:-28px;
+      margin-left: 20px;
+    }
+    .side-btn{
+      width:42px;
+      height:42px;
+      border-radius:14px;
+      border:0;
+      background:#fff;
+      display:flex;
+      align-items:flex-start;
+      justify-content:center;
+      color:var(--navy);
+      cursor:pointer;
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .side-btn:hover{
+      box-shadow:0 0 0 2px rgba(168,230,207,.35);
+      transform: translateY(-1px);
+    }
+    .side-btn svg{
+      width:35px;
+      height:35px;
+    }
+    .side-btn .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:3.2px;
+    }
+    .side-spacer{flex:1}
+    .profile-wrap{
+      margin-left:20px;
+      position:relative;
+      overflow:hidden;
+      margin-bottom:0;
+    }
+    .profile-menu{
+      position:absolute;
+      left:52px;
+      bottom:0;
+      background:#fff;
+      border:1px solid rgba(13,59,102,.12);
+      border-radius:12px;
+      box-shadow:0 18px 36px rgba(13,59,102,.16);
+      padding:8px;
+      min-width:170px;
+      display:none;
+      z-index:10;
+    }
+    .profile-menu button{
+      width:100%;
+      border:0;
+      background:#fff;
+      text-align:left;
+      padding:8px 10px 48px;
+      max-height:320px;
+      overflow:hidden;
+      border-radius:10px;
+      font-size:12px;
+      font-weight:800;
+      color:#111827;
+      cursor:pointer;
+    }
+    .profile-menu button:hover{
+      background:rgba(168,230,207,.18);
+    }
+    .page{
+      min-height:100vh;
+      padding:22px 28px 5px;
+      max-width:1280px;
+      margin:0 0 0 40px;
+      display:flex;
+      flex-direction:column;
+      flex:1;
+    }
+    .topbar{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:16px;
+      margin-bottom:6px;
+    }
+    .topbar-right{
+      display:flex;
+      align-items:flex-start;
+      gap:10px;
+    }
+    .brand{
+      display:flex;
+      align-items:flex-start;
+      gap:16px;
+    }
+    .brand .icon{
+      margin-top: -1px;
+      width:84px;
+      height:84px;
+      color:var(--mint-strong);
+      display:inline-flex;
+      align-items:flex-start;
+      justify-content:center;
+    }
+    .brand .icon svg{width:100%;height:100%}
+    .brand .icon .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:2.1px;
+    }
+    .title h1{
+      margin:0 0 6px;
+      font-size:40px;
+      font-weight:400;
+      color:var(--navy);
+      letter-spacing:.2px;
+    }
+    .title p{
+      margin:0;
+      font-size:14px;
+      color:var(--muted);
+    }
+    .logo{
+      height:96px;
+      width:auto;
+      display:block;
+      margin:0;
+      overflow:visible;
+      opacity:0.0;
+    }
+    .toolbar{
+      margin-top:18px;
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+      flex-wrap:wrap;
+    }
+    .toolbar-wrap{
+      position:sticky;
+      top:0;
+      z-index:5;
+      background:transparent;
+      padding:14px 14px 10px;
+      border-radius:18px 18px 0 0;
+    }
+    .tabs{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .chip{
+      padding:10px 16px;
+      border-radius:999px;
+      border:1px solid rgba(124,109,138,.35);
+      background:#fff;
+      font-size:13px;
+      font-weight:800;
+      color:#0D3B66;
+      cursor:pointer;
+      user-select:none;
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .chip:hover{
+      border-color:rgba(124,109,138,.6);
+      box-shadow:0 10px 18px rgba(124,109,138,.12);
+      transform: translateY(-1px);
+    }
+    .chip.on{
+      background:rgba(124,109,138,.2);
+      border-color:rgba(124,109,138,.9);
+      color:#3d2f4a;
+    }
+    .search-wrap{
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+      flex-wrap:wrap;
+    }
+    .search{
+      width:min(360px, 92vw);
+      padding:12px 14px;
+      border-radius:12px;
+      border:1px solid rgba(13,59,102,.18);
+      background:#fff;
+      font-size:14px;
+      outline:none;
+      box-shadow:0 8px 16px rgba(13,59,102,.06);
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .search:focus{
+      border-color: rgba(168,230,207,.95);
+      box-shadow: 0 10px 22px rgba(13,59,102,.12);
+      transform: translateY(-1px);
+    }
+    .btn{
+      border:1px solid var(--line);
+      background:#fff;
+      padding:10px 14px;
+      border-radius:12px;
+      font-size:13px;
+      font-weight:800;
+      color:var(--navy);
+      cursor:pointer;
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .btn:hover{
+      border-color: rgba(168,230,207,.9);
+      box-shadow:0 10px 18px rgba(13,59,102,.10);
+      transform: translateY(-1px);
+    }
+    .panel{
+      margin-top:10px;
+      margin-bottom:0;
+      background:#fff;
+      border:1px solid rgba(13,59,102,.12);
+      border-radius:18px;
+      box-shadow:var(--shadow);
+      padding:0;
+      overflow:hidden;
+      flex:1;
+      display:flex;
+      flex-direction:column;
+    }
+    .list{
+      margin-top: 2px;
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap:12px;
+      overflow:auto;
+      padding:14px 14px 12px;
+      flex:1;
+      max-height:calc(100vh - 232px);
+      align-content:flex-start;
+      grid-auto-rows:max-content;
+      background:transparent;
+    }
+        .row{
+      background:#fff;
+      border:1px solid rgba(168,230,207,.55);
+      border-radius:14px;
+      box-shadow:none;
+      padding:8px 10px 48px;
+      max-height:320px;
+      overflow:hidden;
+      display:grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        "header actions"
+        "agency actions"
+        "dates actions"
+        "services actions";
+      grid-template-rows: auto auto auto 72px;
+      column-gap:12px;
+      row-gap:12px;
+      align-items:start;
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .row:hover{
+      border-color:rgba(168,230,207,.95);
+      box-shadow:0 10px 18px rgba(13,59,102,.10);
+      transform: translateY(-1px);
+    }
+    .row-header{
+      grid-area:header;
+      display:flex;
+      gap:12px;
+      align-items:center;
+      min-width:0;
+      min-height:78px;
+    }
+    .avatar{
+      width:70px;
+      height:70px;
+      border-radius:999px;
+      border:2px solid #7C6D8A;
+      background:#fff;
+      overflow:hidden;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:#7C6D8A;
+      flex:0 0 auto;
+    }
+    .avatar svg{width:55px;height:55px}
+    .avatar .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:1.2px;
+    }
+    .name{
+      font-size:18px;
+      font-weight:800;
+      color:var(--navy);
+    }
+    .meta{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      color:var(--muted);
+      font-size:13px;
+    }
+    .meta b{color:#0f172a}
+    .agency-name{
+      grid-area:agency;
+      font-size:16px;
+      font-weight:700;
+      color:var(--navy);
+      margin-top: 6px;
+    }
+    .row-dates{
+      grid-area:dates;
+      margin-top: 6px;
+      min-height:18px;
+    }
+    .actions{
+      display:flex;
+      gap:8px;
+      align-items:flex-start;
+      opacity:.9;
+    }
+    .row-actions{
+      grid-area:actions;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:8px;
+      align-self:start;
+    }
+    .service-pills{
+      grid-area:services;
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin-top: 8px;
+      max-height:72px;
+      overflow:auto;
+      align-content:flex-start;
+    }
+    .service-pill{
+      padding:6px 10px;
+      border-radius:999px;
+      background:rgba(168,230,207,.35);
+      border:1px solid rgba(168,230,207,.7);
+      color:#0D3B66;
+      font-size:12px;
+      font-weight:700;
+    }
+    .icon-btn{
+      width:42px;
+      height:42px;
+      border-radius:12px;
+      border:1.5px solid #0D3B66;
+      background:transparent;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:0;
+      color:#0D3B66;
+      line-height:0;
+    }
+    .icon-btn svg{
+      width:22px;
+      height:22px;
+      display:block;
+      margin:0;
+      overflow:visible;
+    }
+    .icon-btn .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:3.8px;
+    }
+    .notif-btn svg :where(path, line, polyline, polygon, rect, circle, ellipse){
+      stroke-width:6.5px;
+    }
+    .status-btn .cls-1{
+      stroke-width:5px;
+    }
+    .notif-btn{
+      position:relative;
+      color:var(--navy);
+    }
+    .notif-btn.has-unread{
+      color:#C76B6B;
+      border-color: rgba(199,107,107,.55);
+      box-shadow:0 0 0 3px rgba(199,107,107,.16);
+    }
+    .notif-badge{
+      position:absolute;
+      right:-4px;
+      bottom:-4px;
+      min-width:18px;
+      height:18px;
+      padding:0 4px;
+      border-radius:999px;
+      background:#C76B6B;
+      color:#fff;
+      font-size:10px;
+      font-weight:900;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      box-shadow:0 6px 14px rgba(199,107,107,.35);
+    }
+    .notif-backdrop{
+      position:fixed;
+      inset:0;
+      background:rgba(15,23,42,.55);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:16px;
+      z-index:9999;
+    }
+    .notif-modal{
+      width:min(760px,96vw);
+      max-height:calc(100vh - 40px);
+      background:#fff;
+      border-radius:16px;
+      border:1px solid #e6e8ef;
+      box-shadow:0 18px 60px rgba(0,0,0,.25);
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+    }
+    .notif-head{
+      padding:14px 16px;
+      border-bottom:1px solid #eef0f4;
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .notif-title{
+      font-size:14px;
+      font-weight:900;
+      color:#111827;
+    }
+    .notif-sub{
+      margin-top:2px;
+      font-size:12px;
+      color:#667085;
+    }
+    .notif-body{
+      padding:14px 16px;
+      overflow:auto;
+    }
+    .notif-item{
+      border:1px solid #eef0f6;
+      border-radius:12px;
+      padding:12px;
+      background:#fff;
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+      box-shadow:0 6px 16px rgba(0,0,0,.06);
+      margin-bottom:10px;
+    }
+    .notif-item.read{
+      background:#fbfcfe;
+      box-shadow:none;
+    }
+    .notif-item:last-child{margin-bottom:0}
+    .notif-item-title{
+      font-size:13px;
+      font-weight:800;
+      color:#111827;
+    }
+    .notif-item-body{
+      margin-top:4px;
+      font-size:12px;
+      color:#475467;
+      white-space:pre-wrap;
+    }
+    .notif-item-meta{
+      margin-top:8px;
+      font-size:11px;
+      color:#667085;
+    }
+    .notif-item-actions{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      align-items:flex-end;
+    }
+    .notif-msg{
+      display:none;
+      margin-top:10px;
+      padding:10px;
+      border-radius:12px;
+      background:rgba(239,68,68,.08);
+      border:1px solid rgba(239,68,68,.25);
+      color:#991b1b;
+      font-size:12px;
+    }
+    .services{
+      font-size:13px;
+      color:var(--muted);
+    }    .empty{
+      text-align:center;
+      color:var(--muted);
+      font-size:13px;
+      margin-top:30px;
+    }
+    .modal-backdrop{
+      position:fixed;
+      inset:0;
+      background:rgba(15,23,42,.45);
+      display:none;
+      align-items:flex-start;
+      justify-content:center;
+      padding:18px;
+      z-index:9999;
+    }
+    .modal{
+      width:min(520px, 94vw);
+      background:#fff;
+      border:1px solid rgba(13,59,102,.12);
+      border-radius:18px;
+      box-shadow:0 26px 60px rgba(13,59,102,.22);
+      padding:18px;
+    }
+    .modal h3{
+      margin:0 0 8px;
+      font-size:16px;
+      font-weight:900;
+      color:#0f172a;
+    }
+    .field{
+      margin-top:12px;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    .label{
+      font-size:12px;
+      font-weight:800;
+      color:#334155;
+      letter-spacing:.2px;
+    }
+    .input, .select{
+      width:100%;
+      padding:10px 12px;
+      border:1px solid rgba(13,59,102,.18);
+      border-radius:12px;
+      font-size:13px;
+      height:38px;
+      outline:none;
+      background:#fff;
+    }
+    .modal-actions{
+      margin-top:16px;
+      display:flex;
+      justify-content:flex-end;
+      gap:10px;
+    }
+    .filter-row{
+      display:flex;
+      gap:10px;
+      flex-wrap:nowrap;
+      align-items:center;
+    }
+    .filter-row .input{
+      flex:1 1 0;
+      min-width:0;
+    }
+    .status-btn{
+      border:1.5px solid #0D3B66;
+      color:#9aa6b2;
+    }
+    .status-btn.status-new{color:#9aa6b2;}
+    .status-btn.status-review{color:#d39b3d;}
+    .status-btn.status-accepted{color:var(--mint-strong);}
+    .status-btn.status-declined{color:#C76B6B;}
+    .status-btn.status-declined svg{transform: rotate(180deg);}
+    .details-backdrop{
+      position:fixed;
+      inset:0;
+      background:rgba(15,23,42,.45);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:18px;
+      z-index:9999;
+    }
+    .details-modal{
+      width:min(1100px, 96vw);
+      max-height:calc(100vh - 40px);
+      background:#fff;
+      border:1px solid rgba(13,59,102,.12);
+      border-radius:18px;
+      box-shadow:0 26px 60px rgba(13,59,102,.22);
+      padding:18px;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      overflow:auto;
+    }
+    .details-head{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+    }
+    .details-title{
+      font-size:18px;
+      font-weight:900;
+      color:#0f172a;
+      margin:0;
+    }
+    .details-sub{
+      font-size:12px;
+      color:#667085;
+      margin-top:4px;
+    }
+    .details-grid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:12px;
+    }
+    .details-card{
+      border:1px solid rgba(13,59,102,.12);
+      border-radius:16px;
+      padding:12px;
+      background:#fff;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+    .details-kicker{
+      font-size:11px;
+      font-weight:800;
+      color:#64748b;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+    }
+    .details-name{
+      font-size:18px;
+      font-weight:800;
+      color:var(--navy);
+    }
+    .details-row{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      font-size:13px;
+      color:#0f172a;
+    }
+    .details-label{
+      font-weight:700;
+      color:#334155;
+    }
+    .details-muted{
+      color:#667085;
+      font-size:12px;
+    }
+    .soc-msg{
+      font-size:12px;
+      color:#667085;
+    }
+    .soc-msg.error{
+      color:#b42318;
+    }
+    .details-docs{
+      border:1px solid rgba(13,59,102,.12);
+      border-radius:16px;
+      overflow:hidden;
+      background:#fff;
+    }
+    .details-docs-head{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:10px 12px;
+      border-bottom:1px solid rgba(13,59,102,.12);
+      background:#f8fafc;
+    }
+    .details-docs-table{
+      max-height:320px;
+      overflow:auto;
+    }
+    .details-docs table{
+      width:100%;
+      border-collapse:collapse;
+    }
+    .details-docs th{
+      text-align:left;
+      padding:10px;
+      font-size:12px;
+      color:#475467;
+      white-space:nowrap;
+    }
+    .details-docs td{
+      padding:10px;
+      font-size:13px;
+      color:#111827;
+      border-bottom:1px solid #eef0f5;
+    }
+    .details-docs tbody tr:last-child td{
+      border-bottom:0;
+    }
+    .details-doc-actions{
+      display:flex;
+      justify-content:flex-end;
+      gap:8px;
+    }
+    .details-doc-btn{
+      width:34px;
+      height:34px;
+      border-radius:10px;
+      border:1px solid #d0d5dd;
+      background:#fff;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:#0d3b66;
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .details-doc-btn:hover{
+      border-color: rgba(168,230,207,.9);
+      box-shadow:0 10px 18px rgba(13,59,102,.10);
+      transform: translateY(-1px);
+    }
+    .details-doc-btn svg{
+      width:16px;
+      height:16px;
+    }
+    .details-doc-btn .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:5px;
+    }
+    .small-input{
+      max-width:180px;
+      height:34px;
+      padding:6px 10px;
+      font-size:12px;
+    }
+    .textarea{
+      height:auto;
+      min-height:90px;
+      padding:10px 12px;
+      resize:vertical;
+    }
+    .status-backdrop{
+      position:fixed;
+      inset:0;
+      background:rgba(15,23,42,.45);
+      display:none;
+      align-items:flex-start;
+      justify-content:center;
+      padding:18px;
+      z-index:9999;
+    }
+    .status-modal{
+      width:min(520px, 94vw);
+      background:#fff;
+      border:1px solid rgba(13,59,102,.12);
+      border-radius:18px;
+      box-shadow:0 26px 60px rgba(13,59,102,.22);
+      padding:18px;
+    }
+    .status-msg{
+      display:none;
+      margin-top:10px;
+      padding:10px;
+      border-radius:12px;
+      background:rgba(239,68,68,.08);
+      border:1px solid rgba(239,68,68,.25);
+      color:#991b1b;
+      font-size:12px;
+    }
+    @media (max-height: 950px){
+      .row{max-height:320px;}
+      .row-header{min-height:78px;}
+      .agency-name{margin-top:6px;}
+      .row-dates{margin-top:6px;}
+      .service-pills{margin-top:8px;}
+    }
+    @media (max-width: 1280px){
+      .row{max-height:320px;}
+      .row-header{min-height:78px;}
+      .agency-name{margin-top:6px;}
+      .row-dates{margin-top:6px;}
+      .service-pills{margin-top:8px;}
+    }
+    @media (max-width: 900px){
+      .list{grid-template-columns: 1fr;}
+      .row{
+        grid-template-columns: 1fr;
+        grid-template-areas:
+          "header"
+          "actions"
+          "agency"
+          "dates"
+          "services";
+      }
+      .row-actions{
+        flex-direction:row;
+        justify-content:flex-start;
+      }
+      .title h1{font-size:34px}
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <img src="/static/images/Evolv-Health-E-Color.svg" alt="Evolv Health" onerror="this.onerror=null;this.src='Logos/Evolv-Health-E-Color.svg';" />
+      </div>
+      <div class="side-nav">
+        <button class="side-btn" id="navHome" title="Home" aria-label="Home">
+          <svg viewBox="0 0 84.28 75.71" aria-hidden="true">
+            <g>
+              <polygon class="cls-1" points="72.76 74.32 72.76 41.92 82.89 41.92 82.89 35.62 71 25.54 71 7.55 58.75 7.55 58.75 15.16 42.14 1.79 1.39 35.62 1.39 41.92 11.52 41.92 11.52 74.31 32.09 74.32 32.09 52.8 52.18 52.8 52.18 74.32 72.76 74.32" />
+              <polyline class="cls-1" points="11.52 41.92 42.14 16.92 72.76 41.92" />
+            </g>
+          </svg>
+        </button>
+        <button class="side-btn" id="navDischarged" title="Finalized Referrals" aria-label="Finalized Referrals">
+          <svg viewBox="0 0 63.35 80.07" aria-hidden="true">
+            <g>
+              <g>
+                <path class="cls-1" d="M14.34,33.31l-3.49,3.35v20.24l-5.37,8.59c-1.29,2.06-.6,4.78,1.52,5.97l.05.03c1.96,1.11,4.44.5,5.67-1.38l6.59-10.08.07-10.59,8.37,5.92,2.54,6.78c.53,1.41,2.19,2.56,3.69,2.56h.44c2.9,0,4.88-2.91,3.83-5.61l-3.91-9.97-9.06-6.49.03-16.43" />
+                <path class="cls-1" d="M25.68,10.8c.39,3.99-2.52,7.54-6.51,7.93-3.99.39-7.54-2.52-7.93-6.51-.39-3.99,2.52-7.54,6.51-7.93,3.99-.39,7.54,2.52,7.93,6.51Z" />
+                <path class="cls-1" d="M25.6,35.54l4.38,2.32c2,1.06,4.48.27,5.5-1.75h0c.99-1.96.23-4.35-1.71-5.39l-12.71-6.8h-8.41s-9.81,8.84-9.81,8.84v9.8c0,2.68,2.17,4.86,4.86,4.86h3.14" />
+              </g>
+              <polyline class="cls-1" points="0 78.69 21.94 78.69 21.94 71.37 44.55 71.37 44.55 62.95 61.96 62.95 61.96 1.39 41.17 1.39 46.02 9.76 41.17 18.33 61.96 18.33" />
+            </g>
+          </svg>
+        </button>
+      </div>
+      <div class="side-spacer"></div>
+      <div class="profile-wrap">
+        <button class="side-btn" id="profileBtn" title="Account" aria-label="Account">
+          <svg viewBox="0 0 65.83 73.85" aria-hidden="true">
+            <g>
+              <g>
+                <path class="cls-1" d="M64.44,73.85v-21.35c-.11-.1-10.45-8.89-31.53-8.89S1.47,52.43,1.39,52.5h0v21.35" />
+                <path class="cls-1" d="M46.83,16.09c0,9.32-6.14,16.65-13.71,16.65s-13.71-7.32-13.71-16.65S25.55,1.39,33.12,1.39s13.71,5.38,13.71,14.7Z" />
+              </g>
+              <line class="cls-1" x1="17.42" y1="73.85" x2="17.42" y2="60.4" />
+              <line class="cls-1" x1="48.82" y1="73.85" x2="48.82" y2="60.4" />
+            </g>
+          </svg>
+        </button>
+        <div class="profile-menu" id="profileMenu">
+          <button id="changePasswordBtn">Change Password</button>
+          <button id="signOutBtn">Sign Out</button>
+        </div>
+      </div>
+    </aside>
+
+    <div class="page">
+    <div class="topbar">
+      <div class="brand">
+        <span class="icon" aria-hidden="true">
+          <svg viewBox="0 0 78.62 78.58">
+            <g>
+              <path class="cls-1" d="M15.7,77.19h53.85c4.25,0,7.69-3.44,7.69-7.69h0c0-4.25-3.44-7.69-7.69-7.69h-22.33c-3.55,0-6.43-2.88-6.43-6.43h0c0-3.55,2.88-6.43,6.43-6.43h15.8" />
+              <g>
+                <path class="cls-1" d="M61.74,1.39h0c13.11,0,20.27,15.28,11.88,25.35l-11.63,13.98h-.49l-11.63-13.98c-8.38-10.07-1.22-25.35,11.88-25.35Z" />
+                <path class="cls-1" d="M68.65,16.88c0,3.82-3.09,6.91-6.91,6.91s-6.91-3.09-6.91-6.91,3.09-6.91,6.91-6.91,6.91,3.09,6.91,6.91Z" />
+              </g>
+              <g>
+                <path class="cls-1" d="M16.88,30.16h0c13.11,0,20.27,15.28,11.88,25.35l-11.63,13.98h-.49l-11.63-13.98c-8.38-10.07-1.22-25.35,11.88-25.35Z" />
+                <path class="cls-1" d="M23.79,45.64c0,3.82-3.09,6.91-6.91,6.91s-6.91-3.09-6.91-6.91,3.09-6.91,6.91-6.91,6.91,3.09,6.91,6.91Z" />
+              </g>
+            </g>
+          </svg>
+        </span>
+        <div class="title">
+          <h1>Home Health Workspace</h1>
+          <p>Manage all of your Evolv Home Health referrals.</p>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <img class="logo" src="/static/images/Sensys-S-blue2.svg" alt="Sensys" onerror="this.onerror=null;this.src='Logos/Sensys S blue2.svg';" />
+        <button class="icon-btn notif-btn" id="bellBtn" aria-label="Notifications">
+          <svg viewBox="0 0 216.18 263.34" aria-hidden="true">
+            <g>
+              <path class="cls-1" d="M211.75,204.56l-13.8-20.09c-8.42-12.26-12.93-26.79-12.93-41.66v-28.8c0-32.92-20.67-61-49.75-71.98-3.98-1.5-6.61-5.3-6.61-9.55v-9.15c0-11.36-9.21-20.57-20.57-20.57h0c-11.36,0-20.57,9.21-20.57,20.57v9.15c0,4.25-2.64,8.05-6.61,9.55-29.07,10.98-49.75,39.07-49.75,71.98v28.8c0,14.88-4.51,29.4-12.93,41.66l-13.8,20.09c-4.33,6.31.18,14.89,7.84,14.89h191.63c7.65,0,12.17-8.58,7.84-14.89Z"/>
+              <path class="cls-1" d="M78.75,238.56c3.69,12.73,15.43,22.03,29.34,22.03s25.66-9.3,29.34-22.03"/>
+            </g>
+          </svg>
+          <span id="notifBadge" class="notif-badge">0</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="toolbar-wrap">
+        <div class="toolbar">
+          <div class="tabs">
+            <div id="tabNew" class="chip on">New (0)</div>
+            <div id="tabPending" class="chip">In Review (0)</div>
+          </div>
+          <div class="search-wrap">
+            <input id="search" class="search" placeholder="Search patient name..." />
+            <button id="openFilters" class="btn">Filters</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="list" class="list"></div>
+      <div id="empty" class="empty" style="display:none;">No patients match your filters.</div>
+    </div>
+    </div>
+  </div>
+
+  <div id="filterBackdrop" class="modal-backdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h3>Filter Patients</h3>
+
+      <div class="field">
+        <div class="label">Admit date range</div>
+        <div class="filter-row" style="display:flex;gap:10px;flex-wrap:nowrap;">
+          <input id="admitFrom" class="input" type="date" />
+          <input id="admitTo" class="input" type="date" />
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="label">Insurance name</div>
+        <input id="insuranceFilter" class="input" placeholder="Start typing..." />
+      </div>
+
+      <div class="field">
+        <div class="label">Admission agency</div>
+        <select id="agencyFilter" class="select">
+          <option value="">All agencies</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <div class="label">Sort by</div>
+        <select id="sortBy" class="select">
+          <option value="last">Last name</option>
+          <option value="admit">Admit date</option>
+        </select>
+      </div>
+
+      <div class="modal-actions">
+        <button id="clearFilters" class="btn">Clear</button>
+        <button id="applyFilters" class="btn" style="background:var(--navy);color:#fff;border-color:transparent;">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="detailsBackdrop" class="details-backdrop" aria-hidden="true">
+    <div class="details-modal" role="dialog" aria-modal="true">
+      <div class="details-head">
+        <div>
+          <div class="details-title">Patient Details</div>
+          <div class="details-sub">Admission details, contact info, and documents.</div>
+        </div>
+        <button id="detailsClose" class="btn">Close</button>
+      </div>
+      <div class="details-grid">
+        <div class="details-card">
+          <div class="details-kicker">Patient</div>
+          <div id="detailsName" class="details-name">--</div>
+          <div class="details-row"><span class="details-label">DOB</span><span id="detailsDob">--</span></div>
+          <div class="details-row"><span class="details-label">Admission Agency</span><span id="detailsAgency">--</span></div>
+          <div class="details-row"><span class="details-label">Admit Date</span><span id="detailsAdmit">--</span></div>
+          <div class="details-row"><span class="details-label">DC Date</span><span id="detailsDc">--</span></div>
+        </div>
+        <div class="details-card">
+          <div class="details-kicker">Contact</div>
+          <div class="details-row"><span class="details-label">Phone 1</span><span id="detailsPhone1">--</span></div>
+          <div class="details-row"><span class="details-label">Phone 2</span><span id="detailsPhone2">--</span></div>
+          <div class="details-row"><span class="details-label">Address</span><span id="detailsAddress">--</span></div>
+        </div>
+        <div class="details-card" style="grid-column:1 / -1;">
+          <div class="details-kicker">Start of Care</div>
+          <div class="details-row">
+            <span class="details-label">SOC Date</span>
+            <input id="socDate" class="input small-input" type="date" />
+          </div>
+          <div class="details-muted">Set the planned start of care date.</div>
+          <div id="socMsg" class="soc-msg"></div>
+        </div>
+      </div>
+      <div class="details-docs">
+        <div class="details-docs-head">
+          <div class="details-kicker">Documents</div>
+          <div id="detailsDocsCount" class="details-muted">0 documents</div>
+        </div>
+        <div class="details-docs-table">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:32%;">Document Type</th>
+                <th>Document Name</th>
+                <th style="width:110px;text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="detailsDocsTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="statusBackdrop" class="status-backdrop" aria-hidden="true">
+    <div class="status-modal" role="dialog" aria-modal="true">
+      <h3>Update Acceptance Status</h3>
+      <div class="field">
+        <div class="label">Acceptance Status</div>
+        <select id="statusSelect" class="select">
+          <option value="New">New</option>
+          <option value="In Review">In Review</option>
+          <option value="Accepted">Accepted</option>
+          <option value="Declined">Declined</option>
+        </select>
+      </div>
+      <div id="declineRow" class="field" style="display:none;">
+        <div class="label">Decline Reason</div>
+        <select id="declineReason" class="select">
+          <option value="">Select reason</option>
+          <option value="Ins Not Accepted">Ins Not Accepted</option>
+          <option value="Patient Declined">Patient Declined</option>
+          <option value="Out of Service Area">Out of Service Area</option>
+          <option value="Unable to meet clinical needs">Unable to meet clinical needs</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div id="declineOtherRow" class="field" style="display:none;">
+        <div class="label">Other Reason</div>
+        <textarea id="declineOther" class="input textarea" placeholder="Enter reason..."></textarea>
+      </div>
+      <div id="statusMsg" class="status-msg"></div>
+      <div class="modal-actions">
+        <button id="statusCancel" class="btn">Cancel</button>
+        <button id="statusSave" class="btn" style="background:var(--navy);color:#fff;border-color:transparent;">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="notifBackdrop" class="notif-backdrop" aria-live="polite">
+    <div class="notif-modal">
+      <div class="notif-head">
+        <div>
+          <div class="notif-title">Notifications</div>
+          <div class="notif-sub">Review and mark your notifications as read.</div>
+        </div>
+        <button id="notifClose" class="btn">Close</button>
+      </div>
+      <div class="notif-body">
+        <div id="notifMsg" class="notif-msg"></div>
+        <div id="notifList"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const listEl = document.getElementById("list");
+  const emptyEl = document.getElementById("empty");
+  const tabNew = document.getElementById("tabNew");
+  const tabPending = document.getElementById("tabPending");
+  const search = document.getElementById("search");
+  const profileBtn = document.getElementById("profileBtn");
+  const profileMenu = document.getElementById("profileMenu");
+  const signOutBtn = document.getElementById("signOutBtn");
+  const changePasswordBtn = document.getElementById("changePasswordBtn");
+  const navHome = document.getElementById("navHome");
+  const navDischarged = document.getElementById("navDischarged");
+
+  const filterBackdrop = document.getElementById("filterBackdrop");
+  const admitFrom = document.getElementById("admitFrom");
+  const admitTo = document.getElementById("admitTo");
+  const insuranceFilter = document.getElementById("insuranceFilter");
+  const agencyFilter = document.getElementById("agencyFilter");
+  const sortBy = document.getElementById("sortBy");
+  const detailsBackdrop = document.getElementById("detailsBackdrop");
+  const detailsClose = document.getElementById("detailsClose");
+  const detailsName = document.getElementById("detailsName");
+  const detailsDob = document.getElementById("detailsDob");
+  const detailsAgency = document.getElementById("detailsAgency");
+  const detailsAdmit = document.getElementById("detailsAdmit");
+  const detailsDc = document.getElementById("detailsDc");
+  const detailsPhone1 = document.getElementById("detailsPhone1");
+  const detailsPhone2 = document.getElementById("detailsPhone2");
+  const detailsAddress = document.getElementById("detailsAddress");
+  const detailsDocsTbody = document.getElementById("detailsDocsTbody");
+  const detailsDocsCount = document.getElementById("detailsDocsCount");
+  const socDate = document.getElementById("socDate");
+  const socMsg = document.getElementById("socMsg");
+  const statusBackdrop = document.getElementById("statusBackdrop");
+  const statusSelect = document.getElementById("statusSelect");
+  const declineRow = document.getElementById("declineRow");
+  const declineReason = document.getElementById("declineReason");
+  const declineOtherRow = document.getElementById("declineOtherRow");
+  const declineOther = document.getElementById("declineOther");
+  const statusCancel = document.getElementById("statusCancel");
+  const statusSave = document.getElementById("statusSave");
+  const statusMsg = document.getElementById("statusMsg");
+  const bellBtn = document.getElementById("bellBtn");
+  const notifBadge = document.getElementById("notifBadge");
+  const notifBackdrop = document.getElementById("notifBackdrop");
+  const notifClose = document.getElementById("notifClose");
+  const notifList = document.getElementById("notifList");
+  const notifMsg = document.getElementById("notifMsg");
+
+  let ALL_ROWS = [];
+  let ACTIVE_TAB = "new";
+  let DETAILS_ADMISSION_ID = null;
+  let DETAILS_REFERRAL_ID = null;
+  let DETAILS_DOCS = [];
+  let ACTIVE_STATUS_REFERRAL_ID = null;
+  let NOTIFS = [];
+  const SAMPLE_ROWS = [
+    { id: 1, referral_id: 101, patient_name: "Adams, Taylor", patient_dob: "1943-06-12", insurance_name1: "Aetna", insurance_number1: "AE-443201", admit_date: "2026-01-08", dc_date: "2026-01-28", admission_agency: "Evolv Home Health", referral_status: "new", acceptance_status: "New", acceptance_decline_reason: "", acceptance_decline_other: "", soc_date: "2026-01-15", admission_active: 1, hh_services: ["Skilled Nursing", "Physical Therapy"] },
+    { id: 2, referral_id: 102, patient_name: "Barnes, Jordan", patient_dob: "1938-11-04", insurance_name1: "UnitedHealthcare", insurance_number1: "UH-992144", admit_date: "2026-01-06", dc_date: "", admission_agency: "Horizon Home Health", referral_status: "pending", acceptance_status: "In Review", acceptance_decline_reason: "", acceptance_decline_other: "", soc_date: "", admission_active: 1, hh_services: ["Occupational Therapy"] },
+    { id: 3, referral_id: 103, patient_name: "Carter, Riley", patient_dob: "1949-03-19", insurance_name1: "Humana", insurance_number1: "HU-771209", admit_date: "2026-01-10", dc_date: "2026-02-02", admission_agency: "Blue Ridge HH", referral_status: "new", acceptance_status: "Accepted", acceptance_decline_reason: "", acceptance_decline_other: "", soc_date: "2026-01-18", admission_active: 1, hh_services: ["Skilled Nursing", "Speech Therapy"] },
+    { id: 4, referral_id: 104, patient_name: "Diaz, Morgan", patient_dob: "1951-09-22", insurance_name1: "Blue Cross", insurance_number1: "BC-110344", admit_date: "2026-01-02", dc_date: "", admission_agency: "Summit Home Health", referral_status: "pending", acceptance_status: "Declined", acceptance_decline_reason: "Out of Service Area", acceptance_decline_other: "", soc_date: "", admission_active: 1, hh_services: ["Home Health Aide"] },
+    { id: 5, referral_id: 105, patient_name: "Evans, Casey", patient_dob: "1940-01-30", insurance_name1: "Cigna", insurance_number1: "CI-556214", admit_date: "2026-01-04", dc_date: "2026-01-26", admission_agency: "Evolv Home Health", referral_status: "new", acceptance_status: "New", acceptance_decline_reason: "", acceptance_decline_other: "", soc_date: "", admission_active: 1, hh_services: ["Skilled Nursing", "Physical Therapy", "Occupational Therapy"] },
+    { id: 6, referral_id: 106, patient_name: "Foster, Avery", patient_dob: "1936-07-15", insurance_name1: "Kaiser", insurance_number1: "KA-889100", admit_date: "2026-01-11", dc_date: "", admission_agency: "Horizon Home Health", referral_status: "pending", acceptance_status: "In Review", acceptance_decline_reason: "", acceptance_decline_other: "", soc_date: "", admission_active: 1, hh_services: ["Skilled Nursing"] },
+    { id: 7, referral_id: 107, patient_name: "Garcia, Devin", patient_dob: "1947-05-03", insurance_name1: "Medicare", insurance_number1: "ME-330482", admit_date: "2026-01-12", dc_date: "", admission_agency: "Pinecrest Home Health", referral_status: "new", acceptance_status: "Accepted", acceptance_decline_reason: "", acceptance_decline_other: "", soc_date: "2026-01-19", admission_active: 1, hh_services: ["Skilled Nursing", "Medical Social Work"] }
+  ];
+
+  function token(){
+    return (localStorage.getItem("sensys_token") || "").trim();
+  }
+  function authHeaders(){
+    return { "Authorization": "Bearer " + token() };
+  }
+  function esc(s){
+    return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+  function parseDate(s){
+    if(!s) return null;
+    const d = new Date(s + "T00:00:00");
+    return isNaN(d.getTime()) ? null : d;
+  }
+  function withinRange(d, start, end){
+    if(!d) return false;
+    if(start && d.getTime() < start.getTime()) return false;
+    if(end && d.getTime() > end.getTime()) return false;
+    return true;
+  }
+  function rowStatus(r){
+    const s = normalizeAcceptanceStatus(r.acceptance_status || "");
+    if(s === "In Review") return "review";
+    if(s === "Accepted") return "accepted";
+    if(s === "Declined") return "declined";
+    return "new";
+  }
+  function isActiveAdmission(r){
+    const v = r && r.admission_active;
+    if(v === undefined || v === null || v === "") return true;
+    return String(v) === "1" || v === 1 || v === true;
+  }
+  function normalizeAcceptanceStatus(s){
+    const raw = String(s || "").toLowerCase();
+    if(raw.includes("review")) return "In Review";
+    if(raw.includes("accept")) return "Accepted";
+    if(raw.includes("decline")) return "Declined";
+    return "New";
+  }
+  function acceptanceStatusClass(s){
+    const v = normalizeAcceptanceStatus(s);
+    if(v === "In Review") return "status-review";
+    if(v === "Accepted") return "status-accepted";
+    if(v === "Declined") return "status-declined";
+    return "status-new";
+  }
+  function renderAgencyOptions(){
+    if(!agencyFilter) return;
+    const prev = agencyFilter.value || "";
+    const agencies = Array.from(new Set(
+      ALL_ROWS.filter(r => isActiveAdmission(r))
+        .map(r => (r.admission_agency || "").trim())
+        .filter(Boolean)
+    )).sort((a,b) => a.localeCompare(b, undefined, { sensitivity:"base" }));
+    const opts = ['<option value="">All agencies</option>']
+      .concat(agencies.map(a => `<option value="${esc(a)}">${esc(a)}</option>`));
+    agencyFilter.innerHTML = opts.join("");
+    if(prev && agencies.includes(prev)){
+      agencyFilter.value = prev;
+    }
+  }
+
+  function renderCounts(){
+    const newCount = ALL_ROWS.filter(r => rowStatus(r) === "new").length;
+    const pendingCount = ALL_ROWS.filter(r => rowStatus(r) === "review").length;
+    tabNew.textContent = `New (${newCount})`;
+    tabPending.textContent = `In Review (${pendingCount})`;
+  }
+  function statusIconSvg(status){
+    const s = normalizeAcceptanceStatus(status);
+    if(s === "In Review"){
+      return `
+        <svg viewBox="0 0 96.85 72.14" aria-hidden="true">
+          <polyline class="cls-1" points="51.14 14.87 32.81 14.87 32.81 1.39 32.1 1.39 2.21 25.47 32.1 49.55 32.81 49.55 32.81 36.07 64.04 36.07 64.04 22.59 64.75 22.59 94.64 46.67 64.75 70.75 64.04 70.75 64.04 57.27 45.71 57.27" />
+        </svg>
+      `;
+    }
+    if(s === "Accepted" || s === "Declined"){
+      return `
+        <svg viewBox="0 0 75.21 75.69" aria-hidden="true">
+          <g>
+            <path class="cls-1" d="M17.37,70.01H2.78c-.77,0-1.39-.62-1.39-1.39V30.8c0-.77.62-1.39,1.39-1.39h13.82c2.28,0,4.5-.86,6.12-2.45,6.52-6.39,13.88-21.06,16.68-24.19,1.27-1.5,3-1.5,4.16-1.28.02,0,.04.01.06.02,8.04,1.86,4.72,14.71,1.7,21.18h0c-1.26,2.45.51,5.37,3.27,5.37h17.33c5.44,0,9.25,5.38,7.44,10.51l-10.54,29.96c-1.22,3.46-4.48,5.77-8.15,5.77h-20.55c-3.57,0-7.11-.65-10.45-1.91l-6.32-2.39V29.37" />
+            <line class="cls-1" x1="72.55" y1="40.45" x2="58.67" y2="40.45" />
+            <line class="cls-1" x1="68.91" y1="51.66" x2="55.48" y2="51.66" />
+            <line class="cls-1" x1="65.27" y1="62.87" x2="52.3" y2="62.87" />
+          </g>
+        </svg>
+      `;
+    }
+    return `
+      <svg viewBox="0 0 81.59 76.01" aria-hidden="true">
+        <g>
+          <g>
+            <path class="cls-1" d="M36.57,35.6l-13-18.73c-1.53-2.21-4.57-2.76-6.78-1.22h0c-2.21,1.53-2.76,4.57-1.22,6.78l20.58,29.64-10.72-3.45c-2.17-.7-4.54.18-5.73,2.13h0c-1.56,2.55-.51,5.89,2.23,7.09l24.76,10.89c2.26.99,4.2,2.59,5.61,4.62h0c.92,1.33,2.75,1.66,4.09.74l22.56-15.66c1.33-.92,1.66-2.75.74-4.09l-.06-.08c-.96-1.39-1.58-2.99-1.78-4.66-.06-.45-.11-.91-.15-1.38-.42-3.66-1.74-7.17-3.85-10.2l-12.19-17.56c-1.53-2.21-4.57-2.76-6.78-1.22h0c-2.21,1.53-2.76,4.57-1.22,6.78l4.76,6.85" />
+            <path class="cls-1" d="M47.68,34.52l-4.76-6.85c-1.53-2.21-4.57-2.76-6.78-1.22h0c-2.21,1.53-2.76,4.57-1.22,6.78l4.76,6.85" />
+            <path class="cls-1" d="M55.2,28.27l-3.11-4.48c-1.53-2.21-4.57-2.76-6.78-1.22h0c-2.21,1.53-2.76,4.57-1.22,6.78l4.76,6.85" />
+          </g>
+          <g>
+            <line class="cls-1" x1="13.65" y1="9.34" x2="9.62" y2="1.98" />
+            <line class="cls-1" x1="8.44" y1="15.83" x2=".39" y2="13.47" />
+            <line class="cls-1" x1="9.34" y1="24.1" x2="1.98" y2="28.13" />
+            <line class="cls-1" x1="21.92" y1="8.44" x2="24.27" y2=".39" />
+            <line class="cls-1" x1="28.41" y1="13.65" x2="35.76" y2="9.62" />
+          </g>
+        </g>
+      </svg>
+    `;
+  }
+
+  function applyFilters(){
+    const q = (search.value || "").trim().toLowerCase();
+    const ins = (insuranceFilter.value || "").trim().toLowerCase();
+    const agency = (agencyFilter.value || "").trim().toLowerCase();
+    const from = parseDate(admitFrom.value || "");
+    const to = parseDate(admitTo.value || "");
+
+    let rows = ALL_ROWS.slice();
+
+    if(ACTIVE_TAB === "pending"){
+      rows = rows.filter(r => rowStatus(r) === "review");
+    }else{
+      rows = rows.filter(r => rowStatus(r) === "new");
+    }
+
+    if(q){
+      rows = rows.filter(r => (r.patient_name || "").toLowerCase().includes(q));
+    }
+
+    if(ins){
+      rows = rows.filter(r => (r.insurance_name1 || "").toLowerCase().includes(ins));
+    }
+
+    if(agency){
+      rows = rows.filter(r => (r.admission_agency || "").toLowerCase() === agency);
+    }
+
+    if(from || to){
+      rows = rows.filter(r => {
+        const d = parseDate(r.admit_date);
+        return withinRange(d, from, to);
+      });
+    }
+
+    if(sortBy.value === "admit"){
+      rows.sort((a,b) => {
+        const da = parseDate(a.admit_date);
+        const db = parseDate(b.admit_date);
+        const ta = da ? da.getTime() : 0;
+        const tb = db ? db.getTime() : 0;
+        return tb - ta;
+      });
+    }else{
+      rows.sort((a,b) => (a.patient_name || "").localeCompare(b.patient_name || "", undefined, { sensitivity:"base" }));
+    }
+
+    renderList(rows);
+  }
+
+  function renderList(rows){
+    if(!rows.length){
+      listEl.innerHTML = "";
+      emptyEl.style.display = "block";
+      return;
+    }
+    emptyEl.style.display = "none";
+    listEl.innerHTML = rows.map(r => {
+      const rid = r.id ? String(r.id) : "";
+      const name = r.patient_name || "Patient";
+      const dob = r.patient_dob || "--";
+      const insName = r.insurance_name1 || "--";
+      const insNum = r.insurance_number1 || "--";
+      const admit = r.admit_date || "--";
+      const dc = r.dc_date || "--";
+      const agency = r.admission_agency || "--";
+      const services = Array.isArray(r.hh_services) ? r.hh_services : [];
+      const acceptanceStatus = normalizeAcceptanceStatus(r.acceptance_status || "New");
+      const statusClass = acceptanceStatusClass(acceptanceStatus);
+      const declineReason = r.acceptance_decline_reason || "";
+      const declineOther = r.acceptance_decline_other || "";
+      const servicePills = services.length
+        ? services.map(s => `<span class="service-pill">${esc(s)}</span>`).join("")
+        : `<span class="service-pill">--</span>`;
+      return `
+        <div class="row" data-id="${esc(rid)}" role="button" tabindex="0">
+          <div class="row-header">
+            <div class="avatar" aria-hidden="true">
+              <svg viewBox="0 0 74.42 77.39">
+                <g>
+                  <g>
+                    <path class="cls-1" d="M29.76,41.57c-.05,3.12-.88,5.84-2.57,8.1l-16.67,4.74c-5.41,1.54-9.14,6.48-9.14,12.1v9.49h71.65v-9.49c0-5.62-3.73-10.56-9.14-12.1l-16.67-4.74c-1.69-2.27-2.52-4.98-2.57-8.1" />
+                    <line class="cls-1" x1="16.08" y1="75.15" x2="16.08" y2="67.05" />
+                    <line class="cls-1" x1="58.34" y1="75.15" x2="58.34" y2="67.05" />
+                    <polyline class="cls-1" points="47.43 50.22 37.21 66.4 26.99 50.22" />
+                    <line class="cls-1" x1="37.21" y1="66.4" x2="37.21" y2="75.17" />
+                  </g>
+                  <g>
+                    <path class="cls-1" d="M53.48,20.19S56.92,1.39,37.06,1.39s-16.52,18.81-16.52,18.81" />
+                    <path class="cls-1" d="M27.97,17.86c-1.92,1.59-4.24,2.6-7.2,2.6-1.55.02-2.82,1.12-3.12,2.56-.11.51-.05,1.04.09,1.54l.99,3.45c.3,1.04,1.11,1.83,2.11,2.13h0c.82.24,1.48.83,1.8,1.62,2.75,6.89,8.17,12.11,14.43,12.11s11.59-5.13,14.36-11.95c.35-.87,1.07-1.53,1.96-1.81h0c.95-.32,1.72-1.1,2.01-2.1l.99-3.45c.14-.5.20-1.03.09-1.54-.31-1.43-1.57-2.54-3.12-2.56-7.81,0-15.44-1.64-20.89-8.18" />
+                  </g>
+                </g>
+              </svg>
+            </div>
+            <div>
+              <div class="name">${esc(name)}</div>
+              <div class="meta">
+                <span>DOB: ${esc(dob)}</span>
+              </div>
+              <div class="meta">
+                <span>Insurance: ${esc(insName)} (${esc(insNum)})</span>
+              </div>
+            </div>
+          </div>
+          <div class="actions row-actions" aria-label="actions">
+            <button class="icon-btn" type="button" title="Patient Details" aria-label="Patient Details" data-open-details="${esc(rid)}" data-referral-id="${esc(String(r.referral_id || ""))}">
+              <svg viewBox="0 0 83.92 75.06" aria-hidden="true">
+                <g>
+                  <g>
+                    <g>
+                      <g>
+                        <path class="cls-1" d="M72.39,10.9l-35.5,35.5-3.11,11.52,11.52-3.11,35.5-35.5c2.32-2.32,2.32-6.09,0-8.41h0c-2.32-2.32-6.09-2.32-8.41,0Z" />
+                        <path class="cls-1" d="M76.73,23.71l2.11,2.11c1.49,1.49,1.49,3.91,0,5.4l-10.06,10.06" />
+                      </g>
+                      <line class="cls-1" x1="33.77" y1="57.93" x2="30.75" y2="60.95" />
+                    </g>
+                    <polyline class="cls-1" points="60.87 46.97 60.87 73.67 1.39 73.67 1.39 18.52 19.51 1.39 60.87 1.39 60.87 15.15" />
+                    <line class="cls-1" x1="14.38" y1="34.58" x2="39.07" y2="34.58" />
+                    <line class="cls-1" x1="14.38" y1="47.32" x2="29.52" y2="47.32" />
+                    <line class="cls-1" x1="14.38" y1="60.06" x2="25.2" y2="60.06" />
+                  </g>
+                  <polyline class="cls-1" points="7.59 20.48 21.52 20.48 21.52 7.59" />
+                  <line class="cls-1" x1="64.14" y1="36.3" x2="55.54" y2="27.7" />
+                </g>
+              </svg>
+            </button>
+            <button class="icon-btn" type="button" title="Messages" aria-label="Messages">
+              <svg viewBox="0 0 78.61 75.44" aria-hidden="true">
+                <g>
+                  <g>
+                    <path class="cls-1" d="M49.81,50.75h-18.46c-5.19,0-9.39-4.23-9.39-9.44V10.83c0-5.22,4.2-9.44,9.39-9.44h36.47c5.19,0,9.39,4.23,9.39,9.44v30.47c0,5.22-4.2,9.44-9.39,9.44h-3.38v12.83h-.96l-13.67-12.83Z" />
+                    <path class="cls-1" d="M16.9,23.18h-7.83c-4.24,0-7.68,3.46-7.68,7.73v24.93c0,4.27,3.44,7.73,7.68,7.73h2.77v10.5h.48l11.89-10.5h12.11c4.24,0,7.68-3.46,7.68-7.73" />
+                  </g>
+                  <path class="cls-1" d="M50.67,25.63c0,.6-.48,1.08-1.08,1.08s-1.08-.48-1.08-1.08.48-1.08,1.08-1.08,1.08.48,1.08,1.08Z" />
+                  <path class="cls-1" d="M37.87,25.63c0,.6-.48,1.08-1.08,1.08s-1.08-.48-1.08-1.08.48-1.08,1.08-1.08,1.08.48,1.08,1.08Z" />
+                  <path class="cls-1" d="M61.31,25.63c0,.6.48,1.08,1.08,1.08s1.08-.48,1.08-1.08-.48-1.08-1.08-1.08-1.08.48-1.08,1.08Z" />
+                </g>
+              </svg>
+            </button>
+            <button class="icon-btn status-btn ${statusClass}" type="button" title="Update Status" aria-label="Update Status" data-open-status="${esc(String(r.referral_id || ""))}" data-status="${esc(acceptanceStatus)}" data-decline="${esc(declineReason)}" data-decline-other="${esc(declineOther)}">
+              ${statusIconSvg(acceptanceStatus)}
+            </button>
+          </div>
+          <div class="agency-name">${esc(agency)}</div>
+          <div class="meta row-dates">
+            <span><b>Admit:</b> ${esc(admit)}</span>
+            <span><b>DC:</b> ${esc(dc)}</span>
+          </div>
+          <div class="service-pills">${servicePills}</div>
+        </div>
+      `;
+    }).join("");
+
+    listEl.querySelectorAll(".row[data-id]").forEach(row => {
+      const rid = row.getAttribute("data-id");
+      if(!rid) return;
+      row.addEventListener("click", () => {
+        window.location.href = "/sensys/home-health/admission-details?admission_id=" + encodeURIComponent(rid);
+      });
+      row.addEventListener("keydown", (e) => {
+        if(e.key === "Enter" || e.key === " "){
+          e.preventDefault();
+          window.location.href = "/sensys/home-health/admission-details?admission_id=" + encodeURIComponent(rid);
+        }
+      });
+    });
+    listEl.querySelectorAll(".icon-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+      });
+    });
+    listEl.querySelectorAll("[data-open-details]").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = Number(btn.getAttribute("data-open-details"));
+        const referralId = Number(btn.getAttribute("data-referral-id"));
+        if(id) openDetailsModal(id, referralId);
+      });
+    });
+    listEl.querySelectorAll("[data-open-status]").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = Number(btn.getAttribute("data-open-status"));
+        if(!id) return;
+        const status = btn.getAttribute("data-status") || "New";
+        const decline = btn.getAttribute("data-decline") || "";
+        const declineOther = btn.getAttribute("data-decline-other") || "";
+        openStatusModal(id, status, decline, declineOther);
+      });
+    });
+  }
+
+  async function attachHhServices(rows){
+    const tasks = rows.map(async (row) => {
+      if(!row || !row.id) return;
+      try{
+        const res = await fetch(`/api/sensys/admission-details/${encodeURIComponent(row.id)}`, { headers: authHeaders() });
+        const data = await res.json();
+        if(!res.ok || !data.ok) return;
+        const dcSubmissions = data.dc_submissions || [];
+        const latest = dcSubmissions[0];
+        const services = (latest && latest.services) ? latest.services : [];
+        const hh = services.filter(s => {
+          const code = (s.service_type_code || "").toString().toLowerCase();
+          const type = (s.service_type_name || "").toString().toLowerCase();
+          return code === "hh" || type.includes("home health") || type === "home" || type === "hh";
+        });
+        const names = Array.from(new Set(hh.map(s => s.service_name || s.name).filter(Boolean)));
+        row.hh_services = names;
+      }catch(e){
+        return;
+      }
+    });
+    await Promise.all(tasks);
+  }
+  function setDetailsData(adm){
+    if(!adm) return;
+    if(detailsName) detailsName.textContent = adm.patient_name || "--";
+    if(detailsDob) detailsDob.textContent = adm.patient_dob || "--";
+    if(detailsAgency) detailsAgency.textContent = adm.admission_agency_name || adm.agency_name || "--";
+    if(detailsAdmit) detailsAdmit.textContent = adm.admit_date || "--";
+    if(detailsDc) detailsDc.textContent = adm.dc_date || "--";
+    if(detailsPhone1) detailsPhone1.textContent = adm.patient_phone1 || "--";
+    if(detailsPhone2) detailsPhone2.textContent = adm.patient_phone2 || "--";
+    const addr = [
+      adm.patient_address1 || "",
+      adm.patient_address2 || "",
+      [adm.patient_city, adm.patient_state].filter(Boolean).join(", "),
+      adm.patient_zip || ""
+    ].filter(Boolean).join(" ");
+    if(detailsAddress) detailsAddress.textContent = addr || "--";
+  }
+  function renderDetailsDocs(){
+    if(!detailsDocsTbody) return;
+    const rows = DETAILS_DOCS || [];
+    if(detailsDocsCount) detailsDocsCount.textContent = `${rows.length} documents`;
+    if(!rows.length){
+      detailsDocsTbody.innerHTML = `<tr><td colspan="3" style="padding:12px;font-size:12px;color:#667085;">No documents found.</td></tr>`;
+      return;
+    }
+    detailsDocsTbody.innerHTML = rows.map(r => {
+      const name = r.original_filename || r.filename || ("PDF #" + r.id);
+      const type = r.doc_type || "";
+      const dl = `/api/sensys/pdfs/${r.id}/download?token=${encodeURIComponent(token())}`;
+      return `
+        <tr>
+          <td>${esc(type)}</td>
+          <td>${esc(name)}</td>
+          <td>
+            <div class="details-doc-actions">
+              <a class="details-doc-btn" href="${dl}" title="Download PDF" aria-label="Download PDF">
+                <svg viewBox="0 0 251.6 261.78" aria-hidden="true">
+                  <g>
+                    <path class="cls-1" d="M168.79,110.02V12.56c0-5.42-4.39-9.81-9.81-9.81h-66.35c-5.42,0-9.81,4.39-9.81,9.81v97.45h-45.05c-5.55,0-8.32,6.7-4.4,10.63l88.43,91.63c2.21,2.21,5.81,2.21,8.02,0l88.43-91.63c3.92-3.92,1.14-10.63-4.4-10.63h-45.05Z"/>
+                    <path class="cls-1" d="M2.75,202.34v41.97c0,8.13,6.59,14.72,14.72,14.72h216.66c8.13,0,14.72-6.59,14.72-14.72v-41.97"/>
+                  </g>
+                </svg>
+              </a>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join("");
+  }
+  function showSocMsg(text, isError){
+    if(!socMsg) return;
+    if(!text){
+      socMsg.textContent = "";
+      socMsg.classList.remove("error");
+      return;
+    }
+    socMsg.textContent = text;
+    socMsg.classList.toggle("error", !!isError);
+  }
+  function updateSocLocal(referralId, val){
+    const row = ALL_ROWS.find(r => Number(r.referral_id) === Number(referralId));
+    if(row) row.soc_date = val || "";
+  }
+  async function saveSocDate(val){
+    if(!DETAILS_REFERRAL_ID) return;
+    if(!token()){
+      updateSocLocal(DETAILS_REFERRAL_ID, val);
+      showSocMsg("Saved.");
+      return;
+    }
+    try{
+      showSocMsg("");
+      const resp = await fetch("/api/sensys/admission-referrals/update-soc", {
+        method:"POST",
+        headers: { "Content-Type":"application/json", ...authHeaders() },
+        body: JSON.stringify({ id: DETAILS_REFERRAL_ID, soc_date: val || "" })
+      });
+      const data = await resp.json().catch(() => ({}));
+      if(!resp.ok || !data.ok) throw new Error(data.message || "Save failed.");
+      updateSocLocal(DETAILS_REFERRAL_ID, val);
+      showSocMsg("Saved.");
+    }catch(e){
+      showSocMsg(e.message || "Save failed.", true);
+    }
+  }
+  async function openDetailsModal(admissionId, referralId){
+    if(!detailsBackdrop) return;
+    DETAILS_ADMISSION_ID = admissionId;
+    DETAILS_REFERRAL_ID = referralId || null;
+    DETAILS_DOCS = [];
+    setDetailsData({
+      patient_name: "--",
+      patient_dob: "--",
+      admission_agency_name: "--",
+      admit_date: "--",
+      dc_date: "--",
+      patient_phone1: "--",
+      patient_phone2: "--",
+      patient_address1: "--",
+      patient_address2: "",
+      patient_city: "",
+      patient_state: "",
+      patient_zip: ""
+    });
+    if(socDate){
+      const row = ALL_ROWS.find(r => Number(r.referral_id) === Number(DETAILS_REFERRAL_ID));
+      socDate.value = row && row.soc_date ? String(row.soc_date) : "";
+    }
+    showSocMsg("");
+    renderDetailsDocs();
+    detailsBackdrop.style.display = "flex";
+    if(!token() || !admissionId) return;
+    try{
+      const [res, pdfsRes] = await Promise.all([
+        fetch(`/api/sensys/admission-details/${encodeURIComponent(admissionId)}`, { headers: authHeaders() }),
+        fetch(`/api/sensys/admissions/${encodeURIComponent(admissionId)}/pdfs`, { headers: authHeaders() })
+      ]);
+      const data = await res.json();
+      const pdfsData = await pdfsRes.json().catch(() => ({}));
+      if(res.ok && data && data.admission){
+        setDetailsData(data.admission);
+      }
+      DETAILS_DOCS = (pdfsData && pdfsData.pdfs) ? pdfsData.pdfs : [];
+      renderDetailsDocs();
+    }catch(e){
+      DETAILS_DOCS = [];
+      renderDetailsDocs();
+    }
+  }
+  function closeDetailsModal(){
+    if(detailsBackdrop) detailsBackdrop.style.display = "none";
+    DETAILS_REFERRAL_ID = null;
+  }
+  function showStatusMsg(text){
+    if(!statusMsg) return;
+    if(!text){
+      statusMsg.style.display = "none";
+      statusMsg.textContent = "";
+      return;
+    }
+    statusMsg.style.display = "block";
+    statusMsg.textContent = text;
+  }
+  function updateReferralStatusLocal(referralId, status, reason, other){
+    const row = ALL_ROWS.find(r => Number(r.referral_id) === Number(referralId));
+    if(!row) return;
+    row.acceptance_status = status;
+    row.acceptance_decline_reason = reason || "";
+    row.acceptance_decline_other = other || "";
+  }
+  function openStatusModal(referralId, status, reason, other){
+    if(!statusBackdrop) return;
+    ACTIVE_STATUS_REFERRAL_ID = referralId;
+    if(statusSelect) statusSelect.value = normalizeAcceptanceStatus(status || "New");
+    if(declineReason) declineReason.value = reason || "";
+    if(declineOther) declineOther.value = other || "";
+    if(declineRow) declineRow.style.display = normalizeAcceptanceStatus(status) === "Declined" ? "block" : "none";
+    if(declineOtherRow) declineOtherRow.style.display = (normalizeAcceptanceStatus(status) === "Declined" && (declineReason && declineReason.value === "Other")) ? "block" : "none";
+    showStatusMsg("");
+    statusBackdrop.style.display = "flex";
+  }
+  function showNotifMsg(text){
+    if(!notifMsg) return;
+    if(!text){
+      notifMsg.style.display = "none";
+      notifMsg.textContent = "";
+      return;
+    }
+    notifMsg.style.display = "block";
+    notifMsg.textContent = text;
+  }
+  function renderNotifs(){
+    if(!notifList) return;
+    const unread = (NOTIFS || []).filter(n => !n.read_at).length;
+    if(notifBadge){
+      notifBadge.textContent = unread ? String(unread) : "";
+      notifBadge.style.display = unread ? "inline-flex" : "none";
+    }
+    if(bellBtn){
+      bellBtn.classList.toggle("has-unread", unread > 0);
+    }
+    if(!NOTIFS.length){
+      notifList.innerHTML = `<div style="font-size:12px;color:#667085;">No notifications.</div>`;
+      return;
+    }
+    notifList.innerHTML = NOTIFS.map(n => {
+      const title = esc(n.title || n.notif_name || n.notif_key || "Notification");
+      const body = esc(n.body || "");
+      const meta = esc(n.created_at || "");
+      const read = !!n.read_at;
+      return `
+        <div class="notif-item ${read ? "read" : ""}">
+          <div>
+            <div class="notif-item-title">${title}</div>
+            <div class="notif-item-body">${body}</div>
+            <div class="notif-item-meta">${meta}</div>
+          </div>
+          <div class="notif-item-actions">
+            ${read ? `<span class="details-muted">Read</span>` : `<button class="btn" data-notif-read="${esc(n.id)}">Mark read</button>`}
+          </div>
+        </div>
+      `;
+    }).join("");
+    notifList.querySelectorAll("[data-notif-read]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = Number(btn.getAttribute("data-notif-read"));
+        if(!id) return;
+        try{
+          btn.disabled = true;
+          await fetch("/api/sensys/notifications/mark-read", {
+            method:"POST",
+            headers: { "Content-Type":"application/json", ...authHeaders() },
+            body: JSON.stringify({ id })
+          });
+          await loadNotifs();
+        }catch(e){
+          showNotifMsg(e.message || "Failed to mark read.");
+        }finally{
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+  async function loadNotifs(){
+    if(!token()){
+      NOTIFS = [];
+      renderNotifs();
+      return;
+    }
+    try{
+      showNotifMsg("");
+      const res = await fetch("/api/sensys/my-notifications", { headers: authHeaders() });
+      const data = await res.json();
+      if(!res.ok || !data.ok) throw new Error(data.message || "Failed to load notifications.");
+      NOTIFS = data.notifications || [];
+      renderNotifs();
+    }catch(e){
+      NOTIFS = [];
+      renderNotifs();
+      showNotifMsg(e.message || "Failed to load notifications.");
+    }
+  }
+  function openNotifModal(){
+    if(notifBackdrop) notifBackdrop.style.display = "flex";
+  }
+  function closeNotifModal(){
+    if(notifBackdrop) notifBackdrop.style.display = "none";
+  }
+  function closeStatusModal(){
+    if(statusBackdrop) statusBackdrop.style.display = "none";
+    ACTIVE_STATUS_REFERRAL_ID = null;
+    showStatusMsg("");
+  }
+  async function load(){
+    if(!token()){
+      ALL_ROWS = SAMPLE_ROWS.slice();
+      renderAgencyOptions();
+      renderCounts();
+      applyFilters();
+      return;
+    }
+    try{
+      const res = await fetch("/api/sensys/my-referrals", { headers: authHeaders() });
+      const data = await res.json();
+      if(!res.ok || !data.ok){
+        ALL_ROWS = SAMPLE_ROWS.slice();
+        renderAgencyOptions();
+        renderCounts();
+        applyFilters();
+        return;
+      }
+      ALL_ROWS = (data.referrals || []).map(r => ({
+        id: r.admission_id || r.id,
+        referral_id: r.referral_id || r.id,
+        patient_name: r.patient_name,
+        patient_dob: r.patient_dob,
+        insurance_name1: r.insurance_name1,
+        insurance_number1: r.insurance_number1,
+        admit_date: r.admit_date,
+        dc_date: r.dc_date,
+        admission_agency: r.admission_agency_name || r.agency_name,
+        referral_status: r.referral_status || r.status || r.hh_status,
+        acceptance_status: r.acceptance_status,
+        acceptance_decline_reason: r.acceptance_decline_reason,
+        acceptance_decline_other: r.acceptance_decline_other,
+        soc_date: r.soc_date,
+        admission_active: r.active,
+        hh_services: []
+      }));
+      await attachHhServices(ALL_ROWS);
+      renderAgencyOptions();
+      renderCounts();
+      applyFilters();
+    }catch(e){
+      ALL_ROWS = SAMPLE_ROWS.slice();
+      renderAgencyOptions();
+      renderCounts();
+      applyFilters();
+    }
+  }
+
+  tabNew.addEventListener("click", () => {
+    ACTIVE_TAB = "new";
+    tabNew.classList.add("on");
+    tabPending.classList.remove("on");
+    applyFilters();
+  });
+  tabPending.addEventListener("click", () => {
+    ACTIVE_TAB = "pending";
+    tabPending.classList.add("on");
+    tabNew.classList.remove("on");
+    applyFilters();
+  });
+
+  search.addEventListener("input", applyFilters);
+
+  document.getElementById("openFilters").addEventListener("click", () => {
+    filterBackdrop.style.display = "flex";
+  });
+  document.getElementById("applyFilters").addEventListener("click", () => {
+    filterBackdrop.style.display = "none";
+    applyFilters();
+  });
+  document.getElementById("clearFilters").addEventListener("click", () => {
+    admitFrom.value = "";
+    admitTo.value = "";
+    insuranceFilter.value = "";
+    agencyFilter.value = "";
+    sortBy.value = "last";
+    filterBackdrop.style.display = "none";
+    applyFilters();
+  });
+  filterBackdrop.addEventListener("click", (e) => {
+    if(e.target === filterBackdrop){
+      filterBackdrop.style.display = "none";
+    }
+  });
+  if(agencyFilter){
+    agencyFilter.addEventListener("change", applyFilters);
+  }
+  if(sortBy){
+    sortBy.addEventListener("change", applyFilters);
+  }
+  if(detailsClose){
+    detailsClose.addEventListener("click", closeDetailsModal);
+  }
+  if(detailsBackdrop){
+    detailsBackdrop.addEventListener("click", (e) => {
+      if(e.target === detailsBackdrop) closeDetailsModal();
+    });
+  }
+  if(socDate){
+    socDate.addEventListener("change", () => {
+      saveSocDate(socDate.value || "");
+    });
+  }
+  if(statusSelect){
+    statusSelect.addEventListener("change", () => {
+      const val = normalizeAcceptanceStatus(statusSelect.value);
+      if(declineRow) declineRow.style.display = val === "Declined" ? "block" : "none";
+      if(declineOtherRow) declineOtherRow.style.display = (val === "Declined" && declineReason && declineReason.value === "Other") ? "block" : "none";
+    });
+  }
+  if(declineReason){
+    declineReason.addEventListener("change", () => {
+      if(declineOtherRow) declineOtherRow.style.display = (declineReason.value === "Other") ? "block" : "none";
+      if(declineOther && declineReason.value !== "Other") declineOther.value = "";
+    });
+  }
+  if(statusCancel){
+    statusCancel.addEventListener("click", closeStatusModal);
+  }
+  if(statusBackdrop){
+    statusBackdrop.addEventListener("click", (e) => {
+      if(e.target === statusBackdrop) closeStatusModal();
+    });
+  }
+  if(bellBtn){
+    bellBtn.addEventListener("click", () => {
+      openNotifModal();
+      loadNotifs();
+    });
+  }
+  if(notifClose){
+    notifClose.addEventListener("click", closeNotifModal);
+  }
+  if(notifBackdrop){
+    notifBackdrop.addEventListener("click", (e) => {
+      if(e.target === notifBackdrop) closeNotifModal();
+    });
+  }
+  if(statusSave){
+    statusSave.addEventListener("click", async () => {
+      try{
+        showStatusMsg("");
+        if(!ACTIVE_STATUS_REFERRAL_ID) return;
+        const statusVal = normalizeAcceptanceStatus(statusSelect && statusSelect.value);
+        const reasonVal = statusVal === "Declined" ? (declineReason && declineReason.value || "").trim() : "";
+        const otherVal = (reasonVal === "Other") ? (declineOther && declineOther.value || "").trim() : "";
+        if(statusVal === "Declined" && !reasonVal){
+          showStatusMsg("Please select a decline reason.");
+          return;
+        }
+        if(statusVal === "Declined" && reasonVal === "Other" && !otherVal){
+          showStatusMsg("Please enter the other decline reason.");
+          return;
+        }
+        if(!token()){
+          updateReferralStatusLocal(ACTIVE_STATUS_REFERRAL_ID, statusVal, reasonVal, otherVal);
+          applyFilters();
+          closeStatusModal();
+          return;
+        }
+        const resp = await fetch("/api/sensys/admission-referrals/update-status", {
+          method:"POST",
+          headers: { "Content-Type":"application/json", ...authHeaders() },
+          body: JSON.stringify({
+            id: ACTIVE_STATUS_REFERRAL_ID,
+            acceptance_status: statusVal,
+            acceptance_decline_reason: reasonVal,
+            acceptance_decline_other: otherVal
+          })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if(!resp.ok || !data.ok) throw new Error(data.message || "Status update failed.");
+        updateReferralStatusLocal(ACTIVE_STATUS_REFERRAL_ID, statusVal, reasonVal, otherVal);
+        applyFilters();
+        closeStatusModal();
+      }catch(e){
+        showStatusMsg(e.message || "Status update failed.");
+      }
+    });
+  }
+
+  profileBtn.addEventListener("click", () => {
+    const isOpen = profileMenu.style.display === "block";
+    profileMenu.style.display = isOpen ? "none" : "block";
+  });
+  document.addEventListener("click", (e) => {
+    if(!profileMenu.contains(e.target) && !profileBtn.contains(e.target)){
+      profileMenu.style.display = "none";
+    }
+  });
+  signOutBtn.addEventListener("click", () => {
+    localStorage.removeItem("sensys_token");
+    window.location.href = "/sensys/login";
+  });
+  changePasswordBtn.addEventListener("click", () => {
+    window.location.href = "/sensys/change-password";
+  });
+  navHome.addEventListener("click", () => {
+    window.location.href = "/sensys/home-health";
+  });
+  if(navDischarged){
+    navDischarged.addEventListener("click", () => {
+      window.location.href = "/sensys/home-health/finalized-referrals";
+    });
+  }
+
+  load();
+  loadNotifs();
+})();
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
