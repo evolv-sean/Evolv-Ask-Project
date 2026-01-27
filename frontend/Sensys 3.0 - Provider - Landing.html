@@ -552,19 +552,19 @@
       gap:14px;
     }
     .order-rx{
-      width:62px;
-      height:62px;
+      width:72px;
+      height:72px;
       border-radius:16px;
-      background: linear-gradient(135deg, rgba(37,99,235,.18), rgba(37,99,235,.06));
-      border:1px solid rgba(37,99,235,.18);
+      background: transparent;
+      border:0;
       display:flex;
       align-items:center;
       justify-content:center;
       flex:0 0 auto;
     }
     .order-rx-mark{
-      width:38px;
-      height:56px;
+      width:56px;
+      height:82px;
       background: var(--navy);
       -webkit-mask: url("/static/images/rx-esign.svg") no-repeat center / contain;
       mask: url("/static/images/rx-esign.svg") no-repeat center / contain;
@@ -634,13 +634,14 @@
     }
     .order-line{
       display:grid;
-      grid-template-columns: 140px 1fr;
-      gap:12px;
+      grid-template-columns: 150px 1fr;
+      gap:6px;
       padding:8px 0 2px 0;
     }
     .order-service-label{
       font-weight:750;
       color:#0f172a;
+      padding-left:10px;
     }
     .order-service-label::after{ content: ":"; }
     .order-comments{

@@ -2463,6 +2463,8 @@
           <div style="display:flex;gap:8px;align-items:center">
             <button class="btn primary" id="clientSurveySaveSummary">Save Summary</button>
             <div class="mini" id="clientSurveyDetailMsg"></div>
+            <div style="flex:1"></div>
+            <button class="btn" id="clientSurveyDeleteBtn" style="border-color:#C76B6B;color:#C76B6B;">Delete</button>
           </div>
         </div>
       </div>
@@ -5346,6 +5348,22 @@
 
         $("clientSurveyDetailMsg").textContent = "Saved.";
         renderClientSurveysTable();
+      }catch(e){
+        $("clientSurveyDetailMsg").textContent = String(e.message || e);
+      }
+    };
+
+    $("clientSurveyDeleteBtn").onclick = async () => {
+      if(!selectedClientSurveyId){
+        $("clientSurveyDetailMsg").textContent = "Select a survey first.";
+        return;
+      }
+      $("clientSurveyDetailMsg").textContent = "Deleting.";
+      try{
+        await apiPost("/api/sensys/admin/client-surveys/delete", { id: Number(selectedClientSurveyId) });
+        $("clientSurveyDetailMsg").textContent = "Deleted.";
+        closeClientSurveyDetailsModal();
+        await refreshClientSurveysList();
       }catch(e){
         $("clientSurveyDetailMsg").textContent = String(e.message || e);
       }
