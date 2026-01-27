@@ -686,6 +686,12 @@
       font-size:12.5px;
       color:#475569;
     }
+    .order-npi{
+      margin-top:6px;
+      font-size:13px;
+      color:#475569;
+    }
+    .order-npi b{ color:#0f172a; }
     .edit-actions{
       display:flex;
       justify-content:flex-end;
@@ -905,6 +911,7 @@
                 <div>Electronically signed by <b id="editSignedBy"></b></div>
                 <div class="at" id="editSignedAt"></div>
               </div>
+              <div class="order-npi">NPI: <b id="editSignedNpi"></b></div>
             </section>
           </div>
 
@@ -1202,7 +1209,8 @@
           patient_state: e.patient_state || "",
           patient_zip: e.patient_zip || "",
           signed_by: e.signed_by_name || "",
-          signed_at: e.signed_at
+          signed_at: e.signed_at,
+          signed_by_npi: e.signed_by_npi || ""
         };
       });
       renderCounts();
@@ -1263,6 +1271,7 @@
   const editServices = document.getElementById("editServices");
   const editSignedBy = document.getElementById("editSignedBy");
   const editSignedAt = document.getElementById("editSignedAt");
+  const editSignedNpi = document.getElementById("editSignedNpi");
   let ACTIVE_ESIGN_ID = null;
   let ACTIVE_EDIT_ROW = null;
 
@@ -1333,6 +1342,7 @@
     if(editServices) editServices.textContent = (row.esign_services || []).join(", ") || "--";
     if(editSignedBy) editSignedBy.textContent = row.signed_by || "";
     if(editSignedAt) editSignedAt.textContent = row.signed_at || "";
+    if(editSignedNpi) editSignedNpi.textContent = row.signed_by_npi || "";
     if(editOrderComments){
       editOrderComments.value = row.esign_comments || "";
       editOrderComments.readOnly = isSigned;
