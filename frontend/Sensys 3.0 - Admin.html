@@ -5286,11 +5286,7 @@
         $("clientSurveyEmailMsg").textContent = "Select a single agency in filters before sending.";
         return;
       }
-      if(!agencyObj){
-        $("clientSurveyEmailMsg").textContent = "Select an Evolv Client agency for recipients.";
-        return;
-      }
-      if(agencyName && agencyName.toLowerCase() !== agency.toLowerCase()){
+      if(agencyObj && agencyName && agencyName.toLowerCase() !== agency.toLowerCase()){
         $("clientSurveyEmailMsg").textContent = "Email agency must match the active filter.";
         return;
       }
