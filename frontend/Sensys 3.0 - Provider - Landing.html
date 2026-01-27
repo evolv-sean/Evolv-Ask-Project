@@ -517,7 +517,7 @@
       padding:12px 16px;
       display:flex;
       align-items:center;
-      justify-content:space-between;
+      justify-content:flex-start;
       gap:12px;
     }
     .edit-header h3{
@@ -562,14 +562,12 @@
       justify-content:center;
       flex:0 0 auto;
     }
-    .order-rx span{
-      font-family: "Brush Script MT","Segoe Script","Snell Roundhand",cursive;
-      font-size:38px;
-      font-weight:700;
-      color: rgba(37,99,235,.90);
-      transform: rotate(-8deg);
-      line-height:1;
-      user-select:none;
+    .order-rx-mark{
+      width:38px;
+      height:56px;
+      background: var(--navy);
+      -webkit-mask: url("/static/images/rx-esign.svg") no-repeat center / contain;
+      mask: url("/static/images/rx-esign.svg") no-repeat center / contain;
     }
     .order-facility{
       display:flex;
@@ -661,6 +659,12 @@
     .order-comments:focus{
       border-color: rgba(168,230,207,.95);
       box-shadow:0 10px 18px rgba(13,59,102,.10);
+    }
+    .order-comments.readonly{
+      border-color:#fff;
+      box-shadow:none;
+      background:#fff;
+      resize:none;
     }
     .order-sig{
       display:flex;
@@ -850,13 +854,12 @@
     <div class="edit-modal" role="dialog" aria-modal="true">
       <div class="edit-header">
         <h3>Edit Order</h3>
-        <button id="editCloseBtn" class="btn" type="button">Close</button>
       </div>
       <div class="edit-body">
         <div class="order-sheet">
           <div class="order-header">
             <div class="order-brand">
-              <div class="order-rx"><span>Rx</span></div>
+              <div class="order-rx"><div class="order-rx-mark" aria-hidden="true"></div></div>
               <div class="order-facility">
                 <div class="order-facility-name" id="editAgencyName">Admission Agency</div>
                 <div class="order-facility-meta">
@@ -894,7 +897,8 @@
                 <div class="order-service-label" id="editServiceType">Home Health</div>
                 <div class="order-value" id="editServices"></div>
               </div>
-              <textarea id="editOrderComments" class="order-comments" placeholder="Enter order comments..."></textarea>
+              <div></div>
+              <textarea id="editOrderComments" class="order-comments" placeholder="Enter additional order comments here..."></textarea>
               <div class="order-divider short"></div>
               <div class="order-sig">
                 <div>Electronically signed by <b id="editSignedBy"></b></div>
@@ -1020,6 +1024,27 @@
                   <line class="cls-1" x1="72.55" y1="40.45" x2="58.67" y2="40.45" />
                   <line class="cls-1" x1="68.91" y1="51.66" x2="55.48" y2="51.66" />
                   <line class="cls-1" x1="65.27" y1="62.87" x2="52.3" y2="62.87" />
+                </g>
+              </svg>
+            </button>
+            <button class="icon-btn esign edit" type="button" title="Edit" aria-label="Edit" data-esign-edit="${esc(String(r.esign_id || ""))}">
+              <svg viewBox="0 0 83.92 75.06" aria-hidden="true">
+                <g>
+                  <g>
+                    <g>
+                      <g>
+                        <path class="cls-1" d="M72.39,10.9l-35.5,35.5-3.11,11.52,11.52-3.11,35.5-35.5c2.32-2.32,2.32-6.09,0-8.41h0c-2.32-2.32-6.09-2.32-8.41,0Z" />
+                        <path class="cls-1" d="M76.73,23.71l2.11,2.11c1.49,1.49,1.49,3.91,0,5.4l-10.06,10.06" />
+                      </g>
+                      <line class="cls-1" x1="33.77" y1="57.93" x2="30.75" y2="60.95" />
+                    </g>
+                    <polyline class="cls-1" points="60.87 46.97 60.87 73.67 1.39 73.67 1.39 18.52 19.51 1.39 60.87 1.39 60.87 15.15" />
+                    <line class="cls-1" x1="14.38" y1="34.58" x2="39.07" y2="34.58" />
+                    <line class="cls-1" x1="14.38" y1="47.32" x2="29.52" y2="47.32" />
+                    <line class="cls-1" x1="14.38" y1="60.06" x2="25.2" y2="60.06" />
+                  </g>
+                  <polyline class="cls-1" points="7.59 20.48 21.52 20.48 21.52 7.59" />
+                  <line class="cls-1" x1="64.14" y1="36.3" x2="55.54" y2="27.7" />
                 </g>
               </svg>
             </button>
@@ -1221,7 +1246,6 @@
   const declineConfirmCancel = document.getElementById("declineConfirmCancel");
   const declineConfirmMsg = document.getElementById("declineConfirmMsg");
   const editBackdrop = document.getElementById("editBackdrop");
-  const editCloseBtn = document.getElementById("editCloseBtn");
   const editCancelBtn = document.getElementById("editCancelBtn");
   const editSaveBtn = document.getElementById("editSaveBtn");
   const editSaveSignBtn = document.getElementById("editSaveSignBtn");
@@ -1290,9 +1314,10 @@
     return parts.join(", ");
   }
   function openEditModal(row){
-    if(!row || rowStatus(row) === "signed") return;
+    if(!row) return;
     ACTIVE_EDIT_ROW = row;
     const orderDate = row.signed_at ? row.signed_at : new Date().toLocaleDateString();
+    const isSigned = rowStatus(row) === "signed";
     if(editAgencyName) editAgencyName.textContent = row.admission_agency || "--";
     if(editAgencyPhone) editAgencyPhone.textContent = row.agency_phone || "--";
     if(editAgencyFax) editAgencyFax.textContent = row.agency_fax || "--";
@@ -1307,7 +1332,15 @@
     if(editServices) editServices.textContent = (row.esign_services || []).join(", ") || "--";
     if(editSignedBy) editSignedBy.textContent = row.signed_by || "";
     if(editSignedAt) editSignedAt.textContent = row.signed_at || "";
-    if(editOrderComments) editOrderComments.value = row.esign_comments || "";
+    if(editOrderComments){
+      editOrderComments.value = row.esign_comments || "";
+      editOrderComments.readOnly = isSigned;
+      editOrderComments.classList.toggle("readonly", isSigned);
+      editOrderComments.placeholder = isSigned ? "" : "Enter additional order comments here...";
+    }
+    if(editSaveBtn) editSaveBtn.style.display = isSigned ? "none" : "";
+    if(editSaveSignBtn) editSaveSignBtn.style.display = isSigned ? "none" : "";
+    if(editCancelBtn) editCancelBtn.textContent = isSigned ? "Close" : "Cancel";
     showEditMsg("");
     if(editBackdrop) editBackdrop.style.display = "flex";
   }
@@ -1337,9 +1370,6 @@
       if(e.target === editBackdrop) closeEditModal();
     });
   }
-  if(editCloseBtn){
-    editCloseBtn.addEventListener("click", closeEditModal);
-  }
   if(editCancelBtn){
     editCancelBtn.addEventListener("click", closeEditModal);
   }
@@ -1361,9 +1391,16 @@
         return;
       }
       if(signAfter){
-        closeEditModal();
-        openEsignConfirm(ACTIVE_EDIT_ROW.esign_id);
-        return;
+        const signRes = await fetch("/api/sensys/provider/esigns/sign", {
+          method:"POST",
+          headers: { "Content-Type":"application/json", ...authHeaders() },
+          body: JSON.stringify({ esign_id: ACTIVE_EDIT_ROW.esign_id })
+        });
+        const signData = await signRes.json();
+        if(!signRes.ok || !signData.ok){
+          showEditMsg(signData.detail || "Unable to sign.");
+          return;
+        }
       }
       closeEditModal();
       await load();
