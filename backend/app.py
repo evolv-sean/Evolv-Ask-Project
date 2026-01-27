@@ -26821,6 +26821,9 @@ def sensys_provider_esigns(request: Request):
 
             p.first_name AS patient_first_name,
             p.last_name  AS patient_last_name,
+            p.dob AS patient_dob,
+            p.insurance_name1 AS patient_insurance_name1,
+            p.insurance_number1 AS patient_insurance_number1,
 
             ag.agency_name
         FROM sensys_admission_esigns ae
