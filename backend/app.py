@@ -26825,14 +26825,23 @@ def sensys_provider_esigns(request: Request):
             p.dob AS patient_dob,
             p.insurance_name1 AS patient_insurance_name1,
             p.insurance_number1 AS patient_insurance_number1,
+            p.address1 AS patient_address1,
+            p.address2 AS patient_address2,
+            p.city AS patient_city,
+            p.state AS patient_state,
+            p.zip AS patient_zip,
 
-            ag.agency_name
+            ag.agency_name,
+            ag.phone1 AS agency_phone,
+            ag.fax AS agency_fax,
+            su.display_name AS signed_by_name
         FROM sensys_admission_esigns ae
         JOIN sensys_admissions a ON a.id = ae.admission_id
         JOIN sensys_patients p ON p.id = a.patient_id
         LEFT JOIN sensys_care_team ct ON ct.id = ae.care_team_id
         LEFT JOIN sensys_service_type st ON st.id = ae.service_type_id AND st.deleted_at IS NULL
         LEFT JOIN sensys_agencies ag ON ag.id = a.agency_id
+        LEFT JOIN sensys_users su ON su.id = ae.signed_by
         WHERE ae.deleted_at IS NULL
           AND ae.care_team_id IN ({placeholders})
         ORDER BY
@@ -26881,6 +26890,51 @@ def sensys_provider_esigns(request: Request):
 
 class ProviderEsignAction(BaseModel):
     esign_id: int
+
+class ProviderEsignUpdate(BaseModel):
+    esign_id: int
+    comments: Optional[str] = None
+
+@app.post("/api/sensys/provider/esigns/update")
+def sensys_provider_esigns_update(payload: ProviderEsignUpdate, request: Request):
+    u = _sensys_require_user(request)
+    _sensys_assert_provider_role(u)
+
+    conn = get_db()
+    user_id = int(u["user_id"])
+    esign_id = int(payload.esign_id)
+
+    linked_ids = set(_sensys_provider_linked_care_team_ids(conn, user_id))
+
+    row = conn.execute(
+        """
+        SELECT id, care_team_id, status, signed_at
+        FROM sensys_admission_esigns
+        WHERE id = ? AND deleted_at IS NULL
+        """,
+        (esign_id,),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="E-Sign not found")
+
+    if int(row["care_team_id"]) not in linked_ids:
+        raise HTTPException(status_code=403, detail="Not linked to this E-Sign")
+
+    if (row["signed_at"] or "") or (row["status"] or "").strip().lower() == "signed":
+        raise HTTPException(status_code=400, detail="Already signed")
+
+    conn.execute(
+        """
+        UPDATE sensys_admission_esigns
+           SET comments = ?,
+               updated_by_user_id = ?,
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (payload.comments, user_id, esign_id),
+    )
+    conn.commit()
+    return {"ok": True}
 
 @app.post("/api/sensys/provider/esigns/sign")
 def sensys_provider_esigns_sign(payload: ProviderEsignAction, request: Request):
