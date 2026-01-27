@@ -462,6 +462,7 @@ SENSYS_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - Developer - Admissi
 SENSYS_HOME_HEALTH_HTML = FRONTEND_DIR / "Sensys 3.0 - HH - Workspace.html"
 SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - Home Health - Admission Details.html"
 SENSYS_HOME_HEALTH_FINALIZED_HTML = FRONTEND_DIR / "Sensys 3.0 - HH - Finalized Patients.html"
+SENSYS_PROVIDER_LANDING_HTML = FRONTEND_DIR / "Sensys 3.0 - Provider - Landing.html"
 SENSYS_PROVIDER_ESIGN_HTML = FRONTEND_DIR / "Sensys 3.0 - Provider E-Sign.html"
 SENSYS_POST_DISCHARGE_HTML = FRONTEND_DIR / "Sensys 3.0 - Post-Discharge Workspace.html"
 SENSYS_CCC_STAFF_HTML = FRONTEND_DIR / "Sensys 3.0 - CCC Staff Workspace.html"
@@ -27836,6 +27837,10 @@ async def sensys_home_health_finalized_referrals_ui():
 @app.get("/sensys/provider-esign", response_class=HTMLResponse)
 async def sensys_provider_esign_ui():
     return HTMLResponse(content=read_html(SENSYS_PROVIDER_ESIGN_HTML))
+
+@app.get("/sensys/provider-landing", response_class=HTMLResponse)
+async def sensys_provider_landing_ui():
+    return HTMLResponse(content=read_html(SENSYS_PROVIDER_LANDING_HTML))
     
 # ✅ CCC-PDW v1
 @app.get("/sensys/post-discharge", response_class=HTMLResponse)
