@@ -18681,7 +18681,7 @@ def sensys_admin_users_login_as(payload: SensysAdminLoginAsIn, token: str):
         elif "ccc_staff" in role_keys:
             redirect_url = "/sensys/ccc-staff"
         elif "provider" in role_keys:
-            redirect_url = "/sensys/provider-esign"
+            redirect_url = "/sensys/provider-landing"
 
         # Create a real Sensys session token for that user
         session_token = _sensys_create_session(conn, user_id=user_id, ttl_hours=24)
