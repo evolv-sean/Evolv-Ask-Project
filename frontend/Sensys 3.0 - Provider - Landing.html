@@ -72,7 +72,7 @@
       flex-direction:column;
       align-items:flex-start;
       gap:12px;
-      margin-top:-28px;
+      margin-top:12px;
       margin-left: 20px;
     }
     .side-btn{
@@ -412,6 +412,11 @@
       font-size:12px;
       font-weight:700;
     }
+    .signed-meta{
+      font-size:11px;
+      color:var(--muted);
+      margin-top:6px;
+    }
     .icon-btn{
       width:42px;
       height:42px;
@@ -720,6 +725,7 @@
     }
     emptyEl.style.display = "none";
     listEl.innerHTML = rows.map(r => {
+      const status = rowStatus(r);
       const name = r.patient_name || "Patient";
       const dob = r.patient_dob || "--";
       const insName = r.insurance_name1 || "--";
@@ -731,6 +737,65 @@
       const servicePills = services.length
         ? services.map(s => `<span class="service-pill">${esc(s)}</span>`).join("")
         : `<span class="service-pill">--</span>`;
+      const signedMeta = status === "signed"
+        ? `<div class="signed-meta">Signed By: ${esc(r.signed_by || "--")} · ${esc(r.signed_at || "--")}</div>`
+        : "";
+      const actions = status === "signed"
+        ? `
+            <button class="icon-btn esign" type="button" title="E-Sign" aria-label="E-Sign" data-esign-sign="${esc(String(r.esign_id || ""))}">
+              <svg viewBox="0 0 75.21 75.69" aria-hidden="true">
+                <g>
+                  <path class="cls-1" d="M17.37,70.01H2.78c-.77,0-1.39-.62-1.39-1.39V30.8c0-.77.62-1.39,1.39-1.39h13.82c2.28,0,4.5-.86,6.12-2.45,6.52-6.39,13.88-21.06,16.68-24.19,1.27-1.5,3-1.5,4.16-1.28.02,0,.04.01.06.02,8.04,1.86,4.72,14.71,1.7,21.18h0c-1.26,2.45.51,5.37,3.27,5.37h17.33c5.44,0,9.25,5.38,7.44,10.51l-10.54,29.96c-1.22,3.46-4.48,5.77-8.15,5.77h-20.55c-3.57,0-7.11-.65-10.45-1.91l-6.32-2.39V29.37" />
+                  <line class="cls-1" x1="72.55" y1="40.45" x2="58.67" y2="40.45" />
+                  <line class="cls-1" x1="68.91" y1="51.66" x2="55.48" y2="51.66" />
+                  <line class="cls-1" x1="65.27" y1="62.87" x2="52.3" y2="62.87" />
+                </g>
+              </svg>
+            </button>
+          `
+        : `
+            <button class="icon-btn esign" type="button" title="E-Sign" aria-label="E-Sign" data-esign-sign="${esc(String(r.esign_id || ""))}">
+              <svg viewBox="0 0 75.21 75.69" aria-hidden="true">
+                <g>
+                  <path class="cls-1" d="M17.37,70.01H2.78c-.77,0-1.39-.62-1.39-1.39V30.8c0-.77.62-1.39,1.39-1.39h13.82c2.28,0,4.5-.86,6.12-2.45,6.52-6.39,13.88-21.06,16.68-24.19,1.27-1.5,3-1.5,4.16-1.28.02,0,.04.01.06.02,8.04,1.86,4.72,14.71,1.7,21.18h0c-1.26,2.45.51,5.37,3.27,5.37h17.33c5.44,0,9.25,5.38,7.44,10.51l-10.54,29.96c-1.22,3.46-4.48,5.77-8.15,5.77h-20.55c-3.57,0-7.11-.65-10.45-1.91l-6.32-2.39V29.37" />
+                  <line class="cls-1" x1="72.55" y1="40.45" x2="58.67" y2="40.45" />
+                  <line class="cls-1" x1="68.91" y1="51.66" x2="55.48" y2="51.66" />
+                  <line class="cls-1" x1="65.27" y1="62.87" x2="52.3" y2="62.87" />
+                </g>
+              </svg>
+            </button>
+            <button class="icon-btn edit" type="button" title="Edit" aria-label="Edit">
+              <svg viewBox="0 0 83.92 75.06" aria-hidden="true">
+                <g>
+                  <g>
+                    <g>
+                      <g>
+                        <path class="cls-1" d="M72.39,10.9l-35.5,35.5-3.11,11.52,11.52-3.11,35.5-35.5c2.32-2.32,2.32-6.09,0-8.41h0c-2.32-2.32-6.09-2.32-8.41,0Z" />
+                        <path class="cls-1" d="M76.73,23.71l2.11,2.11c1.49,1.49,1.49,3.91,0,5.4l-10.06,10.06" />
+                      </g>
+                      <line class="cls-1" x1="33.77" y1="57.93" x2="30.75" y2="60.95" />
+                    </g>
+                    <polyline class="cls-1" points="60.87 46.97 60.87 73.67 1.39 73.67 1.39 18.52 19.51 1.39 60.87 1.39 60.87 15.15" />
+                    <line class="cls-1" x1="14.38" y1="34.58" x2="39.07" y2="34.58" />
+                    <line class="cls-1" x1="14.38" y1="47.32" x2="29.52" y2="47.32" />
+                    <line class="cls-1" x1="14.38" y1="60.06" x2="25.2" y2="60.06" />
+                  </g>
+                  <polyline class="cls-1" points="7.59 20.48 21.52 20.48 21.52 7.59" />
+                  <line class="cls-1" x1="64.14" y1="36.3" x2="55.54" y2="27.7" />
+                </g>
+              </svg>
+            </button>
+            <button class="icon-btn decline" type="button" title="Decline" aria-label="Decline" data-esign-decline="${esc(String(r.esign_id || ""))}">
+              <svg viewBox="0 0 75.21 75.69" aria-hidden="true">
+                <g>
+                  <path class="cls-1" d="M17.37,70.01H2.78c-.77,0-1.39-.62-1.39-1.39V30.8c0-.77.62-1.39,1.39-1.39h13.82c2.28,0,4.5-.86,6.12-2.45,6.52-6.39,13.88-21.06,16.68-24.19,1.27-1.5,3-1.5,4.16-1.28.02,0,.04.01.06.02,8.04,1.86,4.72,14.71,1.7,21.18h0c-1.26,2.45.51,5.37,3.27,5.37h17.33c5.44,0,9.25,5.38,7.44,10.51l-10.54,29.96c-1.22,3.46-4.48,5.77-8.15,5.77h-20.55c-3.57,0-7.11-.65-10.45-1.91l-6.32-2.39V29.37" />
+                  <line class="cls-1" x1="72.55" y1="40.45" x2="58.67" y2="40.45" />
+                  <line class="cls-1" x1="68.91" y1="51.66" x2="55.48" y2="51.66" />
+                  <line class="cls-1" x1="65.27" y1="62.87" x2="52.3" y2="62.87" />
+                </g>
+              </svg>
+            </button>
+          `;
       return `
         <div class="row">
           <div class="row-header">
@@ -761,52 +826,14 @@
               </div>
             </div>
           </div>
-          <div class="row-actions">
-            <button class="icon-btn esign" type="button" title="E-Sign" aria-label="E-Sign" data-esign-sign="${esc(String(r.esign_id || ""))}">
-              <svg viewBox="0 0 75.21 75.69" aria-hidden="true">
-                <g>
-                  <path class="cls-1" d="M17.37,70.01H2.78c-.77,0-1.39-.62-1.39-1.39V30.8c0-.77.62-1.39,1.39-1.39h13.82c2.28,0,4.5-.86,6.12-2.45,6.52-6.39,13.88-21.06,16.68-24.19,1.27-1.5,3-1.5,4.16-1.28.02,0,.04.01.06.02,8.04,1.86,4.72,14.71,1.7,21.18h0c-1.26,2.45.51,5.37,3.27,5.37h17.33c5.44,0,9.25,5.38,7.44,10.51l-10.54,29.96c-1.22,3.46-4.48,5.77-8.15,5.77h-20.55c-3.57,0-7.11-.65-10.45-1.91l-6.32-2.39V29.37" />
-                  <line class="cls-1" x1="72.55" y1="40.45" x2="58.67" y2="40.45" />
-                  <line class="cls-1" x1="68.91" y1="51.66" x2="55.48" y2="51.66" />
-                  <line class="cls-1" x1="65.27" y1="62.87" x2="52.3" y2="62.87" />
-                </g>
-              </svg>
-            </button>
-            <button class="icon-btn edit" type="button" title="Edit" aria-label="Edit">
-              <svg viewBox="0 0 77.02 76.67" aria-hidden="true">
-                <g>
-                  <g>
-                    <path class="cls-1" d="M75.63,58.69v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06v-14.55c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
-                    <line class="cls-1" x1="65.85" y1="66.01" x2="58.74" y2="66.01" />
-                  </g>
-                  <g>
-                    <path class="cls-1" d="M75.63,31.08v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06v-14.55c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
-                    <line class="cls-1" x1="65.85" y1="38.4" x2="58.74" y2="38.4" />
-                  </g>
-                  <g>
-                    <path class="cls-1" d="M75.63,3.46v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06V3.45c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
-                    <line class="cls-1" x1="65.85" y1="10.78" x2="58.74" y2="10.78" />
-                  </g>
-                </g>
-              </svg>
-            </button>
-            <button class="icon-btn decline" type="button" title="Decline" aria-label="Decline" data-esign-decline="${esc(String(r.esign_id || ""))}">
-              <svg viewBox="0 0 75.21 75.69" aria-hidden="true">
-                <g>
-                  <path class="cls-1" d="M17.37,70.01H2.78c-.77,0-1.39-.62-1.39-1.39V30.8c0-.77.62-1.39,1.39-1.39h13.82c2.28,0,4.5-.86,6.12-2.45,6.52-6.39,13.88-21.06,16.68-24.19,1.27-1.5,3-1.5,4.16-1.28.02,0,.04.01.06.02,8.04,1.86,4.72,14.71,1.7,21.18h0c-1.26,2.45.51,5.37,3.27,5.37h17.33c5.44,0,9.25,5.38,7.44,10.51l-10.54,29.96c-1.22,3.46-4.48,5.77-8.15,5.77h-20.55c-3.57,0-7.11-.65-10.45-1.91l-6.32-2.39V29.37" />
-                  <line class="cls-1" x1="72.55" y1="40.45" x2="58.67" y2="40.45" />
-                  <line class="cls-1" x1="68.91" y1="51.66" x2="55.48" y2="51.66" />
-                  <line class="cls-1" x1="65.27" y1="62.87" x2="52.3" y2="62.87" />
-                </g>
-              </svg>
-            </button>
-          </div>
+          <div class="row-actions">${actions}</div>
           <div class="agency-name">${esc(agency)}</div>
           <div class="meta row-dates">
             <span><b>Admit:</b> ${esc(admit)}</span>
             <span><b>DC:</b> ${esc(dc)}</span>
           </div>
           <div class="service-pills">${servicePills}</div>
+          ${signedMeta}
         </div>
       `;
     }).join("");
@@ -858,7 +885,9 @@
           dc_date: e.dc_date,
           admission_agency: e.agency_name,
           esign_status: e.status || "",
-          esign_services: services.map(s => s.service_name || s.name).filter(Boolean)
+          esign_services: services.map(s => s.service_name || s.name).filter(Boolean),
+          signed_by: e.signed_by,
+          signed_at: e.signed_at
         };
       });
       renderCounts();
@@ -1001,7 +1030,7 @@
     window.location.href = "/sensys/change-password";
   });
   navHome.addEventListener("click", () => {
-    window.location.href = "/sensys/provider-esign";
+    window.location.href = "/sensys/provider-landing";
   });
 
   load();
