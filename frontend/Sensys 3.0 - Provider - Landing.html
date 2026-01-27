@@ -890,13 +890,10 @@
 
             <section class="order-block">
               <h3 class="order-section-title" style="margin-bottom:0;">Order Details</h3>
-              <div class="order-divider"></div>
               <div class="order-line">
-                <div class="order-service-label" id="editServiceType">Service</div>
+                <div class="order-service-label" id="editServiceType">Home Health</div>
                 <div class="order-value" id="editServices"></div>
               </div>
-              <div class="order-divider"></div>
-              <div class="order-label" style="margin-bottom:6px;">Order Comments</div>
               <textarea id="editOrderComments" class="order-comments" placeholder="Enter order comments..."></textarea>
               <div class="order-divider short"></div>
               <div class="order-sig">
@@ -1303,7 +1300,10 @@
     if(editPatientDob) editPatientDob.textContent = row.patient_dob || "--";
     if(editPatientAddress) editPatientAddress.textContent = formatAddress(row) || "--";
     if(editOrderDate) editOrderDate.textContent = orderDate || "--";
-    if(editServiceType) editServiceType.textContent = row.service_type_name || "Service";
+    if(editServiceType){
+      const st = String(row.service_type_name || "").toLowerCase();
+      editServiceType.textContent = st.includes("dme") ? "DME" : "Home Health";
+    }
     if(editServices) editServices.textContent = (row.esign_services || []).join(", ") || "--";
     if(editSignedBy) editSignedBy.textContent = row.signed_by || "";
     if(editSignedAt) editSignedAt.textContent = row.signed_at || "";
