@@ -201,6 +201,7 @@
     }
     .pin-pill.facility{ border-color:#A8E6CF; }
     .pin-pill.universal{ border-color:#93c5fd; }
+    .pin-pill.provider{ border-color:#f5d0fe; }
     .pin-pill.default{ border-color:#fca5a5; }
 
     .open-sub{
@@ -1338,6 +1339,21 @@
             <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa; margin-top:12px;">
               <div style="font-weight:800; color:#111827;">Last processed API</div>
               <div id="last-processed-status-modal" style="font-size:12px; color:#6b7280; margin-top:2px;">Last API: …</div>
+            </div>
+
+            <!-- Universal Provider PIN -->
+            <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa; margin-top:12px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                <div>
+                  <div style="font-weight:800; color:#111827;">Universal Provider PIN</div>
+                  <div id="provider-pin-status-modal" style="font-size:12px; color:#6b7280; margin-top:2px;">Provider PIN: …</div>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                  <input id="provider-pin" type="password" placeholder="Set provider PIN" style="width:220px;" />
+                  <button class="small" onclick="saveProviderPin()">Save</button>
+                  <button class="small" onclick="clearProviderPin()">Clear</button>
+                </div>
+              </div>
             </div>
 
             <!-- Universal PIN -->
@@ -3382,6 +3398,92 @@
       }
     }
 
+    async function loadProviderPinStatus() {
+      const token = getAdminToken();
+      if (!token) return;
+
+      try {
+        const resp = await fetch("/admin/snf/provider-pin/get", {
+          headers: { "X-Admin-Token": token }
+        });
+        if (!resp.ok) return;
+
+        const data = await resp.json();
+        if (!data.ok) return;
+
+        const modal = document.getElementById("provider-pin-status-modal");
+        if (modal) modal.textContent = data.pin_set ? "Provider PIN: Set" : "Provider PIN: Not set";
+      } catch (e) {
+        // silent
+      }
+    }
+
+    async function saveProviderPin() {
+      const token = getAdminToken();
+      if (!token) {
+        showToast("Please paste your ADMIN_TOKEN first.", "error");
+        return;
+      }
+
+      const pin = (document.getElementById("provider-pin").value || "").trim();
+      if (!pin) {
+        showToast("Enter a provider PIN (or use Clear).", "error");
+        return;
+      }
+
+      try {
+        const resp = await fetch("/admin/snf/provider-pin/set", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Token": token
+          },
+          body: JSON.stringify({ pin })
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.detail || "ok=false");
+
+        document.getElementById("provider-pin").value = "";
+        await loadProviderPinStatus();
+        showToast("Provider PIN saved.", "success");
+      } catch (err) {
+        console.error("saveProviderPin error", err);
+        showToast("Error saving provider PIN: " + err, "error");
+      }
+    }
+
+    async function clearProviderPin() {
+      const token = getAdminToken();
+      if (!token) {
+        showToast("Please paste your ADMIN_TOKEN first.", "error");
+        return;
+      }
+
+      try {
+        const resp = await fetch("/admin/snf/provider-pin/clear", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Token": token
+          },
+          body: JSON.stringify({})
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.detail || "ok=false");
+
+        document.getElementById("provider-pin").value = "";
+        await loadProviderPinStatus();
+        showToast("Provider PIN cleared.", "success");
+      } catch (err) {
+        console.error("clearProviderPin error", err);
+        showToast("Error clearing provider PIN: " + err, "error");
+      }
+    }
+
     async function saveUniversalPin() {
       const token = getAdminToken();
       if (!token) {
@@ -3876,6 +3978,7 @@
         const to = item.sent_to || "";
         const facilityOpens = (item.facility_open_count != null) ? item.facility_open_count : 0;
         const universalOpens = (item.universal_open_count != null) ? item.universal_open_count : 0;
+        const providerOpens = (item.provider_open_count != null) ? item.provider_open_count : 0;
 
 
         div.innerHTML = `
@@ -3888,6 +3991,7 @@
                 <div><strong>Recipients:</strong> ${escapeHtml(to)}</div>
                 <div><strong>Facility Opens:</strong> ${escapeHtml(String(facilityOpens))}</div>
                 <div><strong>Universal Opens:</strong> ${escapeHtml(String(universalOpens))}</div>
+                <div><strong>Provider Opens:</strong> ${escapeHtml(String(providerOpens))}</div>
               </div>
             </div>
 
@@ -3940,6 +4044,7 @@
             const pillClass =
               pinType === "facility" ? "facility" :
               pinType === "universal" ? "universal" :
+              pinType === "provider" ? "provider" :
               pinType === "default" ? "default" : "";
 
             const card = document.createElement("div");
@@ -5102,6 +5207,7 @@
       initToken();
       initDate();
       loadSnfFacilities();
+      loadProviderPinStatus();
       loadUniversalPinStatus();
       loadKeywords(); // <-- add this
     });
