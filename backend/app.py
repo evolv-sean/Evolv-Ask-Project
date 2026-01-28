@@ -18597,9 +18597,9 @@ def sensys_admin_user_login_log(user_id: int, token: str):
             "SELECT email FROM sensys_users WHERE id = ?",
             (int(user_id),),
         ).fetchone()
-    email = (row["email"] if row else "") or ""
+        email = (row["email"] if row else "") or ""
     except Exception:
-    email = ""
+        email = ""
 
     like_email = f'%\"email\":\"{email}\"%' if email else ""
 
