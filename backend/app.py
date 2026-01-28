@@ -16076,6 +16076,7 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
             SELECT
                 h.visit_id,
                 h.dc_date,
+                h.updated_at,
                 h.disposition AS dc_disposition,
 
                 s.id AS snf_id,
@@ -16085,18 +16086,19 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
 
                 s.final_snf_name_display,
                 s.ai_snf_name_raw,
-                f.facility_name AS effective_facility_name,
-                f.attending AS facility_attending,
+                s.current_snf_facility_id,
+                s.current_snf_facility_name,
 
-                COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id) AS effective_facility_id
+                COALESCE(s.current_snf_facility_id, s.final_snf_facility_id, s.ai_snf_facility_id) AS effective_facility_id,
+                COALESCE(s.current_snf_facility_name, f.facility_name) AS effective_facility_name,
+                f.attending AS facility_attending
             FROM hospital_discharges h
             LEFT JOIN snf_admissions s
               ON s.visit_id = h.visit_id
             LEFT JOIN snf_admission_facilities f
-              ON f.id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id)
-            WHERE h.dc_date IS NOT NULL
-              AND date(h.dc_date) >= date(?)
-              AND date(h.dc_date) <= date(?)
+              ON f.id = COALESCE(s.current_snf_facility_id, s.final_snf_facility_id, s.ai_snf_facility_id)
+            WHERE date(COALESCE(NULLIF(h.dc_date, ''), h.updated_at)) >= date(?)
+              AND date(COALESCE(NULLIF(h.dc_date, ''), h.updated_at)) <= date(?)
             """,
             (dc_from, dc_to),
         )
@@ -16109,19 +16111,14 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
         total_snf = len(snf_rows)
 
         # -----------------------------
-        # Facility volume (top 10)
+        # Facility volume (all facilities with IDs)
         # -----------------------------
-        volume_map: Dict[str, Dict[str, Any]] = {}
+        volume_counts: Dict[int, int] = {}
         for r in snf_rows:
-            fac_label = _facility_display(r["final_snf_name_display"], r["effective_facility_name"], r["ai_snf_name_raw"])
-            is_starred = bool((r["facility_attending"] or "").strip())  # matches your dropdown star logic
-            if fac_label not in volume_map:
-                volume_map[fac_label] = {"facility": fac_label, "count": 0, "is_starred": False}
-            volume_map[fac_label]["count"] += 1
-            if is_starred:
-                volume_map[fac_label]["is_starred"] = True
-
-        top_facilities = sorted(volume_map.values(), key=lambda x: x["count"], reverse=True)[:10]
+            fac_id = r["effective_facility_id"]
+            if fac_id is None:
+                continue
+            volume_counts[int(fac_id)] = volume_counts.get(int(fac_id), 0) + 1
 
         # -----------------------------
         # Notified by Hospital
@@ -16170,7 +16167,7 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
 
         cur.execute(
             """
-            SELECT id, admission_ids
+            SELECT id, snf_facility_id, admission_ids
             FROM snf_secure_links
             WHERE sent_at IS NOT NULL AND sent_at <> ''
             ORDER BY sent_at DESC
@@ -16179,35 +16176,88 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
         link_rows = cur.fetchall()
 
         cohort_link_ids: List[int] = []
+        facility_link_ids: Dict[int, List[int]] = {}
         for lr in link_rows:
             try:
                 ids = json.loads(lr["admission_ids"] or "[]")
                 if not isinstance(ids, list):
                     continue
-                if any(int(x) in cohort_admission_ids for x in ids if str(x).isdigit()):
-                    cohort_link_ids.append(int(lr["id"]))
+                if not any(int(x) in cohort_admission_ids for x in ids if str(x).isdigit()):
+                    continue
+                link_id = int(lr["id"])
+                cohort_link_ids.append(link_id)
+                fac_id = lr["snf_facility_id"]
+                if fac_id is not None:
+                    fac_id = int(fac_id)
+                    facility_link_ids.setdefault(fac_id, []).append(link_id)
             except Exception:
                 continue
 
         total_emails = len(cohort_link_ids)
 
-        opened_email_ids: set[int] = set()
+        opened_facility_links: set[int] = set()
+        opened_provider_links: set[int] = set()
         if cohort_link_ids:
             placeholders = ",".join("?" for _ in cohort_link_ids)
             cur.execute(
                 f"""
-                SELECT DISTINCT secure_link_id
+                SELECT DISTINCT secure_link_id, LOWER(COALESCE(pin_type,'')) AS pin_type
                 FROM snf_secure_link_access_log
-                WHERE LOWER(COALESCE(pin_type,'')) = 'facility'
-                  AND secure_link_id IN ({placeholders})
+                WHERE secure_link_id IN ({placeholders})
                 """,
                 cohort_link_ids,
             )
-            opened_email_ids = set(int(x[0]) for x in cur.fetchall())
+            for row in cur.fetchall():
+                link_id = int(row[0])
+                pin_type = (row[1] or "").strip()
+                if pin_type == "facility":
+                    opened_facility_links.add(link_id)
+                elif pin_type == "provider":
+                    opened_provider_links.add(link_id)
 
-        opened_count = len(opened_email_ids)
+        opened_count = len(opened_facility_links)
         opened_pct = (opened_count / total_emails * 100.0) if total_emails else 0.0
         unopened_pct = 100.0 - opened_pct if total_emails else 0.0
+
+        # -----------------------------
+        # Facility list (all facilities with IDs)
+        # -----------------------------
+        cur.execute(
+            """
+            SELECT id, facility_name, attending
+            FROM snf_admission_facilities
+            ORDER BY facility_name COLLATE NOCASE
+            """
+        )
+        fac_rows = cur.fetchall()
+
+        top_facilities: List[Dict[str, Any]] = []
+        for f in fac_rows:
+            fac_id = int(f["id"])
+            fac_name = (f["facility_name"] or "").strip() or "(Unknown)"
+            is_starred = bool((f["attending"] or "").strip())
+            count = volume_counts.get(fac_id, 0)
+
+            link_ids = facility_link_ids.get(fac_id, [])
+            fac_total = len(link_ids)
+            fac_opened = len([lid for lid in link_ids if lid in opened_facility_links])
+            prov_opened = len([lid for lid in link_ids if lid in opened_provider_links])
+
+            fac_unopened_pct = (100.0 - (fac_opened / fac_total * 100.0)) if fac_total else 0.0
+            prov_unopened_pct = (100.0 - (prov_opened / fac_total * 100.0)) if fac_total else 0.0
+
+            top_facilities.append(
+                {
+                    "facility_id": fac_id,
+                    "facility": fac_name,
+                    "count": count,
+                    "is_starred": is_starred,
+                    "facility_pin_unopened_pct": round(fac_unopened_pct, 1),
+                    "provider_pin_unopened_pct": round(prov_unopened_pct, 1),
+                }
+            )
+
+        top_facilities.sort(key=lambda x: (-x["count"], x["facility"].lower()))
 
         return {
             "ok": True,
