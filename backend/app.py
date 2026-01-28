@@ -5501,6 +5501,8 @@ def init_db():
             facility_free_text          TEXT,
             final_snf_facility_id       TEXT,
             final_snf_name_display      TEXT,
+            current_snf_facility_id     TEXT,
+            current_snf_facility_name   TEXT,
             final_expected_transfer_date TEXT,
             reviewed_by                 TEXT,
             reviewed_at                 TEXT,
@@ -5812,6 +5814,16 @@ def init_db():
 
     try:
         cur.execute("ALTER TABLE snf_admissions ADD COLUMN facility_free_text TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN current_snf_facility_id TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN current_snf_facility_name TEXT")
     except sqlite3.Error:
         pass
 
@@ -6250,6 +6262,7 @@ def init_db():
                 -- prefer final name display, else facility table name, else AI raw text
                 COALESCE(
                     NULLIF(TRIM(s.final_snf_name_display), ''),
+                    NULLIF(TRIM(s.current_snf_facility_name), ''),
                     NULLIF(TRIM(f.facility_name), ''),
                     NULLIF(TRIM(s.ai_snf_name_raw), '')
                 ) AS snf_agency,
@@ -6283,7 +6296,7 @@ def init_db():
             LEFT JOIN hospital_discharges h
                 ON h.visit_id = s.visit_id
             LEFT JOIN snf_admission_facilities f
-                ON f.id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id);
+                ON f.id = COALESCE(s.current_snf_facility_id, s.final_snf_facility_id, s.ai_snf_facility_id);
             """
         )
     except sqlite3.Error as e:
@@ -11923,11 +11936,13 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     ai_snf_facility_id,
                     ai_expected_transfer_date,
                     ai_confidence,
+                    current_snf_facility_id,
+                    current_snf_facility_name,
                     status,
                     last_seen_active_date,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', date('now'), datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', date('now'), datetime('now'))
                 ON CONFLICT(visit_id) DO UPDATE SET
                     raw_note_id               = excluded.raw_note_id,
                     patient_mrn               = excluded.patient_mrn,
@@ -11943,6 +11958,22 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     ai_snf_facility_id        = excluded.ai_snf_facility_id,
                     ai_expected_transfer_date = excluded.ai_expected_transfer_date,
                     ai_confidence             = excluded.ai_confidence,
+                    current_snf_facility_id   = CASE
+                                                   WHEN snf_admissions.final_snf_facility_id IS NOT NULL
+                                                        AND TRIM(snf_admissions.final_snf_facility_id) <> ''
+                                                   THEN snf_admissions.final_snf_facility_id
+                                                   ELSE excluded.ai_snf_facility_id
+                                                END,
+                    current_snf_facility_name = CASE
+                                                   WHEN snf_admissions.final_snf_name_display IS NOT NULL
+                                                        AND TRIM(snf_admissions.final_snf_name_display) <> ''
+                                                   THEN snf_admissions.final_snf_name_display
+                                                   ELSE COALESCE(
+                                                         (SELECT facility_name FROM snf_admission_facilities WHERE id = excluded.ai_snf_facility_id),
+                                                         excluded.ai_snf_name_raw,
+                                                         snf_admissions.current_snf_facility_name
+                                                   )
+                                                END,
                     status = CASE
                                WHEN snf_admissions.status IN ('removed','confirmed','projected')
                                  THEN snf_admissions.status
@@ -11988,6 +12019,8 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     ai_facility_id,
                     expected_date,
                     conf,
+                    ai_facility_id,
+                    (_ai_facility_label or "") or (snf_name_raw or ""),
                 ),
 
             )
@@ -14719,13 +14752,13 @@ async def admin_snf_list(
             SELECT
                 s.*,
                 COALESCE(s.final_expected_transfer_date, s.ai_expected_transfer_date) AS effective_date,
-                COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id) AS effective_facility_id,
-                sf.facility_name AS effective_facility_name,
+                s.current_snf_facility_id AS effective_facility_id,
+                s.current_snf_facility_name AS effective_facility_name,
                 NULL AS effective_facility_city,
                 NULL AS effective_facility_state
             FROM snf_admissions s
             LEFT JOIN snf_admission_facilities sf
-              ON sf.id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id)
+              ON sf.id = s.current_snf_facility_id
             WHERE {" AND ".join(where) if where else "1=1"}
             ORDER BY s.dc_date IS NULL, s.dc_date, s.patient_name COLLATE NOCASE
         """
@@ -14805,6 +14838,8 @@ async def admin_snf_list(
 
                     "final_snf_facility_id": r["final_snf_facility_id"],
                     "final_snf_name_display": r["final_snf_name_display"],
+                    "current_snf_facility_id": r["current_snf_facility_id"],
+                    "current_snf_facility_name": r["current_snf_facility_name"],
                     "final_expected_transfer_date": r["final_expected_transfer_date"],
                     "review_comments": r["review_comments"],
 
@@ -14878,6 +14913,8 @@ async def admin_snf_get_note(
             "status": adm["status"],
             "final_snf_facility_id": adm["final_snf_facility_id"],
             "final_snf_name_display": adm["final_snf_name_display"],
+            "current_snf_facility_id": adm["current_snf_facility_id"],
+            "current_snf_facility_name": adm["current_snf_facility_name"],
             "final_expected_transfer_date": adm["final_expected_transfer_date"],
             "dc_date": adm["dc_date"],
             "review_comments": adm["review_comments"],
@@ -15304,6 +15341,7 @@ async def admin_snf_update(
         existing_final_name_display = row["final_snf_name_display"]
         existing_ai_is_candidate = row["ai_is_snf_candidate"]
         ai_snf_name_raw = row["ai_snf_name_raw"]
+        ai_snf_facility_id = row["ai_snf_facility_id"]
 
         new_final_facility_id = existing_final_facility_id
         new_final_name_display = existing_final_name_display
@@ -15352,6 +15390,14 @@ async def admin_snf_update(
         # NOTE: for non-SNF dispositions we leave ai_is_snf_candidate alone,
         # but still record disposition and facility_free_text for audit.
 
+        current_facility_id, current_facility_name = _snf_compute_current_facility(
+            conn,
+            final_id=new_final_facility_id,
+            final_name=new_final_name_display,
+            ai_id=ai_snf_facility_id,
+            ai_name_raw=ai_snf_name_raw,
+        )
+
         # NEW: Notification fields
         notified_by_hospital = 1 if payload.get("notified_by_hospital") else 0
         notified_by = (payload.get("notified_by") or "").strip()
@@ -15373,6 +15419,8 @@ async def admin_snf_update(
                    ai_is_snf_candidate = ?,
                    final_snf_facility_id = ?,
                    final_snf_name_display = ?,
+                   current_snf_facility_id = ?,
+                   current_snf_facility_name = ?,
                    notified_by_hospital = ?,
                    notified_by = ?,
                    notification_dt = ?,
@@ -15398,6 +15446,8 @@ async def admin_snf_update(
                 new_ai_is_candidate,
                 new_final_facility_id,
                 new_final_name_display,
+                current_facility_id,
+                current_facility_name,
                 notified_by_hospital,
                 notified_by,
                 notification_dt,
@@ -26122,6 +26172,25 @@ def _sensys_freq_top_ids(conn: sqlite3.Connection, agency_id: int, item_type: st
         (int(agency_id), item_type, int(limit)),
     ).fetchall()
     return [int(r["item_id"]) for r in rows]
+
+def _snf_compute_current_facility(conn: sqlite3.Connection, *, final_id, final_name, ai_id, ai_name_raw) -> tuple[str | None, str]:
+    if final_id is not None and str(final_id).strip() != "":
+        if final_name:
+            return str(final_id), str(final_name).strip()
+        row = conn.execute(
+            "SELECT facility_name FROM snf_admission_facilities WHERE id = ?",
+            (int(final_id),),
+        ).fetchone()
+        return str(final_id), (row["facility_name"] if row else "") or ""
+
+    if ai_id is not None and str(ai_id).strip() != "":
+        row = conn.execute(
+            "SELECT facility_name FROM snf_admission_facilities WHERE id = ?",
+            (int(ai_id),),
+        ).fetchone()
+        return str(ai_id), (row["facility_name"] if row else "") or (ai_name_raw or "").strip()
+
+    return None, (ai_name_raw or "").strip()
 
 def _sensys_build_dc_note(conn: sqlite3.Connection, dc_submission_id: int) -> dict | None:
     dc = conn.execute(
