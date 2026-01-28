@@ -2711,10 +2711,10 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
         </p>
 
         <div class="callout">
-          <div><strong>What youâ€™ll need:</strong></div>
-          <div style="margin-top:6px;">â€¢ Your facility PIN</div>
+          <div><strong>What you'll need:</strong></div>
+          <div style="margin-top:6px;">- Your facility PIN</div>
           <div style="margin-top:6px;">
-            â€¢ Link expires in <span class="pill">{ttl_hours} hours</span>
+            - Link expires in <span class="pill">{ttl_hours} hours</span>
           </div>
         </div>
 
@@ -2845,8 +2845,8 @@ def build_client_survey_secure_email_html(
 
         <div class="callout">
           <div><strong>What you'll need:</strong></div>
-          <div style="margin-top:6px;">â€¢ Your facility PIN</div>
-          <div style="margin-top:6px;">â€¢ Link expires in <span class="pill">{ttl_days} days</span></div>
+          <div style="margin-top:6px;">- Your facility PIN</div>
+          <div style="margin-top:6px;">- Link expires in <span class="pill">{ttl_days} days</span></div>
         </div>
 
         <p>
@@ -15601,7 +15601,7 @@ async def admin_snf_send_emails(
 
             fac_name = fac_names.get(fid, fid)
             sent_date = dt.date.today().isoformat()  # date the email is sent (today)
-            subject = f"Upcoming SNF admissions for {sent_date} â€“ {fac_name}"
+            subject = f"Upcoming SNF admissions for {sent_date} - {fac_name}"
             if test_only:
                 subject = "[TEST] " + subject
 
@@ -15628,7 +15628,7 @@ async def admin_snf_send_emails(
             msg["To"] = target_to
             if target_cc:
                 msg["Cc"] = target_cc
-            msg.set_content(body)
+            msg.set_content(body, charset="utf-8")
 
             try:
                 context = ssl.create_default_context()
@@ -18095,7 +18095,7 @@ async def admin_snf_email_pdf(
         # Build email
         # ------------------------
         sent_date = dt.date.today().isoformat()
-        subject = f"Pending SNF Admissions for {facility_name} â€“ {sent_date} PLEASE REVIEW"
+        subject = f"Pending SNF Admissions for {facility_name} - {sent_date} PLEASE REVIEW"
         if test_only:
             subject = "[TEST] " + subject
 
@@ -18109,8 +18109,8 @@ async def admin_snf_email_pdf(
         msg["Subject"] = subject
         msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
         msg["To"] = to_addr
-        msg.set_content(plain_body)
-        msg.add_alternative(html_body, subtype="html")
+        msg.set_content(plain_body, charset="utf-8")
+        msg.add_alternative(html_body, subtype="html", charset="utf-8")
 
         # ------------------------
         # SMTP send + mark sent + tag admissions
@@ -18252,7 +18252,7 @@ def _send_pad_flow_notification_email(event_type: str, run_row: sqlite3.Row, eve
         msg["Subject"] = subject
         msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
         msg["To"] = ", ".join(emails)
-        msg.set_content(body)
+        msg.set_content(body, charset="utf-8")
 
         context = ssl.create_default_context()
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
@@ -18330,7 +18330,7 @@ def send_intake_email(facility_id: str, payload: dict) -> None:
         msg["Subject"] = subject
         msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
         msg["To"] = INTAKE_EMAIL_TO
-        msg.set_content(body)
+        msg.set_content(body, charset="utf-8")
 
         context = ssl.create_default_context()
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
@@ -20733,8 +20733,8 @@ def sensys_admin_client_surveys_email_send(
     msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
     msg["To"] = recipients
     msg["Subject"] = f"Client Survey Responses - {agency_name}"
-    msg.set_content(f"View secure surveys: {secure_url}")
-    msg.add_alternative(html_body, subtype="html")
+    msg.set_content(f"View secure surveys: {secure_url}", charset="utf-8")
+    msg.add_alternative(html_body, subtype="html", charset="utf-8")
 
     context = ssl.create_default_context()
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
@@ -24266,11 +24266,11 @@ def _sensys_send_notification_email(to_email: str, subject: str, text_body: str,
         msg["Subject"] = (subject or "").strip() or "Sensys Notification"
 
         # plain text fallback
-        msg.set_content((text_body or "").strip() or "You have a new notification.")
+        msg.set_content((text_body or "").strip() or "You have a new notification.", charset="utf-8")
 
         # optional HTML
         if (html_body or "").strip():
-            msg.add_alternative(html_body, subtype="html")
+            msg.add_alternative(html_body, subtype="html", charset="utf-8")
 
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             server.starttls()
