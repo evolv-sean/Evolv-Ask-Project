@@ -1637,7 +1637,7 @@
 
               <div>
                 <label for="filter-days">Days ahead</label>
-                <input id="filter-days" type="number" value="0" min="0" max="30" />
+                <input id="filter-days" type="number" value="0" min="0" max="90" />
               </div>
             </div>
 
@@ -2696,6 +2696,15 @@
     }
 
     function applyFiltersAndLoad() {
+      const daysVal = parseInt(document.getElementById("filter-days")?.value || "0", 10);
+      if (Number.isFinite(daysVal) && daysVal > 90) {
+        if (typeof showToast === "function") {
+          showToast("Days ahead max is 90.", "error");
+        } else {
+          alert("Days ahead max is 90.");
+        }
+        return;
+      }
       closeFiltersModal();
       loadAdmissions();
     }
