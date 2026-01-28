@@ -4053,8 +4053,15 @@
       // So try Manual override -> Effective facility -> AI raw (fallback)
       const candidate =
         String(r.final_snf_name_display || "").trim() ||
+        String(r.current_snf_facility_name || "").trim() ||
         String(r.effective_facility_name || "").trim() ||
         String(r.ai_snf_name_raw || "").trim();
+
+      const idCandidate = String(r.current_snf_facility_id || r.effective_facility_id || "").trim();
+      if (idCandidate) {
+        const direct = (snfFacilities || []).find(f => String(f.id) === idCandidate);
+        if (direct && (direct.facility_phone || "").trim()) return (direct.facility_phone || "").trim();
+      }
 
       const match = resolveAiToSystemFacility(candidate);
       return (match && (match.facility_phone || "").trim()) || "";
@@ -4118,8 +4125,22 @@
       // Manual override -> Effective facility -> AI raw
       const candidate =
         String(r.final_snf_name_display || "").trim() ||
+        String(r.current_snf_facility_name || "").trim() ||
         String(r.effective_facility_name || "").trim() ||
         String(r.ai_snf_name_raw || "").trim();
+
+      const idCandidate = String(r.current_snf_facility_id || r.effective_facility_id || "").trim();
+      if (idCandidate) {
+        const direct = (snfFacilities || []).find(f => String(f.id) === idCandidate);
+        const raw = (direct && direct.attending) ? String(direct.attending).trim() : "";
+        if (raw) {
+          const parts = raw
+            .split(/[\n,;|]+/g)
+            .map(s => s.trim())
+            .filter(Boolean);
+          return parts.join("\n");
+        }
+      }
 
       const match = resolveAiToSystemFacility(candidate);
       const raw = (match && match.attending) ? String(match.attending).trim() : "";
@@ -4138,8 +4159,15 @@
       // Same “what user is seeing” candidate logic:
       const candidate =
         String(r.final_snf_name_display || "").trim() ||
+        String(r.current_snf_facility_name || "").trim() ||
         String(r.effective_facility_name || "").trim() ||
         String(r.ai_snf_name_raw || "").trim();
+
+      const idCandidate = String(r.current_snf_facility_id || r.effective_facility_id || "").trim();
+      if (idCandidate) {
+        const direct = (snfFacilities || []).find(f => String(f.id) === idCandidate);
+        if (direct) return !!direct.medrina_snf;
+      }
 
       const match = resolveAiToSystemFacility(candidate);
       return !!(match && match.medrina_snf);
@@ -4150,6 +4178,7 @@
     // - If NO match: show raw AI text + " *" so you can spot it instantly
     function getFacilityAiDisplayName(r) {
       const aiRaw = (r.ai_snf_name_raw || "").trim();
+      if (r.current_snf_facility_name) return r.current_snf_facility_name;
       const match = resolveAiToSystemFacility(aiRaw);
 
       if (match && match.facility_name) return match.facility_name;
@@ -4169,6 +4198,7 @@
     function getFacilityFilterCandidate(r) {
       return String(
         r.final_snf_name_display ||
+        r.current_snf_facility_name ||
         r.effective_facility_name ||
         r.ai_snf_name_raw ||
         ""
@@ -4427,7 +4457,7 @@
           facLabel = stripMedrinaStarPrefix(r.final_snf_name_display);
         } else {
           const facLabelParts = [];
-          if (r.effective_facility_name) facLabelParts.push(r.effective_facility_name);
+          if (r.current_snf_facility_name) facLabelParts.push(r.current_snf_facility_name);
           if (r.effective_facility_city || r.effective_facility_state) {
             facLabelParts.push(
               `(${[r.effective_facility_city, r.effective_facility_state].filter(Boolean).join(", ")})`
