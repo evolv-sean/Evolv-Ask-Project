@@ -1576,7 +1576,7 @@
 
       <!-- Reports Modal -->
       <div id="reports-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="reports-modal-title">
-        <div class="modal-card" style="width:min(980px,100%);">
+        <div class="modal-card reports-modal-card" style="width:min(980px,100%);">
           <div class="modal-head">
             <div>
               <div id="reports-modal-title" class="modal-title">Reports</div>
@@ -3871,7 +3871,7 @@
       out.innerHTML = `
         <div class="report-head">
           <div class="report-title">SNF Admission Summary</div>
-          <div class="report-sub">Filtered by Hospital Discharge DC Date: <strong>${dcFrom}</strong> → <strong>${dcTo}</strong></div>
+          <div class="report-sub">Filtered by DC Date (or Updated Date when missing): <strong>${dcFrom}</strong> → <strong>${dcTo}</strong></div>
         </div>
 
         <div class="report-kpis">
@@ -3882,26 +3882,26 @@
         </div>
 
         <div class="report-grid">
-          <div class="report-card">
-            <div class="report-card-title">SNF Physician Assignment</div>
-            <div class="report-row"><span>Assigned</span><strong>${assignedPct}%</strong></div>
-            <div class="report-row"><span>Assigned Out</span><strong>${assignedOutPct}%</strong></div>
-            <div class="report-row"><span>Unknown</span><strong>${unknownPct}%</strong></div>
-          </div>
-
-          <div class="report-card">
-            <div class="report-card-title">Top 10 SNFs by Volume</div>
-            <div class="report-list">
-              ${top.length ? top.map((x, i) => {
+          <div class="report-card report-card-wide">
+            <div class="report-card-title">SNF Volume by Facility</div>
+            <div class="report-list report-list-scroll">
+              <div class="report-list-head">
+                <div>Facility</div>
+                <div>Volume</div>
+                <div>Facility PIN Unopened %</div>
+                <div>Provider PIN Unopened %</div>
+              </div>
+              ${top.length ? top.map((x) => {
                 const name = escapeHtml(x.facility || "(Unknown)");
                 const star = x.is_starred ? " <span class='report-star'>★</span>" : "";
                 const count = (x.count != null) ? x.count : 0;
-                return `<div class="report-list-item">
-                          <div class="report-list-left">
-                            <div class="report-rank">${i + 1}</div>
-                            <div class="report-fac">${name}${star}</div>
-                          </div>
+                const facUnopened = (x.facility_pin_unopened_pct != null) ? `${x.facility_pin_unopened_pct}%` : "0%";
+                const provUnopened = (x.provider_pin_unopened_pct != null) ? `${x.provider_pin_unopened_pct}%` : "0%";
+                return `<div class="report-list-row">
+                          <div class="report-fac">${name}${star}</div>
                           <div class="report-pill">${count}</div>
+                          <div class="report-metric">${facUnopened}</div>
+                          <div class="report-metric">${provUnopened}</div>
                         </div>`;
               }).join("") : `<div class="message">No facility data in this range.</div>`}
             </div>
@@ -5417,8 +5417,7 @@
     .report-kpi-value{font-size:18px;font-weight:950;color:#0D3B66;margin-top:4px;}
     .report-kpi-sub{font-size:12px;color:#6b7280;margin-top:2px;}
 
-    .report-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;}
-    @media(max-width:860px){.report-grid{grid-template-columns:1fr;}}
+    .report-grid{display:grid;grid-template-columns:1fr;gap:10px;margin-top:10px;}
 
     .report-card{
       border:1px solid #e5e7eb;
@@ -5427,6 +5426,7 @@
       padding:12px 12px;
       box-shadow:0 12px 30px rgba(15,23,42,0.07);
     }
+    .report-card-wide{width:100%;}
     .report-card-title{font-size:13px;font-weight:950;color:#111827;margin-bottom:10px;}
     .report-row{display:flex;align-items:center;justify-content:space-between;padding:8px 2px;border-top:1px solid #f3f4f6;}
     .report-row:first-of-type{border-top:0;}
@@ -5434,6 +5434,38 @@
     .report-row strong{font-size:13px;color:#111827;font-weight:950;}
 
     .report-list{display:flex;flex-direction:column;gap:8px;}
+    .report-list-scroll{max-height:min(420px,45vh);overflow:auto;padding-right:4px;}
+    .report-list-head{
+      display:grid;
+      grid-template-columns:1.6fr .5fr .7fr .7fr;
+      gap:10px;
+      font-size:11px;
+      font-weight:800;
+      color:#6b7280;
+      text-transform:uppercase;
+      padding:0 6px 6px 6px;
+    }
+    .report-list-row{
+      border:1px solid #e5e7eb;
+      background:#fafafa;
+      border-radius:12px;
+      padding:8px 10px;
+      display:grid;
+      grid-template-columns:1.6fr .5fr .7fr .7fr;
+      gap:10px;
+      align-items:center;
+    }
+    .report-metric{
+      font-size:12px;
+      font-weight:900;
+      color:#0D3B66;
+      border:1px solid rgba(13,59,102,.16);
+      background:rgba(13,59,102,.06);
+      padding:6px 10px;
+      border-radius:999px;
+      text-align:center;
+      width:fit-content;
+    }
     .report-list-item{
       border:1px solid #e5e7eb;
       background:#fafafa;
@@ -5463,6 +5495,14 @@
       color:#0D3B66;
       flex:0 0 auto;
     }
+    @media(max-width:760px){
+      .report-list-head{display:none;}
+      .report-list-row{grid-template-columns:1fr;gap:6px;}
+      .report-metric{justify-self:flex-start;}
+    }
+
+    .reports-modal-card{max-height:calc(100vh - 40px);display:flex;flex-direction:column;}
+    .reports-modal-card .modal-body{overflow:auto;}
   </style>
 
 
