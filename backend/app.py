@@ -15671,9 +15671,15 @@ async def admin_snf_send_emails(
 
 
 SNF_UNIVERSAL_PIN_KEY = "snf_universal_pin_hash"
+SNF_PROVIDER_PIN_KEY = "snf_provider_pin_hash"
 
 def get_snf_universal_pin_hash(cur) -> str:
     cur.execute("SELECT value FROM ai_settings WHERE key = ?", (SNF_UNIVERSAL_PIN_KEY,))
+    row = cur.fetchone()
+    return ((row["value"] if row else "") or "").strip()
+
+def get_snf_provider_pin_hash(cur) -> str:
+    cur.execute("SELECT value FROM ai_settings WHERE key = ?", (SNF_PROVIDER_PIN_KEY,))
     row = cur.fetchone()
     return ((row["value"] if row else "") or "").strip()
 
@@ -15746,6 +15752,19 @@ async def admin_snf_universal_pin_get(request: Request):
     finally:
         conn.close()
 
+@app.get("/admin/snf/provider-pin/get")
+async def admin_snf_provider_pin_get(request: Request):
+    require_admin(request)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT value FROM ai_settings WHERE key = ?", (SNF_PROVIDER_PIN_KEY,))
+        row = cur.fetchone()
+        pin_hash = (row["value"] if row else "") or ""
+        return {"ok": True, "pin_set": bool(pin_hash.strip())}
+    finally:
+        conn.close()
+
 @app.post("/admin/snf/universal-pin/set")
 async def admin_snf_universal_pin_set(request: Request, payload: Dict[str, Any] = Body(...)):
     require_admin(request)
@@ -15771,6 +15790,31 @@ async def admin_snf_universal_pin_set(request: Request, payload: Dict[str, Any] 
     finally:
         conn.close()
 
+@app.post("/admin/snf/provider-pin/set")
+async def admin_snf_provider_pin_set(request: Request, payload: Dict[str, Any] = Body(...)):
+    require_admin(request)
+    pin = (payload.get("pin") or "").strip()
+    if not pin:
+        raise HTTPException(status_code=400, detail="pin is required")
+
+    pin_hash = hash_pin(pin)
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO ai_settings (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value
+            """,
+            (SNF_PROVIDER_PIN_KEY, pin_hash),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
 @app.post("/admin/snf/universal-pin/clear")
 async def admin_snf_universal_pin_clear(request: Request):
     require_admin(request)
@@ -15784,6 +15828,25 @@ async def admin_snf_universal_pin_clear(request: Request):
             ON CONFLICT(key) DO UPDATE SET value=excluded.value
             """,
             (SNF_UNIVERSAL_PIN_KEY, ""),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+@app.post("/admin/snf/provider-pin/clear")
+async def admin_snf_provider_pin_clear(request: Request):
+    require_admin(request)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO ai_settings (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value
+            """,
+            (SNF_PROVIDER_PIN_KEY, ""),
         )
         conn.commit()
         return {"ok": True}
@@ -15821,6 +15884,7 @@ async def admin_snf_email_log_list(request: Request):
                     secure_link_id,
                     SUM(CASE WHEN LOWER(COALESCE(pin_type,'')) = 'facility' THEN 1 ELSE 0 END)  AS facility_open_count,
                     SUM(CASE WHEN LOWER(COALESCE(pin_type,'')) = 'universal' THEN 1 ELSE 0 END) AS universal_open_count,
+                    SUM(CASE WHEN LOWER(COALESCE(pin_type,'')) = 'provider' THEN 1 ELSE 0 END)  AS provider_open_count,
                     COUNT(*) AS open_count
                 FROM snf_secure_link_access_log
                 GROUP BY secure_link_id
@@ -15855,6 +15919,7 @@ async def admin_snf_email_log_list(request: Request):
                     "patient_count": patient_count,
                     "facility_open_count": int(r["facility_open_count"] or 0),
                     "universal_open_count": int(r["universal_open_count"] or 0),
+                    "provider_open_count": int(r["provider_open_count"] or 0),
                     "open_count": int(r["open_count"] or 0),  # keep for compatibility
                 }
             )
@@ -17298,9 +17363,10 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
 
         facility_hash = (fac["pin_hash"] or "").strip()
         universal_hash = get_snf_universal_pin_hash(cur)
+        provider_hash = get_snf_provider_pin_hash(cur)
         default_hash = hash_pin(SNF_DEFAULT_PIN) if SNF_DEFAULT_PIN else ""
 
-        candidate_hashes = [h for h in (facility_hash, universal_hash, default_hash) if h]
+        candidate_hashes = [h for h in (facility_hash, universal_hash, provider_hash, default_hash) if h]
         if not candidate_hashes:
             return HTMLResponse(
                 _render_form("No facility PIN is configured. Please contact Evolv."),
@@ -17313,6 +17379,8 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
             pin_type = "facility"
         elif universal_hash and verify_pin(pin, universal_hash):
             pin_type = "universal"
+        elif provider_hash and verify_pin(pin, provider_hash):
+            pin_type = "provider"
         elif default_hash and verify_pin(pin, default_hash):
             pin_type = "default"
 
