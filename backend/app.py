@@ -14679,7 +14679,7 @@ async def admin_snf_list(
     request: Request,
     status: str = Query("pending"),          # 'pending', 'confirmed', 'corrected', 'rejected', 'all'
     for_date: Optional[str] = Query(None),   # 'YYYY-MM-DD'
-    days_ahead: int = Query(0, ge=0, le=30),
+    days_ahead: int = Query(0, ge=0, le=90),
     notified_only: int = Query(0),
     email_at: Optional[str] = Query(None),  # YYYY-MM-DD; filters by DATE(s.emailed_at)
     email_days_ahead: int = Query(0, ge=0, le=30),
@@ -16116,9 +16116,11 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
         volume_counts: Dict[int, int] = {}
         for r in snf_rows:
             fac_id = r["effective_facility_id"]
-            if fac_id is None:
+            try:
+                fac_id_int = int(fac_id)
+            except (TypeError, ValueError):
                 continue
-            volume_counts[int(fac_id)] = volume_counts.get(int(fac_id), 0) + 1
+            volume_counts[fac_id_int] = volume_counts.get(fac_id_int, 0) + 1
 
         # -----------------------------
         # Notified by Hospital
