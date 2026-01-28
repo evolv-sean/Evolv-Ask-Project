@@ -3665,6 +3665,7 @@ def init_db():
             ("new_referral", "New Referral", "New Referral for {{patient}}", "A new referral was created.", "New Referral: {{patient}}", "New Referral: {{patient}}"),
             ("new_task", "New Task", "New Task: {{task}}", "A task was assigned to you.", "New Task: {{task}}", "New Task: {{task}}"),
             ("new_document", "New Document", "New Document for {{patient}}", "A document was uploaded.", "New Document: {{patient}}", "New Document: {{patient}}"),
+            ("dc_note", "DC Note", "DC Note for {{patient}}", "{{note_text}}", "DC Note: {{patient}}", "{{note_text}}"),
         ],
     )
 
@@ -26115,11 +26116,7 @@ def _sensys_freq_top_ids(conn: sqlite3.Connection, agency_id: int, item_type: st
     ).fetchall()
     return [int(r["item_id"]) for r in rows]
 
-@app.get("/api/sensys/dc-note/render")
-def sensys_dc_note_render(dc_submission_id: int, request: Request):
-    u = _sensys_require_user(request)
-    conn = get_db()
-
+def _sensys_build_dc_note(conn: sqlite3.Connection, dc_submission_id: int) -> dict | None:
     dc = conn.execute(
         """
         SELECT dcs.*,
@@ -26135,9 +26132,7 @@ def sensys_dc_note_render(dc_submission_id: int, request: Request):
         (int(dc_submission_id),),
     ).fetchone()
     if not dc:
-        raise HTTPException(status_code=404, detail="DC submission not found")
-
-    _sensys_assert_admission_access(conn, int(u["user_id"]), int(dc["admission_id"]))
+        return None
 
     # patient name
     p = conn.execute(
@@ -26197,7 +26192,7 @@ def sensys_dc_note_render(dc_submission_id: int, request: Request):
     ).fetchone()
 
     if not tpl:
-        raise HTTPException(status_code=400, detail="No active DC note template found (create one in Admin â†’ Notes).")
+        return None
 
     # build context for the template
     discharge_date = (dc["dc_date"] or "").strip() or (dc["admission_dc_date"] or "").strip()
@@ -26229,15 +26224,34 @@ def sensys_dc_note_render(dc_submission_id: int, request: Request):
     rendered = _sensys_render_dc_note_template(tpl["template_body"], ctx)
 
     return {
-        "ok": True,
-        "template_id": int(tpl["id"]),
-        "template_name": tpl["template_name"],
+        "dc": dc,
+        "template": tpl,
         "note_text": rendered,
-        "ctx": ctx,  # helpful for debugging; remove later if you want
+        "ctx": ctx,
+        "patient_name": patient_name,
+    }
+
+@app.get("/api/sensys/dc-note/render")
+def sensys_dc_note_render(dc_submission_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    out = _sensys_build_dc_note(conn, int(dc_submission_id))
+    if not out:
+        raise HTTPException(status_code=404, detail="DC submission not found or no active DC note template.")
+
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(out["dc"]["admission_id"]))
+
+    return {
+        "ok": True,
+        "template_id": int(out["template"]["id"]),
+        "template_name": out["template"]["template_name"],
+        "note_text": out["note_text"],
+        "ctx": out["ctx"],  # helpful for debugging; remove later if you want
     }
 
 # -----------------------------------------------------------------------------
-# Discharge Submissions â€” DC Plan (ANCHOR: DC_SUBMISSIONS_FEATURE)
+# Discharge Submissions -- DC Plan (ANCHOR: DC_SUBMISSIONS_FEATURE)
 # -----------------------------------------------------------------------------
 @app.post("/api/sensys/admission-dc-submissions/upsert")
 def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request: Request):
@@ -26439,6 +26453,24 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
             payload_json="",
         )
 
+        dc_note = _sensys_build_dc_note(conn, int(payload.id))
+        if dc_note:
+            note_title = "DC Note"
+            if dc_note["patient_name"]:
+                note_title = f"DC Note — {dc_note['patient_name']}"
+            _sensys_fire_notification(
+                conn,
+                notif_key="dc_note",
+                user_ids=[int(u["user_id"])],
+                admission_id=int(payload.admission_id),
+                related_table="sensys_admission_dc_submissions",
+                related_id=int(payload.id),
+                title=note_title,
+                body=dc_note["note_text"],
+                ctx={"patient": dc_note["patient_name"], "note_text": dc_note["note_text"]},
+                payload_json="",
+            )
+
         if admission_agency_id and payload.hh_agency_id and not using_carecompare:
             _sensys_freq_inc(conn, admission_agency_id, "hh_agency", int(payload.hh_agency_id))
 
@@ -26589,6 +26621,24 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
         ctx={"patient": patient_name},
         payload_json="",
     )
+
+    dc_note = _sensys_build_dc_note(conn, int(dc_submission_id))
+    if dc_note:
+        note_title = "DC Note"
+        if dc_note["patient_name"]:
+            note_title = f"DC Note — {dc_note['patient_name']}"
+        _sensys_fire_notification(
+            conn,
+            notif_key="dc_note",
+            user_ids=[int(u["user_id"])],
+            admission_id=int(payload.admission_id),
+            related_table="sensys_admission_dc_submissions",
+            related_id=int(dc_submission_id),
+            title=note_title,
+            body=dc_note["note_text"],
+            ctx={"patient": dc_note["patient_name"], "note_text": dc_note["note_text"]},
+            payload_json="",
+        )
 
     if admission_agency_id and payload.hh_agency_id and not using_carecompare:
         _sensys_freq_inc(conn, admission_agency_id, "hh_agency", int(payload.hh_agency_id))
@@ -28034,3 +28084,7 @@ if __name__ == "__main__":
 
     port = int(os.getenv("PORT", "8000"))
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
+
+
+
+
