@@ -643,7 +643,7 @@
       color:#0f172a;
       padding-left:10px;
     }
-    .order-service-label::after{ content: ":"; }
+    .order-service-label::after{ content: ""; }
     .order-comments{
       border:1px solid rgba(13,59,102,.16);
       border-radius:12px;
@@ -902,7 +902,6 @@
               <h3 class="order-section-title" style="margin-bottom:0;">Order Details</h3>
               <div class="order-line" style="display:flex;align-items:baseline;gap:8px;">
                 <div class="order-service-label" id="editServiceType">Home Health</div>
-                <div class="order-service-label">—</div>
                 <div class="order-service-label" id="editServices"></div>
               </div>
               <div></div>
@@ -1327,7 +1326,7 @@
   function openEditModal(row){
     if(!row) return;
     ACTIVE_EDIT_ROW = row;
-    const orderDate = row.signed_at ? row.signed_at : new Date().toLocaleDateString();
+    const orderDate = row.signed_at ? String(row.signed_at).split(" ")[0] : new Date().toLocaleDateString();
     const isSigned = rowStatus(row) === "signed";
     if(editAgencyName) editAgencyName.textContent = row.admission_agency || "--";
     if(editAgencyPhone) editAgencyPhone.textContent = row.agency_phone || "--";
