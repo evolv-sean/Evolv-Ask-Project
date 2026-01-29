@@ -16457,10 +16457,10 @@ def _build_snf_admission_summary_email_html(data: dict) -> str:
               <div style="font-size:13px;font-weight:900;margin-bottom:8px;">SNF Volume by Facility</div>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:12px;">
                 <tr>
-                  <td style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Facility</td>
-                  <td style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Volume</td>
-                  <td style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Facility PIN Unopened %</td>
-                  <td style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Provider PIN Unopened %</td>
+                  <td width="45%" style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Facility</td>
+                  <td width="15%" style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Volume</td>
+                  <td width="20%" style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Facility PIN Unopened %</td>
+                  <td width="20%" style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Provider PIN Unopened %</td>
                 </tr>
                 {rows_html or '<tr><td colspan="4" style="color:#6b7280;font-size:12px;padding:6px 6px;">No facility data in this range.</td></tr>'}
               </table>
