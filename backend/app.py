@@ -16086,8 +16086,8 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
       - snf_admission_summary
 
     Filters:
-      - dc_from (YYYY-MM-DD) : Hospital discharge dc_date start
-      - dc_to   (YYYY-MM-DD) : Hospital discharge dc_date end
+      - dc_from (YYYY-MM-DD) : SNF admission dc_date start
+      - dc_to   (YYYY-MM-DD) : SNF admission dc_date end
     """
     require_admin(request)
 
@@ -16105,15 +16105,10 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
     try:
         cur = conn.cursor()
 
-        # Cohort = hospital discharges in date range, joined to SNF admissions by visit_id
+        # Cohort = SNF admissions in date range (snf_admissions.dc_date)
         cur.execute(
             """
             SELECT
-                h.visit_id,
-                h.dc_date,
-                h.updated_at,
-                h.disposition AS dc_disposition,
-
                 s.id AS snf_id,
                 s.ai_is_snf_candidate,
                 s.notified_by_hospital,
@@ -16127,22 +16122,18 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
                 COALESCE(s.current_snf_facility_id, s.final_snf_facility_id, s.ai_snf_facility_id) AS effective_facility_id,
                 COALESCE(s.current_snf_facility_name, f.facility_name) AS effective_facility_name,
                 f.attending AS facility_attending
-            FROM hospital_discharges h
-            LEFT JOIN snf_admissions s
-              ON s.visit_id = h.visit_id
+            FROM snf_admissions s
             LEFT JOIN snf_admission_facilities f
               ON f.id = COALESCE(s.current_snf_facility_id, s.final_snf_facility_id, s.ai_snf_facility_id)
-            WHERE date(COALESCE(NULLIF(h.dc_date, ''), h.updated_at)) >= date(?)
-              AND date(COALESCE(NULLIF(h.dc_date, ''), h.updated_at)) <= date(?)
+            WHERE s.dc_date IS NOT NULL
+              AND date(s.dc_date) >= date(?)
+              AND date(s.dc_date) <= date(?)
             """,
             (dc_from, dc_to),
         )
         rows = cur.fetchall()
 
-        # Metrics should be computed only where we actually have an SNF admission row
-        snf_rows = [r for r in rows if r["snf_id"] is not None]
-
-        total_joined = len(rows)
+        snf_rows = rows
         total_snf = len(snf_rows)
 
         # -----------------------------
@@ -16177,24 +16168,6 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
             k: (assign_counts[k] / total_snf * 100.0) if total_snf else 0.0
             for k in assign_counts
         }
-
-        # -----------------------------
-        # AI candidate accuracy vs discharge disposition (SNF vs not SNF)
-        # -----------------------------
-        # Only score where discharge disposition exists and we have an ai_is_snf_candidate value
-        scored = 0
-        correct = 0
-        for r in snf_rows:
-            dc_dispo = (r["dc_disposition"] or "").strip()
-            if not dc_dispo:
-                continue
-            scored += 1
-            actual_is_snf = _is_snf_disposition(dc_dispo)
-            predicted_is_snf = bool(int(r["ai_is_snf_candidate"] or 0) == 1)
-            if actual_is_snf == predicted_is_snf:
-                correct += 1
-
-        ai_accuracy_pct = (correct / scored * 100.0) if scored else 0.0
 
         # -----------------------------
         # Percent of emails opened with FACILITY PIN (de-duped to 1 open per email)
@@ -16302,9 +16275,7 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
             "filters": {"dc_from": dc_from, "dc_to": dc_to},
 
             "totals": {
-                "joined_rows": total_joined,
                 "snf_rows": total_snf,
-                "scored_ai_rows": scored,
                 "emails_in_cohort": total_emails,
             },
 
@@ -16320,9 +16291,6 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
                 "assignment_counts": assign_counts,
                 "assignment_pct": {k: round(assign_pct[k], 1) for k in assign_pct},
 
-                "ai_accuracy_correct": correct,
-                "ai_accuracy_total": scored,
-                "ai_accuracy_pct": round(ai_accuracy_pct, 1),
             },
         }
     finally:
