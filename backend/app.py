@@ -16108,6 +16108,207 @@ async def admin_snf_email_log_opens(request: Request, secure_link_id: int):
     finally:
         conn.close()
 
+def _snf_admission_summary_report(conn: sqlite3.Connection, dc_from: str, dc_to: str) -> dict:
+    cur = conn.cursor()
+
+    # Cohort = SNF admissions in date range (dc_date, fallback to last_seen_active_date)
+    cur.execute(
+        """
+        SELECT
+            s.id AS snf_id,
+            s.ai_is_snf_candidate,
+            s.notified_by_hospital,
+            s.assignment_confirmation,
+
+            s.final_snf_name_display,
+            s.ai_snf_name_raw,
+            s.current_snf_facility_id,
+            s.current_snf_facility_name,
+            s.last_seen_active_date,
+
+            COALESCE(s.current_snf_facility_id, s.final_snf_facility_id, s.ai_snf_facility_id) AS effective_facility_id,
+            COALESCE(s.current_snf_facility_name, f.facility_name) AS effective_facility_name,
+            f.attending AS facility_attending
+        FROM snf_admissions s
+        LEFT JOIN snf_admission_facilities f
+          ON f.id = COALESCE(s.current_snf_facility_id, s.final_snf_facility_id, s.ai_snf_facility_id)
+        WHERE date(COALESCE(NULLIF(s.dc_date, ''), s.last_seen_active_date)) >= date(?)
+          AND date(COALESCE(NULLIF(s.dc_date, ''), s.last_seen_active_date)) <= date(?)
+        """,
+        (dc_from, dc_to),
+    )
+    rows = cur.fetchall()
+
+    snf_rows = rows
+    total_snf = len(snf_rows)
+
+    # -----------------------------
+    # Facility volume (grouped by current_snf_facility_name)
+    # -----------------------------
+    volume_map: Dict[str, Dict[str, Any]] = {}
+    for r in snf_rows:
+        fac_label = (
+            (r["current_snf_facility_name"] or "").strip()
+            or (r["effective_facility_name"] or "").strip()
+            or (r["final_snf_name_display"] or "").strip()
+            or (r["ai_snf_name_raw"] or "").strip()
+        )
+        if not fac_label:
+            continue
+        if fac_label not in volume_map:
+            volume_map[fac_label] = {
+                "facility": fac_label,
+                "count": 0,
+                "is_starred": False,
+                "facility_id": None,
+            }
+
+        volume_map[fac_label]["count"] += 1
+
+        # Preserve any known numeric facility_id for PIN metrics
+        fac_id = r["effective_facility_id"]
+        if volume_map[fac_label]["facility_id"] is None:
+            try:
+                volume_map[fac_label]["facility_id"] = int(fac_id)
+            except (TypeError, ValueError):
+                pass
+
+        if (r["facility_attending"] or "").strip():
+            volume_map[fac_label]["is_starred"] = True
+
+    # -----------------------------
+    # Notified by Hospital
+    # -----------------------------
+    notified_count = sum(1 for r in snf_rows if int(r["notified_by_hospital"] or 0) == 1)
+    notified_pct = (notified_count / total_snf * 100.0) if total_snf else 0.0
+
+    # -----------------------------
+    # Assignment confirmation distribution
+    # -----------------------------
+    assign_counts = {"Assigned": 0, "Assigned Out": 0, "Assigned Out (LTC)": 0, "Unknown": 0}
+    for r in snf_rows:
+        v = (r["assignment_confirmation"] or "Unknown").strip()
+        if v not in assign_counts:
+            v = "Unknown"
+        assign_counts[v] += 1
+
+    assign_pct = {
+        k: (assign_counts[k] / total_snf * 100.0) if total_snf else 0.0
+        for k in assign_counts
+    }
+
+    # -----------------------------
+    # Percent of emails opened with FACILITY/PROVIDER PIN (de-duped to 1 open per email)
+    # Cohort emails = secure links whose admission_ids include a cohort snf_id
+    # -----------------------------
+    cohort_admission_ids = set(int(r["snf_id"]) for r in snf_rows if r["snf_id"] is not None)
+
+    cur.execute(
+        """
+        SELECT id, snf_facility_id, admission_ids
+        FROM snf_secure_links
+        WHERE sent_at IS NOT NULL AND sent_at <> ''
+        ORDER BY sent_at DESC
+        """
+    )
+    link_rows = cur.fetchall()
+
+    cohort_link_ids: List[int] = []
+    facility_link_ids: Dict[int, List[int]] = {}
+    for lr in link_rows:
+        try:
+            ids = json.loads(lr["admission_ids"] or "[]")
+            if not isinstance(ids, list):
+                continue
+            if not any(int(x) in cohort_admission_ids for x in ids if str(x).isdigit()):
+                continue
+            link_id = int(lr["id"])
+            cohort_link_ids.append(link_id)
+            fac_id = lr["snf_facility_id"]
+            if fac_id is not None:
+                fac_id = int(fac_id)
+                facility_link_ids.setdefault(fac_id, []).append(link_id)
+        except Exception:
+            continue
+
+    total_emails = len(cohort_link_ids)
+
+    opened_facility_links: set[int] = set()
+    opened_provider_links: set[int] = set()
+    if cohort_link_ids:
+        placeholders = ",".join("?" for _ in cohort_link_ids)
+        cur.execute(
+            f"""
+            SELECT DISTINCT secure_link_id, LOWER(COALESCE(pin_type,'')) AS pin_type
+            FROM snf_secure_link_access_log
+            WHERE secure_link_id IN ({placeholders})
+            """,
+            cohort_link_ids,
+        )
+        for row in cur.fetchall():
+            link_id = int(row[0])
+            pin_type = (row[1] or "").strip()
+            if pin_type == "facility":
+                opened_facility_links.add(link_id)
+            elif pin_type == "provider":
+                opened_provider_links.add(link_id)
+
+    opened_count = len(opened_facility_links)
+    opened_pct = (opened_count / total_emails * 100.0) if total_emails else 0.0
+    unopened_pct = 100.0 - opened_pct if total_emails else 0.0
+
+    provider_opened_count = len(opened_provider_links)
+    provider_opened_pct = (provider_opened_count / total_emails * 100.0) if total_emails else 0.0
+    provider_unopened_pct = 100.0 - provider_opened_pct if total_emails else 0.0
+
+    # -----------------------------
+    # Facility list (from grouped SNF rows)
+    # -----------------------------
+    top_facilities: List[Dict[str, Any]] = []
+    for v in volume_map.values():
+        fac_id = v.get("facility_id")
+        link_ids = facility_link_ids.get(fac_id, []) if fac_id is not None else []
+        fac_total = len(link_ids)
+        fac_opened = len([lid for lid in link_ids if lid in opened_facility_links])
+        prov_opened = len([lid for lid in link_ids if lid in opened_provider_links])
+
+        fac_unopened_pct = (100.0 - (fac_opened / fac_total * 100.0)) if fac_total else 0.0
+        prov_unopened_pct = (100.0 - (prov_opened / fac_total * 100.0)) if fac_total else 0.0
+
+        top_facilities.append(
+            {
+                "facility_id": fac_id,
+                "facility": v["facility"],
+                "count": v["count"],
+                "is_starred": bool(v.get("is_starred")),
+                "facility_pin_unopened_pct": round(fac_unopened_pct, 1),
+                "provider_pin_unopened_pct": round(prov_unopened_pct, 1),
+            }
+        )
+
+    top_facilities.sort(key=lambda x: (-x["count"], x["facility"].lower()))
+
+    return {
+        "filters": {"dc_from": dc_from, "dc_to": dc_to},
+        "totals": {
+            "snf_rows": total_snf,
+            "emails_in_cohort": total_emails,
+        },
+        "top_facilities": top_facilities,
+        "metrics": {
+            "notified_count": notified_count,
+            "notified_pct": round(notified_pct, 1),
+            "facility_pin_opened_pct": round(opened_pct, 1),
+            "facility_pin_unopened_pct": round(unopened_pct, 1),
+            "provider_pin_opened_pct": round(provider_opened_pct, 1),
+            "provider_pin_unopened_pct": round(provider_unopened_pct, 1),
+            "provider_pin_opened_count": provider_opened_count,
+            "assignment_counts": assign_counts,
+            "assignment_pct": {k: round(assign_pct[k], 1) for k in assign_pct},
+        },
+    }
+
+
 @app.post("/admin/snf/reports/run")
 async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body(...)):
     """
@@ -16134,207 +16335,243 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
 
     conn = get_db()
     try:
-        cur = conn.cursor()
+        data = _snf_admission_summary_report(conn, dc_from, dc_to)
+        data["ok"] = True
+        data["report_key"] = report_key
+        return data
+    finally:
+        conn.close()
 
-        # Cohort = SNF admissions in date range (dc_date, fallback to last_seen_active_date)
+
+def _build_snf_admission_summary_email_html(data: dict) -> str:
+    esc = html.escape
+    m = data.get("metrics") or {}
+    t = data.get("totals") or {}
+    top = data.get("top_facilities") or []
+    dc_from = esc((data.get("filters") or {}).get("dc_from") or "")
+    dc_to = esc((data.get("filters") or {}).get("dc_to") or "")
+
+    opened_pct = m.get("facility_pin_opened_pct") or 0
+    unopened_pct = m.get("facility_pin_unopened_pct") or 0
+    provider_unopened_pct = m.get("provider_pin_unopened_pct") or 0
+    provider_unopened_count = (t.get("emails_in_cohort") or 0) - (m.get("provider_pin_opened_count") or 0)
+
+    def _kpi(label: str, value: str, sub: str) -> str:
+        return f"""
+          <div class="kpi">
+            <div class="kpi-label">{esc(label)}</div>
+            <div class="kpi-value">{esc(value)}</div>
+            <div class="kpi-sub">{esc(sub)}</div>
+          </div>
+        """
+
+    rows_html = ""
+    for x in top:
+        name = esc(x.get("facility") or "(Unknown)")
+        star = " <span class='star'>★</span>" if x.get("is_starred") else ""
+        count = x.get("count") if x.get("count") is not None else 0
+        fac_unopened = f"{x.get('facility_pin_unopened_pct', 0)}%"
+        prov_unopened = f"{x.get('provider_pin_unopened_pct', 0)}%"
+        rows_html += f"""
+          <div class="row">
+            <div class="cell name">{name}{star}</div>
+            <div class="cell pill">{count}</div>
+            <div class="cell metric">{fac_unopened}</div>
+            <div class="cell metric">{prov_unopened}</div>
+          </div>
+        """
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SNF Admission Summary</title>
+  <style>
+    body{{margin:0;background:#f5f7fa;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#111827;}}
+    .wrap{{padding:22px;}}
+    .card{{max-width:920px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 12px 28px rgba(15,23,42,.08);overflow:hidden;}}
+    .head{{padding:16px 20px;border-bottom:1px solid #eef2f7;}}
+    .title{{font-size:18px;font-weight:900;}}
+    .sub{{font-size:12px;color:#6b7280;margin-top:4px;}}
+    .kpis{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:14px 20px;}}
+    .kpi{{border:1px solid #e5e7eb;border-radius:12px;padding:10px 12px;}}
+    .kpi-label{{font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;}}
+    .kpi-value{{font-size:18px;font-weight:950;color:#0D3B66;margin-top:4px;}}
+    .kpi-sub{{font-size:12px;color:#6b7280;margin-top:2px;}}
+    .section{{padding:10px 20px 18px 20px;}}
+    .section-title{{font-size:13px;font-weight:900;margin-bottom:8px;}}
+    .table-head{{display:grid;grid-template-columns:1.6fr .5fr .7fr .7fr;gap:10px;font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;}}
+    .row{{display:grid;grid-template-columns:1.6fr .5fr .7fr .7fr;gap:10px;align-items:center;background:#fafafa;border:1px solid #e5e7eb;border-radius:12px;padding:8px 10px;margin-bottom:8px;}}
+    .name{{font-size:13px;font-weight:900;}}
+    .pill{{font-size:12px;font-weight:900;border:1px solid rgba(168,230,207,0.65);background:rgba(168,230,207,0.12);color:#0D3B66;border-radius:999px;padding:6px 10px;width:fit-content;}}
+    .metric{{font-size:12px;font-weight:900;color:#0D3B66;border:1px solid rgba(13,59,102,.16);background:rgba(13,59,102,.06);border-radius:999px;padding:6px 10px;width:fit-content;}}
+    .star{{color:#A8E6CF;font-weight:900;}}
+    .foot{{padding:8px 20px 16px 20px;font-size:12px;color:#6b7280;}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="head">
+        <div class="title">SNF Admission Summary</div>
+        <div class="sub">Filtered by SNF DC Date (fallback to Last Seen Active Date): <strong>{dc_from}</strong> → <strong>{dc_to}</strong></div>
+      </div>
+      <div class="kpis">
+        {_kpi("Emails opened (Facility PIN)", f"{opened_pct}%", f"{t.get('emails_in_cohort', 0)} emails in cohort")}
+        {_kpi("Emails unopened (Facility PIN)", f"{unopened_pct}%", "1 open max per email")}
+        {_kpi("Emails unopened (Provider PIN)", f"{provider_unopened_pct}%", f"{provider_unopened_count} / {t.get('emails_in_cohort', 0)}")}
+      </div>
+      <div class="section">
+        <div class="section-title">SNF Volume by Facility</div>
+        <div class="table-head">
+          <div>Facility</div>
+          <div>Volume</div>
+          <div>Facility PIN Unopened %</div>
+          <div>Provider PIN Unopened %</div>
+        </div>
+        {rows_html or '<div style="color:#6b7280;font-size:12px;">No facility data in this range.</div>'}
+      </div>
+      <div class="foot">SNF rows in cohort: <strong>{t.get('snf_rows', 0)}</strong></div>
+    </div>
+  </div>
+</body>
+</html>"""
+
+
+@app.post("/admin/snf/reports/email")
+async def admin_snf_reports_email(request: Request, payload: Dict[str, Any] = Body(...)):
+    require_admin(request)
+
+    report_key = (payload.get("report_key") or "").strip()
+    dc_from = (payload.get("dc_from") or "").strip()
+    dc_to = (payload.get("dc_to") or "").strip()
+    recipients = normalize_email_list(payload.get("recipients") or "")
+
+    if report_key != "snf_admission_summary":
+        raise HTTPException(status_code=400, detail="Unknown report_key")
+    if not dc_from or not dc_to:
+        raise HTTPException(status_code=400, detail="dc_from and dc_to are required (YYYY-MM-DD)")
+    if not recipients:
+        raise HTTPException(status_code=400, detail="recipients are required")
+
+    if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD):
+        return {"ok": False, "message": "SMTP not configured; skipping send."}
+
+    conn = get_db()
+    try:
+        data = _snf_admission_summary_report(conn, dc_from, dc_to)
+    finally:
+        conn.close()
+
+    html_body = _build_snf_admission_summary_email_html(data)
+    subject = f"SNF Admission Summary ({dc_from} to {dc_to})"
+
+    msg = EmailMessage()
+    msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
+    msg["To"] = recipients
+    msg["Subject"] = subject
+    msg.set_content("SNF Admission Summary report attached below.", charset="utf-8")
+    msg.add_alternative(html_body, subtype="html", charset="utf-8")
+
+    context = ssl.create_default_context()
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        server.starttls(context=context)
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.send_message(msg)
+
+    return {"ok": True}
+
+
+@app.get("/admin/snf/reports/export.csv")
+async def admin_snf_reports_export_csv(request: Request, dc_from: str = Query(""), dc_to: str = Query("")):
+    require_admin(request)
+    if not dc_from or not dc_to:
+        raise HTTPException(status_code=400, detail="dc_from and dc_to are required (YYYY-MM-DD)")
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
         cur.execute(
             """
             SELECT
                 s.id AS snf_id,
-                s.ai_is_snf_candidate,
+                s.visit_id,
+                s.patient_name,
+                s.patient_mrn,
+                s.hospital_name,
+                s.dc_date,
+                s.last_seen_active_date,
+                s.status,
                 s.notified_by_hospital,
-                s.assignment_confirmation,
-
-                s.final_snf_name_display,
-                s.ai_snf_name_raw,
+                s.emailed_at,
+                s.email_run_id,
                 s.current_snf_facility_id,
                 s.current_snf_facility_name,
-                s.last_seen_active_date,
-
-                COALESCE(s.current_snf_facility_id, s.final_snf_facility_id, s.ai_snf_facility_id) AS effective_facility_id,
-                COALESCE(s.current_snf_facility_name, f.facility_name) AS effective_facility_name,
-                f.attending AS facility_attending
+                s.final_snf_facility_id,
+                s.final_snf_name_display,
+                s.ai_snf_facility_id,
+                s.ai_snf_name_raw
             FROM snf_admissions s
-            LEFT JOIN snf_admission_facilities f
-              ON f.id = COALESCE(s.current_snf_facility_id, s.final_snf_facility_id, s.ai_snf_facility_id)
             WHERE date(COALESCE(NULLIF(s.dc_date, ''), s.last_seen_active_date)) >= date(?)
               AND date(COALESCE(NULLIF(s.dc_date, ''), s.last_seen_active_date)) <= date(?)
+            ORDER BY s.patient_name COLLATE NOCASE, s.id ASC
             """,
             (dc_from, dc_to),
         )
         rows = cur.fetchall()
-
-        snf_rows = rows
-        total_snf = len(snf_rows)
-
-        # -----------------------------
-        # Facility volume (grouped by current_snf_facility_name)
-        # -----------------------------
-        volume_map: Dict[str, Dict[str, Any]] = {}
-        for r in snf_rows:
-            fac_label = (
-                (r["current_snf_facility_name"] or "").strip()
-                or (r["effective_facility_name"] or "").strip()
-                or (r["final_snf_name_display"] or "").strip()
-                or (r["ai_snf_name_raw"] or "").strip()
-            )
-            if not fac_label:
-                continue
-            if fac_label not in volume_map:
-                volume_map[fac_label] = {
-                    "facility": fac_label,
-                    "count": 0,
-                    "is_starred": False,
-                    "facility_id": None,
-                }
-
-            volume_map[fac_label]["count"] += 1
-
-            # Preserve any known numeric facility_id for PIN metrics
-            fac_id = r["effective_facility_id"]
-            if volume_map[fac_label]["facility_id"] is None:
-                try:
-                    volume_map[fac_label]["facility_id"] = int(fac_id)
-                except (TypeError, ValueError):
-                    pass
-
-            if (r["facility_attending"] or "").strip():
-                volume_map[fac_label]["is_starred"] = True
-
-        # -----------------------------
-        # Notified by Hospital
-        # -----------------------------
-        notified_count = sum(1 for r in snf_rows if int(r["notified_by_hospital"] or 0) == 1)
-        notified_pct = (notified_count / total_snf * 100.0) if total_snf else 0.0
-
-        # -----------------------------
-        # Assignment confirmation distribution
-        # -----------------------------
-        assign_counts = {"Assigned": 0, "Assigned Out": 0, "Assigned Out (LTC)": 0, "Unknown": 0}
-        for r in snf_rows:
-            v = (r["assignment_confirmation"] or "Unknown").strip()
-            if v not in assign_counts:
-                v = "Unknown"
-            assign_counts[v] += 1
-
-        assign_pct = {
-            k: (assign_counts[k] / total_snf * 100.0) if total_snf else 0.0
-            for k in assign_counts
-        }
-
-        # -----------------------------
-        # Percent of emails opened with FACILITY PIN (de-duped to 1 open per email)
-        # Cohort emails = secure links whose admission_ids include a cohort snf_id
-        # -----------------------------
-        cohort_admission_ids = set(int(r["snf_id"]) for r in snf_rows if r["snf_id"] is not None)
-
-        cur.execute(
-            """
-            SELECT id, snf_facility_id, admission_ids
-            FROM snf_secure_links
-            WHERE sent_at IS NOT NULL AND sent_at <> ''
-            ORDER BY sent_at DESC
-            """
-        )
-        link_rows = cur.fetchall()
-
-        cohort_link_ids: List[int] = []
-        facility_link_ids: Dict[int, List[int]] = {}
-        for lr in link_rows:
-            try:
-                ids = json.loads(lr["admission_ids"] or "[]")
-                if not isinstance(ids, list):
-                    continue
-                if not any(int(x) in cohort_admission_ids for x in ids if str(x).isdigit()):
-                    continue
-                link_id = int(lr["id"])
-                cohort_link_ids.append(link_id)
-                fac_id = lr["snf_facility_id"]
-                if fac_id is not None:
-                    fac_id = int(fac_id)
-                    facility_link_ids.setdefault(fac_id, []).append(link_id)
-            except Exception:
-                continue
-
-        total_emails = len(cohort_link_ids)
-
-        opened_facility_links: set[int] = set()
-        opened_provider_links: set[int] = set()
-        if cohort_link_ids:
-            placeholders = ",".join("?" for _ in cohort_link_ids)
-            cur.execute(
-                f"""
-                SELECT DISTINCT secure_link_id, LOWER(COALESCE(pin_type,'')) AS pin_type
-                FROM snf_secure_link_access_log
-                WHERE secure_link_id IN ({placeholders})
-                """,
-                cohort_link_ids,
-            )
-            for row in cur.fetchall():
-                link_id = int(row[0])
-                pin_type = (row[1] or "").strip()
-                if pin_type == "facility":
-                    opened_facility_links.add(link_id)
-                elif pin_type == "provider":
-                    opened_provider_links.add(link_id)
-
-        opened_count = len(opened_facility_links)
-        opened_pct = (opened_count / total_emails * 100.0) if total_emails else 0.0
-        unopened_pct = 100.0 - opened_pct if total_emails else 0.0
-
-        # -----------------------------
-        # Facility list (from grouped SNF rows)
-        # -----------------------------
-        top_facilities: List[Dict[str, Any]] = []
-        for v in volume_map.values():
-            fac_id = v.get("facility_id")
-            link_ids = facility_link_ids.get(fac_id, []) if fac_id is not None else []
-            fac_total = len(link_ids)
-            fac_opened = len([lid for lid in link_ids if lid in opened_facility_links])
-            prov_opened = len([lid for lid in link_ids if lid in opened_provider_links])
-
-            fac_unopened_pct = (100.0 - (fac_opened / fac_total * 100.0)) if fac_total else 0.0
-            prov_unopened_pct = (100.0 - (prov_opened / fac_total * 100.0)) if fac_total else 0.0
-
-            top_facilities.append(
-                {
-                    "facility_id": fac_id,
-                    "facility": v["facility"],
-                    "count": v["count"],
-                    "is_starred": bool(v.get("is_starred")),
-                    "facility_pin_unopened_pct": round(fac_unopened_pct, 1),
-                    "provider_pin_unopened_pct": round(prov_unopened_pct, 1),
-                }
-            )
-
-        top_facilities.sort(key=lambda x: (-x["count"], x["facility"].lower()))
-
-        return {
-            "ok": True,
-            "report_key": report_key,
-            "filters": {"dc_from": dc_from, "dc_to": dc_to},
-
-            "totals": {
-                "snf_rows": total_snf,
-                "emails_in_cohort": total_emails,
-            },
-
-            "top_facilities": top_facilities,
-
-            "metrics": {
-                "notified_count": notified_count,
-                "notified_pct": round(notified_pct, 1),
-
-                "facility_pin_opened_pct": round(opened_pct, 1),
-                "facility_pin_unopened_pct": round(unopened_pct, 1),
-
-                "assignment_counts": assign_counts,
-                "assignment_pct": {k: round(assign_pct[k], 1) for k in assign_pct},
-
-            },
-        }
     finally:
         conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "snf_id",
+        "visit_id",
+        "patient_name",
+        "patient_mrn",
+        "hospital_name",
+        "dc_date",
+        "last_seen_active_date",
+        "status",
+        "notified_by_hospital",
+        "emailed_at",
+        "email_run_id",
+        "current_snf_facility_id",
+        "current_snf_facility_name",
+        "final_snf_facility_id",
+        "final_snf_name_display",
+        "ai_snf_facility_id",
+        "ai_snf_name_raw",
+    ])
+    for r in rows:
+        writer.writerow([
+            r["snf_id"],
+            r["visit_id"],
+            r["patient_name"],
+            r["patient_mrn"],
+            r["hospital_name"],
+            r["dc_date"],
+            r["last_seen_active_date"],
+            r["status"],
+            r["notified_by_hospital"],
+            r["emailed_at"],
+            r["email_run_id"],
+            r["current_snf_facility_id"],
+            r["current_snf_facility_name"],
+            r["final_snf_facility_id"],
+            r["final_snf_name_display"],
+            r["ai_snf_facility_id"],
+            r["ai_snf_name_raw"],
+        ])
+
+    csv_text = output.getvalue()
+    output.close()
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="snf_admission_summary_{dc_from}_{dc_to}.csv"'},
+    )
 
 @app.get("/admin/snf/email-log/pdf/{secure_link_id}")
 async def admin_snf_email_log_pdf(request: Request, secure_link_id: int):
