@@ -5861,6 +5861,37 @@ def init_db():
     except sqlite3.Error:
         pass
 
+    # Backfill alias-based facility matches when we only have ai_snf_name_raw
+    try:
+        cur.execute(
+            """
+            SELECT id, ai_snf_name_raw, current_snf_facility_id, current_snf_facility_name
+            FROM snf_admissions
+            WHERE (current_snf_facility_id IS NULL OR TRIM(current_snf_facility_id) = '')
+              AND ai_snf_name_raw IS NOT NULL
+              AND TRIM(ai_snf_name_raw) <> ''
+            """
+        )
+        rows = cur.fetchall()
+        for r in rows:
+            adm_id = int(r["id"])
+            ai_name = (r["ai_snf_name_raw"] or "").strip()
+            if not ai_name:
+                continue
+            fac_id, fac_name = map_snf_name_to_facility_id(conn, ai_name)
+            if fac_id and fac_name:
+                cur.execute(
+                    """
+                    UPDATE snf_admissions
+                       SET current_snf_facility_id = ?,
+                           current_snf_facility_name = ?
+                     WHERE id = ?
+                    """,
+                    (str(fac_id), str(fac_name).strip(), adm_id),
+                )
+    except sqlite3.Error:
+        pass
+
     try:
         cur.execute("ALTER TABLE snf_admissions ADD COLUMN last_seen_active_date TEXT")
     except sqlite3.Error:
@@ -26321,6 +26352,12 @@ def _snf_compute_current_facility(conn: sqlite3.Connection, *, final_id, final_n
             (int(ai_id),),
         ).fetchone()
         return str(ai_id), (row["facility_name"] if row else "") or (ai_name_raw or "").strip()
+
+    # No IDs; try mapping the AI raw name to a facility via aliases
+    if ai_name_raw:
+        mapped_id, mapped_name = map_snf_name_to_facility_id(conn, ai_name_raw)
+        if mapped_id and mapped_name:
+            return str(mapped_id), str(mapped_name).strip()
 
     return None, (ai_name_raw or "").strip()
 
