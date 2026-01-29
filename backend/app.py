@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 import math
@@ -33,7 +33,7 @@ except Exception:
     pdfplumber = None
     HAVE_PDFPLUMBER = False
 
-# ✅ Prefer PyMuPDF (fitz) when available: faster + usually lower RAM than pdfplumber
+# âœ… Prefer PyMuPDF (fitz) when available: faster + usually lower RAM than pdfplumber
 try:
     import fitz  # PyMuPDF
     HAVE_PYMUPDF = True
@@ -93,7 +93,7 @@ load_dotenv()
 #  SENSYS FEATURES (API):
 #    - Admin: Users / Roles / Agencies / Care Team / Notifications templates & prefs
 #    - Admissions / Discharge / Referrals / Documents / PDFs
-#    - PDW (Post-Discharge Workspace) — CCC Lead / CCC Staff
+#    - PDW (Post-Discharge Workspace) â€” CCC Lead / CCC Staff
 #
 #  UI ROUTES (HTML):
 #    - /sensys/*, /admin*, /ask*
@@ -116,7 +116,7 @@ STATIC_DIR = BASE_DIR / "static"
 SNF_DEFAULT_PIN = (os.getenv("SNF_DEFAULT_PIN") or "").strip()
 
 # -----------------------------
-# SNF PDF render throttling (prevents CPU/RAM spikes when sending 10–20 at once)
+# SNF PDF render throttling (prevents CPU/RAM spikes when sending 10â€“20 at once)
 # -----------------------------
 SNF_PDF_RENDER_CONCURRENCY = max(1, int(os.getenv("SNF_PDF_RENDER_CONCURRENCY", "1")))
 SNF_PDF_RENDER_DELAY_SEC = float(os.getenv("SNF_PDF_RENDER_DELAY_SEC", "0.2"))
@@ -324,7 +324,7 @@ def normalize_date_to_iso(value: Any) -> Optional[str]:
         return f"{yyyy:04d}-{mm:02d}-{dd:02d}"
 
 
-    # If it’s some other format we don’t recognize, don’t destroy it
+    # If itâ€™s some other format we donâ€™t recognize, donâ€™t destroy it
     return s
 
 def sync_discharge_dc_date_to_snf(cur, visit_id: str | None, dc_date: str | None):
@@ -337,7 +337,7 @@ def sync_discharge_dc_date_to_snf(cur, visit_id: str | None, dc_date: str | None
     if not dc_norm:
         return
 
-    # ✅ STRICT: only allow YYYY-MM-DD into snf_admissions.dc_date
+    # âœ… STRICT: only allow YYYY-MM-DD into snf_admissions.dc_date
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(dc_norm)):
         return
 
@@ -425,7 +425,7 @@ def log_pad_request_debug(request: Request, raw_text: str, payload: dict):
 
 
 # ---------------------------------------------------------------------------
-# DB PATH – Render-only (no local fallback) (ANCHOR: DB_PATH_SECTION)
+# DB PATH â€“ Render-only (no local fallback) (ANCHOR: DB_PATH_SECTION)
 # ---------------------------------------------------------------------------
 
 RENDER_DEFAULT_DB = "/opt/render/project/data/evolv.db"
@@ -444,23 +444,28 @@ if not os.path.exists(DB_PATH):
 # HTML files (mirror of your old app.py wiring)
 ASK_HTML = FRONTEND_DIR / "TEST Ask.html"
 ADMIN_HTML = FRONTEND_DIR / "TEST Admin.html"
-SENSYS_ADMIN_HTML = FRONTEND_DIR / "Sensys Admin.html"
 FACILITY_HTML = FRONTEND_DIR / "TEST  Facility_Details.html"  # note double space
-SNF_HTML = FRONTEND_DIR / "TEST SNF_Admissions.html"
+SNF_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF Handoff Workspace.html"
 HOSPITAL_DISCHARGE_HTML = FRONTEND_DIR / "Hospital_Discharge.html"
 CENSUS_HTML = FRONTEND_DIR / "Census.html"
-
-# -----------------------------
-# NEW: Sensys quick-login + SNF SW test UI pages
-# -----------------------------
-SENSYS_LOGIN_HTML = FRONTEND_DIR / "Sensys Login.html"
-SENSYS_SNF_SW_HTML = FRONTEND_DIR / "Sensys SNF SW.html"
-SENSYS_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Admission Details.html"
-SENSYS_HOME_HEALTH_HTML = FRONTEND_DIR / "Sensys Home Health.html"
-SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys Home Health Admission Details.html"
-SENSYS_PROVIDER_ESIGN_HTML = FRONTEND_DIR / "Sensys Provider E-Sign.html"
-SENSYS_POST_DISCHARGE_HTML = FRONTEND_DIR / "Sensys Post-Discharge Workspace.html"
-SENSYS_CCC_STAFF_HTML = FRONTEND_DIR / "Sensys CCC Staff Workspace.html"
+SENSYS_ADMIN_HTML = FRONTEND_DIR / "Sensys 3.0 - Admin.html"
+SENSYS_LOGIN_HTML = FRONTEND_DIR / "Sensys 3.0 - Login.html"
+SENSYS_SNF_SW_HTML = FRONTEND_DIR / "Sensys 3.0 - Developer.html"
+SENSYS_SNF_USER_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Landing.html"
+SENSYS_SNF_USER_CALENDAR_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Calendar.html"
+SENSYS_SNF_USER_PATIENT_LIST_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Patient List.html"
+SENSYS_SNF_USER_DISCHARGED_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Discharged Patients.html"
+SENSYS_SNF_USER_PATIENT_SEARCH_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Patient Search.html"
+SENSYS_SNF_USER_DC_SUBMISSION_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - DC Submission.html"
+SENSYS_SNF_USER_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Admission Details.html"
+SENSYS_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - Developer - Admission Details.html"
+SENSYS_HOME_HEALTH_HTML = FRONTEND_DIR / "Sensys 3.0 - HH - Workspace.html"
+SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - Home Health - Admission Details.html"
+SENSYS_HOME_HEALTH_FINALIZED_HTML = FRONTEND_DIR / "Sensys 3.0 - HH - Finalized Patients.html"
+SENSYS_PROVIDER_LANDING_HTML = FRONTEND_DIR / "Sensys 3.0 - Provider - Landing.html"
+SENSYS_PROVIDER_ESIGN_HTML = FRONTEND_DIR / "Sensys 3.0 - Provider E-Sign.html"
+SENSYS_POST_DISCHARGE_HTML = FRONTEND_DIR / "Sensys 3.0 - Post-Discharge Workspace.html"
+SENSYS_CCC_STAFF_HTML = FRONTEND_DIR / "Sensys 3.0 - CCC Staff Workspace.html"
 SENSYS_IMPERSONATE_HTML = FRONTEND_DIR / "Sensys Impersonate.html"
 
 logging.basicConfig(level=logging.INFO)
@@ -522,7 +527,7 @@ CENSUS_UPLOAD_TMP = Path(
 CENSUS_UPLOAD_TMP.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------------
-# PDF STORAGE (persistent) — store files on Render disk, store metadata in SQLite
+# PDF STORAGE (persistent) â€” store files on Render disk, store metadata in SQLite
 # ---------------------------------------------------------------------------
 PDF_STORAGE_DIR = Path(
     os.getenv("PDF_STORAGE_DIR", "/opt/render/project/data/pdfs")
@@ -579,7 +584,7 @@ app = FastAPI(title="Evolv Copilot (Fresh Backend)")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # internal app; okay to be open
-    allow_credentials=False,  # ✅ IMPORTANT: prevents browser CORS "NetworkError"/"Failed to fetch" with wildcard origin
+    allow_credentials=False,  # âœ… IMPORTANT: prevents browser CORS "NetworkError"/"Failed to fetch" with wildcard origin
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -603,7 +608,7 @@ async def log_requests(request: Request, call_next):
     response = await call_next(request)
     ms = int((time.time() - start) * 1000)
 
-    # ✅ reduce log spam: do not log the high-frequency polling endpoint
+    # âœ… reduce log spam: do not log the high-frequency polling endpoint
     if request.url.path == "/admin/census/upload-status":
         return response
 
@@ -623,7 +628,7 @@ async def log_requests(request: Request, call_next):
 
 from fastapi.responses import JSONResponse
 
-# ✅ Force JSON for unexpected server errors (prevents frontend JSON.parse crashes)
+# âœ… Force JSON for unexpected server errors (prevents frontend JSON.parse crashes)
 @app.exception_handler(Exception)
 async def _unhandled_exception_handler(request: Request, exc: Exception):
     logger.exception("Unhandled error path=%s", request.url.path)
@@ -680,7 +685,7 @@ def _rc_get_access_token():
         raise
 
     if not resp.ok:
-        # Keep this short — enough to debug, not a huge payload
+        # Keep this short â€” enough to debug, not a huge payload
         body_snip = (resp.text or "")[:500]
         logger.error("[RC][TOKEN][HTTP_ERROR] status=%s body=%s", resp.status_code, body_snip)
         resp.raise_for_status()
@@ -793,7 +798,7 @@ def sensys_pdf_download(pdf_id: int, request: Request):
 
     conn = get_db()
     try:
-        # ✅ cleanup expired files to conserve disk
+        # âœ… cleanup expired files to conserve disk
         _sensys_pdf_cleanup_expired(conn)
 
         row = conn.execute(
@@ -1033,7 +1038,7 @@ def _split_name(full: str) -> tuple[str, str]:
     # Drop common noise like preferred names in parentheses: "SMITH, JOHN (JACK)"
     full = re.sub(r"\([^)]*\)", " ", full)
 
-    # ✅ Remove "Name Alert" noise that sometimes leaks into names
+    # âœ… Remove "Name Alert" noise that sometimes leaks into names
     full = re.sub(r"\bNAME\s+ALERT\b", " ", full, flags=re.IGNORECASE)
 
     full = re.sub(r"\s+", " ", full).strip()
@@ -1063,7 +1068,7 @@ def _split_name(full: str) -> tuple[str, str]:
         last_tokens = [t for t in re.split(r"\s+", last_raw) if t]
 
         mi_from_last = ""
-        # ✅ If last side ends with a middle initial, move it to the first name side
+        # âœ… If last side ends with a middle initial, move it to the first name side
         if len(last_tokens) >= 2 and _is_middle_initial(last_tokens[-1]):
             mi_from_last = last_tokens[-1].strip(".")
             last_tokens = last_tokens[:-1]
@@ -1090,7 +1095,7 @@ def _split_name(full: str) -> tuple[str, str]:
         first = _clean_name(" ".join(first_parts))
         return (first, last)
 
-    # Case 2: no comma — assume "First ... Last", but preserve particles like "de la", "van", "st"
+    # Case 2: no comma â€” assume "First ... Last", but preserve particles like "de la", "van", "st"
     parts = [p for p in full.split() if p]
     if len(parts) == 1:
         return ("", _clean_name(parts[0]))
@@ -1100,7 +1105,7 @@ def _split_name(full: str) -> tuple[str, str]:
         "VAN", "VON", "LA", "LE", "DU", "ST", "ST."
     }
 
-    # ✅ If second token is a middle initial, keep it with the first name (e.g., "JOHN C SMITH")
+    # âœ… If second token is a middle initial, keep it with the first name (e.g., "JOHN C SMITH")
     first_end = 1
     first_parts = [parts[0]]
     if len(parts) >= 3 and _is_middle_initial(parts[1]):
@@ -1124,7 +1129,7 @@ class ScannedPdfError(Exception):
     """Raised when a PDF has no extractable text (likely scanned/image-only)."""
     pass
 
-# ✅ NEW: parse directly from a PDF file path (avoids loading PDF bytes into RAM)
+# âœ… NEW: parse directly from a PDF file path (avoids loading PDF bytes into RAM)
 class PdfTooLargeError(Exception):
     """Raised when extracted PDF text is too large (prevents OOM)."""
     pass
@@ -1482,7 +1487,7 @@ def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
     return out
 
 
-# ✅ Shared parser core after text extraction (used by BOTH path + bytes)
+# âœ… Shared parser core after text extraction (used by BOTH path + bytes)
 def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str], float]:
     warnings: list[str] = []
     confidence = 0.0
@@ -1518,7 +1523,7 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
     # Real date pattern (MM/DD/YYYY) used throughout this function
     date_pat = r"\b(0[1-9]|1[0-2])/(0[1-9]|[12][0-9]|3[01])/(19|20)\d{2}\b"
 
-    # ✅ NEW: Arcadia split-text fix:
+    # âœ… NEW: Arcadia split-text fix:
     # If the table row is split across lines (e.g. "Cart 4" on its own line),
     # the resident name is consistently the non-empty line immediately ABOVE the first real date.
     resident_line = ""
@@ -1577,7 +1582,7 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
         if re.fullmatch(r"[A-Za-z0-9]{4,}", last_tok):
             resident_num = last_tok
 
-    # ✅ NEW: Arcadia split-text fallback
+    # âœ… NEW: Arcadia split-text fallback
     # When text extraction splits columns into separate lines, the resident # can appear later.
     if not resident_num and cand_lines:
         for l in cand_lines[:60]:
@@ -1636,11 +1641,11 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
     m_last = re.search(r"^[^,]+", resident_line)
     last_raw = (m_last.group(0) if m_last else "").strip()
 
-    # ✅ Strip leading location prefixes that sometimes leak into the "last name" area
+    # âœ… Strip leading location prefixes that sometimes leak into the "last name" area
     # Examples: "Unit 2 SMITH" -> "SMITH", "Wing 1 DAMIAN VARGAS" -> "DAMIAN VARGAS"
     last_raw = re.sub(r"^(?:Wing|Unit)\s*\d+\s+", "", last_raw, flags=re.IGNORECASE)
 
-    # ✅ Also strip leading room tokens if they appear before the name
+    # âœ… Also strip leading room tokens if they appear before the name
     # Example: "319-B SMITH" -> "SMITH"
     last_raw = re.sub(r"^\d{1,4}[A-Z]?(?:-[A-Za-z0-9]{1,6})\s+", "", last_raw, flags=re.IGNORECASE)
 
@@ -1720,7 +1725,7 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
             toks = pre.rstrip().split()
             if toks:
                 room_bed = toks[-1].strip()
-                if room_bed in {"-", "—"} and len(toks) >= 2:
+                if room_bed in {"-", "â€”"} and len(toks) >= 2:
                     room_bed = toks[-2].strip()
 
     if room_bed:
@@ -2533,7 +2538,7 @@ def extract_facility_name_from_filename(filename: str) -> str:
 def sha256_hex(s: str) -> str:
     return hashlib.sha256((s or "").encode("utf-8")).hexdigest()
 
-# ✅ NEW: hash a file without loading it all into memory
+# âœ… NEW: hash a file without loading it all into memory
 def sha256_file(path: str, chunk_size: int = 1024 * 1024) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -2702,14 +2707,14 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
         <h1>First Docs Notification</h1>
         <p>
           Our Hospitalists at HCA Florida JFK Hospital have identified upcoming patients expected to discharge to your facility.
-          Please use the View List button below to download today's list (Facility PIN required), and assign the referral(s) to the correct First Docs provider.
+          Please use the View List button below to download today's list (PIN required), and assign the referral(s) to the correct First Docs provider.
         </p>
 
         <div class="callout">
-          <div><strong>What you’ll need:</strong></div>
-          <div style="margin-top:6px;">• Your facility PIN</div>
+          <div><strong>What you'll need:</strong></div>
+          <div style="margin-top:6px;">- Your PIN</div>
           <div style="margin-top:6px;">
-            • Link expires in <span class="pill">{ttl_hours} hours</span>
+            - Link expires in <span class="pill">{ttl_hours} hours</span>
           </div>
         </div>
 
@@ -2840,8 +2845,8 @@ def build_client_survey_secure_email_html(
 
         <div class="callout">
           <div><strong>What you'll need:</strong></div>
-          <div style="margin-top:6px;">• Your facility PIN</div>
-          <div style="margin-top:6px;">• Link expires in <span class="pill">{ttl_days} days</span></div>
+          <div style="margin-top:6px;">- Your PIN</div>
+          <div style="margin-top:6px;">- Link expires in <span class="pill">{ttl_days} days</span></div>
         </div>
 
         <p>
@@ -3000,7 +3005,7 @@ def init_db():
         """
     )
 
-    # Dictionary (key → canonical term, plus kind/notes/match_mode)
+    # Dictionary (key â†’ canonical term, plus kind/notes/match_mode)
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS dictionary (
@@ -3065,7 +3070,7 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now')),
             created_by_user_id INTEGER,
 
-            -- ✅ NEW: link SMS to an admission
+            -- âœ… NEW: link SMS to an admission
             admission_id INTEGER,
 
             -- optional but helpful for later (inbound SMS, etc.)
@@ -3084,7 +3089,7 @@ def init_db():
         """
     )
 
-    # ✅ SAFE MIGRATIONS for sensys_sms_log (older DBs)
+    # âœ… SAFE MIGRATIONS for sensys_sms_log (older DBs)
     for ddl in [
         "ALTER TABLE sensys_sms_log ADD COLUMN admission_id INTEGER",
         "ALTER TABLE sensys_sms_log ADD COLUMN direction TEXT DEFAULT 'outbound'",
@@ -3105,7 +3110,7 @@ def init_db():
     try:
         cur.execute("ALTER TABLE user_qa_log ADD COLUMN debug_sql TEXT")
     except sqlite3.Error:
-        # Will fail with 'duplicate column name' once it already exists – that's fine.
+        # Will fail with 'duplicate column name' once it already exists â€“ that's fine.
         pass
 
     cur.execute(
@@ -3137,7 +3142,7 @@ def init_db():
         """
     )
 
-    # ✅ SAFE MIGRATIONS for sensys_fax_log (older DBs / future proof)
+    # âœ… SAFE MIGRATIONS for sensys_fax_log (older DBs / future proof)
     for ddl in [
         "ALTER TABLE sensys_fax_log ADD COLUMN admission_id INTEGER",
         "ALTER TABLE sensys_fax_log ADD COLUMN direction TEXT DEFAULT 'outbound'",
@@ -3165,7 +3170,7 @@ def init_db():
     )
     
     # -------------------------------------------------------------------
-    # Stored PDFs (metadata only — actual PDF is saved to PDF_STORAGE_DIR)
+    # Stored PDFs (metadata only â€” actual PDF is saved to PDF_STORAGE_DIR)
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS sensys_pdf_files (
@@ -3179,7 +3184,7 @@ def init_db():
             content_type       TEXT DEFAULT 'application/pdf',
             created_at         TEXT DEFAULT (datetime('now')),
 
-            -- ✅ NEW: optional retention window (48h, etc.)
+            -- âœ… NEW: optional retention window (48h, etc.)
             expires_at         TEXT
         )
         """
@@ -3213,7 +3218,7 @@ def init_db():
             display_name    TEXT,
             is_active       INTEGER DEFAULT 1,
 
-            -- NEW (Admin → Users tab)
+            -- NEW (Admin â†’ Users tab)
             password        TEXT DEFAULT '',
             cell_phone      TEXT DEFAULT '',
             account_locked  INTEGER DEFAULT 0,
@@ -3230,15 +3235,15 @@ def init_db():
         "ALTER TABLE sensys_users ADD COLUMN cell_phone TEXT DEFAULT ''",
         "ALTER TABLE sensys_users ADD COLUMN account_locked INTEGER DEFAULT 0",
 
-        # ✅ Provider E-sign
+        # âœ… Provider E-sign
         "ALTER TABLE sensys_users ADD COLUMN npi TEXT DEFAULT ''",
     ]:
         try:
             cur.execute(ddl)
         except sqlite3.Error:
-            # duplicate column name → already migrated
+            # duplicate column name â†’ already migrated
             pass
-    # ✅ Users migration: CCC capacity + last login
+    # âœ… Users migration: CCC capacity + last login
     u_cols = [r["name"] for r in conn.execute("PRAGMA table_info(sensys_users)").fetchall()]
     if "calls_per_hour" not in u_cols:
         conn.execute("ALTER TABLE sensys_users ADD COLUMN calls_per_hour REAL DEFAULT 0;")
@@ -3280,7 +3285,7 @@ def init_db():
       deleted_at TEXT NULL
     )
     """)
-    # ✅ NEW: DC note template targeting (many-to-many)
+    # âœ… NEW: DC note template targeting (many-to-many)
     conn.execute("""
     CREATE TABLE IF NOT EXISTS sensys_dc_note_template_agencies (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3414,11 +3419,11 @@ def init_db():
         try:
             cur.execute(ddl)
         except sqlite3.Error:
-            # duplicate column name → already exists
+            # duplicate column name â†’ already exists
             pass
 
     # -----------------------------
-    # PDW v2 — CCC Staff schedules / capacity
+    # PDW v2 â€” CCC Staff schedules / capacity
     # -----------------------------
     conn.execute(
         """
@@ -3445,7 +3450,7 @@ def init_db():
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS sensys_provider_library_hha (
-            ccn           TEXT PRIMARY KEY,              -- ✅ key we use everywhere
+            ccn           TEXT PRIMARY KEY,              -- âœ… key we use everywhere
             provider_name TEXT DEFAULT '',
             dba           TEXT DEFAULT '',
             address       TEXT DEFAULT '',
@@ -3506,6 +3511,7 @@ def init_db():
     ensure_column(conn, "sensys_client_surveys", "nursing_score", "nursing_score REAL")
     ensure_column(conn, "sensys_client_surveys", "md_score", "md_score REAL")
     ensure_column(conn, "sensys_client_surveys", "ss_score", "ss_score REAL")
+    ensure_column(conn, "sensys_client_surveys", "deleted_at", "deleted_at TEXT")
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_sensys_client_surveys_name ON sensys_client_surveys(abv_name)"
     )
@@ -3593,7 +3599,7 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_pages_page ON sensys_user_pages(page_key)")
 
     # -------------------------------------------------------------------
-    # NEW: Notifications — templates + user delivery preferences
+    # NEW: Notifications â€” templates + user delivery preferences
     # -------------------------------------------------------------------
     cur.execute(
         """
@@ -3659,6 +3665,7 @@ def init_db():
             ("new_referral", "New Referral", "New Referral for {{patient}}", "A new referral was created.", "New Referral: {{patient}}", "New Referral: {{patient}}"),
             ("new_task", "New Task", "New Task: {{task}}", "A task was assigned to you.", "New Task: {{task}}", "New Task: {{task}}"),
             ("new_document", "New Document", "New Document for {{patient}}", "A document was uploaded.", "New Document: {{patient}}", "New Document: {{patient}}"),
+            ("dc_note", "DC Note", "DC Note for {{patient}}", "{{note_text}}", "DC Note: {{patient}}", "{{note_text}}"),
         ],
     )
 
@@ -3709,6 +3716,25 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_sessions_exp ON sensys_sessions(expires_at)")
 
     # -------------------------------------------------------------------
+    # NEW: Sensys user login attempts (success + failed)
+    # -------------------------------------------------------------------
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_user_login_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            status TEXT NOT NULL,
+            ip TEXT,
+            user_agent TEXT,
+            details TEXT,
+            attempted_at TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_login_log_user ON sensys_user_login_log(user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_login_log_attempted ON sensys_user_login_log(attempted_at)")
+
+    # -------------------------------------------------------------------
     # Sensys 3.0: Patients + Admissions (manual + future automation)
     # -------------------------------------------------------------------
     cur.execute(
@@ -3751,7 +3777,7 @@ def init_db():
             firstname_initial   TEXT,
             lastname_three      TEXT,
 
-            -- ✅ Needed for linking/dedupe logic (safe, optional)
+            -- âœ… Needed for linking/dedupe logic (safe, optional)
             patient_key         TEXT,     -- app-generated stable key (e.g., lastname|firstname|dob)
             external_patient_id TEXT,     -- if you later ingest from an EMR
             mrn                 TEXT      -- optional
@@ -3794,7 +3820,7 @@ def init_db():
             created_at          TEXT DEFAULT (datetime('now')),
             updated_at          TEXT DEFAULT (datetime('now')),
 
-            -- ✅ audit fields are still useful even without "assigned user"
+            -- âœ… audit fields are still useful even without "assigned user"
             created_by_user_id  INTEGER,
             updated_by_user_id  INTEGER,
 
@@ -3811,8 +3837,12 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_active ON sensys_admissions(active)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_dates ON sensys_admissions(admit_date, dc_date)")
 
+    # Keep snapshot fields in sensys_admissions (latest DC submission)
+    ensure_column(conn, "sensys_admissions", "dc_confirmed", "dc_confirmed INTEGER DEFAULT 0")
+    ensure_column(conn, "sensys_admissions", "latest_dc_submission_id", "latest_dc_submission_id INTEGER")
+
     # -------------------------------------------------------------------
-    # PDW v1 — Post-Discharge Workspace (Option B: Work Items + Attempts Log)
+    # PDW v1 â€” Post-Discharge Workspace (Option B: Work Items + Attempts Log)
     # -------------------------------------------------------------------
     cur.execute(
         """
@@ -3833,7 +3863,7 @@ def init_db():
             assigned_to_user_id  INTEGER,
             assigned_at          TEXT,
 
-            -- ✅ NEW (who assigned it + notes for staff)
+            -- âœ… NEW (who assigned it + notes for staff)
             assigned_by_user_id  INTEGER,
             assignment_notes     TEXT,
 
@@ -3873,7 +3903,7 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_postdc_work_items_due ON sensys_postdc_work_items(due_at)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_postdc_work_items_status ON sensys_postdc_work_items(status)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_postdc_work_items_assigned ON sensys_postdc_work_items(assigned_to_user_id)")
-    # ✅ PDW migration: add assignment notes + assigned_by
+    # âœ… PDW migration: add assignment notes + assigned_by
     wi_cols = [r["name"] for r in conn.execute("PRAGMA table_info(sensys_postdc_work_items)").fetchall()]
     if "assigned_by_user_id" not in wi_cols:
         conn.execute("ALTER TABLE sensys_postdc_work_items ADD COLUMN assigned_by_user_id INTEGER;")
@@ -3944,6 +3974,20 @@ def init_db():
     cols = [r["name"] for r in conn.execute("PRAGMA table_info(sensys_services)").fetchall()]
     if "service_type_id" not in cols:
         conn.execute("ALTER TABLE sensys_services ADD COLUMN service_type_id INTEGER;")
+    if "aliases" not in cols:
+        conn.execute("ALTER TABLE sensys_services ADD COLUMN aliases TEXT;")
+    if "reminder_title" not in cols:
+        conn.execute("ALTER TABLE sensys_services ADD COLUMN reminder_title TEXT;")
+    if "reminder_message" not in cols:
+        conn.execute("ALTER TABLE sensys_services ADD COLUMN reminder_message TEXT;")
+    if "reminder_severity" not in cols:
+        conn.execute("ALTER TABLE sensys_services ADD COLUMN reminder_severity TEXT;")
+    if "reminder_followup" not in cols:
+        conn.execute("ALTER TABLE sensys_services ADD COLUMN reminder_followup TEXT;")
+    if "reminder_active" not in cols:
+        conn.execute("ALTER TABLE sensys_services ADD COLUMN reminder_active INTEGER DEFAULT 1;")
+    if "reminder_updated_at" not in cols:
+        conn.execute("ALTER TABLE sensys_services ADD COLUMN reminder_updated_at TEXT;")
 
     # Backfill service_type_id from existing string service_type values ("dme"/"hh") if present
     # (keeps old column for backward compatibility)
@@ -3981,6 +4025,19 @@ def init_db():
                WHERE (service_type_id IS NULL OR service_type_id = 0)
                  AND TRIM(LOWER(service_type)) = ?
             """, (int(row["id"]), st))
+
+    # Backfill legacy service_type string from service_type_id if missing
+    conn.execute("""
+      UPDATE sensys_services
+         SET service_type = (
+           SELECT COALESCE(st.code, '')
+             FROM sensys_service_type st
+            WHERE st.id = sensys_services.service_type_id
+              AND st.deleted_at IS NULL
+         )
+       WHERE (service_type IS NULL OR TRIM(service_type) = '')
+         AND service_type_id IS NOT NULL
+    """)
 
     # =========================
     # E-SIGN: orders + services
@@ -4075,7 +4132,7 @@ def init_db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_sensys_admission_esigns_service_type ON sensys_admission_esigns(service_type_id)")
 
     # -------------------------------------------------------------------
-    # Sensys 3.0: Admission-connected “detail” tables
+    # Sensys 3.0: Admission-connected â€œdetailâ€ tables
     # -------------------------------------------------------------------
 
     # Services (ADMIN TAB)
@@ -4091,8 +4148,15 @@ def init_db():
             -- NEW FK-style column used by the UI/admin endpoints
             service_type_id INTEGER,                      -- FK -> sensys_service_type.id
 
+            aliases       TEXT,
             dropdown      INTEGER DEFAULT 1,              -- 1/0
             reminder_id   TEXT,
+            reminder_title     TEXT,
+            reminder_message   TEXT,
+            reminder_severity  TEXT,
+            reminder_followup  TEXT,
+            reminder_active    INTEGER DEFAULT 1,
+            reminder_updated_at TEXT,
             deleted_at    TEXT,
             created_at    TEXT DEFAULT (datetime('now')),
             updated_at    TEXT DEFAULT (datetime('now'))
@@ -4195,6 +4259,7 @@ def init_db():
             hh_carecompare_county TEXT,
 
             hh_comments           TEXT,
+            hh_agency_comments    TEXT,
             dme_comments          TEXT,
 
             aid_consult           TEXT,
@@ -4234,6 +4299,24 @@ def init_db():
     ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_state",  "hh_carecompare_state TEXT")
     ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_zip",    "hh_carecompare_zip TEXT")
     ensure_column(conn, "sensys_admission_dc_submissions", "hh_carecompare_county", "hh_carecompare_county TEXT")
+    ensure_column(conn, "sensys_admission_dc_submissions", "hh_agency_comments", "hh_agency_comments TEXT")
+
+    # Frequently used items (by client agency)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sensys_agency_frequent_items (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            agency_id   INTEGER NOT NULL,
+            item_type   TEXT NOT NULL, -- 'hh_service' | 'dme_service' | 'hh_agency'
+            item_id     INTEGER NOT NULL,
+            cnt         INTEGER DEFAULT 0,
+            updated_at  TEXT DEFAULT (datetime('now')),
+            UNIQUE(agency_id, item_type, item_id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_freq_agency ON sensys_agency_frequent_items(agency_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_freq_type ON sensys_agency_frequent_items(item_type)")
 
     # Join table: each DC submission can have multiple services linked
     cur.execute(
@@ -4293,7 +4376,7 @@ def init_db():
     if "response2" not in existing_cols:
         cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN response2 TEXT")
 
-    # ✅ NEW: optional Share With user (for “note shared” notifications)
+    # âœ… NEW: optional Share With user (for â€œnote sharedâ€ notifications)
     if "share_with_user_id" not in existing_cols:
         cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN share_with_user_id INTEGER")
 
@@ -4303,7 +4386,7 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_status ON sensys_admission_notes(status)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_name ON sensys_admission_notes(note_name)")
 
-    # Join table: admission ↔ care team
+    # Join table: admission â†” care team
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS sensys_admission_care_team (
@@ -4336,7 +4419,7 @@ def init_db():
       deleted_at TEXT
     )
     """)
-    # ✅ NEW: Note template targeting (many-to-many)
+    # âœ… NEW: Note template targeting (many-to-many)
     conn.execute("""
     CREATE TABLE IF NOT EXISTS sensys_note_template_agencies (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4469,6 +4552,10 @@ def init_db():
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             admission_id INTEGER NOT NULL,
             agency_id    INTEGER NOT NULL,
+            acceptance_status TEXT DEFAULT 'New',
+            acceptance_decline_reason TEXT,
+            acceptance_decline_other TEXT,
+            soc_date TEXT,
 
             created_at   TEXT DEFAULT (datetime('now')),
             updated_at   TEXT DEFAULT (datetime('now')),
@@ -4509,7 +4596,7 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_appt_deleted ON sensys_admission_appointments(deleted_at)")
 
 
-    # ✅ Clean up any duplicate pairs BEFORE adding the unique index
+    # âœ… Clean up any duplicate pairs BEFORE adding the unique index
     # Keep the "best" row per (admission_id, care_team_id):
     #   - prefer deleted_at IS NULL (active link)
     #   - otherwise keep the lowest id
@@ -4531,7 +4618,7 @@ def init_db():
         """
     )
 
-    # ✅ Now it’s safe to add the unique index
+    # âœ… Now itâ€™s safe to add the unique index
     cur.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_sensys_adm_ct_pair ON sensys_admission_care_team(admission_id, care_team_id)"
     )
@@ -4746,7 +4833,7 @@ def init_db():
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_rows_job ON sensys_census_job_rows(job_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_rows_kind ON sensys_census_job_rows(job_id, kind)")
-    # ✅ Expand sensys_census_job_rows to support full Missing Admissions exports (safe no-op if already exists)
+    # âœ… Expand sensys_census_job_rows to support full Missing Admissions exports (safe no-op if already exists)
     for stmt in [
         "ALTER TABLE sensys_census_job_rows ADD COLUMN home_phone TEXT",
         "ALTER TABLE sensys_census_job_rows ADD COLUMN address TEXT",
@@ -4766,7 +4853,7 @@ def init_db():
         except sqlite3.Error:
             pass
 
-    # ✅ Ensure new columns exist on older census_run_patients tables (safe no-op if already exists)
+    # âœ… Ensure new columns exist on older census_run_patients tables (safe no-op if already exists)
     for stmt in [
         "ALTER TABLE census_run_patients ADD COLUMN first_name TEXT",
         "ALTER TABLE census_run_patients ADD COLUMN last_name TEXT",
@@ -4793,7 +4880,7 @@ def init_db():
         except sqlite3.Error:
             pass
 
-        # ✅ Also ensure newer columns exist on older census_runs tables (optional but recommended)
+        # âœ… Also ensure newer columns exist on older census_runs tables (optional but recommended)
         for stmt in [
             "ALTER TABLE census_runs ADD COLUMN facility_code TEXT",
             "ALTER TABLE census_runs ADD COLUMN report_dt TEXT",
@@ -5041,7 +5128,7 @@ def init_db():
 
 
     # -------------------------------------------------------------------
-    # Hospital extraction profiles (per hospital + document type) ✅ NEW
+    # Hospital extraction profiles (per hospital + document type) âœ… NEW
     # -------------------------------------------------------------------
     cur.execute(
         """
@@ -5062,7 +5149,7 @@ def init_db():
 
 
     # -------------------------------------------------------------------
-    # Hospital Documents (Raw + Sectioned)  ✅ NEW
+    # Hospital Documents (Raw + Sectioned)  âœ… NEW
     # -------------------------------------------------------------------
     cur.execute(
         """
@@ -5263,7 +5350,7 @@ def init_db():
     )
 
     # -------------------------------------------------------------------
-    # Hospital Discharges hub table (one row per visit_id) ✅ NEW
+    # Hospital Discharges hub table (one row per visit_id) âœ… NEW
     # -------------------------------------------------------------------
     cur.execute(
         """
@@ -5414,6 +5501,8 @@ def init_db():
             facility_free_text          TEXT,
             final_snf_facility_id       TEXT,
             final_snf_name_display      TEXT,
+            current_snf_facility_id     TEXT,
+            current_snf_facility_name   TEXT,
             final_expected_transfer_date TEXT,
             reviewed_by                 TEXT,
             reviewed_at                 TEXT,
@@ -5729,6 +5818,81 @@ def init_db():
         pass
 
     try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN current_snf_facility_id TEXT")
+    except sqlite3.Error:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE snf_admissions ADD COLUMN current_snf_facility_name TEXT")
+    except sqlite3.Error:
+        pass
+
+    # Backfill current_snf_facility_* for existing rows (one-time safe update)
+    try:
+        cur.execute(
+            """
+            UPDATE snf_admissions
+            SET
+              current_snf_facility_id = CASE
+                WHEN TRIM(COALESCE(current_snf_facility_id, '')) <> '' THEN current_snf_facility_id
+                WHEN TRIM(COALESCE(final_snf_facility_id, '')) <> '' THEN final_snf_facility_id
+                WHEN TRIM(COALESCE(ai_snf_facility_id, '')) <> '' THEN ai_snf_facility_id
+                ELSE current_snf_facility_id
+              END,
+              current_snf_facility_name = CASE
+                WHEN TRIM(COALESCE(current_snf_facility_name, '')) <> '' THEN current_snf_facility_name
+                WHEN TRIM(COALESCE(final_snf_name_display, '')) <> '' THEN final_snf_name_display
+                WHEN TRIM(COALESCE(final_snf_facility_id, '')) <> '' THEN COALESCE(
+                  (SELECT facility_name FROM snf_admission_facilities f WHERE f.id = snf_admissions.final_snf_facility_id),
+                  current_snf_facility_name
+                )
+                WHEN TRIM(COALESCE(ai_snf_facility_id, '')) <> '' THEN COALESCE(
+                  (SELECT facility_name FROM snf_admission_facilities f WHERE f.id = snf_admissions.ai_snf_facility_id),
+                  current_snf_facility_name
+                )
+                WHEN TRIM(COALESCE(ai_snf_name_raw, '')) <> '' THEN ai_snf_name_raw
+                ELSE current_snf_facility_name
+              END
+            WHERE
+              TRIM(COALESCE(current_snf_facility_id, '')) = ''
+              OR TRIM(COALESCE(current_snf_facility_name, '')) = ''
+            """
+        )
+    except sqlite3.Error:
+        pass
+
+    # Backfill alias-based facility matches when we only have ai_snf_name_raw
+    try:
+        cur.execute(
+            """
+            SELECT id, ai_snf_name_raw, current_snf_facility_id, current_snf_facility_name
+            FROM snf_admissions
+            WHERE (current_snf_facility_id IS NULL OR TRIM(current_snf_facility_id) = '')
+              AND ai_snf_name_raw IS NOT NULL
+              AND TRIM(ai_snf_name_raw) <> ''
+            """
+        )
+        rows = cur.fetchall()
+        for r in rows:
+            adm_id = int(r["id"])
+            ai_name = (r["ai_snf_name_raw"] or "").strip()
+            if not ai_name:
+                continue
+            fac_id, fac_name = map_snf_name_to_facility_id(conn, ai_name)
+            if fac_id and fac_name:
+                cur.execute(
+                    """
+                    UPDATE snf_admissions
+                       SET current_snf_facility_id = ?,
+                           current_snf_facility_name = ?
+                     WHERE id = ?
+                    """,
+                    (str(fac_id), str(fac_name).strip(), adm_id),
+                )
+    except sqlite3.Error:
+        pass
+
+    try:
         cur.execute("ALTER TABLE snf_admissions ADD COLUMN last_seen_active_date TEXT")
     except sqlite3.Error:
         pass
@@ -5880,10 +6044,16 @@ def init_db():
     # NEW: Medrina SNF flag (0/1)
     ensure_column(conn, "snf_admission_facilities", "medrina_snf", "medrina_snf INTEGER DEFAULT 0")
     
-    # ✅ ensure new columns exist (safe migration)
+    # âœ… ensure new columns exist (safe migration)
     ensure_column(conn, "sensys_agencies", "aliases", "aliases TEXT")
+
+    # âœ… ensure new columns exist (safe migration)
+    ensure_column(conn, "sensys_admission_referrals", "acceptance_status", "acceptance_status TEXT DEFAULT 'New'")
+    ensure_column(conn, "sensys_admission_referrals", "acceptance_decline_reason", "acceptance_decline_reason TEXT")
+    ensure_column(conn, "sensys_admission_referrals", "acceptance_decline_other", "acceptance_decline_other TEXT")
+    ensure_column(conn, "sensys_admission_referrals", "soc_date", "soc_date TEXT")
     
-    # ✅ ensure new columns exist (safe migration)
+    # âœ… ensure new columns exist (safe migration)
     ensure_column(conn, "sensys_admissions", "mrn", "mrn TEXT")
     ensure_column(conn, "sensys_admissions", "visit_id", "visit_id TEXT")
     ensure_column(conn, "sensys_admissions", "facility_code", "facility_code TEXT")
@@ -5988,7 +6158,7 @@ def init_db():
                     COALESCE(f.state, '') ||
                     CASE
                         WHEN f.corporate_group IS NOT NULL AND f.corporate_group <> ''
-                            THEN ' – ' || f.corporate_group
+                            THEN ' â€“ ' || f.corporate_group
                         ELSE ''
                     END
                 ) AS details
@@ -6084,7 +6254,7 @@ def init_db():
                     CASE
                         WHEN (fp.ins_only IS NOT NULL AND fp.ins_only <> '')
                              AND (fp.insurance IS NOT NULL AND fp.insurance <> '')
-                            THEN ' – '
+                            THEN ' â€“ '
                         ELSE ''
                     END ||
                     COALESCE(fp.insurance, '')
@@ -6157,6 +6327,7 @@ def init_db():
                 -- prefer final name display, else facility table name, else AI raw text
                 COALESCE(
                     NULLIF(TRIM(s.final_snf_name_display), ''),
+                    NULLIF(TRIM(s.current_snf_facility_name), ''),
                     NULLIF(TRIM(f.facility_name), ''),
                     NULLIF(TRIM(s.ai_snf_name_raw), '')
                 ) AS snf_agency,
@@ -6190,7 +6361,7 @@ def init_db():
             LEFT JOIN hospital_discharges h
                 ON h.visit_id = s.visit_id
             LEFT JOIN snf_admission_facilities f
-                ON f.id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id);
+                ON f.id = COALESCE(s.current_snf_facility_id, s.final_snf_facility_id, s.ai_snf_facility_id);
             """
         )
     except sqlite3.Error as e:
@@ -6323,7 +6494,7 @@ class AskResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# PAD → CM notes ingest endpoint
+# PAD â†’ CM notes ingest endpoint
 # ---------------------------------------------------------------------------
 
 @app.post("/api/pad/cm-notes/bulk")
@@ -6425,7 +6596,7 @@ async def pad_cm_notes_bulk(
                 errors.append({"index": idx, "error": "row is not an object"})
                 continue
 
-            # Normalize incoming fields from PAD – they might be numbers, etc.
+            # Normalize incoming fields from PAD â€“ they might be numbers, etc.
             raw_patient_mrn = row.get("patient_mrn")
             raw_note_datetime = row.get("note_datetime")
             raw_visit_id = row.get("visit_id")
@@ -6723,11 +6894,11 @@ def build_recent_hospital_context(cur: sqlite3.Cursor, visit_id: str, limit: int
 
 
 # ---------------------------------------------------------------------------
-# Hospital Document ingest (raw text -> document + sections) ✅ NEW
+# Hospital Document ingest (raw text -> document + sections) âœ… NEW
 # ---------------------------------------------------------------------------
 
 
-# PAD → Hospital documents bulk ingest endpoint  ✅ NEW
+# PAD â†’ Hospital documents bulk ingest endpoint  âœ… NEW
 @app.post("/api/pad/hospital-documents/bulk")
 async def pad_hospital_documents_bulk(request: Request):
     """
@@ -6908,7 +7079,7 @@ async def pad_hospital_documents_bulk(request: Request):
                 doc_hash=(doc_hash[:12] if doc_hash else None),
             )
 
-            # Upsert hub row (hospital_discharges = your “hospital discharge/admission hub” keyed by visit_id)
+            # Upsert hub row (hospital_discharges = your â€œhospital discharge/admission hubâ€ keyed by visit_id)
             if doc_payload["visit_id"]:
                 # Check if hub row already exists so we can log "created vs updated"
                 cur.execute("SELECT 1 FROM hospital_discharges WHERE visit_id = ? LIMIT 1", (doc_payload["visit_id"],))
@@ -6959,7 +7130,7 @@ async def pad_hospital_documents_bulk(request: Request):
                 )
 
 
-                # ✅ UPDATED: derive disposition + dc_agency, but only let the "latest doc" win
+                # âœ… UPDATED: derive disposition + dc_agency, but only let the "latest doc" win
                 dispo = analyze_discharge_disposition_with_llm(doc_payload["source_text"])
                 new_dispo = (dispo.get("disposition") if dispo else None)
                 new_agency = (dispo.get("dc_agency") if dispo else None)
@@ -7007,7 +7178,7 @@ async def pad_hospital_documents_bulk(request: Request):
 
                 curr_source_dt = normalize_sortable_dt(curr_source_dt)
 
-                # Treat these as "no disposition mentioned" → do NOT overwrite an existing good value
+                # Treat these as "no disposition mentioned" â†’ do NOT overwrite an existing good value
                 NO_DISPO_VALUES = {None, "", "unknown", "n/a", "na"}
 
                 has_meaningful_dispo = (new_dispo is not None and str(new_dispo).strip().lower() not in NO_DISPO_VALUES)
@@ -7030,7 +7201,7 @@ async def pad_hospital_documents_bulk(request: Request):
                 # - If we DON'T have a meaningful new dispo, keep existing
                 # - If we DO have a meaningful new dispo, only apply if this doc is newer
                 if has_meaningful_dispo and is_newer:
-                    # ✅ Do not let a newer doc erase a good agency when disposition is facility-based
+                    # âœ… Do not let a newer doc erase a good agency when disposition is facility-based
                     FACILITY_BASED = {"SNF", "IRF", "Rehab", "LTACH", "Hospice"}
                     if new_dispo in FACILITY_BASED:
                         if (new_agency is None) or (str(new_agency).strip() == ""):
@@ -7074,7 +7245,7 @@ async def pad_hospital_documents_bulk(request: Request):
 
             inserted += 1
 
-            # ✅ Commit per document so we don't hold the write lock for the entire batch
+            # âœ… Commit per document so we don't hold the write lock for the entire batch
             commit_with_retry(conn)
 
         # (no final conn.commit() here anymore)
@@ -7115,7 +7286,7 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
     insurance = (payload.get("insurance") or "").strip() or None
 
 
-    # ✅ NEW: admit/discharge dates (optional; PAD/API can send later)
+    # âœ… NEW: admit/discharge dates (optional; PAD/API can send later)
     admit_date_raw = (payload.get("admit_date") or "").strip() or None
     dc_date_raw = (payload.get("dc_date") or "").strip() or None
 
@@ -7144,7 +7315,7 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
         cur.execute("SELECT id FROM hospital_documents WHERE document_hash = ? LIMIT 1", (doc_hash,))
         existing = cur.fetchone()
         if existing:
-            # Duplicate document already ingested — skip everything downstream
+            # Duplicate document already ingested â€” skip everything downstream
             existing_id = existing["id"] if isinstance(existing, sqlite3.Row) else existing[0]
             return {"ok": True, "skipped": True, "message": "Duplicate document (same hash) already exists.", "document_id": existing_id}
 
@@ -7183,7 +7354,7 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
         document_id = cur.lastrowid
 
         
-        # ✅ NEW: upsert the discharge "hub" row by visit_id (if provided)
+        # âœ… NEW: upsert the discharge "hub" row by visit_id (if provided)
         if visit_id:
             cur.execute(
                 """
@@ -7211,7 +7382,7 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
 
             sync_discharge_dc_date_to_snf(cur, visit_id, dc_date)
 
-            # ✅ UPDATED: derive disposition + dc_agency using the most recent 5 hospital documents for this visit_id
+            # âœ… UPDATED: derive disposition + dc_agency using the most recent 5 hospital documents for this visit_id
             llm_source_text = build_recent_hospital_context(cur, visit_id, limit=5) or source_text
 
             dispo = analyze_discharge_disposition_with_llm(llm_source_text)
@@ -7264,7 +7435,7 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
 
             curr_source_dt = normalize_sortable_dt(curr_source_dt)
 
-            # Treat these as "no disposition mentioned" → do NOT overwrite an existing good value
+            # Treat these as "no disposition mentioned" â†’ do NOT overwrite an existing good value
             NO_DISPO_VALUES = {None, "", "unknown", "n/a", "na"}
 
             has_meaningful_dispo = (
@@ -8256,7 +8427,7 @@ async def admin_census_upload(
     for f in files:
         out_path = job_dir / (f.filename or f"upload_{uuid.uuid4().hex}.pdf")
 
-        # ✅ stream to disk (avoid reading entire PDF into RAM)
+        # âœ… stream to disk (avoid reading entire PDF into RAM)
         # Add a hard cap + yield occasionally so large PDFs don't monopolize CPU
         MAX_UPLOAD_BYTES = 75 * 1024 * 1024   # 75MB cap (tune if needed)
         CHUNK_SIZE = 256 * 1024               # 256KB chunks
@@ -8281,7 +8452,7 @@ async def admin_census_upload(
                 if total % (4 * 1024 * 1024) < CHUNK_SIZE:
                     await asyncio.sleep(0)
 
-        # ✅ make sure the temp upload file handle is released ASAP
+        # âœ… make sure the temp upload file handle is released ASAP
         try:
             await f.close()
         except Exception:
@@ -8332,7 +8503,7 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
 
     processed = 0
     try:
-        _job_set(conn, job_id, "running", processed=0, message="Starting…")
+        _job_set(conn, job_id, "running", processed=0, message="Startingâ€¦")
         conn.commit()
 
         # Enable tracemalloc only when PERF_LOG=1 (keeps overhead off by default)
@@ -8502,7 +8673,7 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                     """,
                     (job_id, filename, "Inserted", run_id, rows_inserted),
                 )
-                # ✅ Release cyclic refs (safe)
+                # âœ… Release cyclic refs (safe)
                 gc.collect()
 
                 processed += 1
@@ -8510,7 +8681,7 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                 conn.commit()
 
             except ScannedPdfError as e:
-                # ✅ Treat scanned/image PDFs as "skipped" (not an error)
+                # âœ… Treat scanned/image PDFs as "skipped" (not an error)
                 cur.execute(
                     """
                     INSERT INTO census_upload_job_files (job_id, filename, status, detail, run_id, rows_inserted)
@@ -8535,7 +8706,7 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                 _job_set(conn, job_id, "running", processed=processed, message=f"Error: {filename}")
                 conn.commit()
             finally:
-                # ✅ ALWAYS delete the temp file for this specific 'p'
+                # âœ… ALWAYS delete the temp file for this specific 'p'
                 try:
                     Path(p).unlink(missing_ok=True)
                 except Exception:
@@ -8543,7 +8714,7 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
 
         _job_set(conn, job_id, "done", processed=processed, message="Complete")
         conn.commit()
-        # ✅ cleanup the per-job tmp directory if it's empty
+        # âœ… cleanup the per-job tmp directory if it's empty
         try:
             job_dir = CENSUS_UPLOAD_TMP / job_id
             if job_dir.exists():
@@ -8580,7 +8751,7 @@ def admin_census_upload_status(job_id: str, lite: int = 0, admin=Depends(require
         if not job:
             raise HTTPException(status_code=404, detail="job not found")
 
-        # ✅ during polling, skip the per-file rows to reduce DB + JSON churn
+        # âœ… during polling, skip the per-file rows to reduce DB + JSON churn
         if int(lite or 0) == 1:
             return {"ok": True, "job": dict(job), "files": []}
 
@@ -8950,7 +9121,7 @@ async def admin_census_sensys_process(
         if not run_ids:
             raise HTTPException(status_code=404, detail="No latest run ids found")
 
-        # ✅ define a "latest" id for the response payload (prevents NameError)
+        # âœ… define a "latest" id for the response payload (prevents NameError)
         # Since this endpoint unions the latest run for *each* facility, we use the newest run id overall.
         latest_id = max(run_ids)
 
@@ -9502,7 +9673,7 @@ def run_analytics_query(
             # Misconfigured rule; fall back to built-ins
             pass
         else:
-            # Simple placeholder: {{facility_id}} → ?
+            # Simple placeholder: {{facility_id}} â†’ ?
             params: List[Any] = []
             if "{{facility_id}}" in sql:
                 if not facility_id:
@@ -9616,7 +9787,7 @@ def run_analytics_query(
                 if loc:
                     pieces.append(f"({loc})")
                 if corp:
-                    pieces.append(f"– {corp}")
+                    pieces.append(f"â€“ {corp}")
                 if fid:
                     pieces.append(f"[id: {fid}]")
 
@@ -9814,7 +9985,7 @@ def get_listables_lexicon(conn: sqlite3.Connection) -> Dict[str, List[str]]:
         pass
 
     try:
-        # Additional services – where things like "wound care", "respiratory therapy"
+        # Additional services â€“ where things like "wound care", "respiratory therapy"
         # live today
         cur.execute(
             """
@@ -10101,7 +10272,7 @@ def try_llm_listables_query(
     col_names = [d[0] for d in cur.description] if cur.description else []
     src = "DB:listables"
 
-    # Aggregate-style: 1 row, 1 column → just say "The result is X."
+    # Aggregate-style: 1 row, 1 column â†’ just say "The result is X."
     if len(rows) == 1 and len(col_names) == 1:
         val = rows[0][0]
         return (f"The result is {val}.", [src], sql)
@@ -10278,7 +10449,7 @@ def analyze_patient_notes_with_llm(
       - is the patient going to a SNF?
       - which SNF name?
       - expected transfer date?
-      - confidence (0–1)
+      - confidence (0â€“1)
     Returns a dict or None on failure.
     """
     if not notes:
@@ -10339,23 +10510,23 @@ def analyze_patient_notes_with_llm(
         "  set is_snf_candidate = TRUE but set snf_name = null and use lower confidence.\n"
         "\n"
         "- Facility selection signals (these ARE enough to set snf_name, even if auth is pending):\n"
-        "  • Lines like 'DCP: SNF - <facility>', 'D/C to <facility>', 'Dispo: SNF - <facility>', 'Discharge to <facility>'\n"
+        "  â€¢ Lines like 'DCP: SNF - <facility>', 'D/C to <facility>', 'Dispo: SNF - <facility>', 'Discharge to <facility>'\n"
         "    should be treated as the CURRENT selected plan unless a later note clearly changes it.\n"
         "\n"
         "- If multiple SNFs are mentioned over time, choose ONLY the facility that the latest notes indicate is the CURRENT selected/active plan.\n"
         "- IMPORTANT: Do NOT treat the word 'declined' as a facility rejection unless it clearly means the FACILITY or REFERRAL was declined.\n"
-        "  • Count as facility-negative: 'facility declined', 'SNF declined', 'referral declined', 'no bed', 'out of network', 'denied by facility', 'unable to accept'.\n"
-        "  • Do NOT count as facility-negative: 'patient declined list', 'declined to choose', 'declined options', 'declined to sign', etc.\n"
+        "  â€¢ Count as facility-negative: 'facility declined', 'SNF declined', 'referral declined', 'no bed', 'out of network', 'denied by facility', 'unable to accept'.\n"
+        "  â€¢ Do NOT count as facility-negative: 'patient declined list', 'declined to choose', 'declined options', 'declined to sign', etc.\n"
         "- If the patient/family declined SNF placement entirely and plan changes to home/home health/other LOC, set is_snf_candidate = FALSE.\n"
         "\n"
         "- IMPORTANT: Insurance authorization language must be interpreted carefully:\n"
-        "  • If notes say SNF authorization is PENDING / UNDER REVIEW / REQUEST SUBMITTED / REF# present / awaiting decision,\n"
+        "  â€¢ If notes say SNF authorization is PENDING / UNDER REVIEW / REQUEST SUBMITTED / REF# present / awaiting decision,\n"
         "    then is_snf_candidate should generally be TRUE (but confidence can be lower).\n"
-        "  • If notes say SNF auth was DENIED but there is an APPEAL in progress OR a PEER-TO-PEER (P2P) is being offered/attempted\n"
+        "  â€¢ If notes say SNF auth was DENIED but there is an APPEAL in progress OR a PEER-TO-PEER (P2P) is being offered/attempted\n"
         "    OR the denial is being contested (deadline, physician to call, expedited appeal), then keep is_snf_candidate = TRUE\n"
         "    until there is a clear FINAL outcome.\n"
-        "  • If notes say the appeal was OVERTURNED / APPROVED / WON, treat SNF as continuing (is_snf_candidate = TRUE).\n"
-        "  • If notes say the appeal was UPHELD / LOST / denial stands AND the plan changes to home / home health / other level of care,\n"
+        "  â€¢ If notes say the appeal was OVERTURNED / APPROVED / WON, treat SNF as continuing (is_snf_candidate = TRUE).\n"
+        "  â€¢ If notes say the appeal was UPHELD / LOST / denial stands AND the plan changes to home / home health / other level of care,\n"
         "    then set is_snf_candidate = FALSE.\n"
         "\n"
         "- Only set is_snf_candidate = FALSE when the latest notes clearly indicate SNF is no longer the discharge plan\n"
@@ -10641,7 +10812,7 @@ def map_dc_agency_using_snf_admission_facilities(
     return candidate_clean or None
 
 # ---------------------------------------------------------------------------
-# Question → Answer pipeline
+# Question â†’ Answer pipeline
 # ---------------------------------------------------------------------------
 
 def run_answer_pipeline(
@@ -10708,7 +10879,7 @@ def run_answer_pipeline(
 
 
         # -------------------------------------------------
-        # 2) Hybrid LLM → SQL on v_facility_listables
+        # 2) Hybrid LLM â†’ SQL on v_facility_listables
         # -------------------------------------------------
         listables_result = try_llm_listables_query(conn, normalized_q, fac_id, fac_label)
         if listables_result is not None:
@@ -10802,7 +10973,7 @@ def run_answer_pipeline(
             )
 
         user_message += (
-            "- Begin with a concise, 1–3 sentence answer. Then, if useful, follow "
+            "- Begin with a concise, 1â€“3 sentence answer. Then, if useful, follow "
             "with bullet points for steps/nuances.\n"
         )
 
@@ -11019,7 +11190,7 @@ async def pad_flow_log_start(request: Request):
 
         conn.commit()
 
-        # 🔔 NEW: Email notification (never breaks the endpoint)
+        # ðŸ”” NEW: Email notification (never breaks the endpoint)
         try:
             cur.execute("SELECT * FROM pad_flow_runs WHERE run_id = ?", (run_id,))
             rr = cur.fetchone()
@@ -11083,7 +11254,7 @@ async def pad_flow_log_stop(request: Request):
 
         conn.commit()
 
-        # 🔔 NEW: Email notification (never breaks the endpoint)
+        # ðŸ”” NEW: Email notification (never breaks the endpoint)
         try:
             cur.execute("SELECT * FROM pad_flow_runs WHERE run_id = ?", (run_id,))
             rr = cur.fetchone()
@@ -11168,7 +11339,7 @@ async def pad_flow_log_error(request: Request):
 
         conn.commit()
 
-        # 🔔 NEW: Email notification (never breaks the endpoint)
+        # ðŸ”” NEW: Email notification (never breaks the endpoint)
         try:
             cur.execute("SELECT * FROM pad_flow_runs WHERE run_id = ?", (run_id,))
             rr = cur.fetchone()
@@ -11183,7 +11354,7 @@ async def pad_flow_log_error(request: Request):
         conn.close()
 
 
-# ✅ NEW: PAD can ask what the last run was for a given flow_key (for resume logic)
+# âœ… NEW: PAD can ask what the last run was for a given flow_key (for resume logic)
 @app.get("/api/pad/flow-log/last")
 async def pad_flow_log_last(
     request: Request,
@@ -11596,7 +11767,7 @@ def snf_upsert_from_notes_for_visit(conn: sqlite3.Connection, visit_id: str) -> 
     facility_id = None
     facility_label = None
 
-    # Map facility name → SNF Admission Facility (snf_admission_facilities only)
+    # Map facility name â†’ SNF Admission Facility (snf_admission_facilities only)
     try:
         facility_id, facility_label = map_snf_name_to_facility_id(conn, snf_name_raw)
     except Exception:
@@ -11797,7 +11968,7 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
             expected_date = result.get("expected_transfer_date")
             conf = result.get("confidence", 0.0)
 
-            # ✅ NEW: prefer explicit facility mentions from the CM notes text (more specific than "the Luxe")
+            # âœ… NEW: prefer explicit facility mentions from the CM notes text (more specific than "the Luxe")
             note_texts = [(r["note_text"] or "") for r in notes]  # notes = cur.fetchall() above
             infer_id, infer_label, infer_score = infer_snf_facility_from_notes(conn, note_texts)
 
@@ -11830,11 +12001,13 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     ai_snf_facility_id,
                     ai_expected_transfer_date,
                     ai_confidence,
+                    current_snf_facility_id,
+                    current_snf_facility_name,
                     status,
                     last_seen_active_date,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', date('now'), datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', date('now'), datetime('now'))
                 ON CONFLICT(visit_id) DO UPDATE SET
                     raw_note_id               = excluded.raw_note_id,
                     patient_mrn               = excluded.patient_mrn,
@@ -11850,6 +12023,22 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     ai_snf_facility_id        = excluded.ai_snf_facility_id,
                     ai_expected_transfer_date = excluded.ai_expected_transfer_date,
                     ai_confidence             = excluded.ai_confidence,
+                    current_snf_facility_id   = CASE
+                                                   WHEN snf_admissions.final_snf_facility_id IS NOT NULL
+                                                        AND TRIM(snf_admissions.final_snf_facility_id) <> ''
+                                                   THEN snf_admissions.final_snf_facility_id
+                                                   ELSE excluded.ai_snf_facility_id
+                                                END,
+                    current_snf_facility_name = CASE
+                                                   WHEN snf_admissions.final_snf_name_display IS NOT NULL
+                                                        AND TRIM(snf_admissions.final_snf_name_display) <> ''
+                                                   THEN snf_admissions.final_snf_name_display
+                                                   ELSE COALESCE(
+                                                         (SELECT facility_name FROM snf_admission_facilities WHERE id = excluded.ai_snf_facility_id),
+                                                         excluded.ai_snf_name_raw,
+                                                         snf_admissions.current_snf_facility_name
+                                                   )
+                                                END,
                     status = CASE
                                WHEN snf_admissions.status IN ('removed','confirmed','projected')
                                  THEN snf_admissions.status
@@ -11895,6 +12084,8 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
                     ai_facility_id,
                     expected_date,
                     conf,
+                    ai_facility_id,
+                    (_ai_facility_label or "") or (snf_name_raw or ""),
                 ),
 
             )
@@ -12409,7 +12600,7 @@ def snf_recompute_for_admission(visit_id: str = "", patient_mrn: str = "", retur
             }
 
         if not result or not result.get("is_snf_candidate", False):
-            # same “no longer candidate” treatment
+            # same â€œno longer candidateâ€ treatment
             if visit_id_db:
                 cur.execute(
                     """
@@ -12459,7 +12650,7 @@ def snf_recompute_for_admission(visit_id: str = "", patient_mrn: str = "", retur
                 SET raw_note_id = ?,
                     note_datetime = ?,
 
-                    -- ✅ NEW: backfill dc_date from latest_note when present (but don't wipe existing)
+                    -- âœ… NEW: backfill dc_date from latest_note when present (but don't wipe existing)
                     dc_date = COALESCE(?, dc_date),
 
                     ai_is_snf_candidate = 1,
@@ -14048,7 +14239,7 @@ def build_client_survey_secure_list_html(
     header_img = "/static/images/Asset 1.png"
     logo_img = "/static/images/Evolv-Health-hor-color.png"
     summary_text = esc((master_summary or "").strip() or "Summary not available.")
-    avg_txt = f"{avg_score:.1f}" if avg_score is not None else "—"
+    avg_txt = f"{avg_score:.1f}" if avg_score is not None else "â€”"
     avg_stars = _client_survey_star_img(avg_score) if avg_score is not None else ""
     avg_stars_html = f'<img src="{avg_stars}" alt="Overall average" />' if avg_stars else ""
 
@@ -14367,7 +14558,7 @@ async def admin_snf_ai_summary_run(request: Request, payload: Dict[str, Any] = B
             # Reasons/Evidence comes directly from the MAIN prompt output (rationale)
             "reasons": [rationale] if rationale else [],
             "competing_plan": "",
-            # “Agency names” should align with the Facility(AI) logic — for SNF, show the SNF name
+            # â€œAgency namesâ€ should align with the Facility(AI) logic â€” for SNF, show the SNF name
             "agency_names": [snf_name] if snf_name else [],
             "snf_facilities_mentioned": [snf_name] if snf_name else [],
             "next_steps": [],
@@ -14553,7 +14744,7 @@ async def admin_snf_list(
     request: Request,
     status: str = Query("pending"),          # 'pending', 'confirmed', 'corrected', 'rejected', 'all'
     for_date: Optional[str] = Query(None),   # 'YYYY-MM-DD'
-    days_ahead: int = Query(0, ge=0, le=30),
+    days_ahead: int = Query(0, ge=0, le=90),
     notified_only: int = Query(0),
     email_at: Optional[str] = Query(None),  # YYYY-MM-DD; filters by DATE(s.emailed_at)
     email_days_ahead: int = Query(0, ge=0, le=30),
@@ -14626,13 +14817,13 @@ async def admin_snf_list(
             SELECT
                 s.*,
                 COALESCE(s.final_expected_transfer_date, s.ai_expected_transfer_date) AS effective_date,
-                COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id) AS effective_facility_id,
-                sf.facility_name AS effective_facility_name,
+                s.current_snf_facility_id AS effective_facility_id,
+                s.current_snf_facility_name AS effective_facility_name,
                 NULL AS effective_facility_city,
                 NULL AS effective_facility_state
             FROM snf_admissions s
             LEFT JOIN snf_admission_facilities sf
-              ON sf.id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id)
+              ON sf.id = s.current_snf_facility_id
             WHERE {" AND ".join(where) if where else "1=1"}
             ORDER BY s.dc_date IS NULL, s.dc_date, s.patient_name COLLATE NOCASE
         """
@@ -14704,14 +14895,16 @@ async def admin_snf_list(
                     "ai_confidence": r["ai_confidence"],
                     "status": r["status"],
 
-                    # ✅ ADD THIS LINE (so the list can show DC Date)
+                    # âœ… ADD THIS LINE (so the list can show DC Date)
                     "dc_date": r["dc_date"],
 
-                    # ✅ NEW: so Facility(AI) column can show "Disposition | Phone"
+                    # âœ… NEW: so Facility(AI) column can show "Disposition | Phone"
                     "disposition": r["disposition"],
 
                     "final_snf_facility_id": r["final_snf_facility_id"],
                     "final_snf_name_display": r["final_snf_name_display"],
+                    "current_snf_facility_id": r["current_snf_facility_id"],
+                    "current_snf_facility_name": r["current_snf_facility_name"],
                     "final_expected_transfer_date": r["final_expected_transfer_date"],
                     "review_comments": r["review_comments"],
 
@@ -14785,6 +14978,8 @@ async def admin_snf_get_note(
             "status": adm["status"],
             "final_snf_facility_id": adm["final_snf_facility_id"],
             "final_snf_name_display": adm["final_snf_name_display"],
+            "current_snf_facility_id": adm["current_snf_facility_id"],
+            "current_snf_facility_name": adm["current_snf_facility_name"],
             "final_expected_transfer_date": adm["final_expected_transfer_date"],
             "dc_date": adm["dc_date"],
             "review_comments": adm["review_comments"],
@@ -15109,7 +15304,7 @@ async def admin_snf_update(
             conn.close()
             raise HTTPException(status_code=404, detail="SNF admission not found")
 
-        # DC Date (manual) — prefer dc_date, fallback to legacy final_expected_transfer_date
+        # DC Date (manual) â€” prefer dc_date, fallback to legacy final_expected_transfer_date
         dc_date = None
         if "dc_date" in payload:
             dc_date = (payload.get("dc_date") or None)
@@ -15211,6 +15406,7 @@ async def admin_snf_update(
         existing_final_name_display = row["final_snf_name_display"]
         existing_ai_is_candidate = row["ai_is_snf_candidate"]
         ai_snf_name_raw = row["ai_snf_name_raw"]
+        ai_snf_facility_id = row["ai_snf_facility_id"]
 
         new_final_facility_id = existing_final_facility_id
         new_final_name_display = existing_final_name_display
@@ -15259,6 +15455,14 @@ async def admin_snf_update(
         # NOTE: for non-SNF dispositions we leave ai_is_snf_candidate alone,
         # but still record disposition and facility_free_text for audit.
 
+        current_facility_id, current_facility_name = _snf_compute_current_facility(
+            conn,
+            final_id=new_final_facility_id,
+            final_name=new_final_name_display,
+            ai_id=ai_snf_facility_id,
+            ai_name_raw=ai_snf_name_raw,
+        )
+
         # NEW: Notification fields
         notified_by_hospital = 1 if payload.get("notified_by_hospital") else 0
         notified_by = (payload.get("notified_by") or "").strip()
@@ -15280,6 +15484,8 @@ async def admin_snf_update(
                    ai_is_snf_candidate = ?,
                    final_snf_facility_id = ?,
                    final_snf_name_display = ?,
+                   current_snf_facility_id = ?,
+                   current_snf_facility_name = ?,
                    notified_by_hospital = ?,
                    notified_by = ?,
                    notification_dt = ?,
@@ -15305,6 +15511,8 @@ async def admin_snf_update(
                 new_ai_is_candidate,
                 new_final_facility_id,
                 new_final_name_display,
+                current_facility_id,
+                current_facility_name,
                 notified_by_hospital,
                 notified_by,
                 notification_dt,
@@ -15458,7 +15666,7 @@ async def admin_snf_send_emails(
 
             fac_name = fac_names.get(fid, fid)
             sent_date = dt.date.today().isoformat()  # date the email is sent (today)
-            subject = f"Upcoming SNF admissions for {sent_date} – {fac_name}"
+            subject = f"Upcoming SNF admissions for {sent_date} - {fac_name}"
             if test_only:
                 subject = "[TEST] " + subject
 
@@ -15485,7 +15693,7 @@ async def admin_snf_send_emails(
             msg["To"] = target_to
             if target_cc:
                 msg["Cc"] = target_cc
-            msg.set_content(body)
+            msg.set_content(body, charset="utf-8")
 
             try:
                 context = ssl.create_default_context()
@@ -15528,9 +15736,15 @@ async def admin_snf_send_emails(
 
 
 SNF_UNIVERSAL_PIN_KEY = "snf_universal_pin_hash"
+SNF_PROVIDER_PIN_KEY = "snf_provider_pin_hash"
 
 def get_snf_universal_pin_hash(cur) -> str:
     cur.execute("SELECT value FROM ai_settings WHERE key = ?", (SNF_UNIVERSAL_PIN_KEY,))
+    row = cur.fetchone()
+    return ((row["value"] if row else "") or "").strip()
+
+def get_snf_provider_pin_hash(cur) -> str:
+    cur.execute("SELECT value FROM ai_settings WHERE key = ?", (SNF_PROVIDER_PIN_KEY,))
     row = cur.fetchone()
     return ((row["value"] if row else "") or "").strip()
 
@@ -15603,6 +15817,19 @@ async def admin_snf_universal_pin_get(request: Request):
     finally:
         conn.close()
 
+@app.get("/admin/snf/provider-pin/get")
+async def admin_snf_provider_pin_get(request: Request):
+    require_admin(request)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT value FROM ai_settings WHERE key = ?", (SNF_PROVIDER_PIN_KEY,))
+        row = cur.fetchone()
+        pin_hash = (row["value"] if row else "") or ""
+        return {"ok": True, "pin_set": bool(pin_hash.strip())}
+    finally:
+        conn.close()
+
 @app.post("/admin/snf/universal-pin/set")
 async def admin_snf_universal_pin_set(request: Request, payload: Dict[str, Any] = Body(...)):
     require_admin(request)
@@ -15628,6 +15855,31 @@ async def admin_snf_universal_pin_set(request: Request, payload: Dict[str, Any] 
     finally:
         conn.close()
 
+@app.post("/admin/snf/provider-pin/set")
+async def admin_snf_provider_pin_set(request: Request, payload: Dict[str, Any] = Body(...)):
+    require_admin(request)
+    pin = (payload.get("pin") or "").strip()
+    if not pin:
+        raise HTTPException(status_code=400, detail="pin is required")
+
+    pin_hash = hash_pin(pin)
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO ai_settings (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value
+            """,
+            (SNF_PROVIDER_PIN_KEY, pin_hash),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
 @app.post("/admin/snf/universal-pin/clear")
 async def admin_snf_universal_pin_clear(request: Request):
     require_admin(request)
@@ -15641,6 +15893,25 @@ async def admin_snf_universal_pin_clear(request: Request):
             ON CONFLICT(key) DO UPDATE SET value=excluded.value
             """,
             (SNF_UNIVERSAL_PIN_KEY, ""),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+@app.post("/admin/snf/provider-pin/clear")
+async def admin_snf_provider_pin_clear(request: Request):
+    require_admin(request)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO ai_settings (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value
+            """,
+            (SNF_PROVIDER_PIN_KEY, ""),
         )
         conn.commit()
         return {"ok": True}
@@ -15669,6 +15940,7 @@ async def admin_snf_email_log_list(request: Request):
                 f.facility_name AS snf_facility_name,
                 COALESCE(o.facility_open_count, 0)  AS facility_open_count,
                 COALESCE(o.universal_open_count, 0) AS universal_open_count,
+                COALESCE(o.provider_open_count, 0)  AS provider_open_count,
                 COALESCE(o.open_count, 0)           AS open_count
             FROM snf_secure_links l
             LEFT JOIN snf_admission_facilities f
@@ -15678,6 +15950,7 @@ async def admin_snf_email_log_list(request: Request):
                     secure_link_id,
                     SUM(CASE WHEN LOWER(COALESCE(pin_type,'')) = 'facility' THEN 1 ELSE 0 END)  AS facility_open_count,
                     SUM(CASE WHEN LOWER(COALESCE(pin_type,'')) = 'universal' THEN 1 ELSE 0 END) AS universal_open_count,
+                    SUM(CASE WHEN LOWER(COALESCE(pin_type,'')) = 'provider' THEN 1 ELSE 0 END)  AS provider_open_count,
                     COUNT(*) AS open_count
                 FROM snf_secure_link_access_log
                 GROUP BY secure_link_id
@@ -15712,6 +15985,7 @@ async def admin_snf_email_log_list(request: Request):
                     "patient_count": patient_count,
                     "facility_open_count": int(r["facility_open_count"] or 0),
                     "universal_open_count": int(r["universal_open_count"] or 0),
+                    "provider_open_count": int(r["provider_open_count"] or 0),
                     "open_count": int(r["open_count"] or 0),  # keep for compatibility
                 }
             )
@@ -15834,6 +16108,207 @@ async def admin_snf_email_log_opens(request: Request, secure_link_id: int):
     finally:
         conn.close()
 
+def _snf_admission_summary_report(conn: sqlite3.Connection, dc_from: str, dc_to: str) -> dict:
+    cur = conn.cursor()
+
+    # Cohort = SNF admissions in date range (dc_date, fallback to last_seen_active_date)
+    cur.execute(
+        """
+        SELECT
+            s.id AS snf_id,
+            s.ai_is_snf_candidate,
+            s.notified_by_hospital,
+            s.assignment_confirmation,
+
+            s.final_snf_name_display,
+            s.ai_snf_name_raw,
+            s.current_snf_facility_id,
+            s.current_snf_facility_name,
+            s.last_seen_active_date,
+
+            COALESCE(s.current_snf_facility_id, s.final_snf_facility_id, s.ai_snf_facility_id) AS effective_facility_id,
+            COALESCE(s.current_snf_facility_name, f.facility_name) AS effective_facility_name,
+            f.attending AS facility_attending
+        FROM snf_admissions s
+        LEFT JOIN snf_admission_facilities f
+          ON f.id = COALESCE(s.current_snf_facility_id, s.final_snf_facility_id, s.ai_snf_facility_id)
+        WHERE date(COALESCE(NULLIF(s.dc_date, ''), s.last_seen_active_date)) >= date(?)
+          AND date(COALESCE(NULLIF(s.dc_date, ''), s.last_seen_active_date)) <= date(?)
+        """,
+        (dc_from, dc_to),
+    )
+    rows = cur.fetchall()
+
+    snf_rows = rows
+    total_snf = len(snf_rows)
+
+    # -----------------------------
+    # Facility volume (grouped by current_snf_facility_name)
+    # -----------------------------
+    volume_map: Dict[str, Dict[str, Any]] = {}
+    for r in snf_rows:
+        fac_label = (
+            (r["current_snf_facility_name"] or "").strip()
+            or (r["effective_facility_name"] or "").strip()
+            or (r["final_snf_name_display"] or "").strip()
+            or (r["ai_snf_name_raw"] or "").strip()
+        )
+        if not fac_label:
+            continue
+        if fac_label not in volume_map:
+            volume_map[fac_label] = {
+                "facility": fac_label,
+                "count": 0,
+                "is_starred": False,
+                "facility_id": None,
+            }
+
+        volume_map[fac_label]["count"] += 1
+
+        # Preserve any known numeric facility_id for PIN metrics
+        fac_id = r["effective_facility_id"]
+        if volume_map[fac_label]["facility_id"] is None:
+            try:
+                volume_map[fac_label]["facility_id"] = int(fac_id)
+            except (TypeError, ValueError):
+                pass
+
+        if (r["facility_attending"] or "").strip():
+            volume_map[fac_label]["is_starred"] = True
+
+    # -----------------------------
+    # Notified by Hospital
+    # -----------------------------
+    notified_count = sum(1 for r in snf_rows if int(r["notified_by_hospital"] or 0) == 1)
+    notified_pct = (notified_count / total_snf * 100.0) if total_snf else 0.0
+
+    # -----------------------------
+    # Assignment confirmation distribution
+    # -----------------------------
+    assign_counts = {"Assigned": 0, "Assigned Out": 0, "Assigned Out (LTC)": 0, "Unknown": 0}
+    for r in snf_rows:
+        v = (r["assignment_confirmation"] or "Unknown").strip()
+        if v not in assign_counts:
+            v = "Unknown"
+        assign_counts[v] += 1
+
+    assign_pct = {
+        k: (assign_counts[k] / total_snf * 100.0) if total_snf else 0.0
+        for k in assign_counts
+    }
+
+    # -----------------------------
+    # Percent of emails opened with FACILITY/PROVIDER PIN (de-duped to 1 open per email)
+    # Cohort emails = secure links whose admission_ids include a cohort snf_id
+    # -----------------------------
+    cohort_admission_ids = set(int(r["snf_id"]) for r in snf_rows if r["snf_id"] is not None)
+
+    cur.execute(
+        """
+        SELECT id, snf_facility_id, admission_ids
+        FROM snf_secure_links
+        WHERE sent_at IS NOT NULL AND sent_at <> ''
+        ORDER BY sent_at DESC
+        """
+    )
+    link_rows = cur.fetchall()
+
+    cohort_link_ids: List[int] = []
+    facility_link_ids: Dict[int, List[int]] = {}
+    for lr in link_rows:
+        try:
+            ids = json.loads(lr["admission_ids"] or "[]")
+            if not isinstance(ids, list):
+                continue
+            if not any(int(x) in cohort_admission_ids for x in ids if str(x).isdigit()):
+                continue
+            link_id = int(lr["id"])
+            cohort_link_ids.append(link_id)
+            fac_id = lr["snf_facility_id"]
+            if fac_id is not None:
+                fac_id = int(fac_id)
+                facility_link_ids.setdefault(fac_id, []).append(link_id)
+        except Exception:
+            continue
+
+    total_emails = len(cohort_link_ids)
+
+    opened_facility_links: set[int] = set()
+    opened_provider_links: set[int] = set()
+    if cohort_link_ids:
+        placeholders = ",".join("?" for _ in cohort_link_ids)
+        cur.execute(
+            f"""
+            SELECT DISTINCT secure_link_id, LOWER(COALESCE(pin_type,'')) AS pin_type
+            FROM snf_secure_link_access_log
+            WHERE secure_link_id IN ({placeholders})
+            """,
+            cohort_link_ids,
+        )
+        for row in cur.fetchall():
+            link_id = int(row[0])
+            pin_type = (row[1] or "").strip()
+            if pin_type == "facility":
+                opened_facility_links.add(link_id)
+            elif pin_type == "provider":
+                opened_provider_links.add(link_id)
+
+    opened_count = len(opened_facility_links)
+    opened_pct = (opened_count / total_emails * 100.0) if total_emails else 0.0
+    unopened_pct = 100.0 - opened_pct if total_emails else 0.0
+
+    provider_opened_count = len(opened_provider_links)
+    provider_opened_pct = (provider_opened_count / total_emails * 100.0) if total_emails else 0.0
+    provider_unopened_pct = 100.0 - provider_opened_pct if total_emails else 0.0
+
+    # -----------------------------
+    # Facility list (from grouped SNF rows)
+    # -----------------------------
+    top_facilities: List[Dict[str, Any]] = []
+    for v in volume_map.values():
+        fac_id = v.get("facility_id")
+        link_ids = facility_link_ids.get(fac_id, []) if fac_id is not None else []
+        fac_total = len(link_ids)
+        fac_opened = len([lid for lid in link_ids if lid in opened_facility_links])
+        prov_opened = len([lid for lid in link_ids if lid in opened_provider_links])
+
+        fac_unopened_pct = (100.0 - (fac_opened / fac_total * 100.0)) if fac_total else 0.0
+        prov_unopened_pct = (100.0 - (prov_opened / fac_total * 100.0)) if fac_total else 0.0
+
+        top_facilities.append(
+            {
+                "facility_id": fac_id,
+                "facility": v["facility"],
+                "count": v["count"],
+                "is_starred": bool(v.get("is_starred")),
+                "facility_pin_unopened_pct": round(fac_unopened_pct, 1),
+                "provider_pin_unopened_pct": round(prov_unopened_pct, 1),
+            }
+        )
+
+    top_facilities.sort(key=lambda x: (-x["count"], x["facility"].lower()))
+
+    return {
+        "filters": {"dc_from": dc_from, "dc_to": dc_to},
+        "totals": {
+            "snf_rows": total_snf,
+            "emails_in_cohort": total_emails,
+        },
+        "top_facilities": top_facilities,
+        "metrics": {
+            "notified_count": notified_count,
+            "notified_pct": round(notified_pct, 1),
+            "facility_pin_opened_pct": round(opened_pct, 1),
+            "facility_pin_unopened_pct": round(unopened_pct, 1),
+            "provider_pin_opened_pct": round(provider_opened_pct, 1),
+            "provider_pin_unopened_pct": round(provider_unopened_pct, 1),
+            "provider_pin_opened_count": provider_opened_count,
+            "assignment_counts": assign_counts,
+            "assignment_pct": {k: round(assign_pct[k], 1) for k in assign_pct},
+        },
+    }
+
+
 @app.post("/admin/snf/reports/run")
 async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body(...)):
     """
@@ -15843,8 +16318,8 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
       - snf_admission_summary
 
     Filters:
-      - dc_from (YYYY-MM-DD) : Hospital discharge dc_date start
-      - dc_to   (YYYY-MM-DD) : Hospital discharge dc_date end
+      - dc_from (YYYY-MM-DD) : SNF admission dc_date start
+      - dc_to   (YYYY-MM-DD) : SNF admission dc_date end
     """
     require_admin(request)
 
@@ -15860,178 +16335,283 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
 
     conn = get_db()
     try:
-        cur = conn.cursor()
+        data = _snf_admission_summary_report(conn, dc_from, dc_to)
+        data["ok"] = True
+        data["report_key"] = report_key
+        return data
+    finally:
+        conn.close()
 
-        # Cohort = hospital discharges in date range, joined to SNF admissions by visit_id
+
+def _build_snf_admission_summary_email_html(data: dict) -> str:
+    esc = html.escape
+    m = data.get("metrics") or {}
+    t = data.get("totals") or {}
+    top = data.get("top_facilities") or []
+    dc_from = esc((data.get("filters") or {}).get("dc_from") or "")
+    dc_to = esc((data.get("filters") or {}).get("dc_to") or "")
+
+    opened_pct = m.get("facility_pin_opened_pct") or 0
+    unopened_pct = m.get("facility_pin_unopened_pct") or 0
+    provider_unopened_pct = m.get("provider_pin_unopened_pct") or 0
+    provider_unopened_count = (t.get("emails_in_cohort") or 0) - (m.get("provider_pin_opened_count") or 0)
+
+    def _kpi(label: str, value: str, sub: str) -> str:
+        return f"""
+          <div class="kpi">
+            <div class="kpi-label">{esc(label)}</div>
+            <div class="kpi-value">{esc(value)}</div>
+            <div class="kpi-sub">{esc(sub)}</div>
+          </div>
+        """
+
+    rows_html = ""
+    for x in top:
+        name = esc(x.get("facility") or "(Unknown)")
+        star = " <span style='color:#A8E6CF;font-weight:900;'>★</span>" if x.get("is_starred") else ""
+        count = x.get("count") if x.get("count") is not None else 0
+        fac_unopened = f"{x.get('facility_pin_unopened_pct', 0)}%"
+        prov_unopened = f"{x.get('provider_pin_unopened_pct', 0)}%"
+        rows_html += f"""
+                <tr>
+                  <td colspan="4" style="padding:8px 6px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;border:1px solid #e5e7eb;border-radius:12px;">
+                      <tr>
+                        <td width="45%" style="padding:8px 10px;font-size:13px;font-weight:900;">{name}{star}</td>
+                        <td width="15%" align="left" style="padding:8px 10px;">
+                          <div style="display:inline-block;font-size:12px;font-weight:900;border:1px solid rgba(168,230,207,0.65);background:rgba(168,230,207,0.12);color:#0D3B66;border-radius:999px;padding:6px 10px;">
+                            {count}
+                          </div>
+                        </td>
+                        <td width="20%" align="left" style="padding:8px 10px;">
+                          <div style="display:inline-block;font-size:12px;font-weight:900;color:#0D3B66;border:1px solid rgba(13,59,102,.16);background:rgba(13,59,102,.06);border-radius:999px;padding:6px 10px;">
+                            {fac_unopened}
+                          </div>
+                        </td>
+                        <td width="20%" align="left" style="padding:8px 10px;">
+                          <div style="display:inline-block;font-size:12px;font-weight:900;color:#0D3B66;border:1px solid rgba(13,59,102,.16);background:rgba(13,59,102,.06);border-radius:999px;padding:6px 10px;">
+                            {prov_unopened}
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+        """
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SNF Admission Summary</title>
+</head>
+<body style="margin:0;background:#f5f7fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#111827;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:22px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="920" cellpadding="0" cellspacing="0" style="width:920px;max-width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
+          <tr>
+            <td style="padding:16px 20px;border-bottom:1px solid #eef2f7;">
+              <div style="font-size:18px;font-weight:900;">SNF Admission Summary</div>
+              <div style="font-size:12px;color:#6b7280;margin-top:4px;">Filtered by SNF DC Date (fallback to Last Seen Active Date): <strong>{dc_from}</strong> → <strong>{dc_to}</strong></div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:14px 20px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td width="33.33%" valign="top" style="padding-right:10px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:12px;">
+                      <tr><td style="padding:10px 12px;">
+                        <div style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;">Emails opened (Facility PIN)</div>
+                        <div style="font-size:18px;font-weight:950;color:#0D3B66;margin-top:4px;">{opened_pct}%</div>
+                        <div style="font-size:12px;color:#6b7280;margin-top:2px;">{t.get('emails_in_cohort', 0)} emails in cohort</div>
+                      </td></tr>
+                    </table>
+                  </td>
+                  <td width="33.33%" valign="top" style="padding-right:10px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:12px;">
+                      <tr><td style="padding:10px 12px;">
+                        <div style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;">Emails unopened (Facility PIN)</div>
+                        <div style="font-size:18px;font-weight:950;color:#0D3B66;margin-top:4px;">{unopened_pct}%</div>
+                        <div style="font-size:12px;color:#6b7280;margin-top:2px;">1 open max per email</div>
+                      </td></tr>
+                    </table>
+                  </td>
+                  <td width="33.33%" valign="top">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:12px;">
+                      <tr><td style="padding:10px 12px;">
+                        <div style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;">Emails unopened (Provider PIN)</div>
+                        <div style="font-size:18px;font-weight:950;color:#0D3B66;margin-top:4px;">{provider_unopened_pct}%</div>
+                        <div style="font-size:12px;color:#6b7280;margin-top:2px;">{provider_unopened_count} / {t.get('emails_in_cohort', 0)}</div>
+                      </td></tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:10px 20px 18px 20px;">
+              <div style="font-size:13px;font-weight:900;margin-bottom:8px;">SNF Volume by Facility</div>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:12px;">
+                <tr>
+                  <td width="45%" style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Facility</td>
+                  <td width="15%" style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Volume</td>
+                  <td width="20%" style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Facility PIN Unopened %</td>
+                  <td width="20%" style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Provider PIN Unopened %</td>
+                </tr>
+                {rows_html or '<tr><td colspan="4" style="color:#6b7280;font-size:12px;padding:6px 6px;">No facility data in this range.</td></tr>'}
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 20px 16px 20px;font-size:12px;color:#6b7280;">
+              SNF rows in cohort: <strong>{t.get('snf_rows', 0)}</strong>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+
+@app.post("/admin/snf/reports/email")
+async def admin_snf_reports_email(request: Request, payload: Dict[str, Any] = Body(...)):
+    require_admin(request)
+
+    report_key = (payload.get("report_key") or "").strip()
+    dc_from = (payload.get("dc_from") or "").strip()
+    dc_to = (payload.get("dc_to") or "").strip()
+    recipients = normalize_email_list(payload.get("recipients") or "")
+
+    if report_key != "snf_admission_summary":
+        raise HTTPException(status_code=400, detail="Unknown report_key")
+    if not dc_from or not dc_to:
+        raise HTTPException(status_code=400, detail="dc_from and dc_to are required (YYYY-MM-DD)")
+    if not recipients:
+        raise HTTPException(status_code=400, detail="recipients are required")
+
+    if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD):
+        return {"ok": False, "message": "SMTP not configured; skipping send."}
+
+    conn = get_db()
+    try:
+        data = _snf_admission_summary_report(conn, dc_from, dc_to)
+    finally:
+        conn.close()
+
+    html_body = _build_snf_admission_summary_email_html(data)
+    subject = f"SNF Admission Summary ({dc_from} to {dc_to})"
+
+    msg = EmailMessage()
+    msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
+    msg["To"] = recipients
+    msg["Subject"] = subject
+    msg.set_content("SNF Admission Summary report attached below.", charset="utf-8")
+    msg.add_alternative(html_body, subtype="html", charset="utf-8")
+
+    context = ssl.create_default_context()
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        server.starttls(context=context)
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.send_message(msg)
+
+    return {"ok": True}
+
+
+@app.get("/admin/snf/reports/export.csv")
+async def admin_snf_reports_export_csv(request: Request, dc_from: str = Query(""), dc_to: str = Query("")):
+    require_admin(request)
+    if not dc_from or not dc_to:
+        raise HTTPException(status_code=400, detail="dc_from and dc_to are required (YYYY-MM-DD)")
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
         cur.execute(
             """
             SELECT
-                h.visit_id,
-                h.dc_date,
-                h.disposition AS dc_disposition,
-
                 s.id AS snf_id,
-                s.ai_is_snf_candidate,
+                s.visit_id,
+                s.patient_name,
+                s.patient_mrn,
+                s.hospital_name,
+                s.dc_date,
+                s.last_seen_active_date,
+                s.status,
                 s.notified_by_hospital,
-                s.assignment_confirmation,
-
+                s.emailed_at,
+                s.email_run_id,
+                s.current_snf_facility_id,
+                s.current_snf_facility_name,
+                s.final_snf_facility_id,
                 s.final_snf_name_display,
-                s.ai_snf_name_raw,
-                f.facility_name AS effective_facility_name,
-                f.attending AS facility_attending,
-
-                COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id) AS effective_facility_id
-            FROM hospital_discharges h
-            LEFT JOIN snf_admissions s
-              ON s.visit_id = h.visit_id
-            LEFT JOIN snf_admission_facilities f
-              ON f.id = COALESCE(s.final_snf_facility_id, s.ai_snf_facility_id)
-            WHERE h.dc_date IS NOT NULL
-              AND date(h.dc_date) >= date(?)
-              AND date(h.dc_date) <= date(?)
+                s.ai_snf_facility_id,
+                s.ai_snf_name_raw
+            FROM snf_admissions s
+            WHERE date(COALESCE(NULLIF(s.dc_date, ''), s.last_seen_active_date)) >= date(?)
+              AND date(COALESCE(NULLIF(s.dc_date, ''), s.last_seen_active_date)) <= date(?)
+            ORDER BY s.patient_name COLLATE NOCASE, s.id ASC
             """,
             (dc_from, dc_to),
         )
         rows = cur.fetchall()
-
-        # Metrics should be computed only where we actually have an SNF admission row
-        snf_rows = [r for r in rows if r["snf_id"] is not None]
-
-        total_joined = len(rows)
-        total_snf = len(snf_rows)
-
-        # -----------------------------
-        # Facility volume (top 10)
-        # -----------------------------
-        volume_map: Dict[str, Dict[str, Any]] = {}
-        for r in snf_rows:
-            fac_label = _facility_display(r["final_snf_name_display"], r["effective_facility_name"], r["ai_snf_name_raw"])
-            is_starred = bool((r["facility_attending"] or "").strip())  # matches your dropdown star logic
-            if fac_label not in volume_map:
-                volume_map[fac_label] = {"facility": fac_label, "count": 0, "is_starred": False}
-            volume_map[fac_label]["count"] += 1
-            if is_starred:
-                volume_map[fac_label]["is_starred"] = True
-
-        top_facilities = sorted(volume_map.values(), key=lambda x: x["count"], reverse=True)[:10]
-
-        # -----------------------------
-        # Notified by Hospital
-        # -----------------------------
-        notified_count = sum(1 for r in snf_rows if int(r["notified_by_hospital"] or 0) == 1)
-        notified_pct = (notified_count / total_snf * 100.0) if total_snf else 0.0
-
-        # -----------------------------
-        # Assignment confirmation distribution
-        # -----------------------------
-        assign_counts = {"Assigned": 0, "Assigned Out": 0, "Assigned Out (LTC)": 0, "Unknown": 0}
-        for r in snf_rows:
-            v = (r["assignment_confirmation"] or "Unknown").strip()
-            if v not in assign_counts:
-                v = "Unknown"
-            assign_counts[v] += 1
-
-        assign_pct = {
-            k: (assign_counts[k] / total_snf * 100.0) if total_snf else 0.0
-            for k in assign_counts
-        }
-
-        # -----------------------------
-        # AI candidate accuracy vs discharge disposition (SNF vs not SNF)
-        # -----------------------------
-        # Only score where discharge disposition exists and we have an ai_is_snf_candidate value
-        scored = 0
-        correct = 0
-        for r in snf_rows:
-            dc_dispo = (r["dc_disposition"] or "").strip()
-            if not dc_dispo:
-                continue
-            scored += 1
-            actual_is_snf = _is_snf_disposition(dc_dispo)
-            predicted_is_snf = bool(int(r["ai_is_snf_candidate"] or 0) == 1)
-            if actual_is_snf == predicted_is_snf:
-                correct += 1
-
-        ai_accuracy_pct = (correct / scored * 100.0) if scored else 0.0
-
-        # -----------------------------
-        # Percent of emails opened with FACILITY PIN (de-duped to 1 open per email)
-        # Cohort emails = secure links whose admission_ids include a cohort snf_id
-        # -----------------------------
-        cohort_admission_ids = set(int(r["snf_id"]) for r in snf_rows if r["snf_id"] is not None)
-
-        cur.execute(
-            """
-            SELECT id, admission_ids
-            FROM snf_secure_links
-            WHERE sent_at IS NOT NULL AND sent_at <> ''
-            ORDER BY sent_at DESC
-            """
-        )
-        link_rows = cur.fetchall()
-
-        cohort_link_ids: List[int] = []
-        for lr in link_rows:
-            try:
-                ids = json.loads(lr["admission_ids"] or "[]")
-                if not isinstance(ids, list):
-                    continue
-                if any(int(x) in cohort_admission_ids for x in ids if str(x).isdigit()):
-                    cohort_link_ids.append(int(lr["id"]))
-            except Exception:
-                continue
-
-        total_emails = len(cohort_link_ids)
-
-        opened_email_ids: set[int] = set()
-        if cohort_link_ids:
-            placeholders = ",".join("?" for _ in cohort_link_ids)
-            cur.execute(
-                f"""
-                SELECT DISTINCT secure_link_id
-                FROM snf_secure_link_access_log
-                WHERE LOWER(COALESCE(pin_type,'')) = 'facility'
-                  AND secure_link_id IN ({placeholders})
-                """,
-                cohort_link_ids,
-            )
-            opened_email_ids = set(int(x[0]) for x in cur.fetchall())
-
-        opened_count = len(opened_email_ids)
-        opened_pct = (opened_count / total_emails * 100.0) if total_emails else 0.0
-        unopened_pct = 100.0 - opened_pct if total_emails else 0.0
-
-        return {
-            "ok": True,
-            "report_key": report_key,
-            "filters": {"dc_from": dc_from, "dc_to": dc_to},
-
-            "totals": {
-                "joined_rows": total_joined,
-                "snf_rows": total_snf,
-                "scored_ai_rows": scored,
-                "emails_in_cohort": total_emails,
-            },
-
-            "top_facilities": top_facilities,
-
-            "metrics": {
-                "notified_count": notified_count,
-                "notified_pct": round(notified_pct, 1),
-
-                "facility_pin_opened_pct": round(opened_pct, 1),
-                "facility_pin_unopened_pct": round(unopened_pct, 1),
-
-                "assignment_counts": assign_counts,
-                "assignment_pct": {k: round(assign_pct[k], 1) for k in assign_pct},
-
-                "ai_accuracy_correct": correct,
-                "ai_accuracy_total": scored,
-                "ai_accuracy_pct": round(ai_accuracy_pct, 1),
-            },
-        }
     finally:
         conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "snf_id",
+        "visit_id",
+        "patient_name",
+        "patient_mrn",
+        "hospital_name",
+        "dc_date",
+        "last_seen_active_date",
+        "status",
+        "notified_by_hospital",
+        "emailed_at",
+        "email_run_id",
+        "current_snf_facility_id",
+        "current_snf_facility_name",
+        "final_snf_facility_id",
+        "final_snf_name_display",
+        "ai_snf_facility_id",
+        "ai_snf_name_raw",
+    ])
+    for r in rows:
+        writer.writerow([
+            r["snf_id"],
+            r["visit_id"],
+            r["patient_name"],
+            r["patient_mrn"],
+            r["hospital_name"],
+            r["dc_date"],
+            r["last_seen_active_date"],
+            r["status"],
+            r["notified_by_hospital"],
+            r["emailed_at"],
+            r["email_run_id"],
+            r["current_snf_facility_id"],
+            r["current_snf_facility_name"],
+            r["final_snf_facility_id"],
+            r["final_snf_name_display"],
+            r["ai_snf_facility_id"],
+            r["ai_snf_name_raw"],
+        ])
+
+    csv_text = output.getvalue()
+    output.close()
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="snf_admission_summary_{dc_from}_{dc_to}.csv"'},
+    )
 
 @app.get("/admin/snf/email-log/pdf/{secure_link_id}")
 async def admin_snf_email_log_pdf(request: Request, secure_link_id: int):
@@ -16262,7 +16842,7 @@ def build_snf_pdf_html(
       padding-bottom: 16px;
     }}
 
-    /* ✅ Key fix: make the left side expand to full available width */
+    /* âœ… Key fix: make the left side expand to full available width */
     .header-main {{
       flex: 1;
       min-width: 0;
@@ -16272,7 +16852,7 @@ def build_snf_pdf_html(
       gap: 4px;
     }}
 
-    /* ✅ Ensure the “top sections” actually render full-width */
+    /* âœ… Ensure the â€œtop sectionsâ€ actually render full-width */
     .facility-line,
     .header-description,
     .provider-callout {{
@@ -16817,13 +17397,13 @@ async def snf_secure_link_get(token: str, request: Request):
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="topbar">First Docs • Secure List</div>
+      <div class="topbar">First Docs â€¢ Secure List</div>
       <div class="mintbar" aria-hidden="true"></div>
       <div class="content">
         <h1>{fac_name}</h1>
-        <p>Enter your facility password / PIN to view the secure list. This link expires in 48hrs.</p>
+        <p>Enter your password / PIN to view the secure list. This link expires in 48hrs.</p>
         <form method="post">
-          <label for="pin">Facility PIN</label>
+          <label for="pin">PIN</label>
           <input id="pin" name="pin" type="password" autocomplete="one-time-code" required />
           <button class="btn" type="submit">View List</button>
         </form>
@@ -17126,14 +17706,14 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="topbar">First Docs • Secure List</div>
+      <div class="topbar">First Docs â€¢ Secure List</div>
       <div class="mintbar" aria-hidden="true"></div>
       <div class="content">
         <h1>{html.escape(fac_name)}</h1>
-        <p>Enter your facility password / PIN to view the secure list. This link expires automatically.</p>
+        <p>Enter your password / PIN to view the secure list. This link expires automatically.</p>
         {err_html}
         <form method="post">
-          <label for="pin">Facility PIN</label>
+          <label for="pin">PIN</label>
           <input id="pin" name="pin" type="password" autocomplete="one-time-code" />
           <button class="btn" type="submit">View List</button>
         </form>
@@ -17148,19 +17728,20 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
         pin = (pin or "").strip()
         if not pin:
             return HTMLResponse(
-                _render_form("Please enter your Facility PIN."),
+                _render_form("Please enter your PIN."),
                 status_code=401,
                 headers=secure_headers,
             )
 
         facility_hash = (fac["pin_hash"] or "").strip()
         universal_hash = get_snf_universal_pin_hash(cur)
+        provider_hash = get_snf_provider_pin_hash(cur)
         default_hash = hash_pin(SNF_DEFAULT_PIN) if SNF_DEFAULT_PIN else ""
 
-        candidate_hashes = [h for h in (facility_hash, universal_hash, default_hash) if h]
+        candidate_hashes = [h for h in (facility_hash, universal_hash, provider_hash, default_hash) if h]
         if not candidate_hashes:
             return HTMLResponse(
-                _render_form("No facility PIN is configured. Please contact Evolv."),
+                _render_form("No PIN is configured. Please contact Evolv."),
                 status_code=500,
                 headers=secure_headers,
             )
@@ -17170,6 +17751,8 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
             pin_type = "facility"
         elif universal_hash and verify_pin(pin, universal_hash):
             pin_type = "universal"
+        elif provider_hash and verify_pin(pin, provider_hash):
+            pin_type = "provider"
         elif default_hash and verify_pin(pin, default_hash):
             pin_type = "default"
 
@@ -17309,7 +17892,7 @@ async def snf_secure_link_list(token: str, request: Request):
             LIMIT 1
             ) AS view_note_type,
 
-            -- Whether the row should show the ↗ button at all
+            -- Whether the row should show the â†- button at all
             CASE WHEN EXISTS (
             SELECT 1
             FROM cm_notes_raw n2
@@ -17486,7 +18069,7 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Hospital Note • Print View</title>
+  <title>Hospital Note â€¢ Print View</title>
     <style>
       :root{{
         --navy:#0D3B66; --grey:#F5F7FA; --text:#0f172a; --muted:#55657f;
@@ -17646,14 +18229,14 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
         <div class="head-left">
           <div class="card-title"><span class="mint-accent"></span>Note Content</div>
           <div class="card-subtitle">
-            <div><b>{esc(srow["patient_name"] or "")}</b> • DOB {esc(srow["dob"] or "")} • {esc(note_hosp)}</div>
-            <div>{esc(note_type)}{(" • " + esc(note_dt)) if note_dt else ""}</div>
-            <div style="margin-top:2px;">This view is designed to support care coordination and does not replace the hospital’s original documentation.</div>
+            <div><b>{esc(srow["patient_name"] or "")}</b> â€¢ DOB {esc(srow["dob"] or "")} â€¢ {esc(note_hosp)}</div>
+            <div>{esc(note_type)}{(" â€¢ " + esc(note_dt)) if note_dt else ""}</div>
+            <div style="margin-top:2px;">This view is designed to support care coordination and does not replace the hospitalâ€™s original documentation.</div>
           </div>
         </div>
 
         <div class="actions">
-          <span class="pill" title="This is a reconstructed viewer page, not the hospital’s native export.">
+          <span class="pill" title="This is a reconstructed viewer page, not the hospitalâ€™s native export.">
             <span class="dot"></span><span id="pillStatus">Recreated view</span>
           </span>
 
@@ -17693,7 +18276,7 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
           <span>{esc(note_hosp)}</span>.
           <span class="muted">For official records or certified exports, please contact the originating facility or health system.</span>
           <div style="margin-top:8px;" class="muted">
-            Link expires at: <b>{esc(expires_at_txt)}</b> • <a href="/snf/secure/{esc(token)}/list">Back to List</a>
+            Link expires at: <b>{esc(expires_at_txt)}</b> â€¢ <a href="/snf/secure/{esc(token)}/list">Back to List</a>
           </div>
         </div>
       </div>
@@ -17736,7 +18319,7 @@ async def admin_snf_email_pdf(
     Send a single SNF email with a nicely formatted PDF attachment
     for the CURRENT filtered list of admissions for one SNF facility.
 
-    Uses HTML → PDF via WeasyPrint so the design exactly matches
+    Uses HTML â†’ PDF via WeasyPrint so the design exactly matches
     Example PDF Export v2.1.html.
     """
 
@@ -17749,7 +18332,7 @@ async def admin_snf_email_pdf(
     test_only = bool(payload.get("test_only"))
     test_email_to = (payload.get("test_email_to") or "").strip()
 
-    # ✅ NEW: stable run_id for this request (lets you grep a single send end-to-end)
+    # âœ… NEW: stable run_id for this request (lets you grep a single send end-to-end)
     run_id = secrets.token_hex(6)
     logger.info(
         "[SNF-EMAIL-PDF][REQ] run_id=%s facility_id=%s admissions=%s ids=%s for_date=%s test_only=%s",
@@ -17810,7 +18393,7 @@ async def admin_snf_email_pdf(
                 detail="No facility_emails configured for this SNF Admission Facility."
             )
 
-        # ✅ Determine recipient list we will send to (and store in DB)
+        # âœ… Determine recipient list we will send to (and store in DB)
         to_addr = test_email_to if test_only else facility_emails
 
         # ------------------------
@@ -17864,7 +18447,7 @@ async def admin_snf_email_pdf(
             .isoformat() + "Z"
         )
 
-        # ✅ email_run_id generated BEFORE insert
+        # âœ… email_run_id generated BEFORE insert
         email_run_id = secrets.token_hex(8)
 
         with _SnfStage(run_id, "db_insert_secure_link", email_run_id=email_run_id):
@@ -17884,7 +18467,7 @@ async def admin_snf_email_pdf(
         # Build email
         # ------------------------
         sent_date = dt.date.today().isoformat()
-        subject = f"Pending SNF Admissions for {facility_name} – {sent_date} PLEASE REVIEW"
+        subject = f"Pending SNF Admissions for {facility_name} - {sent_date} PLEASE REVIEW"
         if test_only:
             subject = "[TEST] " + subject
 
@@ -17898,8 +18481,8 @@ async def admin_snf_email_pdf(
         msg["Subject"] = subject
         msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
         msg["To"] = to_addr
-        msg.set_content(plain_body)
-        msg.add_alternative(html_body, subtype="html")
+        msg.set_content(plain_body, charset="utf-8")
+        msg.add_alternative(html_body, subtype="html", charset="utf-8")
 
         # ------------------------
         # SMTP send + mark sent + tag admissions
@@ -18041,7 +18624,7 @@ def _send_pad_flow_notification_email(event_type: str, run_row: sqlite3.Row, eve
         msg["Subject"] = subject
         msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
         msg["To"] = ", ".join(emails)
-        msg.set_content(body)
+        msg.set_content(body, charset="utf-8")
 
         context = ssl.create_default_context()
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
@@ -18119,7 +18702,7 @@ def send_intake_email(facility_id: str, payload: dict) -> None:
         msg["Subject"] = subject
         msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
         msg["To"] = INTAKE_EMAIL_TO
-        msg.set_content(body)
+        msg.set_content(body, charset="utf-8")
 
         context = ssl.create_default_context()
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
@@ -18190,10 +18773,10 @@ class SensysUserUpsert(BaseModel):
     cell_phone: Optional[str] = ""
     account_locked: Optional[bool] = False
 
-    # ✅ Provider E-sign
+    # âœ… Provider E-sign
     npi: Optional[str] = ""
     
-    # 🔔 Notifications (optional; if provided, we persist it on save)
+    # ðŸ”” Notifications (optional; if provided, we persist it on save)
     notification_prefs: list[SensysUserNotificationPrefItem] = []
 
 
@@ -18232,7 +18815,7 @@ class SensysAgencyUpsert(BaseModel):
     # Preferred Providers (if omitted, do NOT change existing)
     preferred_provider_ids: Optional[List[int]] = None
 
-    # ✅ PDW Prefs (if omitted, do NOT change existing)
+    # âœ… PDW Prefs (if omitted, do NOT change existing)
     pdw_attempts_expected: Optional[int] = None
     pdw_pref_details: Optional[str] = None
     pdw_enable_48h: Optional[int] = None
@@ -18286,7 +18869,7 @@ class SensysAdmissionUpsert(BaseModel):
     patient_id: int
     agency_id: int
 
-    # ✅ NEW: admission identifiers
+    # âœ… NEW: admission identifiers
     mrn: Optional[str] = ""
     visit_id: Optional[str] = ""
     facility_code: Optional[str] = ""
@@ -18323,9 +18906,10 @@ def _sensys_seed_roles(conn: sqlite3.Connection):
         ("provider", "Provider"),
         ("ccm", "CCM"),
         ("hospital", "Hospital"),
-        ("snf_sw", "SNF SW"),
+        ("snf_sw", "Developer"),
+        ("snf_user", "SNF User"),
 
-        # ✅ CCC Post-Discharge Workspace (CCC-PDW v1)
+        # âœ… CCC Post-Discharge Workspace (CCC-PDW v1)
         ("ccc_lead", "CCC Lead"),
         ("ccc_staff", "CCC Staff"),
     ]
@@ -18335,6 +18919,10 @@ def _sensys_seed_roles(conn: sqlite3.Connection):
         VALUES (?, ?)
         """,
         roles,
+    )
+    conn.executemany(
+        "UPDATE sensys_roles SET role_name = ? WHERE role_key = ?",
+        [(r[1], r[0]) for r in roles],
     )
     
     # Remove deprecated roles (and any user-role links to them)
@@ -18429,7 +19017,7 @@ def sensys_admin_users(token: str):
         agency_ids_by_user.setdefault(uid, []).append(int(r["agency_id"]))
         agency_names_by_user.setdefault(uid, []).append(r["agency_name"])
 
-    # ✅ Provider e-sign links per user (care_team_id list)
+    # âœ… Provider e-sign links per user (care_team_id list)
     link_rows = conn.execute(
         """
         SELECT user_id, care_team_id
@@ -18442,7 +19030,7 @@ def sensys_admin_users(token: str):
     for r in link_rows:
         esign_link_ids_by_user.setdefault(r["user_id"], []).append(int(r["care_team_id"]))
 
-    # 🔔 Notification prefs per user
+    # ðŸ”” Notification prefs per user
     pref_rows = conn.execute(
         """
         SELECT
@@ -18477,16 +19065,54 @@ def sensys_admin_users(token: str):
         d["agency_ids"] = sorted(agency_ids_by_user.get(u["user_id"], []))
         d["agency_names"] = sorted(agency_names_by_user.get(u["user_id"], []), key=lambda x: (x or "").lower())
 
-        # ✅ Provider E-sign
+        # âœ… Provider E-sign
         d["esign_link_ids"] = sorted(esign_link_ids_by_user.get(u["user_id"], []))
 
-        # 🔔 Notifications
+        # ðŸ”” Notifications
         d["notification_prefs"] = prefs_by_user.get(u["user_id"], [])
 
         out.append(d)
 
 
     return {"users": out}
+
+@app.get("/api/sensys/admin/users/login-log")
+def sensys_admin_user_login_log(user_id: int, token: str):
+    _require_admin_token(token)
+    conn = get_db()
+
+    email = ""
+    try:
+        row = conn.execute(
+            "SELECT email FROM sensys_users WHERE id = ?",
+            (int(user_id),),
+        ).fetchone()
+        email = (row["email"] if row else "") or ""
+    except Exception:
+        email = ""
+
+    like_email = f'%\"email\":\"{email}\"%' if email else ""
+
+    rows = conn.execute(
+        """
+        SELECT
+            id,
+            user_id,
+            status,
+            ip,
+            user_agent,
+            details,
+            attempted_at
+        FROM sensys_user_login_log
+        WHERE user_id = ?
+           OR (? <> '' AND details LIKE ?)
+        ORDER BY attempted_at DESC
+        LIMIT 200
+        """,
+        (int(user_id), like_email, like_email),
+    ).fetchall()
+
+    return {"ok": True, "logins": [dict(r) for r in rows]}
 
 # -----------------------------
 # Sensys Admin: login as user (impersonate)
@@ -18538,6 +19164,8 @@ def sensys_admin_users_login_as(payload: SensysAdminLoginAsIn, token: str):
             redirect_url = "/admin/sensys"
         elif "snf_sw" in role_keys:
             redirect_url = "/sensys/snf-sw"
+        elif "snf_user" in role_keys:
+            redirect_url = "/sensys/snf-user"
         elif "home_health" in role_keys:
             redirect_url = "/sensys/home-health"
         elif "ccc_lead" in role_keys:
@@ -18545,7 +19173,7 @@ def sensys_admin_users_login_as(payload: SensysAdminLoginAsIn, token: str):
         elif "ccc_staff" in role_keys:
             redirect_url = "/sensys/ccc-staff"
         elif "provider" in role_keys:
-            redirect_url = "/sensys/provider-esign"
+            redirect_url = "/sensys/provider-landing"
 
         # Create a real Sensys session token for that user
         session_token = _sensys_create_session(conn, user_id=user_id, ttl_hours=24)
@@ -18590,6 +19218,16 @@ class AdmissionReferralUpsert(BaseModel):
     id: Optional[int] = None
     admission_id: int
     agency_id: int
+
+class AdmissionReferralStatusUpdate(BaseModel):
+    id: int
+    acceptance_status: str
+    acceptance_decline_reason: Optional[str] = ""
+    acceptance_decline_other: Optional[str] = ""
+
+class AdmissionReferralSocUpdate(BaseModel):
+    id: int
+    soc_date: Optional[str] = ""
 
 
 @app.post("/api/sensys/admission-referrals/upsert")
@@ -18655,7 +19293,7 @@ def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request:
         )
         raise
         
-    # ---- 🔔 AUTOMATED NOTIFICATION TRIGGER: New Referral (insert only) ----
+    # ---- ðŸ”” AUTOMATED NOTIFICATION TRIGGER: New Referral (insert only) ----
     if op == "insert":
         adm = conn.execute(
             """
@@ -18674,7 +19312,7 @@ def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request:
 
         title = "New Referral"
         if patient_name:
-            title = f"New Referral — {patient_name}"
+            title = f"New Referral â€” {patient_name}"
 
         body = "A new referral was created."
 
@@ -18733,6 +19371,74 @@ def sensys_admission_referrals_delete(payload: IdOnly, request: Request):
     conn.commit()
     return {"ok": True}
 
+@app.post("/api/sensys/admission-referrals/update-status")
+def sensys_admission_referrals_update_status(payload: AdmissionReferralStatusUpdate, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    row = conn.execute(
+        """
+        SELECT admission_id
+        FROM sensys_admission_referrals
+        WHERE id = ?
+          AND deleted_at IS NULL
+        """,
+        (int(payload.id),),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Referral not found")
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(row["admission_id"]))
+
+    conn.execute(
+        """
+        UPDATE sensys_admission_referrals
+           SET acceptance_status = ?,
+               acceptance_decline_reason = ?,
+               acceptance_decline_other = ?,
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (
+            (payload.acceptance_status or "").strip() or "New",
+            (payload.acceptance_decline_reason or "").strip(),
+            (payload.acceptance_decline_other or "").strip(),
+            int(payload.id),
+        ),
+    )
+    conn.commit()
+    return {"ok": True}
+
+@app.post("/api/sensys/admission-referrals/update-soc")
+def sensys_admission_referrals_update_soc(payload: AdmissionReferralSocUpdate, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    row = conn.execute(
+        """
+        SELECT admission_id
+        FROM sensys_admission_referrals
+        WHERE id = ?
+          AND deleted_at IS NULL
+        """,
+        (int(payload.id),),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Referral not found")
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(row["admission_id"]))
+
+    conn.execute(
+        """
+        UPDATE sensys_admission_referrals
+           SET soc_date = ?,
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (
+            (payload.soc_date or "").strip(),
+            int(payload.id),
+        ),
+    )
+    conn.commit()
+    return {"ok": True}
+
 class AdmissionAppointmentUpsert(BaseModel):
     id: Optional[int] = None
     admission_id: int
@@ -18742,7 +19448,7 @@ class AdmissionAppointmentUpsert(BaseModel):
 
 
 # -----------------------------
-# Admission Details — Appointments: upsert (ANCHOR: ADMISSION_APPOINTMENTS_UPSERT)
+# Admission Details â€” Appointments: upsert (ANCHOR: ADMISSION_APPOINTMENTS_UPSERT)
 # -----------------------------
 @app.post("/api/sensys/admission-appointments/upsert")
 def sensys_admission_appointments_upsert(payload: AdmissionAppointmentUpsert, request: Request):
@@ -18793,7 +19499,7 @@ def sensys_admission_appointments_upsert(payload: AdmissionAppointmentUpsert, re
     return {"ok": True, "id": int(new_id)}
 
 # -----------------------------
-# Admission Details — Appointments: delete (ANCHOR: ADMISSION_APPOINTMENTS_DELETE)
+# Admission Details â€” Appointments: delete (ANCHOR: ADMISSION_APPOINTMENTS_DELETE)
 # -----------------------------
 @app.post("/api/sensys/admission-appointments/delete")
 def sensys_admission_appointments_delete(payload: IdOnly, request: Request):
@@ -18835,6 +19541,12 @@ def sensys_admin_users_upsert(payload: SensysUserUpsert, token: str):
         raise HTTPException(status_code=400, detail="email is required")
 
     display_name = (payload.display_name or "").strip()
+    existing = conn.execute(
+        "SELECT id FROM sensys_users WHERE lower(email) = ? LIMIT 1",
+        (email,),
+    ).fetchone()
+    if existing and (not payload.user_id or int(existing["id"]) != int(payload.user_id)):
+        raise HTTPException(status_code=400, detail="email already exists")
 
     # NEW fields
     cell_phone = (payload.cell_phone or "").strip()
@@ -18842,64 +19554,65 @@ def sensys_admin_users_upsert(payload: SensysUserUpsert, token: str):
     password = (payload.password or "")
     password = password.strip() if isinstance(password, str) else ""
 
-    # ✅ Provider E-sign
+    # Provider E-sign
     npi = (payload.npi or "").strip()
 
-    if payload.user_id:
-        # Update password ONLY if the admin typed one (blank means "leave unchanged")
-        if password:
-            conn.execute(
-                """
-                UPDATE sensys_users
-                SET email = ?,
-                    display_name = ?,
-                    is_active = ?,
-                    password = ?,
-                    cell_phone = ?,
-                    account_locked = ?,
+    try:
+        if payload.user_id:
+            # Update password ONLY if the admin typed one (blank means "leave unchanged")
+            if password:
+                conn.execute(
+                    """
+                    UPDATE sensys_users
+                    SET email = ?,
+                        display_name = ?,
+                        is_active = ?,
+                        password = ?,
+                        cell_phone = ?,
+                        account_locked = ?,
 
-                    -- ✅ Provider E-sign
-                    npi = ?,
+                        npi = ?,
 
-                    updated_at = datetime('now')
-                WHERE id = ?
-                """,
-                (email, display_name, int(payload.is_active), password, cell_phone, account_locked, npi, int(payload.user_id)),
-            )
+                        updated_at = datetime('now')
+                    WHERE id = ?
+                    """,
+                    (email, display_name, int(payload.is_active), password, cell_phone, account_locked, npi, int(payload.user_id)),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE sensys_users
+                    SET email = ?,
+                        display_name = ?,
+                        is_active = ?,
+                        cell_phone = ?,
+                        account_locked = ?,
+
+                        npi = ?,
+
+                        updated_at = datetime('now')
+                    WHERE id = ?
+                    """,
+                    (email, display_name, int(payload.is_active), cell_phone, account_locked, npi, int(payload.user_id)),
+                )
+
         else:
             conn.execute(
                 """
-                UPDATE sensys_users
-                SET email = ?,
-                    display_name = ?,
-                    is_active = ?,
-                    cell_phone = ?,
-                    account_locked = ?,
-
-                    -- ✅ Provider E-sign
-                    npi = ?,
-
-                    updated_at = datetime('now')
-                WHERE id = ?
+                INSERT INTO sensys_users (email, display_name, is_active, password, cell_phone, account_locked, npi)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (email, display_name, int(payload.is_active), cell_phone, account_locked, npi, int(payload.user_id)),
+                (email, display_name, int(payload.is_active), password, cell_phone, account_locked, npi),
             )
-
-    else:
-        conn.execute(
-            """
-            INSERT INTO sensys_users (email, display_name, is_active, password, cell_phone, account_locked, npi)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (email, display_name, int(payload.is_active), password, cell_phone, account_locked, npi),
-        )
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="email already exists")
 
     # Return the user_id so the UI can immediately save roles/agencies
     conn.commit()
 
     user_id = int(payload.user_id) if payload.user_id else int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
 
-    # 🔔 ALSO persist notification prefs when saving the user (clean replace)
+    # ðŸ”” ALSO persist notification prefs when saving the user (clean replace)
     # If the UI sends notification_prefs, they will now stick when reopening the modal.
     try:
         conn.execute("DELETE FROM sensys_user_notification_prefs WHERE user_id = ?", (user_id,))
@@ -19116,7 +19829,7 @@ def sensys_admin_users_set_notification_prefs(payload: SensysUserNotificationPre
     # wipe existing prefs (clean replace)
     conn.execute("DELETE FROM sensys_user_notification_prefs WHERE user_id = ?", (user_id,))
 
-    # ✅ accept either key
+    # âœ… accept either key
     items = (payload.prefs or []) or (payload.notification_prefs or [])
     rows = []
     for it in items:
@@ -19249,7 +19962,7 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                    evolv_client     = ?,
                    survey_recipient_emails = ?,
                    survey_pin       = ?,
-                   -- ✅ PDW Prefs (only overwrite when payload sends them)
+                   -- âœ… PDW Prefs (only overwrite when payload sends them)
                    pdw_attempts_expected = COALESCE(?, pdw_attempts_expected),
                    pdw_pref_details      = COALESCE(?, pdw_pref_details),
                    pdw_enable_48h        = COALESCE(?, pdw_enable_48h),
@@ -19297,7 +20010,7 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                     evolv_client,
                     survey_recipient_emails, survey_pin,
 
-                    -- ✅ PDW Prefs
+                    -- âœ… PDW Prefs
                     pdw_attempts_expected, pdw_pref_details,
                     pdw_enable_48h, pdw_enable_15d, pdw_enable_30d
                 )
@@ -19772,7 +20485,7 @@ def sensys_admin_patients_upsert(payload: SensysPatientUpsert, token: str):
 
 
 # -----------------------------
-# Admin — Admissions: list (ANCHOR: ADMIN_ADMISSIONS_LIST)
+# Admin â€” Admissions: list (ANCHOR: ADMIN_ADMISSIONS_LIST)
 # -----------------------------
 
 @app.get("/api/sensys/admin/admissions")
@@ -19785,13 +20498,17 @@ def sensys_admin_admissions(token: str):
         SELECT
             a.id,
             a.patient_id,
-            (p.last_name || ', ' || p.first_name) AS patient_name,
+            p.first_name AS patient_first_name,
+            p.last_name AS patient_last_name,
             p.dob AS patient_dob,
+            p.insurance_name1 AS patient_insurance_name1,
+            p.insurance_number1 AS patient_insurance_number1,
+            p.insurance_name1 AS insurance_name1,
 
             a.agency_id,
             ag.agency_name AS agency_name,
 
-            -- ✅ NEW
+            -- âœ… NEW
             a.mrn,
             a.visit_id,
             a.facility_code,
@@ -19825,7 +20542,7 @@ def sensys_admin_admissions(token: str):
 
 
 # -----------------------------
-# Admin — Admissions: upsert (ANCHOR: ADMIN_ADMISSIONS_UPSERT)
+# Admin â€” Admissions: upsert (ANCHOR: ADMIN_ADMISSIONS_UPSERT)
 # -----------------------------
 
 @app.post("/api/sensys/admin/admissions/upsert")
@@ -19840,7 +20557,7 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
                SET patient_id = ?,
                    agency_id = ?,
 
-                   -- ✅ NEW
+                   -- âœ… NEW
                    mrn = ?,
                    visit_id = ?,
                    facility_code = ?,
@@ -19882,7 +20599,7 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
             ),
         )
 
-        # ✅ PDW SYNC — keep existing 48h task aligned to dc_date edits
+        # âœ… PDW SYNC â€” keep existing 48h task aligned to dc_date edits
         dc_date_clean = (payload.dc_date or "").strip()
         if dc_date_clean:
             conn.execute(
@@ -19919,7 +20636,7 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
                 int(payload.patient_id),
                 int(payload.agency_id),
 
-                # ✅ NEW
+                # âœ… NEW
                 (payload.mrn or "").strip(),
                 (payload.visit_id or "").strip(),
                 (payload.facility_code or "").strip(),
@@ -19971,6 +20688,7 @@ def sensys_admin_client_surveys(token: str):
             ai_summary,
             ai_summary_override
         FROM sensys_client_surveys
+        WHERE deleted_at IS NULL
         ORDER BY
             CASE WHEN survey_updated_at IS NULL OR TRIM(survey_updated_at) = '' THEN 1 ELSE 0 END,
             survey_updated_at DESC,
@@ -20027,6 +20745,27 @@ def sensys_admin_client_surveys_delete_all(token: str):
     finally:
         conn.close()
 
+@app.post("/api/sensys/admin/client-surveys/delete")
+def sensys_admin_client_surveys_delete(payload: Dict[str, Any] = Body(...), token: str = ""):
+    _require_admin_token(token)
+    conn = get_db()
+    try:
+        sid = int(payload.get("id") or 0)
+        if sid <= 0:
+            raise HTTPException(status_code=400, detail="id is required")
+        conn.execute(
+            """
+            UPDATE sensys_client_surveys
+            SET deleted_at = datetime('now')
+            WHERE id = ? AND deleted_at IS NULL
+            """,
+            (sid,),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
 
 @app.post("/api/sensys/admin/client-surveys/summary-override")
 def sensys_admin_client_surveys_summary_override(payload: Dict[str, Any] = Body(...), token: str = ""):
@@ -20042,7 +20781,7 @@ def sensys_admin_client_surveys_summary_override(payload: Dict[str, Any] = Body(
             UPDATE sensys_client_surveys
             SET ai_summary_override = ?,
                 updated_at = datetime('now')
-            WHERE id = ?
+            WHERE id = ? AND deleted_at IS NULL
             """,
             (override, int(row_id)),
         )
@@ -20085,7 +20824,7 @@ def sensys_admin_client_surveys_scores_update(payload: Dict[str, Any] = Body(...
                 ss_score = ?,
                 overall_score = ?,
                 updated_at = datetime('now')
-            WHERE id = ?
+            WHERE id = ? AND deleted_at IS NULL
             """,
             (therapy_score, nursing_score, md_score, ss_score, overall_score, int(row_id)),
         )
@@ -20366,8 +21105,8 @@ def sensys_admin_client_surveys_email_send(
     msg["From"] = INTAKE_EMAIL_FROM or SMTP_USER
     msg["To"] = recipients
     msg["Subject"] = f"Client Survey Responses - {agency_name}"
-    msg.set_content(f"View secure surveys: {secure_url}")
-    msg.add_alternative(html_body, subtype="html")
+    msg.set_content(f"View secure surveys: {secure_url}", charset="utf-8")
+    msg.add_alternative(html_body, subtype="html", charset="utf-8")
 
     context = ssl.create_default_context()
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
@@ -20578,7 +21317,7 @@ async def client_surveys_secure_list(token: str, request: Request):
                 md_score,
                 ss_score
             FROM sensys_client_surveys
-            WHERE agency_name = ?
+            WHERE agency_name = ? AND deleted_at IS NULL
             """,
             (agency,),
         ).fetchall()
@@ -20668,7 +21407,7 @@ def sensys_admin_service_types_upsert(payload: SensysServiceTypeUpsert, token: s
     code = (payload.code or "").strip().lower() or None
     active = 1 if int(payload.active or 0) == 1 else 0
 
-    # ✅ prevent 500: enforce unique code with a friendly message
+    # âœ… prevent 500: enforce unique code with a friendly message
     if code:
         existing = conn.execute(
             """
@@ -20721,6 +21460,13 @@ class SensysServiceUpsert(BaseModel):
     service_type_id: int          # NEW (FK to sensys_service_type.id)
     dropdown: int = 1             # 1/0
     reminder_id: Optional[str] = None
+    reminder_title: Optional[str] = None
+    reminder_message: Optional[str] = None
+    reminder_severity: Optional[str] = None
+    reminder_followup: Optional[str] = None
+    reminder_active: Optional[int] = None
+    reminder_updated_at: Optional[str] = None
+    aliases: Optional[str] = None
 
 @app.get("/api/sensys/admin/services")
 def sensys_admin_services(token: str):
@@ -20730,10 +21476,17 @@ def sensys_admin_services(token: str):
         SELECT s.id,
                s.name,
                s.service_type_id,
+               s.aliases,
                st.name AS service_type_name,
                st.code AS service_type_code,
                s.dropdown,
                s.reminder_id,
+               s.reminder_title,
+               s.reminder_message,
+               s.reminder_severity,
+               s.reminder_followup,
+               s.reminder_active,
+               s.reminder_updated_at,
                s.deleted_at,
                s.created_at,
                s.updated_at
@@ -20759,30 +21512,51 @@ def sensys_admin_services_upsert(payload: SensysServiceUpsert, token: str):
 
     # ensure type exists
     ok = conn.execute("""
-        SELECT id FROM sensys_service_type
+        SELECT id, code FROM sensys_service_type
         WHERE deleted_at IS NULL AND id = ?
     """, (stid,)).fetchone()
     if not ok:
         raise HTTPException(status_code=400, detail="service_type_id not found")
+    st_code = (ok["code"] or "").strip().lower()
+    if not st_code:
+        st_code = "other"
 
     dropdown = 1 if int(payload.dropdown or 0) == 1 else 0
     reminder_id = (payload.reminder_id or "").strip() or None
+    reminder_title = (payload.reminder_title or "").strip() or None
+    reminder_message = (payload.reminder_message or "").strip() or None
+    reminder_severity = (payload.reminder_severity or "").strip() or None
+    reminder_followup = (payload.reminder_followup or "").strip() or None
+    if payload.reminder_active is None:
+        reminder_active = 1
+    else:
+        reminder_active = 1 if int(payload.reminder_active or 0) == 1 else 0
+    reminder_updated_at = (payload.reminder_updated_at or "").strip() or None
+    aliases = (payload.aliases or "").strip() or None
 
     if payload.id:
         conn.execute("""
             UPDATE sensys_services
                SET name = ?,
                    service_type_id = ?,
+                   service_type = ?,
                    dropdown = ?,
                    reminder_id = ?,
+                   reminder_title = ?,
+                   reminder_message = ?,
+                   reminder_severity = ?,
+                   reminder_followup = ?,
+                   reminder_active = ?,
+                   reminder_updated_at = ?,
+                   aliases = ?,
                    updated_at = datetime('now')
              WHERE id = ?
-        """, (name, stid, dropdown, reminder_id, int(payload.id)))
+        """, (name, stid, st_code, dropdown, reminder_id, reminder_title, reminder_message, reminder_severity, reminder_followup, reminder_active, reminder_updated_at, aliases, int(payload.id)))
     else:
         conn.execute("""
-            INSERT INTO sensys_services (name, service_type_id, dropdown, reminder_id)
-            VALUES (?, ?, ?, ?)
-        """, (name, stid, dropdown, reminder_id))
+            INSERT INTO sensys_services (name, service_type_id, service_type, dropdown, reminder_id, reminder_title, reminder_message, reminder_severity, reminder_followup, reminder_active, reminder_updated_at, aliases)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (name, stid, st_code, dropdown, reminder_id, reminder_title, reminder_message, reminder_severity, reminder_followup, reminder_active, reminder_updated_at, aliases))
 
     conn.commit()
     return {"ok": True}
@@ -20847,6 +21621,13 @@ async def sensys_admin_services_bulk(token: str, file: UploadFile = File(...)):
 
             dropdown = _to_bool_int(r.get("dropdown"), 1)
             reminder_id = (r.get("reminder_id", "") or "").strip() or None
+            reminder_title = (r.get("reminder_title", "") or "").strip() or None
+            reminder_message = (r.get("reminder_message", "") or "").strip() or None
+            reminder_severity = (r.get("reminder_severity", "") or "").strip() or None
+            reminder_followup = (r.get("reminder_followup", "") or "").strip() or None
+            reminder_active = _to_bool_int(r.get("reminder_active"), 1)
+            reminder_updated_at = (r.get("reminder_updated_at", "") or "").strip() or None
+            aliases = (r.get("aliases", "") or "").strip() or None
 
             if sid:
                 conn.execute(
@@ -20857,19 +21638,26 @@ async def sensys_admin_services_bulk(token: str, file: UploadFile = File(...)):
                            service_type = ?,              -- keep legacy column updated too
                            dropdown = ?,
                            reminder_id = ?,
+                           reminder_title = ?,
+                           reminder_message = ?,
+                           reminder_severity = ?,
+                           reminder_followup = ?,
+                           reminder_active = ?,
+                           reminder_updated_at = ?,
+                           aliases = ?,
                            updated_at = datetime('now')
                      WHERE id = ?
                     """,
-                    (name, int(stid), st, int(dropdown), reminder_id, int(sid)),
+                    (name, int(stid), st, int(dropdown), reminder_id, reminder_title, reminder_message, reminder_severity, reminder_followup, int(reminder_active), reminder_updated_at, aliases, int(sid)),
                 )
                 updated += 1
             else:
                 conn.execute(
                     """
-                    INSERT INTO sensys_services (name, service_type_id, service_type, dropdown, reminder_id)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO sensys_services (name, service_type_id, service_type, dropdown, reminder_id, reminder_title, reminder_message, reminder_severity, reminder_followup, reminder_active, reminder_updated_at, aliases)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (name, int(stid), st, int(dropdown), reminder_id),
+                    (name, int(stid), st, int(dropdown), reminder_id, reminder_title, reminder_message, reminder_severity, reminder_followup, int(reminder_active), reminder_updated_at, aliases),
                 )
                 inserted += 1
 
@@ -21099,11 +21887,11 @@ class SensysNoteTemplateUpsert(BaseModel):
     template_name: str
     active: int = 1
 
-    # ✅ targeting (blank/empty = global)
+    # âœ… targeting (blank/empty = global)
     agency_ids: List[int] = []
     role_keys: List[str] = []
 
-    # ✅ NEW: “Share With” roles (controls who appears in the note’s Share With dropdown)
+    # âœ… NEW: â€œShare Withâ€ roles (controls who appears in the noteâ€™s Share With dropdown)
     share_with_role_keys: List[str] = []
 
 
@@ -21116,7 +21904,7 @@ class DcNoteTemplateUpsert(BaseModel):
     active: int = 1
     template_body: str
 
-    # ✅ NEW targeting (blank/empty = global)
+    # âœ… NEW targeting (blank/empty = global)
     agency_ids: List[int] = []
 
     
@@ -21172,7 +21960,7 @@ def sensys_admin_dc_note_templates_upsert(
     if not (payload.template_body or "").strip():
         raise HTTPException(status_code=400, detail="template_body is required")
 
-    # ✅ normalize arrays (empty = global)
+    # âœ… normalize arrays (empty = global)
     agency_ids = sorted({int(x) for x in (payload.agency_ids or []) if str(x).strip()})
 
     if payload.id:
@@ -21209,7 +21997,7 @@ def sensys_admin_dc_note_templates_upsert(
         )
         tpl_id = int(cur.lastrowid)
 
-    # ✅ replace agency links
+    # âœ… replace agency links
     conn.execute("DELETE FROM sensys_dc_note_template_agencies WHERE template_id = ?", (tpl_id,))
     for aid in agency_ids:
         conn.execute(
@@ -21264,7 +22052,7 @@ def sensys_admin_note_templates(token: str):
 
     tpl_ids = [int(t["id"]) for t in tpl_list]
 
-    # ✅ NEW: load agency_ids + role_keys for each template
+    # âœ… NEW: load agency_ids + role_keys for each template
     ag_rows = conn.execute(
         f"""
         SELECT template_id, agency_id
@@ -21285,7 +22073,7 @@ def sensys_admin_note_templates(token: str):
         tuple(tpl_ids),
     ).fetchall()
 
-    # ✅ NEW: Share With Roles
+    # âœ… NEW: Share With Roles
     sw_rows = conn.execute(
         f"""
         SELECT template_id, role_key
@@ -21304,7 +22092,7 @@ def sensys_admin_note_templates(token: str):
     for r in rl_rows:
         by_tpl_rl.setdefault(int(r["template_id"]), []).append(str(r["role_key"]))
 
-    # ✅ NEW: Share With Roles mapping
+    # âœ… NEW: Share With Roles mapping
     by_tpl_sw = {}
     for r in sw_rows:
         by_tpl_sw.setdefault(int(r["template_id"]), []).append(str(r["role_key"]))
@@ -21316,7 +22104,7 @@ def sensys_admin_note_templates(token: str):
         t["share_with_role_keys"] = by_tpl_sw.get(tid, [])
 
 
-    # ✅ existing: load fields for templates
+    # âœ… existing: load fields for templates
     fields = conn.execute(
         f"""
         SELECT
@@ -21356,7 +22144,7 @@ def sensys_admin_note_templates_upsert(payload: SensysNoteTemplateUpsert, token:
     agency_ids = sorted({int(x) for x in (payload.agency_ids or []) if str(x).strip()})
     role_keys = sorted({str(x).strip() for x in (payload.role_keys or []) if str(x).strip()})
 
-    # ✅ NEW: Share With roles
+    # âœ… NEW: Share With roles
     share_with_role_keys = sorted({str(x).strip() for x in (payload.share_with_role_keys or []) if str(x).strip()})
 
     if payload.id:
@@ -21382,7 +22170,7 @@ def sensys_admin_note_templates_upsert(payload: SensysNoteTemplateUpsert, token:
         )
         tpl_id = int(cur.lastrowid)
 
-    # ✅ replace role links
+    # âœ… replace role links
     conn.execute("DELETE FROM sensys_note_template_roles WHERE template_id = ?", (tpl_id,))
     for rk in role_keys:
         conn.execute(
@@ -21390,7 +22178,7 @@ def sensys_admin_note_templates_upsert(payload: SensysNoteTemplateUpsert, token:
             (tpl_id, rk),
         )
 
-    # ✅ NEW: replace Share With role links
+    # âœ… NEW: replace Share With role links
     conn.execute("DELETE FROM sensys_note_template_share_roles WHERE template_id = ?", (tpl_id,))
     for rk in share_with_role_keys:
         conn.execute(
@@ -21513,7 +22301,7 @@ def sensys_admin_note_template_fields_delete(payload: SensysNoteTemplateFieldDel
     return {"ok": True}
 
 # =========================================================
-# Sensys Admin: BULK UPLOAD (CSV) — users/agencies/patients/admissions
+# Sensys Admin: BULK UPLOAD (CSV) â€” users/agencies/patients/admissions
 # =========================================================
 
 def _csv_to_rows(file_bytes: bytes) -> list[dict]:
@@ -21717,7 +22505,7 @@ async def sensys_admin_agencies_bulk(token: str, file: UploadFile = File(...)):
             )
 
             if agency_id:
-                # ✅ If ID provided, UPDATE if it exists; otherwise INSERT (so CSVs with new IDs work)
+                # âœ… If ID provided, UPDATE if it exists; otherwise INSERT (so CSVs with new IDs work)
                 cur = conn.execute(
                     """
                     UPDATE sensys_agencies
@@ -21925,7 +22713,7 @@ async def sensys_admin_admissions_bulk(token: str, file: UploadFile = File(...))
                 int(patient_id),
                 int(agency_id),
 
-                # ✅ NEW
+                # âœ… NEW
                 (r.get("mrn", "") or "").strip(),
                 (r.get("visit_id", "") or "").strip(),
                 (r.get("facility_code", "") or "").strip(),
@@ -21950,7 +22738,7 @@ async def sensys_admin_admissions_bulk(token: str, file: UploadFile = File(...))
                         SET patient_id = ?,
                             agency_id = ?,
 
-                            -- ✅ NEW
+                            -- âœ… NEW
                             mrn = ?,
                             visit_id = ?,
                             facility_code = ?,
@@ -22146,8 +22934,26 @@ def _sensys_require_admin(request: Request) -> dict:
         raise HTTPException(status_code=403, detail="Admin access required")
     return u
 
+def _sensys_log_login_attempt(conn: sqlite3.Connection, request: Request, user_id: Optional[int], status: str, details: dict | None = None) -> None:
+    try:
+        ip = request.client.host if request.client else ""
+        ua = request.headers.get("user-agent") or ""
+        payload = json.dumps(details or {})
+        conn.execute(
+            """
+            INSERT INTO sensys_user_login_log
+                (user_id, status, ip, user_agent, details, attempted_at)
+            VALUES
+                (?, ?, ?, ?, ?, datetime('now'))
+            """,
+            (int(user_id) if user_id is not None else None, status, ip, ua, payload),
+        )
+        conn.commit()
+    except Exception:
+        pass
+
 @app.post("/api/sensys/login")
-def sensys_login(payload: SensysLoginIn):
+def sensys_login(payload: SensysLoginIn, request: Request):
     """
     Email-only login for testing.
     - Password is ignored for now.
@@ -22170,6 +22976,13 @@ def sensys_login(payload: SensysLoginIn):
     ).fetchone()
 
     if not user:
+        _sensys_log_login_attempt(
+            conn,
+            request,
+            None,
+            "failed",
+            {"email": email, "reason": "user_not_found"},
+        )
         raise HTTPException(status_code=401, detail="Invalid login")
 
     user_id = int(user["user_id"])
@@ -22190,7 +23003,7 @@ def sensys_login(payload: SensysLoginIn):
     # (first page requested: SNF SW)
     redirect_url = "/sensys/login"
 
-    # ✅ CCC Post-Discharge Workspace (CCC-PDW v1)
+    # âœ… CCC Post-Discharge Workspace (CCC-PDW v1)
     if "ccc_lead" in role_keys:
         redirect_url = "/sensys/post-discharge"
     elif "ccc_staff" in role_keys:
@@ -22198,6 +23011,8 @@ def sensys_login(payload: SensysLoginIn):
     # existing role landing pages
     elif "snf_sw" in role_keys:
         redirect_url = "/sensys/snf-sw"
+    elif "snf_user" in role_keys:
+        redirect_url = "/sensys/snf-user"
     elif "home_health" in role_keys:
         redirect_url = "/sensys/home-health"
     elif "provider" in role_keys:
@@ -22205,7 +23020,7 @@ def sensys_login(payload: SensysLoginIn):
     elif "admin" in role_keys:
         redirect_url = "/admin/sensys"
 
-    # ✅ Track last login (PDW)
+    # âœ… Track last login (PDW)
     try:
         conn.execute(
             "UPDATE sensys_users SET last_login_at = datetime('now') WHERE id = ?",
@@ -22214,6 +23029,14 @@ def sensys_login(payload: SensysLoginIn):
         conn.commit()
     except Exception:
         pass
+
+    _sensys_log_login_attempt(
+        conn,
+        request,
+        user_id,
+        "success",
+        {"email": user["email"]},
+    )
 
     token = _sensys_create_session(conn, user_id=user_id, ttl_hours=24)
 
@@ -22237,7 +23060,7 @@ def sensys_me(request: Request):
 
 
 @app.get("/api/sensys/my-admissions")
-def sensys_my_admissions(request: Request):
+def sensys_my_admissions(request: Request, admitted_only: int = 0):
     """
     Returns admissions linked to the logged-in user.
 
@@ -22256,7 +23079,15 @@ def sensys_my_admissions(request: Request):
     role_keys = u.get("role_keys") or []
     user_id = int(u["user_id"])
 
-    # ✅ Home Health: show admissions where THIS user's agencies appear as a referral agency
+    admitted_clause = ""
+    if int(admitted_only or 0) == 1:
+        admitted_clause = """
+          AND (COALESCE(a.dc_confirmed, 0) = 0
+               OR a.dc_date IS NULL
+               OR date(a.dc_date) >= date('now'))
+        """
+
+    # âœ… Home Health: show admissions where THIS user's agencies appear as a referral agency
     if "home_health" in role_keys:
         rows = conn.execute(
             """
@@ -22265,6 +23096,8 @@ def sensys_my_admissions(request: Request):
                 a.patient_id,
                 (p.last_name || ', ' || p.first_name) AS patient_name,
                 p.dob AS patient_dob,
+                p.insurance_name1 AS insurance_name1,
+                p.insurance_number1 AS insurance_number1,
 
                 -- admission's main agency (still useful context)
                 a.agency_id,
@@ -22276,6 +23109,7 @@ def sensys_my_admissions(request: Request):
 
                 a.admit_date,
                 a.dc_date,
+                a.dc_confirmed,
                 a.room,
                 a.reason,
                 a.latest_pcp,
@@ -22294,10 +23128,11 @@ def sensys_my_admissions(request: Request):
             LEFT JOIN sensys_agencies rag
                  ON rag.id = ar.agency_id
             WHERE ua.user_id = ?
+            {admitted_clause}
             ORDER BY
                 COALESCE(a.admit_date, '') DESC,
                 a.id DESC
-            """,
+            """.format(admitted_clause=admitted_clause),
             (user_id,),
         ).fetchall()
 
@@ -22310,13 +23145,20 @@ def sensys_my_admissions(request: Request):
             a.id,
             a.patient_id,
             (p.last_name || ', ' || p.first_name) AS patient_name,
+            p.first_name AS patient_first_name,
+            p.last_name AS patient_last_name,
             p.dob AS patient_dob,
+            p.insurance_name1 AS patient_insurance_name1,
+            p.insurance_number1 AS patient_insurance_number1,
+            p.insurance_name1 AS insurance_name1,
+            p.insurance_number1 AS insurance_number1,
 
             a.agency_id,
             ag.agency_name AS agency_name,
 
             a.admit_date,
             a.dc_date,
+            a.dc_confirmed,
             a.room,
             a.reason,
             a.latest_pcp,
@@ -22327,17 +23169,97 @@ def sensys_my_admissions(request: Request):
         JOIN sensys_patients p ON p.id = a.patient_id
         JOIN sensys_agencies ag ON ag.id = a.agency_id
         WHERE ua.user_id = ?
+        {admitted_clause}
         ORDER BY
             COALESCE(a.admit_date, '') DESC,
             a.id DESC
-        """,
+        """.format(admitted_clause=admitted_clause),
         (user_id,),
     ).fetchall()
 
     return {"ok": True, "admissions": [dict(r) for r in rows]}
 
+# -----------------------------
+# Sensys: discharge calendar (by current user)
+# -----------------------------
+@app.get("/api/sensys/my-dc-submissions")
+def sensys_my_dc_submissions(request: Request, days: int = 10):
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    role_keys = u.get("role_keys") or []
+    user_id = int(u["user_id"])
+
+    try:
+        days = int(days or 10)
+    except Exception:
+        days = 10
+    if days < 1:
+        days = 10
+    if days > 60:
+        days = 60
+
+    day_mod = f"+{days} day"
+
+    if "home_health" in role_keys:
+        my_adm_cte = """
+        WITH my_adm AS (
+            SELECT DISTINCT ar.admission_id
+            FROM sensys_user_agencies ua
+            JOIN sensys_admission_referrals ar
+                 ON ar.agency_id = ua.agency_id
+                AND ar.deleted_at IS NULL
+            WHERE ua.user_id = ?
+        )
+        """
+        params = (user_id, day_mod)
+    else:
+        my_adm_cte = """
+        WITH my_adm AS (
+            SELECT DISTINCT a.id AS admission_id
+            FROM sensys_user_agencies ua
+            JOIN sensys_admissions a
+                 ON a.agency_id = ua.agency_id
+            WHERE ua.user_id = ?
+        )
+        """
+        params = (user_id, day_mod)
+
+    rows = conn.execute(
+        f"""
+        {my_adm_cte},
+        latest AS (
+            SELECT admission_id, MAX(id) AS dc_id
+            FROM sensys_admission_dc_submissions
+            WHERE deleted_at IS NULL
+            GROUP BY admission_id
+        )
+        SELECT
+            dcs.id,
+            dcs.admission_id,
+            dcs.dc_date,
+            dcs.dc_time,
+            dcs.dc_confirmed,
+            (p.last_name || ', ' || p.first_name) AS patient_name,
+            p.insurance_name1 AS insurance_name1
+        FROM latest l
+        JOIN sensys_admission_dc_submissions dcs ON dcs.id = l.dc_id
+        JOIN sensys_admissions a ON a.id = dcs.admission_id
+        JOIN sensys_patients p ON p.id = a.patient_id
+        JOIN my_adm m ON m.admission_id = a.id
+        WHERE dcs.deleted_at IS NULL
+          AND COALESCE(dcs.dc_date, '') <> ''
+          AND date(dcs.dc_date) >= date('now')
+          AND date(dcs.dc_date) <= date('now', ?)
+        ORDER BY date(dcs.dc_date) ASC, p.last_name COLLATE NOCASE, p.first_name COLLATE NOCASE
+        """,
+        params,
+    ).fetchall()
+
+    return {"ok": True, "range_days": days, "items": [dict(r) for r in rows]}
+
 # =========================================================
-# CCC-PDW v1 — Post-Discharge Workspace (postdc) (ANCHOR: PDW_SECTION)
+# CCC-PDW v1 â€” Post-Discharge Workspace (postdc) (ANCHOR: PDW_SECTION)
 #   - CCC Lead assigns tasks
 #   - CCC Staff completes tasks
 #   - Agency linking enforced via sensys_user_agencies
@@ -22433,7 +23355,7 @@ def _pdw_seed_next_items_for_user(conn, user_id: int):
         (int(user_id),),
     )
 
-    # 30d (enabled) — after 15d completed (when 15d enabled)
+    # 30d (enabled) â€” after 15d completed (when 15d enabled)
     conn.execute(
         """
         INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status, max_attempts)
@@ -22458,7 +23380,7 @@ def _pdw_seed_next_items_for_user(conn, user_id: int):
         (int(user_id),),
     )
 
-    # 30d (enabled) — after 48h completed (when 15d disabled)
+    # 30d (enabled) â€” after 48h completed (when 15d disabled)
     conn.execute(
         """
         INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status, max_attempts)
@@ -22630,7 +23552,7 @@ def sensys_postdc_staff_overview(day_offset: int = 0, request: Request = None):
                     window_start = st
                 window_end = en
 
-        # ✅ NEW: Only include staff who are actually scheduled this day
+        # âœ… NEW: Only include staff who are actually scheduled this day
         # (If no valid schedule blocks exist for the selected day, do not show them.)
         if total_minutes <= 0 or window_start is None or window_end is None:
             continue
@@ -22940,7 +23862,7 @@ def sensys_postdc_assign(payload: PdwAssignIn, request: Request):
                assigned_to_user_id = ?,
                assigned_at = datetime('now'),
 
-               -- ✅ NEW
+               -- âœ… NEW
                assigned_by_user_id = ?,
                assignment_notes = ?,
 
@@ -23211,7 +24133,7 @@ def sensys_ccc_staff_work_items(
         where.append("wi.status = 'completed'")
     elif bucket == "incomplete":
         where.append("wi.status IN ('assigned','incomplete') AND (wi.completed_at IS NULL OR TRIM(wi.completed_at)='')")
-        # but assigned_to filter makes it truly “mine”
+        # but assigned_to filter makes it truly â€œmineâ€
     else:
         # due
         where.append("wi.status IN ('assigned','incomplete') AND (wi.completed_at IS NULL OR TRIM(wi.completed_at)='')")
@@ -23465,7 +24387,7 @@ def sensys_ccc_staff_summary(token_user: dict = Depends(_sensys_require_user)):
     return {"ok": True, "total_due": int(total_due), "completed_today": int(completed_today)}
 
 # -----------------------------------------------------------------------------
-# Home Health — Referrals List (ANCHOR: HOME_HEALTH_REFERRALS)
+# Home Health â€” Referrals List (ANCHOR: HOME_HEALTH_REFERRALS)
 # -----------------------------------------------------------------------------
 @app.get("/api/sensys/my-referrals")
 def sensys_my_referrals(request: Request):
@@ -23488,6 +24410,10 @@ def sensys_my_referrals(request: Request):
         SELECT
             ar.id AS referral_id,
             ar.admission_id,
+            ar.acceptance_status,
+            ar.acceptance_decline_reason,
+            ar.acceptance_decline_other,
+            ar.soc_date,
 
             -- referral agency (the HH agency)
             ar.agency_id AS referral_agency_id,
@@ -23541,9 +24467,9 @@ from typing import Optional, List
 def _sensys_assert_admission_access(conn, user_id: int, admission_id: int):
     """
     Access is allowed if:
-      A) admission is linked by admission.agency_id ∈ user's agencies
+      A) admission is linked by admission.agency_id âˆˆ user's agencies
       OR
-      B) admission has a referral row where referral.agency_id ∈ user's agencies (Home Health use-case)
+      B) admission has a referral row where referral.agency_id âˆˆ user's agencies (Home Health use-case)
     """
     ok = conn.execute(
         """
@@ -23712,11 +24638,11 @@ def _sensys_send_notification_email(to_email: str, subject: str, text_body: str,
         msg["Subject"] = (subject or "").strip() or "Sensys Notification"
 
         # plain text fallback
-        msg.set_content((text_body or "").strip() or "You have a new notification.")
+        msg.set_content((text_body or "").strip() or "You have a new notification.", charset="utf-8")
 
         # optional HTML
         if (html_body or "").strip():
-            msg.add_alternative(html_body, subtype="html")
+            msg.add_alternative(html_body, subtype="html", charset="utf-8")
 
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             server.starttls()
@@ -23973,7 +24899,7 @@ def sensys_notifications_mark_read(payload: SensysNotificationMarkRead, request:
     conn.commit()
 
 # -----------------------------------------------------------------------------
-# PDFs — Upload / List / Download (ANCHOR: PDF_FEATURE)
+# PDFs â€” Upload / List / Download (ANCHOR: PDF_FEATURE)
 # -----------------------------------------------------------------------------
     return {"ok": True}
 
@@ -23984,7 +24910,7 @@ def sensys_admission_pdfs_list(admission_id: int, request: Request):
     try:
         _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
 
-        # ✅ cleanup expired files to conserve disk
+        # âœ… cleanup expired files to conserve disk
         _sensys_pdf_cleanup_expired(conn)
 
         rows = conn.execute(
@@ -24029,7 +24955,7 @@ async def sensys_admission_pdf_upload(
     try:
         _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
 
-        # ✅ cleanup expired files to conserve disk
+        # âœ… cleanup expired files to conserve disk
         _sensys_pdf_cleanup_expired(conn)
 
         stored_name = f"{uuid.uuid4().hex}.pdf"
@@ -24119,7 +25045,7 @@ async def sensys_admission_pdf_upload(
         conn.close()
 
 # -----------------------------------------------------------------------------
-# Communications — SMS / Fax (RingCentral) (ANCHOR: COMM_SMS_FAX)
+# Communications â€” SMS / Fax (RingCentral) (ANCHOR: COMM_SMS_FAX)
 # -----------------------------------------------------------------------------
 @app.get("/api/sensys/admission-sms/{admission_id}")
 def sensys_admission_sms_list(admission_id: int, request: Request):
@@ -24146,7 +25072,7 @@ def sensys_admission_sms_list(admission_id: int, request: Request):
         conn.close()
 
 # -----------------------------
-# Communications — Fax: list by admission (ANCHOR: COMM_FAX_LIST)
+# Communications â€” Fax: list by admission (ANCHOR: COMM_FAX_LIST)
 # -----------------------------
 @app.get("/api/sensys/admission-fax/{admission_id}")
 def sensys_admission_fax_list(admission_id: int, request: Request):
@@ -24174,7 +25100,7 @@ def sensys_admission_fax_list(admission_id: int, request: Request):
         conn.close()
 
 # -----------------------------
-# Communications — Fax: send (ANCHOR: COMM_FAX_SEND)
+# Communications â€” Fax: send (ANCHOR: COMM_FAX_SEND)
 # -----------------------------
 @app.post("/api/sensys/admission-fax/send")
 def sensys_admission_fax_send(payload: SensysAdmissionFaxSend, request: Request):
@@ -24336,7 +25262,7 @@ def sensys_admission_fax_refresh_status(fax_log_id: int, request: Request):
 
 
 # -----------------------------
-# ✅ NEW: light “refresh recent fax statuses” endpoint
+# âœ… NEW: light â€œrefresh recent fax statusesâ€ endpoint
 # -----------------------------
 class SensysFaxRefreshRecent(BaseModel):
     max_age_minutes: int = 240   # faxes can take longer; default 4h
@@ -24363,9 +25289,9 @@ def sensys_admission_fax_refresh_recent(admission_id: int, payload: SensysFaxRef
         if max_rows > 25:
             max_rows = 25  # cap
 
-        # “final” statuses: don’t keep polling these
+        # â€œfinalâ€ statuses: donâ€™t keep polling these
         final_statuses = {"delivered", "failed", "undelivered", "canceled", "cancelled", "error"}
-        # “in-flight” statuses we *will* poll
+        # â€œin-flightâ€ statuses we *will* poll
         inflight_statuses = {"queued", "sending", "sent"}
 
         rows = conn.execute(
@@ -24439,7 +25365,7 @@ def sensys_admission_fax_refresh_recent(admission_id: int, payload: SensysFaxRef
         conn.close()
 
 # -----------------------------
-# Communications — SMS: send (ANCHOR: COMM_SMS_SEND)
+# Communications â€” SMS: send (ANCHOR: COMM_SMS_SEND)
 # -----------------------------
 @app.post("/api/sensys/admission-sms/send")
 def sensys_admission_sms_send(payload: SensysAdmissionSmsSend, request: Request):
@@ -24550,7 +25476,7 @@ def sensys_admission_sms_send(payload: SensysAdmissionSmsSend, request: Request)
         conn.close()
 
 # -----------------------------
-# Communications — SMS: refresh one status (ANCHOR: COMM_SMS_REFRESH_ONE)
+# Communications â€” SMS: refresh one status (ANCHOR: COMM_SMS_REFRESH_ONE)
 # -----------------------------
 @app.post("/api/sensys/admission-sms/refresh-status/{sms_log_id}")
 def sensys_admission_sms_refresh_status(sms_log_id: int, request: Request):
@@ -24613,7 +25539,7 @@ def sensys_admission_sms_refresh_status(sms_log_id: int, request: Request):
 
 
 # -----------------------------
-# Communications — SMS: refresh recent statuses (ANCHOR: COMM_SMS_REFRESH_RECENT)
+# Communications â€” SMS: refresh recent statuses (ANCHOR: COMM_SMS_REFRESH_RECENT)
 # -----------------------------
 class SensysSmsRefreshRecent(BaseModel):
     max_age_minutes: int = 120   # only look at recent rows
@@ -24640,10 +25566,10 @@ def sensys_admission_sms_refresh_recent(admission_id: int, payload: SensysSmsRef
         if max_rows > 25:
             max_rows = 25  # cap
 
-        # “final” statuses: don’t keep polling these
+        # â€œfinalâ€ statuses: donâ€™t keep polling these
         # (keep this simple; adjust as you learn RC behaviors)
         final_statuses = {"delivered", "failed", "undelivered", "received", "canceled", "cancelled", "error"}
-        # “in-flight” statuses we *will* poll
+        # â€œin-flightâ€ statuses we *will* poll
         inflight_statuses = {"queued", "sending", "sent"}
 
         rows = conn.execute(
@@ -24758,11 +25684,18 @@ def sensys_services(request: Request):
             s.name,
             s.name AS service_name,                -- keep legacy-friendly key
             s.service_type_id,
+            s.aliases,
             st.name AS service_type_name,
             st.code AS service_type_code,
             COALESCE(st.code, s.service_type) AS service_type,  -- keep legacy key too
             s.dropdown,
             s.reminder_id,
+            s.reminder_title,
+            s.reminder_message,
+            s.reminder_severity,
+            s.reminder_followup,
+            s.reminder_active,
+            s.reminder_updated_at,
             s.deleted_at,
             s.created_at,
             s.updated_at
@@ -24778,7 +25711,7 @@ def sensys_services(request: Request):
 
     return {"ok": True, "services": [dict(r) for r in rows]}
 
-# ✅ Sensys (User): Note templates + fields (needed by Admission Details page)
+# âœ… Sensys (User): Note templates + fields (needed by Admission Details page)
 @app.get("/api/sensys/note-templates")
 def sensys_note_templates(request: Request):
     u = _sensys_require_user(request)
@@ -24917,7 +25850,11 @@ def sensys_admission_details(admission_id: int, request: Request):
             a.id,
             a.patient_id,
             (p.last_name || ', ' || p.first_name) AS patient_name,
+            p.first_name AS patient_first_name,
+            p.last_name AS patient_last_name,
             p.dob AS patient_dob,
+            p.insurance_name1 AS patient_insurance_name1,
+            p.insurance_number1 AS patient_insurance_number1,
 
             -- patient contact
             p.phone1   AS patient_phone1,
@@ -24989,25 +25926,27 @@ def sensys_admission_details(admission_id: int, request: Request):
     dc = conn.execute(
         """
         SELECT
-            id, admission_id, created_at, created_by,
-            dc_date, dc_time, dc_confirmed, dc_urgent, urgent_comments,
-            dc_destination, destination_comments, dc_with,
-            hh_agency_id, hh_preferred,    
-            hh_carecompare_ccn,
-            hh_carecompare_name,
-            hh_carecompare_dba,
-            hh_carecompare_city,
-            hh_carecompare_state,
-            hh_carecompare_zip,
-            hh_carecompare_county,                  
-            hh_comments, dme_comments, aid_consult, pcp_freetext,
-            coordinate_caregiver, caregiver_name, caregiver_number,
-            apealling_dc, appeal_comments,
-            updated_at, deleted_at
-        FROM sensys_admission_dc_submissions
-        WHERE admission_id = ?
-          AND deleted_at IS NULL
-        ORDER BY id DESC
+            dcs.id, dcs.admission_id, dcs.created_at, dcs.created_by,
+            dcs.dc_date, dcs.dc_time, dcs.dc_confirmed, dcs.dc_urgent, dcs.urgent_comments,
+            dcs.dc_destination, dcs.destination_comments, dcs.dc_with,
+            dcs.hh_agency_id, dcs.hh_preferred,    
+            ha.agency_name AS hh_agency_name,
+            dcs.hh_carecompare_ccn,
+            dcs.hh_carecompare_name,
+            dcs.hh_carecompare_dba,
+            dcs.hh_carecompare_city,
+            dcs.hh_carecompare_state,
+            dcs.hh_carecompare_zip,
+            dcs.hh_carecompare_county,                  
+            dcs.hh_comments, dcs.hh_agency_comments, dcs.dme_comments, dcs.aid_consult, dcs.pcp_freetext,
+            dcs.coordinate_caregiver, dcs.caregiver_name, dcs.caregiver_number,
+            dcs.apealling_dc, dcs.appeal_comments,
+            dcs.updated_at, dcs.deleted_at
+        FROM sensys_admission_dc_submissions dcs
+        LEFT JOIN sensys_agencies ha ON ha.id = dcs.hh_agency_id
+        WHERE dcs.admission_id = ?
+          AND dcs.deleted_at IS NULL
+        ORDER BY dcs.id DESC
         """,
         (int(admission_id),),
     ).fetchall()
@@ -25065,6 +26004,27 @@ def sensys_admission_details(admission_id: int, request: Request):
         """,
         (int(admission_id),),
     ).fetchall()
+
+    snf_physician_name = ""
+    try:
+        row = conn.execute(
+            """
+            SELECT ct.name
+            FROM sensys_admission_care_team act
+            JOIN sensys_care_team ct ON ct.id = act.care_team_id
+            WHERE act.admission_id = ?
+              AND act.deleted_at IS NULL
+              AND ct.deleted_at IS NULL
+              AND LOWER(ct.type) = LOWER('SNF Physician')
+            ORDER BY act.id DESC
+            LIMIT 1
+            """,
+            (int(admission_id),),
+        ).fetchone()
+        if row and row["name"]:
+            snf_physician_name = row["name"]
+    except Exception:
+        snf_physician_name = ""
 
     referrals = conn.execute(
         """
@@ -25188,6 +26148,18 @@ def sensys_admission_details(admission_id: int, request: Request):
             preferred_provider_ids = [int(r["provider_agency_id"]) for r in rows]
     except Exception:
         preferred_provider_ids = []
+
+    frequent = {"hh_services": [], "dme_services": [], "hh_agencies": []}
+    try:
+        if admission and admission["agency_id"]:
+            agency_id = int(admission["agency_id"])
+            frequent = {
+                "hh_services": _sensys_freq_top_ids(conn, agency_id, "hh_service", 5),
+                "dme_services": _sensys_freq_top_ids(conn, agency_id, "dme_service", 5),
+                "hh_agencies": _sensys_freq_top_ids(conn, agency_id, "hh_agency", 5),
+            }
+    except Exception:
+        frequent = {"hh_services": [], "dme_services": [], "hh_agencies": []}
         
     return {
         "ok": True,
@@ -25197,7 +26169,9 @@ def sensys_admission_details(admission_id: int, request: Request):
         "dc_submissions": dc_out,
         "esigns": esign_out,
         "care_team": [dict(r) for r in care_team_links],
+        "snf_physician_name": snf_physician_name,
         "preferred_provider_ids": preferred_provider_ids,
+        "frequent": frequent,
         "referrals": [dict(r) for r in referrals],
         "appointments": [dict(r) for r in appointments],
     }
@@ -25256,7 +26230,7 @@ def sensys_debug_db_state(request: Request):
     }
 
 # -----------------------------
-# Admission Details — Tasks: upsert (ANCHOR: ADMISSION_TASKS_UPSERT)
+# Admission Details â€” Tasks: upsert (ANCHOR: ADMISSION_TASKS_UPSERT)
 # -----------------------------
 @app.post("/api/sensys/admission-tasks/upsert")
 def sensys_admission_tasks_upsert(payload: AdmissionTaskUpsert, request: Request):
@@ -25298,7 +26272,7 @@ def sensys_admission_tasks_upsert(payload: AdmissionTaskUpsert, request: Request
         )
         task_id = int(payload.id)
 
-        # 🔔 notify only if assignment changed to someone (or was newly assigned)
+        # ðŸ”” notify only if assignment changed to someone (or was newly assigned)
         new_assigned = int(payload.assigned_user_id) if payload.assigned_user_id else None
         should_notify = (new_assigned is not None) and (prev_assigned is None or int(prev_assigned) != int(new_assigned))
 
@@ -25308,7 +26282,7 @@ def sensys_admission_tasks_upsert(payload: AdmissionTaskUpsert, request: Request
 
             title = "New Task"
             if patient_name:
-                title = f"{title} — {patient_name}"
+                title = f"{title} â€” {patient_name}"
 
             body = f"Task: {task_name}" if task_name else "A task was assigned to you."
 
@@ -25343,14 +26317,14 @@ def sensys_admission_tasks_upsert(payload: AdmissionTaskUpsert, request: Request
         )
         task_id = int(cur.lastrowid)
 
-        # 🔔 notify assigned user (if any) on create
+        # ðŸ”” notify assigned user (if any) on create
         if payload.assigned_user_id:
             patient_name = _sensys_patient_name_for_admission(conn, int(payload.admission_id))
             task_name = (payload.task_name or "").strip()
 
             title = "New Task"
             if patient_name:
-                title = f"{title} — {patient_name}"
+                title = f"{title} â€” {patient_name}"
 
             body = f"Task: {task_name}" if task_name else "A task was assigned to you."
 
@@ -25375,7 +26349,7 @@ class IdOnly(BaseModel):
     id: int
 
 # -----------------------------
-# Admission Details — Tasks: delete (ANCHOR: ADMISSION_TASKS_DELETE)
+# Admission Details â€” Tasks: delete (ANCHOR: ADMISSION_TASKS_DELETE)
 # -----------------------------
 @app.post("/api/sensys/admission-tasks/delete")
 def sensys_admission_tasks_delete(payload: IdOnly, request: Request):
@@ -25406,7 +26380,7 @@ class AdmissionNoteUpsert(BaseModel):
     response1: Optional[str] = ""
     response2: Optional[str] = ""
 
-    # ✅ NEW: Share With user
+    # âœ… NEW: Share With user
     share_with_user_id: Optional[int] = None
 
     # LEGACY (keep so older UI still works)
@@ -25414,7 +26388,7 @@ class AdmissionNoteUpsert(BaseModel):
 
 
 # -----------------------------
-# Admission Details — Notes: upsert (ANCHOR: ADMISSION_NOTES_UPSERT)
+# Admission Details â€” Notes: upsert (ANCHOR: ADMISSION_NOTES_UPSERT)
 # -----------------------------
 @app.post("/api/sensys/admission-notes/upsert")
 def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request):
@@ -25480,7 +26454,7 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
         )
         note_id = int(cur.lastrowid)
 
-    # ✅ NEW: fire "note_shared" notification if Share With was selected
+    # âœ… NEW: fire "note_shared" notification if Share With was selected
     share_uid = int(payload.share_with_user_id) if payload.share_with_user_id else None
     if share_uid:
         # Only allow if the target user is linked to this admission (your existing linking logic)
@@ -25490,7 +26464,7 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
 
             title = "Note Shared"
             if patient_name:
-                title = f"{title} — {patient_name}"
+                title = f"{title} â€” {patient_name}"
 
             body = "A note was shared with you."
             note_title = (payload.note_title or "").strip()
@@ -25515,7 +26489,7 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
 
 
 # -----------------------------
-# Admission Details — Notes: delete (ANCHOR: ADMISSION_NOTES_DELETE)
+# Admission Details â€” Notes: delete (ANCHOR: ADMISSION_NOTES_DELETE)
 # -----------------------------
 @app.post("/api/sensys/admission-notes/delete")
 def sensys_admission_notes_delete(payload: IdOnly, request: Request):
@@ -25559,6 +26533,7 @@ class DcSubmissionUpsert(BaseModel):
     hh_carecompare_county: Optional[str] = ""
 
     hh_comments: Optional[str] = ""
+    hh_agency_comments: Optional[str] = ""
     dme_comments: Optional[str] = ""
     aid_consult: Optional[str] = ""
     pcp_freetext: Optional[str] = ""
@@ -25568,11 +26543,102 @@ class DcSubmissionUpsert(BaseModel):
     apealling_dc: int = 0
     appeal_comments: Optional[str] = ""
 
-@app.get("/api/sensys/dc-note/render")
-def sensys_dc_note_render(dc_submission_id: int, request: Request):
-    u = _sensys_require_user(request)
-    conn = get_db()
+def _sensys_update_admission_from_latest_dc(conn: sqlite3.Connection, admission_id: int):
+    row = conn.execute(
+        """
+        SELECT id, dc_date, dc_confirmed
+        FROM sensys_admission_dc_submissions
+        WHERE admission_id = ?
+          AND deleted_at IS NULL
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (int(admission_id),),
+    ).fetchone()
 
+    if not row:
+        conn.execute(
+            """
+            UPDATE sensys_admissions
+               SET dc_date = NULL,
+                   dc_confirmed = 0,
+                   latest_dc_submission_id = NULL,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (int(admission_id),),
+        )
+        return
+
+    dc_date_clean = normalize_date_to_iso(row["dc_date"])
+    dc_confirmed = int(row["dc_confirmed"] or 0)
+    latest_id = int(row["id"])
+
+    conn.execute(
+        """
+        UPDATE sensys_admissions
+           SET dc_date = ?,
+               dc_confirmed = ?,
+               latest_dc_submission_id = ?,
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (dc_date_clean, dc_confirmed, latest_id, int(admission_id)),
+    )
+
+def _sensys_freq_inc(conn: sqlite3.Connection, agency_id: int, item_type: str, item_id: int):
+    if not agency_id or not item_type or not item_id:
+        return
+    conn.execute(
+        """
+        INSERT INTO sensys_agency_frequent_items (agency_id, item_type, item_id, cnt, updated_at)
+        VALUES (?, ?, ?, 1, datetime('now'))
+        ON CONFLICT(agency_id, item_type, item_id)
+        DO UPDATE SET cnt = cnt + 1, updated_at = datetime('now')
+        """,
+        (int(agency_id), item_type, int(item_id)),
+    )
+
+def _sensys_freq_top_ids(conn: sqlite3.Connection, agency_id: int, item_type: str, limit: int = 5) -> list[int]:
+    rows = conn.execute(
+        """
+        SELECT item_id
+        FROM sensys_agency_frequent_items
+        WHERE agency_id = ?
+          AND item_type = ?
+        ORDER BY cnt DESC, updated_at DESC, item_id ASC
+        LIMIT ?
+        """,
+        (int(agency_id), item_type, int(limit)),
+    ).fetchall()
+    return [int(r["item_id"]) for r in rows]
+
+def _snf_compute_current_facility(conn: sqlite3.Connection, *, final_id, final_name, ai_id, ai_name_raw) -> tuple[str | None, str]:
+    if final_id is not None and str(final_id).strip() != "":
+        if final_name:
+            return str(final_id), str(final_name).strip()
+        row = conn.execute(
+            "SELECT facility_name FROM snf_admission_facilities WHERE id = ?",
+            (int(final_id),),
+        ).fetchone()
+        return str(final_id), (row["facility_name"] if row else "") or ""
+
+    if ai_id is not None and str(ai_id).strip() != "":
+        row = conn.execute(
+            "SELECT facility_name FROM snf_admission_facilities WHERE id = ?",
+            (int(ai_id),),
+        ).fetchone()
+        return str(ai_id), (row["facility_name"] if row else "") or (ai_name_raw or "").strip()
+
+    # No IDs; try mapping the AI raw name to a facility via aliases
+    if ai_name_raw:
+        mapped_id, mapped_name = map_snf_name_to_facility_id(conn, ai_name_raw)
+        if mapped_id and mapped_name:
+            return str(mapped_id), str(mapped_name).strip()
+
+    return None, (ai_name_raw or "").strip()
+
+def _sensys_build_dc_note(conn: sqlite3.Connection, dc_submission_id: int) -> dict | None:
     dc = conn.execute(
         """
         SELECT dcs.*,
@@ -25588,9 +26654,7 @@ def sensys_dc_note_render(dc_submission_id: int, request: Request):
         (int(dc_submission_id),),
     ).fetchone()
     if not dc:
-        raise HTTPException(status_code=404, detail="DC submission not found")
-
-    _sensys_assert_admission_access(conn, int(u["user_id"]), int(dc["admission_id"]))
+        return None
 
     # patient name
     p = conn.execute(
@@ -25650,7 +26714,7 @@ def sensys_dc_note_render(dc_submission_id: int, request: Request):
     ).fetchone()
 
     if not tpl:
-        raise HTTPException(status_code=400, detail="No active DC note template found (create one in Admin → Notes).")
+        return None
 
     # build context for the template
     discharge_date = (dc["dc_date"] or "").strip() or (dc["admission_dc_date"] or "").strip()
@@ -25682,21 +26746,46 @@ def sensys_dc_note_render(dc_submission_id: int, request: Request):
     rendered = _sensys_render_dc_note_template(tpl["template_body"], ctx)
 
     return {
-        "ok": True,
-        "template_id": int(tpl["id"]),
-        "template_name": tpl["template_name"],
+        "dc": dc,
+        "template": tpl,
         "note_text": rendered,
-        "ctx": ctx,  # helpful for debugging; remove later if you want
+        "ctx": ctx,
+        "patient_name": patient_name,
+    }
+
+@app.get("/api/sensys/dc-note/render")
+def sensys_dc_note_render(dc_submission_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+
+    out = _sensys_build_dc_note(conn, int(dc_submission_id))
+    if not out:
+        raise HTTPException(status_code=404, detail="DC submission not found or no active DC note template.")
+
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(out["dc"]["admission_id"]))
+
+    return {
+        "ok": True,
+        "template_id": int(out["template"]["id"]),
+        "template_name": out["template"]["template_name"],
+        "note_text": out["note_text"],
+        "ctx": out["ctx"],  # helpful for debugging; remove later if you want
     }
 
 # -----------------------------------------------------------------------------
-# Discharge Submissions — DC Plan (ANCHOR: DC_SUBMISSIONS_FEATURE)
+# Discharge Submissions -- DC Plan (ANCHOR: DC_SUBMISSIONS_FEATURE)
 # -----------------------------------------------------------------------------
 @app.post("/api/sensys/admission-dc-submissions/upsert")
 def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request: Request):
     u = _sensys_require_user(request)
     conn = get_db()
     _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
+
+    adm_row = conn.execute(
+        "SELECT agency_id FROM sensys_admissions WHERE id = ?",
+        (int(payload.admission_id),),
+    ).fetchone()
+    admission_agency_id = int(adm_row["agency_id"]) if adm_row and adm_row["agency_id"] else 0
 
     # If user picked a Care Compare agency, hh_agency_id should be NULL and we store carecompare fields.
     # If user picked an internal agency, we clear the carecompare fields.
@@ -25735,6 +26824,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                    hh_carecompare_county = ?,
 
                    hh_comments = ?,
+                   hh_agency_comments = ?,
                    dme_comments = ?,
                    aid_consult = ?,
                    pcp_freetext = ?,
@@ -25770,6 +26860,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                 cc_county,
 
                 (payload.hh_comments or "").strip(),
+                (payload.hh_agency_comments or "").strip(),
                 (payload.dme_comments or "").strip(),
                 (payload.aid_consult or "").strip(),
                 (payload.pcp_freetext or "").strip(),
@@ -25785,7 +26876,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
         )
         
         
-        # ---- 🔔 AUTOMATED NOTIFICATION TRIGGER: Updated Discharge (update path) ----
+        # ---- ðŸ”” AUTOMATED NOTIFICATION TRIGGER: Updated Discharge (update path) ----
         adm = conn.execute(
             """
             SELECT
@@ -25805,7 +26896,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
         dc_time = (payload.dc_time or "").strip()
         dest = (payload.dc_destination or "").strip()
 
-        # ✅ PDW: if confirmed, push dc_date into sensys_admissions.dc_date
+        # âœ… PDW: if confirmed, push dc_date into sensys_admissions.dc_date
         if int(payload.dc_confirmed or 0) == 1:
             # IMPORTANT: normalize to ISO so SQLite datetime() works (MM/DD/YYYY -> YYYY-MM-DD)
             dc_date_clean = normalize_date_to_iso(payload.dc_date)
@@ -25855,9 +26946,11 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                     (dc_date_clean, int(payload.admission_id)),
                 )
 
+        _sensys_update_admission_from_latest_dc(conn, int(payload.admission_id))
+
         title = "Updated Discharge"
         if patient_name:
-            title = f"Updated Discharge — {patient_name}"
+            title = f"Updated Discharge â€” {patient_name}"
 
         body_parts = []
         if dc_date:
@@ -25866,7 +26959,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
             body_parts.append(f"Time: {dc_time}")
         if dest:
             body_parts.append(f"Destination: {dest}")
-        body = " • ".join(body_parts) if body_parts else "A discharge submission was updated."
+        body = " â€¢ ".join(body_parts) if body_parts else "A discharge submission was updated."
 
         user_ids = _sensys_user_ids_linked_to_admission(conn, int(payload.admission_id))
 
@@ -25882,6 +26975,27 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
             payload_json="",
         )
 
+        dc_note = _sensys_build_dc_note(conn, int(payload.id))
+        if dc_note:
+            note_title = "DC Note"
+            if dc_note["patient_name"]:
+                note_title = f"DC Note - {dc_note['patient_name']}"
+            _sensys_fire_notification(
+                conn,
+                notif_key="dc_note",
+                user_ids=[int(u["user_id"])],
+                admission_id=int(payload.admission_id),
+                related_table="sensys_admission_dc_submissions",
+                related_id=int(payload.id),
+                title=note_title,
+                body=dc_note["note_text"],
+                ctx={"patient": dc_note["patient_name"], "note_text": dc_note["note_text"]},
+                payload_json="",
+            )
+
+        if admission_agency_id and payload.hh_agency_id and not using_carecompare:
+            _sensys_freq_inc(conn, admission_agency_id, "hh_agency", int(payload.hh_agency_id))
+
         conn.commit()
         return {"ok": True, "id": int(payload.id)}
 
@@ -25895,7 +27009,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
             hh_agency_id, hh_preferred,
             hh_carecompare_ccn, hh_carecompare_name, hh_carecompare_dba,
             hh_carecompare_city, hh_carecompare_state, hh_carecompare_zip, hh_carecompare_county,
-            hh_comments, dme_comments, aid_consult, pcp_freetext,
+            hh_comments, hh_agency_comments, dme_comments, aid_consult, pcp_freetext,
             coordinate_caregiver, caregiver_name, caregiver_number,
             apealling_dc, appeal_comments
         ) VALUES (
@@ -25904,7 +27018,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
             ?, ?, ?,
             ?, ?,
             ?, ?, ?,
-            ?, ?, ?, ?,
+            ?, ?, ?, ?, ?,
             ?, ?, ?, ?,
             ?, ?, ?,
             ?, ?
@@ -25936,6 +27050,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
             cc_county,
 
             (payload.hh_comments or "").strip(),
+            (payload.hh_agency_comments or "").strip(),
             (payload.dme_comments or "").strip(),
             (payload.aid_consult or "").strip(),
             (payload.pcp_freetext or "").strip(),
@@ -25949,9 +27064,9 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
     )
 
     dc_submission_id = int(cur.lastrowid)
-    # ✅ PDW: if confirmed, push dc_date into sensys_admissions.dc_date
+    # âœ… PDW: if confirmed, push dc_date into sensys_admissions.dc_date
     if int(payload.dc_confirmed or 0) == 1:
-        dc_date_clean = (payload.dc_date or "").strip()
+        dc_date_clean = normalize_date_to_iso(payload.dc_date)
         if dc_date_clean:
             conn.execute(
                 """
@@ -25962,9 +27077,11 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
                 """,
                 (dc_date_clean, int(payload.admission_id)),
             )
+
+    _sensys_update_admission_from_latest_dc(conn, int(payload.admission_id))
             
             
-    # ---- 🔔 AUTOMATED NOTIFICATION TRIGGER: New Discharge vs Updated Discharge ----
+    # ---- ðŸ”” AUTOMATED NOTIFICATION TRIGGER: New Discharge vs Updated Discharge ----
 
     dc_count = conn.execute(
         """
@@ -26000,7 +27117,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
 
     title = "New Discharge" if notif_key == "new_discharge" else "Updated Discharge"
     if patient_name:
-        title = f"{title} — {patient_name}"
+        title = f"{title} â€” {patient_name}"
 
     body_parts = []
     if dc_date:
@@ -26009,7 +27126,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
         body_parts.append(f"Time: {dc_time}")
     if dest:
         body_parts.append(f"Destination: {dest}")
-    body = " • ".join(body_parts) if body_parts else "A discharge submission was entered."
+    body = " â€¢ ".join(body_parts) if body_parts else "A discharge submission was entered."
 
     # recipients = all users linked to this admission (agency OR referral-agency)
     user_ids = _sensys_user_ids_linked_to_admission(conn, int(payload.admission_id))
@@ -26027,6 +27144,27 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
         payload_json="",
     )
 
+    dc_note = _sensys_build_dc_note(conn, int(dc_submission_id))
+    if dc_note:
+        note_title = "DC Note"
+        if dc_note["patient_name"]:
+            note_title = f"DC Note - {dc_note['patient_name']}"
+        _sensys_fire_notification(
+            conn,
+            notif_key="dc_note",
+            user_ids=[int(u["user_id"])],
+            admission_id=int(payload.admission_id),
+            related_table="sensys_admission_dc_submissions",
+            related_id=int(dc_submission_id),
+            title=note_title,
+            body=dc_note["note_text"],
+            ctx={"patient": dc_note["patient_name"], "note_text": dc_note["note_text"]},
+            payload_json="",
+        )
+
+    if admission_agency_id and payload.hh_agency_id and not using_carecompare:
+        _sensys_freq_inc(conn, admission_agency_id, "hh_agency", int(payload.hh_agency_id))
+
     conn.commit()
     return {"ok": True, "id": int(dc_submission_id)}
 
@@ -26040,7 +27178,7 @@ class AdmissionEsignUpsert(BaseModel):
     status: Optional[str] = "Pending"
 
 # -----------------------------
-# Discharge Submissions — upsert (ANCHOR: DC_SUBMISSIONS_UPSERT)
+# Discharge Submissions â€” upsert (ANCHOR: DC_SUBMISSIONS_UPSERT)
 # -----------------------------
 
 @app.post("/api/sensys/admission-esigns/upsert")
@@ -26050,7 +27188,7 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
     _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
 
     if payload.id:
-        # ✅ NEW: once signed, it cannot be edited
+        # âœ… NEW: once signed, it cannot be edited
         existing = conn.execute(
             "SELECT status, signed_at FROM sensys_admission_esigns WHERE id = ?",
             (int(payload.id),),
@@ -26103,7 +27241,7 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
         )
         esign_id = int(cur.lastrowid)
 
-        # 🔔 NEW E-SIGN ORDER notification (providers linked to this care team)
+        # ðŸ”” NEW E-SIGN ORDER notification (providers linked to this care team)
         notif_key = "new_esign_orders"
 
         patient_name = _sensys_patient_name_for_admission(conn, int(payload.admission_id))
@@ -26128,14 +27266,14 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
 
         title = "New E-Sign Order"
         if patient_name:
-            title = f"{title} — {patient_name}"
+            title = f"{title} â€” {patient_name}"
 
         body_bits = []
         if care_team_name:
             body_bits.append(f"Provider: {care_team_name}")
         if service_label:
             body_bits.append(f"Service Type: {service_label}")
-        body = " • ".join(body_bits) if body_bits else "A new e-sign order was created."
+        body = " â€¢ ".join(body_bits) if body_bits else "A new e-sign order was created."
 
         user_ids = _sensys_user_ids_linked_to_care_team(conn, int(payload.care_team_id))
 
@@ -26157,7 +27295,7 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
 
 
 # -----------------------------
-# Discharge Submissions — delete (ANCHOR: DC_SUBMISSIONS_DELETE)
+# Discharge Submissions â€” delete (ANCHOR: DC_SUBMISSIONS_DELETE)
 # -----------------------------
 
 @app.post("/api/sensys/admission-esigns/delete")
@@ -26185,7 +27323,7 @@ class EsignServicesSet(BaseModel):
 
 
 # -----------------------------
-# Discharge Submissions — set services (ANCHOR: DC_SUBMISSION_SERVICES_SET)
+# Discharge Submissions â€” set services (ANCHOR: DC_SUBMISSION_SERVICES_SET)
 # -----------------------------
 
 @app.post("/api/sensys/esign-services/set")
@@ -26216,7 +27354,7 @@ def sensys_esign_services_set(payload: EsignServicesSet, request: Request):
     return {"ok": True}
 
 # -------------------------------------------------------------------
-# ✅ NEW: Provider E-Sign list + sign/decline endpoints
+# âœ… NEW: Provider E-Sign list + sign/decline endpoints
 # -------------------------------------------------------------------
 def _sensys_assert_provider_role(u: dict):
     role_keys = u.get("role_keys") or []
@@ -26279,14 +27417,27 @@ def sensys_provider_esigns(request: Request):
 
             p.first_name AS patient_first_name,
             p.last_name  AS patient_last_name,
+            p.dob AS patient_dob,
+            p.insurance_name1 AS patient_insurance_name1,
+            p.insurance_number1 AS patient_insurance_number1,
+            p.address1 AS patient_address1,
+            p.address2 AS patient_address2,
+            p.city AS patient_city,
+            p.state AS patient_state,
+            p.zip AS patient_zip,
 
-            ag.agency_name
+            ag.agency_name,
+            ag.phone1 AS agency_phone,
+            ag.fax AS agency_fax,
+            su.display_name AS signed_by_name,
+            su.npi AS signed_by_npi
         FROM sensys_admission_esigns ae
         JOIN sensys_admissions a ON a.id = ae.admission_id
         JOIN sensys_patients p ON p.id = a.patient_id
         LEFT JOIN sensys_care_team ct ON ct.id = ae.care_team_id
         LEFT JOIN sensys_service_type st ON st.id = ae.service_type_id AND st.deleted_at IS NULL
         LEFT JOIN sensys_agencies ag ON ag.id = a.agency_id
+        LEFT JOIN sensys_users su ON su.id = ae.signed_by
         WHERE ae.deleted_at IS NULL
           AND ae.care_team_id IN ({placeholders})
         ORDER BY
@@ -26335,6 +27486,51 @@ def sensys_provider_esigns(request: Request):
 
 class ProviderEsignAction(BaseModel):
     esign_id: int
+
+class ProviderEsignUpdate(BaseModel):
+    esign_id: int
+    comments: Optional[str] = None
+
+@app.post("/api/sensys/provider/esigns/update")
+def sensys_provider_esigns_update(payload: ProviderEsignUpdate, request: Request):
+    u = _sensys_require_user(request)
+    _sensys_assert_provider_role(u)
+
+    conn = get_db()
+    user_id = int(u["user_id"])
+    esign_id = int(payload.esign_id)
+
+    linked_ids = set(_sensys_provider_linked_care_team_ids(conn, user_id))
+
+    row = conn.execute(
+        """
+        SELECT id, care_team_id, status, signed_at
+        FROM sensys_admission_esigns
+        WHERE id = ? AND deleted_at IS NULL
+        """,
+        (esign_id,),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="E-Sign not found")
+
+    if int(row["care_team_id"]) not in linked_ids:
+        raise HTTPException(status_code=403, detail="Not linked to this E-Sign")
+
+    if (row["signed_at"] or "") or (row["status"] or "").strip().lower() == "signed":
+        raise HTTPException(status_code=400, detail="Already signed")
+
+    conn.execute(
+        """
+        UPDATE sensys_admission_esigns
+           SET comments = ?,
+               updated_by_user_id = ?,
+               updated_at = datetime('now')
+         WHERE id = ?
+        """,
+        (payload.comments, user_id, esign_id),
+    )
+    conn.commit()
+    return {"ok": True}
 
 @app.post("/api/sensys/provider/esigns/sign")
 def sensys_provider_esigns_sign(payload: ProviderEsignAction, request: Request):
@@ -26461,7 +27657,8 @@ def sensys_dc_submission_services_set(payload: DcSubmissionServicesSet, request:
         "DELETE FROM sensys_dc_submission_services WHERE admission_dc_submission_id = ?",
         (int(payload.admission_dc_submission_id),),
     )
-    for sid in payload.services_ids or []:
+    service_ids = [int(s) for s in (payload.services_ids or []) if int(s) > 0]
+    for sid in service_ids:
         conn.execute(
             """
             INSERT INTO sensys_dc_submission_services (services_id, admission_dc_submission_id)
@@ -26469,6 +27666,30 @@ def sensys_dc_submission_services_set(payload: DcSubmissionServicesSet, request:
             """,
             (int(sid), int(payload.admission_dc_submission_id)),
         )
+
+    adm_row = conn.execute(
+        "SELECT agency_id FROM sensys_admissions WHERE id = ?",
+        (int(row["admission_id"]),),
+    ).fetchone()
+    admission_agency_id = int(adm_row["agency_id"]) if adm_row and adm_row["agency_id"] else 0
+    if admission_agency_id and service_ids:
+        qmarks = ",".join(["?"] * len(service_ids))
+        svc_rows = conn.execute(
+            f"""
+            SELECT s.id,
+                   COALESCE(st.code, s.service_type) AS st_code
+            FROM sensys_services s
+            LEFT JOIN sensys_service_type st ON st.id = s.service_type_id AND st.deleted_at IS NULL
+            WHERE s.id IN ({qmarks})
+            """,
+            tuple(service_ids),
+        ).fetchall()
+        for r in svc_rows:
+            st_code = (r["st_code"] or "").strip().lower()
+            if st_code in ("hh", "home health", "homehealth"):
+                _sensys_freq_inc(conn, admission_agency_id, "hh_service", int(r["id"]))
+            elif st_code in ("dme", "durable medical equipment"):
+                _sensys_freq_inc(conn, admission_agency_id, "dme_service", int(r["id"]))
 
     conn.commit()
     return {"ok": True}
@@ -26496,7 +27717,7 @@ def sensys_admission_care_team_link(payload: AdmissionCareTeamLink, request: Req
     )
     conn.commit()
 
-    # ✅ Verify it actually exists (prevents "UI looks linked but DB isn't" confusion)
+    # âœ… Verify it actually exists (prevents "UI looks linked but DB isn't" confusion)
     row = conn.execute(
         """
         SELECT id
@@ -26679,7 +27900,7 @@ def _provider_meta_set(conn, *, last_sync_at: str, last_row_count: int, last_err
     conn.commit()
 
 def _provider_library_should_sync(meta: dict) -> bool:
-    # monthly-ish (27 days) so you won’t miss it
+    # monthly-ish (27 days) so you wonâ€™t miss it
     last = (meta.get("last_sync_at") or "").strip()
     if not last:
         return True
@@ -26724,7 +27945,7 @@ def _provider_library_sync_now() -> dict:
         offset = 0
         total_upserted = 0
 
-        # ✅ Diagnostics
+        # âœ… Diagnostics
         total_fetched = 0
         skipped_no_ccn = 0
         first_page_debug = None
@@ -26751,7 +27972,7 @@ def _provider_library_sync_now() -> dict:
 
             data = _cms_datastore_query_with_fallback(url, payload, timeout=60)
 
-            # ✅ Capture response shape once (helps confirm CMS is actually returning results)
+            # âœ… Capture response shape once (helps confirm CMS is actually returning results)
             if first_page_debug is None:
                 try:
                     first_page_debug = {
@@ -26777,7 +27998,7 @@ def _provider_library_sync_now() -> dict:
             if not rows:
                 break
 
-            # ✅ If schema lookup failed, recover column names from actual row keys (page 1)
+            # âœ… If schema lookup failed, recover column names from actual row keys (page 1)
             if offset == 0 and rows:
                 try:
                     row_keys = list((rows[0] or {}).keys())
@@ -26874,7 +28095,7 @@ def _provider_library_sync_now() -> dict:
 
         now_iso = dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
-        # ✅ If we fetched rows but upserted 0, keep a “why” message in meta
+        # âœ… If we fetched rows but upserted 0, keep a â€œwhyâ€ message in meta
         if total_fetched > 0 and total_upserted == 0:
             _provider_meta_set(
                 conn,
@@ -27015,7 +28236,7 @@ def sensys_care_compare_hha_search(
     limit: int = Query(25, ge=1, le=100),
 ):
     """
-    ✅ NOW: queries our local Provider Library table (sensys_provider_library_hha),
+    âœ… NOW: queries our local Provider Library table (sensys_provider_library_hha),
     instead of hitting CMS live each time.
     """
     _ = _sensys_require_user(request)
@@ -27047,8 +28268,8 @@ def sensys_care_compare_hha_search(
     def add_eq_upper(val: str, col: str):
         vv = (val or "").strip()
         if vv:
-            wh.append(f"UPPER({col}) = ?")
-            params.append(vv.upper())
+            wh.append(f"UPPER({col}) LIKE ?")
+            params.append(f"%{vv.upper()}%")
 
     # Name search hits provider_name OR dba
     if q_merged:
@@ -27179,7 +28400,7 @@ async def sensys_admin_ui():
 async def sensys_login_ui():
     return HTMLResponse(content=read_html(SENSYS_LOGIN_HTML))
 
-# ✅ NEW: Admin "Login As" helper page
+# âœ… NEW: Admin "Login As" helper page
 # Opens in a new tab, stores the session token into localStorage, then redirects to the user's landing page.
 @app.get("/sensys/impersonate", response_class=HTMLResponse)
 async def sensys_impersonate_ui(st: str = "", r: str = "/sensys/login"):
@@ -27192,10 +28413,10 @@ async def sensys_impersonate_ui(st: str = "", r: str = "/sensys/login"):
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Logging in…</title>
+  <title>Logging inâ€¦</title>
 </head>
 <body style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; padding: 18px;">
-  <div>Logging in…</div>
+  <div>Logging inâ€¦</div>
   <script>
     try {{
       var st = {repr(safe_st)};
@@ -27216,12 +28437,40 @@ async def sensys_impersonate_ui(st: str = "", r: str = "/sensys/login"):
 async def sensys_snf_sw_ui():
     return HTMLResponse(content=read_html(SENSYS_SNF_SW_HTML))
 
+@app.get("/sensys/snf-user", response_class=HTMLResponse)
+async def sensys_snf_user_ui():
+    return HTMLResponse(content=read_html(SENSYS_SNF_USER_HTML))
+
+@app.get("/sensys/snf-user/calendar", response_class=HTMLResponse)
+async def sensys_snf_user_calendar_ui():
+    return HTMLResponse(content=read_html(SENSYS_SNF_USER_CALENDAR_HTML))
+
+@app.get("/sensys/snf-user/patient-list", response_class=HTMLResponse)
+async def sensys_snf_user_patient_list_ui():
+    return HTMLResponse(content=read_html(SENSYS_SNF_USER_PATIENT_LIST_HTML))
+
+@app.get("/sensys/snf-user/discharged-patients", response_class=HTMLResponse)
+async def sensys_snf_user_discharged_ui():
+    return HTMLResponse(content=read_html(SENSYS_SNF_USER_DISCHARGED_HTML))
+
+@app.get("/sensys/snf-user/patient-search", response_class=HTMLResponse)
+async def sensys_snf_user_patient_search_ui():
+    return HTMLResponse(content=read_html(SENSYS_SNF_USER_PATIENT_SEARCH_HTML))
+
+@app.get("/sensys/snf-user/discharge-plan", response_class=HTMLResponse)
+async def sensys_snf_user_dc_submission_ui():
+    return HTMLResponse(content=read_html(SENSYS_SNF_USER_DC_SUBMISSION_HTML))
+
+@app.get("/sensys/snf-user/admission-details", response_class=HTMLResponse)
+async def sensys_snf_user_admission_details_ui():
+    return HTMLResponse(content=read_html(SENSYS_SNF_USER_ADMISSION_DETAILS_HTML))
+
 
 @app.get("/sensys/admission-details", response_class=HTMLResponse)
 async def sensys_admission_details_ui():
     return HTMLResponse(content=read_html(SENSYS_ADMISSION_DETAILS_HTML))
 
-# ✅ NEW: Home Health admissions list + trimmed details page
+# âœ… NEW: Home Health admissions list + trimmed details page
 @app.get("/sensys/home-health", response_class=HTMLResponse)
 async def sensys_home_health_ui():
     return HTMLResponse(content=read_html(SENSYS_HOME_HEALTH_HTML))
@@ -27230,12 +28479,20 @@ async def sensys_home_health_ui():
 async def sensys_home_health_admission_details_ui():
     return HTMLResponse(content=read_html(SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML))
 
-# ✅ NEW: Provider E-Sign list page
+@app.get("/sensys/home-health/finalized-referrals", response_class=HTMLResponse)
+async def sensys_home_health_finalized_referrals_ui():
+    return HTMLResponse(content=read_html(SENSYS_HOME_HEALTH_FINALIZED_HTML))
+
+# âœ… NEW: Provider E-Sign list page
 @app.get("/sensys/provider-esign", response_class=HTMLResponse)
 async def sensys_provider_esign_ui():
     return HTMLResponse(content=read_html(SENSYS_PROVIDER_ESIGN_HTML))
+
+@app.get("/sensys/provider-landing", response_class=HTMLResponse)
+async def sensys_provider_landing_ui():
+    return HTMLResponse(content=read_html(SENSYS_PROVIDER_LANDING_HTML))
     
-# ✅ CCC-PDW v1
+# âœ… CCC-PDW v1
 @app.get("/sensys/post-discharge", response_class=HTMLResponse)
 async def sensys_post_discharge_ui():
     return HTMLResponse(content=read_html(SENSYS_POST_DISCHARGE_HTML))
@@ -27349,5 +28606,10 @@ if __name__ == "__main__":
 
     port = int(os.getenv("PORT", "8000"))
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
+
+
+
+
+
 
 
