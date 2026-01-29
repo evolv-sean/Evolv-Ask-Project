@@ -16348,8 +16348,6 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
     report_key = (payload.get("report_key") or "").strip()
     status = (payload.get("status") or "all").strip()
     ignore_unknown = bool(payload.get("ignore_unknown") or False)
-    ignore_unknown = bool(payload.get("ignore_unknown") or False)
-    ignore_unknown = bool(payload.get("ignore_unknown") or False)
     dc_from = (payload.get("dc_from") or "").strip()
     dc_to = (payload.get("dc_to") or "").strip()
 
@@ -16504,6 +16502,7 @@ async def admin_snf_reports_email(request: Request, payload: Dict[str, Any] = Bo
 
     report_key = (payload.get("report_key") or "").strip()
     status = (payload.get("status") or "all").strip()
+    ignore_unknown = bool(payload.get("ignore_unknown") or False)
     dc_from = (payload.get("dc_from") or "").strip()
     dc_to = (payload.get("dc_to") or "").strip()
     recipients = normalize_email_list(payload.get("recipients") or "")
