@@ -16368,17 +16368,33 @@ def _build_snf_admission_summary_email_html(data: dict) -> str:
     rows_html = ""
     for x in top:
         name = esc(x.get("facility") or "(Unknown)")
-        star = " <span class='star'>★</span>" if x.get("is_starred") else ""
+        star = " <span style='color:#A8E6CF;font-weight:900;'>★</span>" if x.get("is_starred") else ""
         count = x.get("count") if x.get("count") is not None else 0
         fac_unopened = f"{x.get('facility_pin_unopened_pct', 0)}%"
         prov_unopened = f"{x.get('provider_pin_unopened_pct', 0)}%"
         rows_html += f"""
-          <div class="row">
-            <div class="cell name">{name}{star}</div>
-            <div class="cell pill">{count}</div>
-            <div class="cell metric">{fac_unopened}</div>
-            <div class="cell metric">{prov_unopened}</div>
-          </div>
+                <tr>
+                  <td style="padding:8px 6px;">
+                    <div style="background:#fafafa;border:1px solid #e5e7eb;border-radius:12px;padding:8px 10px;">
+                      <div style="font-size:13px;font-weight:900;">{name}{star}</div>
+                    </div>
+                  </td>
+                  <td style="padding:8px 6px;">
+                    <div style="display:inline-block;font-size:12px;font-weight:900;border:1px solid rgba(168,230,207,0.65);background:rgba(168,230,207,0.12);color:#0D3B66;border-radius:999px;padding:6px 10px;">
+                      {count}
+                    </div>
+                  </td>
+                  <td style="padding:8px 6px;">
+                    <div style="display:inline-block;font-size:12px;font-weight:900;color:#0D3B66;border:1px solid rgba(13,59,102,.16);background:rgba(13,59,102,.06);border-radius:999px;padding:6px 10px;">
+                      {fac_unopened}
+                    </div>
+                  </td>
+                  <td style="padding:8px 6px;">
+                    <div style="display:inline-block;font-size:12px;font-weight:900;color:#0D3B66;border:1px solid rgba(13,59,102,.16);background:rgba(13,59,102,.06);border-radius:999px;padding:6px 10px;">
+                      {prov_unopened}
+                    </div>
+                  </td>
+                </tr>
         """
 
     return f"""<!doctype html>
