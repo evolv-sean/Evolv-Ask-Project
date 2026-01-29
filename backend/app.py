@@ -15875,6 +15875,7 @@ async def admin_snf_email_log_list(request: Request):
                 f.facility_name AS snf_facility_name,
                 COALESCE(o.facility_open_count, 0)  AS facility_open_count,
                 COALESCE(o.universal_open_count, 0) AS universal_open_count,
+                COALESCE(o.provider_open_count, 0)  AS provider_open_count,
                 COALESCE(o.open_count, 0)           AS open_count
             FROM snf_secure_links l
             LEFT JOIN snf_admission_facilities f
