@@ -16111,7 +16111,13 @@ async def admin_snf_email_log_opens(request: Request, secure_link_id: int):
     finally:
         conn.close()
 
-def _snf_admission_summary_report(conn: sqlite3.Connection, dc_from: str, dc_to: str, status: str = "all") -> dict:
+def _snf_admission_summary_report(
+    conn: sqlite3.Connection,
+    dc_from: str,
+    dc_to: str,
+    status: str = "all",
+    ignore_unknown: bool = False,
+) -> dict:
     cur = conn.cursor()
 
     # Cohort = SNF admissions in date range (dc_date, fallback to last_seen_active_date)
@@ -16124,6 +16130,8 @@ def _snf_admission_summary_report(conn: sqlite3.Connection, dc_from: str, dc_to:
     if status_s and status_s != "all":
         where += " AND s.status = ?"
         params.append(status_s)
+    if ignore_unknown:
+        where += " AND s.current_snf_facility_name IS NOT NULL AND TRIM(s.current_snf_facility_name) <> ''"
 
     cur.execute(
         f"""
@@ -16299,7 +16307,12 @@ def _snf_admission_summary_report(conn: sqlite3.Connection, dc_from: str, dc_to:
     top_facilities.sort(key=lambda x: (-x["count"], x["facility"].lower()))
 
     return {
-        "filters": {"dc_from": dc_from, "dc_to": dc_to, "status": status_s or "all"},
+        "filters": {
+            "dc_from": dc_from,
+            "dc_to": dc_to,
+            "status": status_s or "all",
+            "ignore_unknown": bool(ignore_unknown),
+        },
         "totals": {
             "snf_rows": total_snf,
             "emails_in_cohort": total_emails,
@@ -16334,6 +16347,8 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
 
     report_key = (payload.get("report_key") or "").strip()
     status = (payload.get("status") or "all").strip()
+    ignore_unknown = bool(payload.get("ignore_unknown") or False)
+    ignore_unknown = bool(payload.get("ignore_unknown") or False)
     dc_from = (payload.get("dc_from") or "").strip()
     dc_to = (payload.get("dc_to") or "").strip()
 
@@ -16345,7 +16360,7 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
 
     conn = get_db()
     try:
-        data = _snf_admission_summary_report(conn, dc_from, dc_to, status=status)
+        data = _snf_admission_summary_report(conn, dc_from, dc_to, status=status, ignore_unknown=ignore_unknown)
         data["ok"] = True
         data["report_key"] = report_key
         return data
@@ -16360,6 +16375,7 @@ def _build_snf_admission_summary_email_html(data: dict) -> str:
     top = data.get("top_facilities") or []
     dc_from = esc((data.get("filters") or {}).get("dc_from") or "")
     dc_to = esc((data.get("filters") or {}).get("dc_to") or "")
+    ignore_unknown = "Yes" if (data.get("filters") or {}).get("ignore_unknown") else "No"
 
     opened_pct = m.get("facility_pin_opened_pct") or 0
     provider_opened_pct = m.get("provider_pin_opened_pct") or 0
@@ -16424,14 +16440,15 @@ def _build_snf_admission_summary_email_html(data: dict) -> str:
           <tr>
             <td style="padding:16px 20px;border-bottom:1px solid #eef2f7;">
               <div style="font-size:18px;font-weight:900;">SNF Admission Summary</div>
-              <div style="font-size:12px;color:#6b7280;margin-top:4px;">Filtered by SNF DC Date (fallback to Last Seen Active Date): <strong>{dc_from}</strong> → <strong>{dc_to}</strong></div>
+              <div style="font-size:12px;color:#6b7280;margin-top:4px;">Filtered by SNF DC Date (fallback to Last Seen Active Date): <strong>{dc_from}</strong> → <strong>{dc_to}</strong> • Ignore Unknown Facilities: <strong>{ignore_unknown}</strong></div>
+              <div style="font-size:12px;color:#6b7280;margin-top:4px;">SNF Volume is calculated based on total hospital visits documented going to that location. Emails Opened is calculated based on total number of daily emails sent to that SNF. Multiple emails are sent on groups of patients and one visit is typically on multiple daily emails leading up to their hospital discharge.</div>
             </td>
           </tr>
           <tr>
             <td style="padding:14px 20px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                 <tr>
-                  <td width="33.33%" valign="top" style="padding-right:10px;">
+                  <td width="50%" valign="top" style="padding-right:10px;">
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:12px;">
                       <tr><td style="padding:10px 12px;">
                         <div style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;">Emails opened (Facility PIN)</div>
@@ -16440,21 +16457,12 @@ def _build_snf_admission_summary_email_html(data: dict) -> str:
                       </td></tr>
                     </table>
                   </td>
-                  <td width="33.33%" valign="top" style="padding-right:10px;">
+                  <td width="50%" valign="top">
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:12px;">
                       <tr><td style="padding:10px 12px;">
                         <div style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;">Emails opened (Provider PIN)</div>
                         <div style="font-size:18px;font-weight:950;color:#0D3B66;margin-top:4px;">{provider_opened_pct}%</div>
                         <div style="font-size:12px;color:#6b7280;margin-top:2px;">{provider_opened_count} / {t.get('emails_in_cohort', 0)}</div>
-                      </td></tr>
-                    </table>
-                  </td>
-                  <td width="33.33%" valign="top">
-                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:12px;">
-                      <tr><td style="padding:10px 12px;">
-                        <div style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;">Notified by Hospital</div>
-                        <div style="font-size:18px;font-weight:950;color:#0D3B66;margin-top:4px;">{m.get('notified_pct', 0)}%</div>
-                        <div style="font-size:12px;color:#6b7280;margin-top:2px;">{m.get('notified_count', 0)} / {t.get('snf_rows', 0)}</div>
                       </td></tr>
                     </table>
                   </td>
@@ -16511,7 +16519,7 @@ async def admin_snf_reports_email(request: Request, payload: Dict[str, Any] = Bo
 
     conn = get_db()
     try:
-        data = _snf_admission_summary_report(conn, dc_from, dc_to, status=status)
+        data = _snf_admission_summary_report(conn, dc_from, dc_to, status=status, ignore_unknown=ignore_unknown)
     finally:
         conn.close()
 
@@ -16540,6 +16548,7 @@ async def admin_snf_reports_export_csv(
     dc_from: str = Query(""),
     dc_to: str = Query(""),
     status: str = Query("all"),
+    ignore_unknown: int = Query(0),
 ):
     require_admin(request)
     if not dc_from or not dc_to:
@@ -16557,6 +16566,8 @@ async def admin_snf_reports_export_csv(
         if status_s and status_s != "all":
             where += " AND s.status = ?"
             params.append(status_s)
+        if int(ignore_unknown or 0) == 1:
+            where += " AND s.current_snf_facility_name IS NOT NULL AND TRIM(s.current_snf_facility_name) <> ''"
 
         cur.execute(
             f"""
