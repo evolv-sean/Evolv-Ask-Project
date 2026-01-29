@@ -16349,6 +16349,7 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
     status = (payload.get("status") or "all").strip()
     ignore_unknown = bool(payload.get("ignore_unknown") or False)
     ignore_unknown = bool(payload.get("ignore_unknown") or False)
+    ignore_unknown = bool(payload.get("ignore_unknown") or False)
     dc_from = (payload.get("dc_from") or "").strip()
     dc_to = (payload.get("dc_to") or "").strip()
 
