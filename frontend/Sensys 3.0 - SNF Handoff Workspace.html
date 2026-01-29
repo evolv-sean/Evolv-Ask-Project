@@ -1594,6 +1594,21 @@
                 </select>
               </div>
               <div>
+                <label for="report-status">Status</label>
+                <select id="report-status">
+                  <option value="all" selected>All</option>
+                  <option value="new">New</option>
+                  <option value="dispo">Dispo</option>
+                  <option value="agency">Agency</option>
+                  <option value="pending">Pending</option>
+                  <option value="projected">Projected</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="corrected">Corrected</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="removed">Removed</option>
+                </select>
+              </div>
+              <div>
                 <label for="report-dc-from">SNF DC Date From</label>
                 <input id="report-dc-from" type="date" />
               </div>
@@ -3802,7 +3817,7 @@
     }
 
     // ------- Reports modal -------
-    let lastReportFilters = { dc_from: "", dc_to: "" };
+    let lastReportFilters = { dc_from: "", dc_to: "", status: "all" };
     function openReportsModal() {
       const modal = document.getElementById("reports-modal");
       if (!modal) return;
@@ -3851,6 +3866,7 @@
       }
 
       const reportKey = (document.getElementById("report-select") || {}).value || "";
+      const status = (document.getElementById("report-status") || {}).value || "all";
       const dcFrom = (document.getElementById("report-dc-from") || {}).value || "";
       const dcTo = (document.getElementById("report-dc-to") || {}).value || "";
 
@@ -3860,7 +3876,7 @@
       }
 
       setReportsMsg("", "");
-      lastReportFilters = { dc_from: dcFrom, dc_to: dcTo };
+      lastReportFilters = { dc_from: dcFrom, dc_to: dcTo, status };
       const out = document.getElementById("reports-output");
       if (out) out.innerHTML = `<div class="message">Running report…</div>`;
 
@@ -3873,6 +3889,7 @@
           },
           body: JSON.stringify({
             report_key: reportKey,
+            status,
             dc_from: dcFrom,
             dc_to: dcTo
           })
@@ -3909,6 +3926,7 @@
       }
       const dcFrom = lastReportFilters.dc_from || (document.getElementById("report-dc-from") || {}).value || "";
       const dcTo = lastReportFilters.dc_to || (document.getElementById("report-dc-to") || {}).value || "";
+      const status = lastReportFilters.status || (document.getElementById("report-status") || {}).value || "all";
       if (!dcFrom || !dcTo) {
         if (msg) {
           msg.style.display = "block";
@@ -3923,6 +3941,7 @@
           headers: { "Content-Type": "application/json", "X-Admin-Token": token },
           body: JSON.stringify({
             report_key: "snf_admission_summary",
+            status,
             dc_from: dcFrom,
             dc_to: dcTo,
             recipients: to
@@ -3945,6 +3964,7 @@
       }
       const dcFrom = lastReportFilters.dc_from || (document.getElementById("report-dc-from") || {}).value || "";
       const dcTo = lastReportFilters.dc_to || (document.getElementById("report-dc-to") || {}).value || "";
+      const status = lastReportFilters.status || (document.getElementById("report-status") || {}).value || "all";
       if (!dcFrom || !dcTo) {
         showToast("Please select dates first.", "error");
         return;
@@ -3952,6 +3972,7 @@
       const params = new URLSearchParams();
       params.set("dc_from", dcFrom);
       params.set("dc_to", dcTo);
+      params.set("status", status);
       fetch(`/admin/snf/reports/export.csv?${params.toString()}`, {
         headers: { "X-Admin-Token": token }
       })
@@ -3982,12 +4003,10 @@
       const t = data.totals || {};
       const top = Array.isArray(data.top_facilities) ? data.top_facilities : [];
 
-      const unopenedPct = m.facility_pin_unopened_pct != null ? m.facility_pin_unopened_pct : 0;
       const openedPct = m.facility_pin_opened_pct != null ? m.facility_pin_opened_pct : 0;
-      const providerUnopenedPct = m.provider_pin_unopened_pct != null ? m.provider_pin_unopened_pct : 0;
-      const providerUnopenedCount = (m.provider_pin_opened_count != null)
-        ? (t.emails_in_cohort || 0) - m.provider_pin_opened_count
-        : 0;
+      const openedCount = m.facility_pin_opened_count != null ? m.facility_pin_opened_count : 0;
+      const providerOpenedPct = m.provider_pin_opened_pct != null ? m.provider_pin_opened_pct : 0;
+      const providerOpenedCount = m.provider_pin_opened_count != null ? m.provider_pin_opened_count : 0;
       const aPct = (m.assignment_pct || {});
       const assignedPct = aPct["Assigned"] != null ? aPct["Assigned"] : 0;
 
@@ -3999,17 +4018,18 @@
 
       const dcFrom = escapeHtml((data.filters && data.filters.dc_from) || "");
       const dcTo = escapeHtml((data.filters && data.filters.dc_to) || "");
+      const status = escapeHtml((data.filters && data.filters.status) || "all");
 
       out.innerHTML = `
         <div class="report-head">
           <div class="report-title">SNF Admission Summary</div>
-          <div class="report-sub">Filtered by SNF DC Date (fallback to Last Seen Active Date): <strong>${dcFrom}</strong> → <strong>${dcTo}</strong></div>
+          <div class="report-sub">Filtered by SNF DC Date (fallback to Last Seen Active Date): <strong>${dcFrom}</strong> → <strong>${dcTo}</strong> • Status: <strong>${status}</strong></div>
         </div>
 
         <div class="report-kpis">
-          ${reportKpi("Emails opened (Facility PIN)", `${openedPct}%`, `${t.emails_in_cohort || 0} emails in cohort`)}
-          ${reportKpi("Emails unopened (Facility PIN)", `${unopenedPct}%`, "1 open max per email")}
-          ${reportKpi("Emails unopened (Provider PIN)", `${providerUnopenedPct}%`, `${providerUnopenedCount} / ${t.emails_in_cohort || 0}`)}
+          ${reportKpi("Emails opened (Facility PIN)", `${openedPct}%`, `${openedCount} / ${t.emails_in_cohort || 0}`)}
+          ${reportKpi("Emails opened (Provider PIN)", `${providerOpenedPct}%`, `${providerOpenedCount} / ${t.emails_in_cohort || 0}`)}
+          ${reportKpi("Notified by Hospital", `${m.notified_pct || 0}%`, `${m.notified_count || 0} / ${t.snf_rows || 0}`)}
         </div>
 
         <div class="report-grid">
@@ -4019,20 +4039,20 @@
               <div class="report-list-head">
                 <div>Facility</div>
                 <div>Volume</div>
-                <div>Facility PIN Unopened %</div>
-                <div>Provider PIN Unopened %</div>
+                <div>Facility PIN Opened %</div>
+                <div>Provider PIN Opened %</div>
               </div>
               ${top.length ? top.map((x) => {
                 const name = escapeHtml(x.facility || "(Unknown)");
                 const star = x.is_starred ? " <span class='report-star'>★</span>" : "";
                 const count = (x.count != null) ? x.count : 0;
-                const facUnopened = (x.facility_pin_unopened_pct != null) ? `${x.facility_pin_unopened_pct}%` : "0%";
-                const provUnopened = (x.provider_pin_unopened_pct != null) ? `${x.provider_pin_unopened_pct}%` : "0%";
+                const facOpened = (x.facility_pin_opened_pct != null) ? `${x.facility_pin_opened_pct}%` : "0%";
+                const provOpened = (x.provider_pin_opened_pct != null) ? `${x.provider_pin_opened_pct}%` : "0%";
                 return `<div class="report-list-row">
                           <div class="report-fac">${name}${star}</div>
                           <div class="report-pill">${count}</div>
-                          <div class="report-metric">${facUnopened}</div>
-                          <div class="report-metric">${provUnopened}</div>
+                          <div class="report-metric">${facOpened}</div>
+                          <div class="report-metric">${provOpened}</div>
                         </div>`;
               }).join("") : `<div class="message">No facility data in this range.</div>`}
             </div>
