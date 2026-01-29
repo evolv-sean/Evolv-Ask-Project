@@ -16387,54 +16387,76 @@ def _build_snf_admission_summary_email_html(data: dict) -> str:
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>SNF Admission Summary</title>
-  <style>
-    body{{margin:0;background:#f5f7fa;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#111827;}}
-    .wrap{{padding:22px;}}
-    .card{{max-width:920px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 12px 28px rgba(15,23,42,.08);overflow:hidden;}}
-    .head{{padding:16px 20px;border-bottom:1px solid #eef2f7;}}
-    .title{{font-size:18px;font-weight:900;}}
-    .sub{{font-size:12px;color:#6b7280;margin-top:4px;}}
-    .kpis{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:14px 20px;}}
-    .kpi{{border:1px solid #e5e7eb;border-radius:12px;padding:10px 12px;}}
-    .kpi-label{{font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;}}
-    .kpi-value{{font-size:18px;font-weight:950;color:#0D3B66;margin-top:4px;}}
-    .kpi-sub{{font-size:12px;color:#6b7280;margin-top:2px;}}
-    .section{{padding:10px 20px 18px 20px;}}
-    .section-title{{font-size:13px;font-weight:900;margin-bottom:8px;}}
-    .table-head{{display:grid;grid-template-columns:1.6fr .5fr .7fr .7fr;gap:10px;font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;}}
-    .row{{display:grid;grid-template-columns:1.6fr .5fr .7fr .7fr;gap:10px;align-items:center;background:#fafafa;border:1px solid #e5e7eb;border-radius:12px;padding:8px 10px;margin-bottom:8px;}}
-    .name{{font-size:13px;font-weight:900;}}
-    .pill{{font-size:12px;font-weight:900;border:1px solid rgba(168,230,207,0.65);background:rgba(168,230,207,0.12);color:#0D3B66;border-radius:999px;padding:6px 10px;width:fit-content;}}
-    .metric{{font-size:12px;font-weight:900;color:#0D3B66;border:1px solid rgba(13,59,102,.16);background:rgba(13,59,102,.06);border-radius:999px;padding:6px 10px;width:fit-content;}}
-    .star{{color:#A8E6CF;font-weight:900;}}
-    .foot{{padding:8px 20px 16px 20px;font-size:12px;color:#6b7280;}}
-  </style>
 </head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <div class="head">
-        <div class="title">SNF Admission Summary</div>
-        <div class="sub">Filtered by SNF DC Date (fallback to Last Seen Active Date): <strong>{dc_from}</strong> → <strong>{dc_to}</strong></div>
-      </div>
-      <div class="kpis">
-        {_kpi("Emails opened (Facility PIN)", f"{opened_pct}%", f"{t.get('emails_in_cohort', 0)} emails in cohort")}
-        {_kpi("Emails unopened (Facility PIN)", f"{unopened_pct}%", "1 open max per email")}
-        {_kpi("Emails unopened (Provider PIN)", f"{provider_unopened_pct}%", f"{provider_unopened_count} / {t.get('emails_in_cohort', 0)}")}
-      </div>
-      <div class="section">
-        <div class="section-title">SNF Volume by Facility</div>
-        <div class="table-head">
-          <div>Facility</div>
-          <div>Volume</div>
-          <div>Facility PIN Unopened %</div>
-          <div>Provider PIN Unopened %</div>
-        </div>
-        {rows_html or '<div style="color:#6b7280;font-size:12px;">No facility data in this range.</div>'}
-      </div>
-      <div class="foot">SNF rows in cohort: <strong>{t.get('snf_rows', 0)}</strong></div>
-    </div>
-  </div>
+<body style="margin:0;background:#f5f7fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#111827;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:22px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="920" cellpadding="0" cellspacing="0" style="width:920px;max-width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
+          <tr>
+            <td style="padding:16px 20px;border-bottom:1px solid #eef2f7;">
+              <div style="font-size:18px;font-weight:900;">SNF Admission Summary</div>
+              <div style="font-size:12px;color:#6b7280;margin-top:4px;">Filtered by SNF DC Date (fallback to Last Seen Active Date): <strong>{dc_from}</strong> → <strong>{dc_to}</strong></div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:14px 20px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td width="33.33%" valign="top" style="padding-right:10px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:12px;">
+                      <tr><td style="padding:10px 12px;">
+                        <div style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;">Emails opened (Facility PIN)</div>
+                        <div style="font-size:18px;font-weight:950;color:#0D3B66;margin-top:4px;">{opened_pct}%</div>
+                        <div style="font-size:12px;color:#6b7280;margin-top:2px;">{t.get('emails_in_cohort', 0)} emails in cohort</div>
+                      </td></tr>
+                    </table>
+                  </td>
+                  <td width="33.33%" valign="top" style="padding-right:10px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:12px;">
+                      <tr><td style="padding:10px 12px;">
+                        <div style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;">Emails unopened (Facility PIN)</div>
+                        <div style="font-size:18px;font-weight:950;color:#0D3B66;margin-top:4px;">{unopened_pct}%</div>
+                        <div style="font-size:12px;color:#6b7280;margin-top:2px;">1 open max per email</div>
+                      </td></tr>
+                    </table>
+                  </td>
+                  <td width="33.33%" valign="top">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:12px;">
+                      <tr><td style="padding:10px 12px;">
+                        <div style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;">Emails unopened (Provider PIN)</div>
+                        <div style="font-size:18px;font-weight:950;color:#0D3B66;margin-top:4px;">{provider_unopened_pct}%</div>
+                        <div style="font-size:12px;color:#6b7280;margin-top:2px;">{provider_unopened_count} / {t.get('emails_in_cohort', 0)}</div>
+                      </td></tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:10px 20px 18px 20px;">
+              <div style="font-size:13px;font-weight:900;margin-bottom:8px;">SNF Volume by Facility</div>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:12px;">
+                <tr>
+                  <td style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Facility</td>
+                  <td style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Volume</td>
+                  <td style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Facility PIN Unopened %</td>
+                  <td style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Provider PIN Unopened %</td>
+                </tr>
+                {rows_html or '<tr><td colspan="4" style="color:#6b7280;font-size:12px;padding:6px 6px;">No facility data in this range.</td></tr>'}
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 20px 16px 20px;font-size:12px;color:#6b7280;">
+              SNF rows in cohort: <strong>{t.get('snf_rows', 0)}</strong>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>"""
 
