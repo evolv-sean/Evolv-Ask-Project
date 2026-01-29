@@ -18265,14 +18265,14 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
         <div class="head-left">
           <div class="card-title"><span class="mint-accent"></span>Note Content</div>
           <div class="card-subtitle">
-            <div><b>{esc(srow["patient_name"] or "")}</b> â€¢ DOB {esc(srow["dob"] or "")} â€¢ {esc(note_hosp)}</div>
-            <div>{esc(note_type)}{(" â€¢ " + esc(note_dt)) if note_dt else ""}</div>
-            <div style="margin-top:2px;">This view is designed to support care coordination and does not replace the hospitalâ€™s original documentation.</div>
+            <div><b>{esc(srow["patient_name"] or "")}</b> &bull; DOB {esc(srow["dob"] or "")} &bull; {esc(note_hosp)}</div>
+            <div>{esc(note_type)}{(" &bull; " + esc(note_dt)) if note_dt else ""}</div>
+            <div style="margin-top:2px;">This view is designed to support care coordination and does not replace the hospital's original documentation.</div>
           </div>
         </div>
 
         <div class="actions">
-          <span class="pill" title="This is a reconstructed viewer page, not the hospitalâ€™s native export.">
+          <span class="pill" title="This is a reconstructed viewer page, not the hospital's native export.">
             <span class="dot"></span><span id="pillStatus">Recreated view</span>
           </span>
 
