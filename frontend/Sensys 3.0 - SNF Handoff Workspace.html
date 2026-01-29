@@ -3863,8 +3863,6 @@
       const notifiedPct = m.notified_pct != null ? m.notified_pct : 0;
       const unopenedPct = m.facility_pin_unopened_pct != null ? m.facility_pin_unopened_pct : 0;
       const openedPct = m.facility_pin_opened_pct != null ? m.facility_pin_opened_pct : 0;
-      const aiAccPct = m.ai_accuracy_pct != null ? m.ai_accuracy_pct : 0;
-
       const aPct = (m.assignment_pct || {});
       const assignedPct = aPct["Assigned"] != null ? aPct["Assigned"] : 0;
 
@@ -3880,14 +3878,13 @@
       out.innerHTML = `
         <div class="report-head">
           <div class="report-title">SNF Admission Summary</div>
-          <div class="report-sub">Filtered by DC Date (or Updated Date when missing): <strong>${dcFrom}</strong> → <strong>${dcTo}</strong></div>
+          <div class="report-sub">Filtered by SNF DC Date: <strong>${dcFrom}</strong> → <strong>${dcTo}</strong></div>
         </div>
 
         <div class="report-kpis">
           ${reportKpi("Emails opened (Facility PIN)", `${openedPct}%`, `${t.emails_in_cohort || 0} emails in cohort`)}
           ${reportKpi("Emails unopened (Facility PIN)", `${unopenedPct}%`, "1 open max per email")}
           ${reportKpi("Notified by Hospital", `${notifiedPct}%`, `${m.notified_count || 0} / ${t.snf_rows || 0}`)}
-          ${reportKpi("AI candidate accuracy", `${aiAccPct}%`, `${m.ai_accuracy_correct || 0} / ${m.ai_accuracy_total || 0} scored`)}
         </div>
 
         <div class="report-grid">
@@ -3918,7 +3915,7 @@
         </div>
 
         <div class="report-foot muted" style="margin-top:10px;">
-          Cohort rows (discharges): <strong>${t.joined_rows || 0}</strong> • SNF rows joined: <strong>${t.snf_rows || 0}</strong> • AI scored rows: <strong>${t.scored_ai_rows || 0}</strong>
+          SNF rows in cohort: <strong>${t.snf_rows || 0}</strong>
         </div>
       `;
     }
