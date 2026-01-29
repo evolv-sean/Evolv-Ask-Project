@@ -2707,12 +2707,12 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
         <h1>First Docs Notification</h1>
         <p>
           Our Hospitalists at HCA Florida JFK Hospital have identified upcoming patients expected to discharge to your facility.
-          Please use the View List button below to download today's list (Facility PIN required), and assign the referral(s) to the correct First Docs provider.
+          Please use the View List button below to download today's list (PIN required), and assign the referral(s) to the correct First Docs provider.
         </p>
 
         <div class="callout">
           <div><strong>What you'll need:</strong></div>
-          <div style="margin-top:6px;">- Your facility PIN</div>
+          <div style="margin-top:6px;">- Your PIN</div>
           <div style="margin-top:6px;">
             - Link expires in <span class="pill">{ttl_hours} hours</span>
           </div>
@@ -2845,7 +2845,7 @@ def build_client_survey_secure_email_html(
 
         <div class="callout">
           <div><strong>What you'll need:</strong></div>
-          <div style="margin-top:6px;">- Your facility PIN</div>
+          <div style="margin-top:6px;">- Your PIN</div>
           <div style="margin-top:6px;">- Link expires in <span class="pill">{ttl_days} days</span></div>
         </div>
 
@@ -17401,9 +17401,9 @@ async def snf_secure_link_get(token: str, request: Request):
       <div class="mintbar" aria-hidden="true"></div>
       <div class="content">
         <h1>{fac_name}</h1>
-        <p>Enter your facility password / PIN to view the secure list. This link expires in 48hrs.</p>
+        <p>Enter your password / PIN to view the secure list. This link expires in 48hrs.</p>
         <form method="post">
-          <label for="pin">Facility PIN</label>
+          <label for="pin">PIN</label>
           <input id="pin" name="pin" type="password" autocomplete="one-time-code" required />
           <button class="btn" type="submit">View List</button>
         </form>
@@ -17710,10 +17710,10 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
       <div class="mintbar" aria-hidden="true"></div>
       <div class="content">
         <h1>{html.escape(fac_name)}</h1>
-        <p>Enter your facility password / PIN to view the secure list. This link expires automatically.</p>
+        <p>Enter your password / PIN to view the secure list. This link expires automatically.</p>
         {err_html}
         <form method="post">
-          <label for="pin">Facility PIN</label>
+          <label for="pin">PIN</label>
           <input id="pin" name="pin" type="password" autocomplete="one-time-code" />
           <button class="btn" type="submit">View List</button>
         </form>
@@ -17728,7 +17728,7 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
         pin = (pin or "").strip()
         if not pin:
             return HTMLResponse(
-                _render_form("Please enter your Facility PIN."),
+                _render_form("Please enter your PIN."),
                 status_code=401,
                 headers=secure_headers,
             )
@@ -17741,7 +17741,7 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
         candidate_hashes = [h for h in (facility_hash, universal_hash, provider_hash, default_hash) if h]
         if not candidate_hashes:
             return HTMLResponse(
-                _render_form("No facility PIN is configured. Please contact Evolv."),
+                _render_form("No PIN is configured. Please contact Evolv."),
                 status_code=500,
                 headers=secure_headers,
             )
