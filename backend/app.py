@@ -5827,6 +5827,40 @@ def init_db():
     except sqlite3.Error:
         pass
 
+    # Backfill current_snf_facility_* for existing rows (one-time safe update)
+    try:
+        cur.execute(
+            """
+            UPDATE snf_admissions
+            SET
+              current_snf_facility_id = CASE
+                WHEN TRIM(COALESCE(current_snf_facility_id, '')) <> '' THEN current_snf_facility_id
+                WHEN TRIM(COALESCE(final_snf_facility_id, '')) <> '' THEN final_snf_facility_id
+                WHEN TRIM(COALESCE(ai_snf_facility_id, '')) <> '' THEN ai_snf_facility_id
+                ELSE current_snf_facility_id
+              END,
+              current_snf_facility_name = CASE
+                WHEN TRIM(COALESCE(current_snf_facility_name, '')) <> '' THEN current_snf_facility_name
+                WHEN TRIM(COALESCE(final_snf_name_display, '')) <> '' THEN final_snf_name_display
+                WHEN TRIM(COALESCE(final_snf_facility_id, '')) <> '' THEN COALESCE(
+                  (SELECT facility_name FROM snf_admission_facilities f WHERE f.id = snf_admissions.final_snf_facility_id),
+                  current_snf_facility_name
+                )
+                WHEN TRIM(COALESCE(ai_snf_facility_id, '')) <> '' THEN COALESCE(
+                  (SELECT facility_name FROM snf_admission_facilities f WHERE f.id = snf_admissions.ai_snf_facility_id),
+                  current_snf_facility_name
+                )
+                WHEN TRIM(COALESCE(ai_snf_name_raw, '')) <> '' THEN ai_snf_name_raw
+                ELSE current_snf_facility_name
+              END
+            WHERE
+              TRIM(COALESCE(current_snf_facility_id, '')) = ''
+              OR TRIM(COALESCE(current_snf_facility_name, '')) = ''
+            """
+        )
+    except sqlite3.Error:
+        pass
+
     try:
         cur.execute("ALTER TABLE snf_admissions ADD COLUMN last_seen_active_date TEXT")
     except sqlite3.Error:
