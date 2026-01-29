@@ -3982,12 +3982,10 @@
       const t = data.totals || {};
       const top = Array.isArray(data.top_facilities) ? data.top_facilities : [];
 
-      const unopenedPct = m.facility_pin_unopened_pct != null ? m.facility_pin_unopened_pct : 0;
       const openedPct = m.facility_pin_opened_pct != null ? m.facility_pin_opened_pct : 0;
-      const providerUnopenedPct = m.provider_pin_unopened_pct != null ? m.provider_pin_unopened_pct : 0;
-      const providerUnopenedCount = (m.provider_pin_opened_count != null)
-        ? (t.emails_in_cohort || 0) - m.provider_pin_opened_count
-        : 0;
+      const openedCount = m.facility_pin_opened_count != null ? m.facility_pin_opened_count : 0;
+      const providerOpenedPct = m.provider_pin_opened_pct != null ? m.provider_pin_opened_pct : 0;
+      const providerOpenedCount = m.provider_pin_opened_count != null ? m.provider_pin_opened_count : 0;
       const aPct = (m.assignment_pct || {});
       const assignedPct = aPct["Assigned"] != null ? aPct["Assigned"] : 0;
 
@@ -4007,9 +4005,9 @@
         </div>
 
         <div class="report-kpis">
-          ${reportKpi("Emails opened (Facility PIN)", `${openedPct}%`, `${t.emails_in_cohort || 0} emails in cohort`)}
-          ${reportKpi("Emails unopened (Facility PIN)", `${unopenedPct}%`, "1 open max per email")}
-          ${reportKpi("Emails unopened (Provider PIN)", `${providerUnopenedPct}%`, `${providerUnopenedCount} / ${t.emails_in_cohort || 0}`)}
+          ${reportKpi("Emails opened (Facility PIN)", `${openedPct}%`, `${openedCount} / ${t.emails_in_cohort || 0}`)}
+          ${reportKpi("Emails opened (Provider PIN)", `${providerOpenedPct}%`, `${providerOpenedCount} / ${t.emails_in_cohort || 0}`)}
+          ${reportKpi("Notified by Hospital", `${m.notified_pct || 0}%`, `${m.notified_count || 0} / ${t.snf_rows || 0}`)}
         </div>
 
         <div class="report-grid">
@@ -4019,20 +4017,20 @@
               <div class="report-list-head">
                 <div>Facility</div>
                 <div>Volume</div>
-                <div>Facility PIN Unopened %</div>
-                <div>Provider PIN Unopened %</div>
+                <div>Facility PIN Opened %</div>
+                <div>Provider PIN Opened %</div>
               </div>
               ${top.length ? top.map((x) => {
                 const name = escapeHtml(x.facility || "(Unknown)");
                 const star = x.is_starred ? " <span class='report-star'>★</span>" : "";
                 const count = (x.count != null) ? x.count : 0;
-                const facUnopened = (x.facility_pin_unopened_pct != null) ? `${x.facility_pin_unopened_pct}%` : "0%";
-                const provUnopened = (x.provider_pin_unopened_pct != null) ? `${x.provider_pin_unopened_pct}%` : "0%";
+                const facOpened = (x.facility_pin_opened_pct != null) ? `${x.facility_pin_opened_pct}%` : "0%";
+                const provOpened = (x.provider_pin_opened_pct != null) ? `${x.provider_pin_opened_pct}%` : "0%";
                 return `<div class="report-list-row">
                           <div class="report-fac">${name}${star}</div>
                           <div class="report-pill">${count}</div>
-                          <div class="report-metric">${facUnopened}</div>
-                          <div class="report-metric">${provUnopened}</div>
+                          <div class="report-metric">${facOpened}</div>
+                          <div class="report-metric">${provOpened}</div>
                         </div>`;
               }).join("") : `<div class="message">No facility data in this range.</div>`}
             </div>
