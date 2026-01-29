@@ -1580,7 +1580,7 @@
           <div class="modal-head">
             <div>
               <div id="reports-modal-title" class="modal-title">Reports</div>
-              <div class="modal-sub">SNF Admissions projections + Hospital Discharges actuals (joined by visit_id).</div>
+              <div class="modal-sub">SNF Admissions summary based on SNF dc_date (fallback to last_seen_active_date).</div>
             </div>
             <button class="modal-x" onclick="closeReportsModal()" aria-label="Close">✕</button>
           </div>
@@ -1594,11 +1594,11 @@
                 </select>
               </div>
               <div>
-                <label for="report-dc-from">DC Date From (Hospital Discharges)</label>
+                <label for="report-dc-from">SNF DC Date From</label>
                 <input id="report-dc-from" type="date" />
               </div>
               <div>
-                <label for="report-dc-to">DC Date To (Hospital Discharges)</label>
+                <label for="report-dc-to">SNF DC Date To</label>
                 <input id="report-dc-to" type="date" />
               </div>
             </div>
@@ -1612,7 +1612,33 @@
 
           <div class="modal-foot">
             <button class="btn-lite" onclick="closeReportsModal()">Close</button>
+            <button class="btn-lite" onclick="exportReportsCsv()">CSV Export</button>
+            <button class="btn-lite" onclick="openReportsEmailModal()">Email Report</button>
             <button class="btn-primary" onclick="runSelectedReport()">Run Report</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reports Email Modal -->
+      <div id="reports-email-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="reports-email-title">
+        <div class="modal-card" style="width:min(620px,100%);">
+          <div class="modal-head">
+            <div>
+              <div id="reports-email-title" class="modal-title">Email Report</div>
+              <div class="modal-sub">Send the SNF Admission Summary report as HTML.</div>
+            </div>
+            <button class="modal-x" onclick="closeReportsEmailModal()" aria-label="Close">✕</button>
+          </div>
+          <div class="modal-body">
+            <div>
+              <label for="reports-email-to">Recipients (comma-separated)</label>
+              <textarea id="reports-email-to" rows="3" placeholder="name@example.com, name2@example.com"></textarea>
+            </div>
+            <div id="reports-email-msg" class="message" style="margin-top:12px; display:none;"></div>
+          </div>
+          <div class="modal-foot">
+            <button class="btn-lite" onclick="closeReportsEmailModal()">Cancel</button>
+            <button class="btn-primary" onclick="sendReportsEmail()">Send Email</button>
           </div>
         </div>
       </div>
@@ -3776,6 +3802,7 @@
     }
 
     // ------- Reports modal -------
+    let lastReportFilters = { dc_from: "", dc_to: "" };
     function openReportsModal() {
       const modal = document.getElementById("reports-modal");
       if (!modal) return;
@@ -3804,6 +3831,18 @@
       if (type === "success") { el.style.borderColor = "#bbf7d0"; el.style.background = "#f0fdf4"; }
     }
 
+    function openReportsEmailModal() {
+      const m = document.getElementById("reports-email-modal");
+      if (m) m.classList.add("open");
+      const msg = document.getElementById("reports-email-msg");
+      if (msg) { msg.style.display = "none"; msg.textContent = ""; }
+    }
+
+    function closeReportsEmailModal() {
+      const m = document.getElementById("reports-email-modal");
+      if (m) m.classList.remove("open");
+    }
+
     async function runSelectedReport() {
       const token = getAdminToken();
       if (!token) {
@@ -3821,6 +3860,7 @@
       }
 
       setReportsMsg("", "");
+      lastReportFilters = { dc_from: dcFrom, dc_to: dcTo };
       const out = document.getElementById("reports-output");
       if (out) out.innerHTML = `<div class="message">Running report…</div>`;
 
@@ -3852,6 +3892,88 @@
       }
     }
 
+    async function sendReportsEmail() {
+      const token = getAdminToken();
+      if (!token) {
+        showToast("Please paste your ADMIN_TOKEN first.", "error");
+        return;
+      }
+      const to = (document.getElementById("reports-email-to") || {}).value || "";
+      const msg = document.getElementById("reports-email-msg");
+      if (!to.trim()) {
+        if (msg) {
+          msg.style.display = "block";
+          msg.textContent = "Please enter at least one recipient.";
+        }
+        return;
+      }
+      const dcFrom = lastReportFilters.dc_from || (document.getElementById("report-dc-from") || {}).value || "";
+      const dcTo = lastReportFilters.dc_to || (document.getElementById("report-dc-to") || {}).value || "";
+      if (!dcFrom || !dcTo) {
+        if (msg) {
+          msg.style.display = "block";
+          msg.textContent = "Please run the report or select dates first.";
+        }
+        return;
+      }
+      if (msg) { msg.style.display = "block"; msg.textContent = "Sending…"; }
+      try {
+        const resp = await fetch("/admin/snf/reports/email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Admin-Token": token },
+          body: JSON.stringify({
+            report_key: "snf_admission_summary",
+            dc_from: dcFrom,
+            dc_to: dcTo,
+            recipients: to
+          })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.ok) throw new Error(data.detail || ("HTTP " + resp.status));
+        if (msg) msg.textContent = "Email sent.";
+        setTimeout(() => closeReportsEmailModal(), 400);
+      } catch (err) {
+        if (msg) msg.textContent = "Error sending email: " + (err?.message || err);
+      }
+    }
+
+    function exportReportsCsv() {
+      const token = getAdminToken();
+      if (!token) {
+        showToast("Please paste your ADMIN_TOKEN first.", "error");
+        return;
+      }
+      const dcFrom = lastReportFilters.dc_from || (document.getElementById("report-dc-from") || {}).value || "";
+      const dcTo = lastReportFilters.dc_to || (document.getElementById("report-dc-to") || {}).value || "";
+      if (!dcFrom || !dcTo) {
+        showToast("Please select dates first.", "error");
+        return;
+      }
+      const params = new URLSearchParams();
+      params.set("dc_from", dcFrom);
+      params.set("dc_to", dcTo);
+      fetch(`/admin/snf/reports/export.csv?${params.toString()}`, {
+        headers: { "X-Admin-Token": token }
+      })
+        .then(resp => {
+          if (!resp.ok) throw new Error("HTTP " + resp.status);
+          return resp.blob();
+        })
+        .then(blob => {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `snf_admission_summary_${dcFrom}_${dcTo}.csv`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        })
+        .catch(err => {
+          showToast("CSV export failed: " + err, "error");
+        });
+    }
+
     function renderSnfAdmissionSummaryReport(data) {
       const out = document.getElementById("reports-output");
       if (!out) return;
@@ -3860,9 +3982,12 @@
       const t = data.totals || {};
       const top = Array.isArray(data.top_facilities) ? data.top_facilities : [];
 
-      const notifiedPct = m.notified_pct != null ? m.notified_pct : 0;
       const unopenedPct = m.facility_pin_unopened_pct != null ? m.facility_pin_unopened_pct : 0;
       const openedPct = m.facility_pin_opened_pct != null ? m.facility_pin_opened_pct : 0;
+      const providerUnopenedPct = m.provider_pin_unopened_pct != null ? m.provider_pin_unopened_pct : 0;
+      const providerUnopenedCount = (m.provider_pin_opened_count != null)
+        ? (t.emails_in_cohort || 0) - m.provider_pin_opened_count
+        : 0;
       const aPct = (m.assignment_pct || {});
       const assignedPct = aPct["Assigned"] != null ? aPct["Assigned"] : 0;
 
@@ -3884,7 +4009,7 @@
         <div class="report-kpis">
           ${reportKpi("Emails opened (Facility PIN)", `${openedPct}%`, `${t.emails_in_cohort || 0} emails in cohort`)}
           ${reportKpi("Emails unopened (Facility PIN)", `${unopenedPct}%`, "1 open max per email")}
-          ${reportKpi("Notified by Hospital", `${notifiedPct}%`, `${m.notified_count || 0} / ${t.snf_rows || 0}`)}
+          ${reportKpi("Emails unopened (Provider PIN)", `${providerUnopenedPct}%`, `${providerUnopenedCount} / ${t.emails_in_cohort || 0}`)}
         </div>
 
         <div class="report-grid">
