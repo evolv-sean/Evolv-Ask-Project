@@ -16377,18 +16377,18 @@ def _build_snf_admission_summary_email_html(data: dict) -> str:
                   <td colspan="4" style="padding:8px 6px;">
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;border:1px solid #e5e7eb;border-radius:12px;">
                       <tr>
-                        <td style="padding:8px 10px;font-size:13px;font-weight:900;">{name}{star}</td>
-                        <td style="padding:8px 10px;">
+                        <td width="45%" style="padding:8px 10px;font-size:13px;font-weight:900;">{name}{star}</td>
+                        <td width="15%" align="left" style="padding:8px 10px;">
                           <div style="display:inline-block;font-size:12px;font-weight:900;border:1px solid rgba(168,230,207,0.65);background:rgba(168,230,207,0.12);color:#0D3B66;border-radius:999px;padding:6px 10px;">
                             {count}
                           </div>
                         </td>
-                        <td style="padding:8px 10px;">
+                        <td width="20%" align="left" style="padding:8px 10px;">
                           <div style="display:inline-block;font-size:12px;font-weight:900;color:#0D3B66;border:1px solid rgba(13,59,102,.16);background:rgba(13,59,102,.06);border-radius:999px;padding:6px 10px;">
                             {fac_unopened}
                           </div>
                         </td>
-                        <td style="padding:8px 10px;">
+                        <td width="20%" align="left" style="padding:8px 10px;">
                           <div style="display:inline-block;font-size:12px;font-weight:900;color:#0D3B66;border:1px solid rgba(13,59,102,.16);background:rgba(13,59,102,.06);border-radius:999px;padding:6px 10px;">
                             {prov_unopened}
                           </div>
