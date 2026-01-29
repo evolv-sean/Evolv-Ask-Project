@@ -1,0 +1,1525 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hospital Discharges • Evolv</title>
+  <style>
+    :root{
+      --navy:#0D3B66;
+      --navy-2:#0b3357;
+      --grey:#F5F7FA;
+      --cool:#E5E7EB;
+      --cool-2:#D1D5DB;
+      --text:#111827;
+      --muted:#6B7280;
+      --mint:#A8E6CF;
+      --mint-2: rgba(168,230,207,.35);
+      --sky:#59A5D8;
+      --white:#FFFFFF;
+      --danger:#B91C1C;
+    }
+    *{box-sizing:border-box;}
+    body{margin:0;background:var(--grey);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;}
+    .page{padding:18px 18px 24px;max-width:1600px;margin:0 auto;}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;}
+    .titleblock{display:flex;flex-direction:column;gap:3px;}
+    .kicker{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700;}
+    .pagetitle{font-size:20px;font-weight:900;color:var(--navy);line-height:1.15;}
+    .subtitle{font-size:12px;color:var(--muted);}
+    .actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;}
+    .token-pill{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border-radius:999px;border:1px solid var(--cool);background:var(--white);box-shadow:0 10px 24px rgba(0,0,0,.06);font-size:12px;color:var(--muted);font-weight:700;white-space:nowrap;}
+    .dot{width:10px;height:10px;border-radius:999px;background:var(--cool-2);box-shadow:0 0 0 3px rgba(209,213,219,.35);}
+    .dot.ok{background:var(--mint);box-shadow:0 0 0 3px var(--mint-2);}
+    .icon-btn{width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;border:1px solid var(--cool);background:var(--white);box-shadow:0 10px 24px rgba(0,0,0,.06);cursor:pointer;transition:transform .08s ease, box-shadow .08s ease, border-color .08s ease;position:relative;}
+    .icon-btn:hover{transform:translateY(-1px);border-color:var(--mint);box-shadow:0 14px 28px rgba(0,0,0,.08);}
+    .icon-btn:active{transform:translateY(0px);}
+    .icon-btn svg{
+      width:18px;height:18px;
+      stroke:var(--navy);
+      fill:none;
+      stroke-width:1.6;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+    }
+    .grid{display:grid;grid-template-columns:520px 1fr;gap:14px;align-items:stretch;min-height:calc(100vh - 120px);}
+    /* Fixed-height layout + internal scrolling */
+    .grid{align-items:stretch;}
+    .card{display:flex;flex-direction:column;min-height:0;}
+    .card.fixed-h{height:calc(100vh - 130px);} /* tweak 130px if header/footer changes */
+    .card-body{min-height:0;}
+    .card-body.scroll{overflow:auto;}
+    .card{background:var(--white);border:1px solid var(--cool);border-radius:18px;box-shadow:0 16px 34px rgba(0,0,0,.06);overflow:hidden;display:flex;flex-direction:column;min-height:0;}
+    .card-head{padding:14px 16px 10px;border-bottom:1px solid #F1F5F9;display:flex;align-items:flex-end;justify-content:space-between;gap:10px;}
+    .card-title{font-size:14px;font-weight:900;color:var(--navy);display:flex;gap:10px;align-items:center;}
+    .mint-accent{width:10px;height:10px;border-radius:999px;background:var(--mint);box-shadow:0 0 0 4px var(--mint-2);}
+    .card-sub{font-size:12px;color:var(--muted);margin-top:2px;}
+    .card-body{padding:12px 12px 14px;overflow:auto;min-height:0;}
+    .mini-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
+    .pill{display:inline-flex;align-items:center;gap:8px;padding:7px 10px;border-radius:999px;border:1px solid var(--cool);background:#FBFDFF;color:var(--muted);font-size:12px;font-weight:700;}
+    .pill .mini-dot{width:8px;height:8px;border-radius:999px;background:var(--cool-2);}
+    table{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border-radius:14px;border:1px solid var(--cool);}
+    thead th{font-size:10px;letter-spacing:.10em;text-transform:uppercase;color:#4B5563;padding:10px 12px;text-align:left;border-bottom:1px solid var(--cool);background:#FAFBFC;position:sticky;top:0;z-index:2;white-space:nowrap;}
+    tbody td{padding:10px 12px;border-bottom:1px solid #F1F5F9;vertical-align:middle;font-size:12.5px;color:var(--text);}
+    tbody tr:nth-child(even){background:#F9FAFB;}
+    tbody tr:hover{background:#F0FFFA;}
+    tbody tr.selected{outline:2px solid var(--mint);outline-offset:-2px;background:#FFFFFF;}
+    .cell-patient strong{font-weight:900;color:var(--navy);}
+    .cell-patient .sub{display:block;margin-top:2px;font-size:10.5px;color:var(--muted);font-weight:700;}
+    .muted{color:var(--muted);}
+    .status-chip{display:inline-flex;align-items:center;justify-content:center;padding:6px 10px;border-radius:999px;border:1px dashed var(--cool);background:#FFFFFF;color:#9CA3AF;font-size:11px;font-weight:800;min-width:64px;}
+    .visit-summary{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-bottom:12px;border-bottom:1px solid #F1F5F9;margin-bottom:12px;}
+    .field{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border:1px solid var(--cool);border-radius:14px;background:#FBFDFF;}
+    .field label{font-size:10px;letter-spacing:.10em;text-transform:uppercase;color:#6B7280;font-weight:900;}
+    .field .val{font-size:13px;font-weight:900;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .field .val.muted{color:#374151;font-weight:800;}
+    /* Compact Visit Details header (replaces the 4 little cards) */
+    .visit-head{
+      padding-bottom:12px;
+      border-bottom:1px solid #F1F5F9;
+      margin-bottom:12px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+
+    .vh-top{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+
+    .vh-name{
+      font-size:16px;
+      font-weight:1000;
+      color:var(--navy);
+      letter-spacing:-0.01em;
+    }
+
+    .vh-sub{
+      margin-top:3px;
+      font-size:12px;
+      color:var(--muted);
+      font-weight:800;
+    }
+
+    .vh-meta{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+
+    .vh-pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:7px 10px;
+      border-radius:999px;
+      border:1px solid var(--cool);
+      background:#FBFDFF;
+      font-size:12px;
+      font-weight:900;
+      color:var(--navy);
+      white-space:nowrap;
+    }
+
+    .vh-pill .mini-dot{
+      width:8px;height:8px;border-radius:999px;background:var(--cool-2);
+    }
+
+    .vh-kv{
+      display:grid;
+      grid-template-columns: 140px 1fr 140px 1fr;
+      gap:8px 12px;
+      font-size:12px;
+      align-items:center;
+    }
+
+    .vh-kv .k{
+      color:var(--muted);
+      font-weight:900;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      font-size:10px;
+    }
+
+    .vh-kv .v{
+      color:#111827;
+      font-weight:900;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+
+    @media (max-width: 640px){
+      .vh-kv{grid-template-columns: 120px 1fr;}
+    }    
+    .visit-panels{display:grid;grid-template-columns:340px 1fr;gap:12px;min-height:0;height:100%;}
+    .subcard{border:1px solid var(--cool);border-radius:16px;background:#FFFFFF;box-shadow:0 10px 24px rgba(0,0,0,.05);overflow:hidden;display:flex;flex-direction:column;min-height:0;}
+    .subhead{padding:12px 12px 10px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+    .subhead strong{font-size:12px;color:var(--navy);font-weight:900;display:flex;align-items:center;gap:10px;}
+    .subbody{padding:10px;overflow:auto;min-height:0;}
+    .doc-item{border:1px solid var(--cool);border-radius:14px;padding:10px 10px;background:#FFFFFF;cursor:pointer;transition:border-color .08s ease, transform .08s ease;margin-bottom:10px;}
+    .doc-item:hover{border-color:var(--mint);transform:translateY(-1px);}
+    .doc-item.active{border-color:var(--mint);box-shadow:0 0 0 3px var(--mint-2);}
+    .doc-item .t{font-weight:900;color:var(--navy);font-size:12.5px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+    .doc-item .m{margin-top:4px;font-size:11px;color:var(--muted);font-weight:700;}
+    .section{border:1px solid #EEF2F7;border-radius:16px;background:#FFFFFF;padding:12px 12px;margin-bottom:12px;}
+    .section h4{margin:0 0 6px 0;font-size:12px;font-weight:900;color:var(--navy);display:flex;align-items:center;gap:8px;}
+    .section h4 .badge{font-size:10px;letter-spacing:.10em;text-transform:uppercase;color:#6B7280;font-weight:900;padding:4px 8px;border-radius:999px;border:1px solid var(--cool);background:#FBFDFF;}
+    .section pre{margin:0;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;line-height:1.45;color:#111827;}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(17,24,39,.45);display:none;align-items:center;justify-content:center;padding:16px;z-index:999;}
+    .modal-backdrop.open{display:flex;}
+    .modal{width:min(760px, 100%);background:var(--white);border:1px solid var(--cool);border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,.22);overflow:hidden;display:flex;flex-direction:column;max-height:80vh;min-height:0;}
+    /* NEW: manual modal wrapper uses .modal-card; make it behave like .modal */
+    .modal-card{
+      width:min(760px, 100%);
+      background:var(--white);
+      border:1px solid var(--cool);
+      border-radius:18px;
+      box-shadow:0 30px 80px rgba(0,0,0,.22);
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+      max-height:80vh;
+      min-height:0;
+    }
+    .modal-head{padding:14px 16px 12px;border-bottom:1px solid #F1F5F9;display:flex;align-items:flex-end;justify-content:space-between;gap:10px;}
+    .modal-title{font-size:14px;font-weight:900;color:var(--navy);display:flex;align-items:center;gap:10px;}
+    .modal-body{padding:14px 16px;overflow:auto;min-height:0;}
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+    .input{display:flex;flex-direction:column;gap:6px;}
+    .input label{font-size:10px;letter-spacing:.10em;text-transform:uppercase;color:#6B7280;font-weight:900;}
+    input[type="text"], input[type="date"], select, textarea{
+      width:100%;
+      padding:11px 12px;
+      border-radius:12px;
+      border:1px solid var(--cool-2);
+      font-size:13px;
+      outline:none;
+      background:#FFFFFF;
+    }
+
+    input[type="text"]:focus, input[type="date"]:focus, select:focus, textarea:focus{
+      border-color:var(--mint);
+      box-shadow:0 0 0 3px var(--mint-2);
+    }
+
+    /* NEW: make textareas feel “designed” not browser-default */
+    textarea{
+      resize:vertical;
+      min-height:180px; /* gives Source Text a stable shape */
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+      line-height:1.45;
+    }
+
+    input[type="text"]:focus, input[type="date"]:focus, select:focus{border-color:var(--mint);box-shadow:0 0 0 3px var(--mint-2);}
+    .modal-foot{
+      padding:12px 16px;
+      border-top:1px solid #F1F5F9;
+      display:flex;
+      align-items:center;
+      justify-content:flex-end; /* NEW */
+      gap:10px;
+    }
+
+    .btn{border:none;padding:11px 16px;border-radius:12px;cursor:pointer;font-weight:900;font-size:13px;box-shadow:0 12px 26px rgba(0,0,0,.08);}
+    .btn.primary{background:var(--navy);color:#fff;}
+    .btn.primary:hover{background:var(--navy-2);}
+    .btn.ghost{background:#FFFFFF;color:var(--navy);border:1px solid var(--cool);box-shadow:none;}
+    .btn.ghost:hover{border-color:var(--mint);}
+    .tiny-note{font-size:12px;color:var(--muted);line-height:1.45;}
+    @media (max-width:1120px){.grid{grid-template-columns:1fr;}}
+    @media (max-width:640px){.visit-summary{grid-template-columns:1fr;}.visit-panels{grid-template-columns:1fr;}.form-grid{grid-template-columns:1fr;}}
+    .profile-split{
+      display:grid;
+      grid-template-columns: 1fr 1.6fr;
+      gap:12px;
+      min-height:260px;
+    }
+
+    .profile-list{
+      border:1px solid rgba(13,59,102,.14);
+      border-radius:16px;
+      background:#fff;
+      padding:12px;
+      overflow:auto;
+      min-height:260px;
+    }
+
+    /* NEW: manual modal helper text */
+    .modal-sub{
+      font-size:12px;
+      color:var(--muted);
+      font-weight:700;
+      margin-top:2px;
+    }
+
+    /* NEW: close “X” button */
+    .modal-x{
+      width:38px;height:38px;
+      border-radius:12px;
+      border:1px solid var(--cool);
+      background:#fff;
+      color:var(--navy);
+      font-weight:1000;
+      cursor:pointer;
+      box-shadow:0 10px 24px rgba(0,0,0,.06);
+    }
+    .modal-x:hover{ border-color:var(--mint); }
+
+    /* NEW: lightweight button to match design */
+    .btn-lite{
+      border:1px solid var(--cool);
+      background:#fff;
+      color:var(--navy);
+      padding:11px 16px;
+      border-radius:12px;
+      cursor:pointer;
+      font-weight:900;
+      font-size:13px;
+      box-shadow:none;
+    }
+    .btn-lite:hover{ border-color:var(--mint); }
+
+    /* NEW: make .btn usable without needing .primary */
+    .btn{
+      border:none;
+      padding:11px 16px;
+      border-radius:12px;
+      cursor:pointer;
+      font-weight:900;
+      font-size:13px;
+      box-shadow:0 12px 26px rgba(0,0,0,.08);
+      background:var(--navy);
+      color:#fff;
+    }
+    .btn:hover{ background:var(--navy-2); }
+
+    .profile-item{
+      padding:12px 12px;
+      border:1px solid rgba(13,59,102,.12);
+      border-radius:14px;
+      background:#fff;
+      cursor:pointer;
+      transition: box-shadow .15s ease, border-color .15s ease, transform .15s ease;
+      box-shadow: 0 6px 16px rgba(0,0,0,.06);
+      margin-bottom:10px;
+    }
+
+    .profile-item:hover{
+      border-color: rgba(168,230,207,.95);
+      box-shadow: 0 10px 26px rgba(13,59,102,.10), 0 0 0 3px rgba(168,230,207,.28);
+      transform: translateY(-1px);
+    }
+
+    .profile-item.active{
+      border-color: rgba(168,230,207,.98);
+      box-shadow: 0 14px 34px rgba(13,59,102,.14), 0 0 0 4px rgba(168,230,207,.40);
+    }
+
+    .profile-item .t{
+      font-weight:1000;
+      color:var(--navy);
+      font-size:13px;
+    }
+
+    .profile-item .m{
+      margin-top:4px;
+      font-size:11px;
+      color:var(--muted);
+      font-weight:800;
+    }
+
+    .profile-editor{min-width:0;}
+    @media (max-width: 980px){ .profile-split{grid-template-columns:1fr;} }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="topbar">
+      <div class="titleblock">
+        <div class="kicker">Documentation Hub</div>
+        <div class="pagetitle">Hospital Discharges</div>
+        <div class="subtitle">Documents and sections update as new records arrive</div>
+      </div>
+      <div class="actions">
+        <input
+          id="dischargeSearch"
+          type="text"
+          placeholder="Search patient or visit id…"
+          style="height:40px; width:260px; padding:0 12px; border-radius:12px; border:1px solid var(--cool); background:var(--white); box-shadow:0 10px 24px rgba(0,0,0,.06); font-size:13px; font-weight:800; color:var(--text); outline:none;"
+        />
+<button class="icon-btn" id="btnFilter" title="Filters">
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M4 6h16"></path>
+    <path d="M7 12h10"></path>
+    <path d="M10 18h4"></path>
+  </svg>
+</button>
+
+<!-- NEW: AI Summary (Hospital Discharge) -->
+<button class="icon-btn" id="btnHospAiSummary" title="AI Summary (Disposition / Agency)">
+  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none">
+    <path d="M12 2l1.2 3.6L17 7l-3.8 1.4L12 12l-1.2-3.6L7 7l3.8-1.4L12 2Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+    <path d="M5 13l.9 2.6L8.5 16.5l-2.6.9L5 20l-.9-2.6L1.5 16.5l2.6-.9L5 13Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+    <path d="M19 13l.9 2.6 2.6.9-2.6.9L19 20l-.9-2.6-2.6-.9 2.6-.9L19 13Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+  </svg>
+</button>
+
+<!-- existing -->
+<button class="icon-btn" id="btnManualHospDoc" title="Add patient (manual hospital document)">
+  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none">
+    <circle cx="10" cy="8" r="4" stroke="currentColor" stroke-width="1.8"></circle>
+    <path d="M4 20c1-3 3.8-5.5 6-5.5s5 2 6 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+    <path d="M18 8v8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+    <path d="M15 11h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+  </svg>
+</button>
+
+<button class="icon-btn" id="btnSettings" title="Settings">
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M7 10V8a5 5 0 0 1 10 0v2"></path>
+    <rect x="5" y="10" width="14" height="10" rx="2"></rect>
+  </svg>
+</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card fixed-h">
+        <div class="card-head">
+          <div>
+            <div class="card-title"><span class="mint-accent"></span>Discharges</div>
+            <div class="card-sub" id="leftSub">Loading…</div>
+          </div>
+          <div class="mini-filters" id="activeFilterPills">
+            <span class="pill"><span class="mini-dot"></span> All hospitals</span>
+            <span class="pill"><span class="mini-dot"></span> All dispositions</span>
+          </div>
+        </div>
+        <div class="card-body scroll">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:34%;">Patient</th>
+                <th style="width:22%;">Hospital</th>
+                <th style="width:18%;">Admit–DC</th>
+                <th style="width:14%;">Disposition</th>
+                <th style="width:12%;">Status</th>
+              </tr>
+            </thead>
+            <tbody id="dischargeTbody"></tbody>
+          </table>
+          <div class="tiny-note" style="margin-top:10px;">
+            Tip: Click a row to load <b>Visit Details</b>. New documents auto-attach to the same Visit ID.
+          </div>
+        </div>
+      </div>
+
+      <div class="card fixed-h">
+        <div class="card-head">
+          <div>
+            <div class="card-title"><span class="mint-accent"></span>Visit Details</div>
+            <div class="card-sub" id="rightSub">Select a discharge on the left</div>
+          </div>
+          <div class="mini-filters">
+            <span class="pill" title="Reserved for future e-fax status"><span class="mini-dot"></span> Fax: —</span>
+            <span class="pill" title="Reserved for future AI status"><span class="mini-dot"></span> AI: —</span>
+          </div>
+        </div>
+        <div class="card-body scroll" id="visitDetailsBody">
+          <div class="tiny-note">Nothing selected yet.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="filterModal">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title"><span class="mint-accent"></span>Filters</div>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="input">
+            <label>Hospital Name</label>
+            <select id="fHospital">
+              <option value="">All</option>
+            </select>
+          </div>
+          <div class="input">
+            <label>Disposition</label>
+            <select id="fDisposition">
+              <option value="">All</option>
+              <option>Home</option>
+              <option>SNF</option>
+              <option>IRF</option>
+              <option>LTACH</option>
+              <option>Hospice</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="input">
+            <label>DC date from</label>
+            <input type="date" id="fDcFrom" />
+          </div>
+          <div class="input">
+            <label>DC date to</label>
+            <input type="date" id="fDcTo" />
+          </div>
+        </div>
+        <div class="tiny-note" style="margin-top:10px;">Filters are client-side for now (fast). We can move them server-side later if needed.</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost" id="btnFilterCancel">Cancel</button>
+        <button class="btn primary" id="btnFilterApply">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="settingsModal">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title"><span class="mint-accent"></span>Settings</div>
+      </div>
+      <div class="modal-body">
+        <div class="tiny-note">
+          This page uses the same “admin token / settings modal” pattern as SNF Admissions.
+          For Hospital Discharges, settings will expand later (e-fax, extraction profiles, etc.).
+        </div>
+        <div style="height:12px;"></div>
+        <div class="subcard" style="margin-bottom:12px;">
+          <div class="subhead">
+            <strong><span class="mint-accent"></span>Admin Token</strong>
+            <span class="tiny-note" id="adminTokenHelp">Used for Recompute + Manual Add</span>
+          </div>
+          <div class="subbody">
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+              <div class="token-pill" style="box-shadow:none;">
+                <span class="dot" id="adminDot"></span>
+                <span id="adminStatusText">Admin token: unknown</span>
+              </div>
+
+              <input
+                id="adminTokenInput"
+                type="text"
+                placeholder="Paste ADMIN_TOKEN…"
+                style="flex:1; min-width:260px;"
+              />
+
+              <button class="btn ghost" id="btnAdminTokenSave" style="padding:9px 12px;">Save</button>
+              <button class="btn ghost" id="btnAdminTokenClear" style="padding:9px 12px;">Clear</button>
+            </div>
+
+            <div class="tiny-note" style="margin-top:8px;">
+              Stored in your browser as <code>localStorage.evolv_admin_token</code>.
+            </div>
+          </div>
+        </div>
+        <div class="subcard" style="max-height:60vh;">
+          <div class="subhead">
+            <strong><span class="mint-accent"></span>Hospital Extraction Profiles</strong>
+            <div class="stack" style="display:flex;gap:10px;align-items:center;">
+              <button class="btn ghost" id="btnProfileNew" style="padding:9px 12px;">New</button>
+              <button class="btn primary" id="btnProfileSave" style="padding:9px 12px;">Save</button>
+            </div>
+          </div>
+
+          <div class="subbody">
+            <div class="tiny-note" style="margin-bottom:10px;">
+              Manage section terminology per <b>Hospital + Document Type</b>.  
+              Mappings are stored as JSON in <code>hospital_extraction_profiles.profile_json</code>.
+            </div>
+
+            <div class="profile-split">
+              <div class="profile-list" id="profileList"></div>
+
+              <div class="profile-editor">
+                <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                  <div class="input">
+                    <label>Hospital</label>
+                    <input type="text" id="pHospital" placeholder="e.g. JFK Medical Center" />
+                  </div>
+                  <div class="input">
+                    <label>Document Type</label>
+                    <input type="text" id="pDocType" placeholder="e.g. Discharge Summary" />
+                  </div>
+                  <div class="input">
+                    <label>Active</label>
+                    <select id="pActive">
+                      <option value="1">Yes</option>
+                      <option value="0">No</option>
+                    </select>
+                  </div>
+                  <div class="input">
+                    <label>Updated</label>
+                    <input type="text" id="pUpdated" disabled />
+                  </div>
+                </div>
+
+                <div class="input">
+                  <label>Section mappings (one per line)</label>
+                  <textarea id="pMappings" rows="10" style="width:100%;padding:11px 12px;border-radius:12px;border:1px solid var(--cool-2);font-size:13px;outline:none;"></textarea>
+                  <div class="tiny-note" style="margin-top:6px;">
+                    Format: <b>section_key = heading term</b><br/>
+                    Example:<br/>
+                    <code>facesheet = Face Sheet</code><br/>
+                    <code>facesheet = Patient Information</code><br/>
+                    <code>hospital_course = Hospital Course</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="tiny-note" style="margin-top:10px;">
+              Tip: You can create a new document type (ex: <b>Facesheet</b>) by saving a profile for it here.
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost" id="btnSettingsClose">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       NEW: Hospital Discharge AI Summary + Recompute (single visit)
+       ========================================================= -->
+  <div id="hospAiModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="hospAiTitle">
+    <div class="modal-card" style="width:min(720px,100%); display:flex; flex-direction:column;">
+      <div class="modal-head">
+        <div>
+          <div id="hospAiTitle" class="modal-title">AI Summary (Hospital Discharge)</div>
+          <div class="modal-sub">Shows the latest AI Disposition + AI Agency for the selected Visit ID. Recompute uses last 5 documents.</div>
+        </div>
+        <button class="modal-x" id="btnHospAiCloseX" aria-label="Close">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="subcard" style="margin:0;">
+          <div class="subhead">
+            <strong>Visit</strong>
+            <span id="hosp-ai-msg" class="tiny-note"></span>
+          </div>
+
+          <div style="padding:12px;">
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+              <div class="input">
+                <label>Visit ID</label>
+                <input id="hosp-ai-visit-id" type="text" disabled />
+              </div>
+              <div class="input">
+                <label>Source</label>
+                <input id="hosp-ai-source" type="text" disabled placeholder="dispo_source_dt / doc_id" />
+              </div>
+
+              <div class="input">
+                <label>AI Disposition</label>
+                <input id="hosp-ai-dispo" type="text" disabled />
+              </div>
+              <div class="input">
+                <label>AI Agency</label>
+                <input id="hosp-ai-agency" type="text" disabled />
+              </div>
+            </div>
+
+            <div class="tiny-note" style="margin-top:10px;">
+              Recompute will update the hub row if a meaningful disposition is found, and it will <b>not</b> erase an existing agency when no new agency is found.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-foot">
+        <button class="btn ghost" id="btnHospAiCancel">Close</button>
+        <button class="btn" id="btnHospAiRecompute">Recompute (this visit)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       NEW: Manual Hospital Document Add Modal (writes via ingest logic)
+       ========================================================= -->
+  <div id="manualHospDocModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="manualHospDocTitle">
+    <div class="modal-card" style="width:min(900px,100%); max-height: calc(100vh - 120px); display:flex; flex-direction:column;">
+      <div class="modal-head">
+        <div>
+          <div id="manualHospDocTitle" class="modal-title">Add Patient / Manual Hospital Document</div>
+          <div class="modal-sub">Creates a hospital_documents record and triggers the same ingest processing (sections + discharge upsert).</div>
+        </div>
+        <button class="modal-x" id="btnManualHospDocCloseX" aria-label="Close">✕</button>
+      </div>
+
+      <!-- SCROLLING BODY -->
+      <div class="modal-body" style="flex:1; overflow:auto;">
+        <div class="subcard" style="margin:0; border:none; box-shadow:none;">
+          <div class="subhead">
+            <strong>Document Details</strong>
+            <span id="mhd-msg" class="tiny-note"></span>
+          </div>
+
+          <div style="padding:12px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+              <div>
+                <label>Visit ID <span style="color:var(--danger);">*</span></label>
+                <input id="mhd-visit-id" type="text" placeholder="Visit ID" />
+              </div>
+
+              <div>
+                <label>Hospital Name <span style="color:var(--danger);">*</span></label>
+                <select id="mhd-hospital-name">
+                  <option value="">(select)</option>
+                </select>
+              </div>
+
+              <div>
+                <label>Patient MRN</label>
+                <input id="mhd-patient-mrn" type="text" placeholder="MRN" />
+              </div>
+
+              <div>
+                <label>Patient Name</label>
+                <input id="mhd-patient-name" type="text" placeholder="Last, First" />
+              </div>
+
+              <div>
+                <label>DOB</label>
+                <input id="mhd-dob" type="text" placeholder="MM/DD/YYYY" />
+              </div>
+
+              <div>
+                <label>Document Type <span style="color:var(--danger);">*</span></label>
+                <input id="mhd-document-type" type="text" placeholder="Discharge Summary, Progress Note, ..." />
+              </div>
+
+              <div>
+                <label>Document Date/Time</label>
+                <input id="mhd-document-datetime" type="text" placeholder="YYYY-MM-DD HH:MM (or your format)" />
+              </div>
+
+              <div>
+                <label>Source System</label>
+                <input id="mhd-source-system" type="text" value="EMR" />
+              </div>
+
+              <div>
+                <label>Admit Date</label>
+                <input id="mhd-admit-date" type="date" />
+              </div>
+
+              <div>
+                <label>DC Date</label>
+                <input id="mhd-dc-date" type="date" />
+              </div>
+            </div>
+
+            <div style="margin-top:12px;">
+              <label>Source Text <span style="color:var(--danger);">*</span></label>
+              <textarea id="mhd-source-text" rows="10" placeholder="Paste the hospital document text here."></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STICKY FOOTER ACTIONS -->
+      <div class="modal-foot">
+        <button class="btn-lite" id="btnManualHospDocCancel">Cancel</button>
+        <button class="btn" id="btnManualHospDocSubmit">Add Document</button>
+      </div>
+    </div>
+  </div>
+
+
+<script>
+  const $ = (sel) => document.querySelector(sel);
+
+  function fmtDate(d){
+    if(!d) return "—";
+    return String(d).split("T")[0];
+  }
+
+  function populateHospitalDropdown(){
+    const sel = $("#fHospital");
+    if(!sel) return;
+
+    const names = Array.from(new Set(
+      (allItems || [])
+        .map(x => (x.hospital_name || "").trim())
+        .filter(Boolean)
+    )).sort((a,b)=>a.localeCompare(b));
+
+    sel.innerHTML = `<option value="">All</option>` + names.map(n =>
+      `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`
+    ).join("");
+  }
+
+  /* Discharges table needs date-only even when backend sends "MM/DD/YYYY HH:MM:SS AM" */
+  function fmtDateOnly(d){
+    if(!d) return "—";
+    const s = String(d).trim();
+    if(s.includes("T")) return s.split("T")[0];
+    if(s.includes(" ")) return s.split(" ")[0];
+    return s;
+  }
+  function safe(v){ return (v === null || v === undefined || v === "") ? "—" : String(v); }
+
+  let allItems = [];
+  let filteredItems = [];
+  let dischargeSearchTerm = "";
+  let selectedVisitId = null;
+  let selectedDocId = null;
+  // NEW: cache the currently loaded visit object for modal prefills
+  let selectedVisitData = null;
+
+  let profiles = [];
+  let selectedProfileKey = null; // "hospital|doctype"
+
+  function profileKey(h, t){ return `${(h||"").trim()}|${(t||"").trim()}`; }
+
+  function mappingsTextFromJson(profileJson){
+    // profileJson is dict: { "hospital course": "hospital_course", ... }
+    try{
+      const obj = (typeof profileJson === "string") ? JSON.parse(profileJson) : profileJson;
+      if(!obj || typeof obj !== "object") return "";
+      return Object.entries(obj)
+        .map(([heading, key]) => `${key} = ${heading}`)
+        .join("\n");
+    }catch(e){
+      return "";
+    }
+  }
+
+  function jsonFromMappingsText(txt){
+    // user enters:
+    // section_key = heading term
+    // We convert to dict heading->section_key (lowercased heading), matching app.py expectations
+    const out = {};
+    const lines = String(txt || "").split("\n").map(x=>x.trim()).filter(Boolean);
+    for(const line of lines){
+      const idx = line.indexOf("=");
+      if(idx === -1) continue;
+      const left = line.slice(0, idx).trim();   // section_key
+      const right = line.slice(idx+1).trim();   // heading term
+      if(!left || !right) continue;
+      out[right.toLowerCase()] = left;
+    }
+    return out;
+  }
+
+  function renderProfileList(){
+    const el = $("#profileList");
+    if(!el) return;
+    if(!profiles.length){
+      el.innerHTML = `<div class="tiny-note">No profiles yet. Click <b>New</b> to add one.</div>`;
+      return;
+    }
+    el.innerHTML = profiles.map(p=>{
+      const key = profileKey(p.hospital_name, p.document_type);
+      const activeClass = (selectedProfileKey === key) ? " active" : "";
+      const activeTxt = p.active ? "Active" : "Inactive";
+      return `
+        <div class="profile-item${activeClass}" data-k="${escapeHtml(key)}">
+          <div class="t">${escapeHtml(p.hospital_name)} • ${escapeHtml(p.document_type)}</div>
+          <div class="m">${activeTxt} • Updated: ${escapeHtml(p.updated_at || "—")}</div>
+        </div>
+      `;
+    }).join("");
+
+    [...el.querySelectorAll(".profile-item")].forEach(item=>{
+      item.addEventListener("click", ()=>{
+        const k = item.dataset.k || "";
+        const p = profiles.find(x => profileKey(x.hospital_name, x.document_type) === k);
+        if(!p) return;
+        selectedProfileKey = k;
+        [...el.querySelectorAll(".profile-item")].forEach(x=>x.classList.remove("active"));
+        item.classList.add("active");
+        fillProfileEditor(p);
+      });
+    });
+  }
+
+  function fillProfileEditor(p){
+    $("#pHospital").value = p.hospital_name || "";
+    $("#pDocType").value = p.document_type || "";
+    $("#pActive").value = String(p.active ? 1 : 0);
+    $("#pUpdated").value = p.updated_at || "";
+    $("#pMappings").value = mappingsTextFromJson(p.profile_json);
+  }
+
+  function clearProfileEditor(){
+    selectedProfileKey = null;
+    $("#pHospital").value = "";
+    $("#pDocType").value = "";
+    $("#pActive").value = "1";
+    $("#pUpdated").value = "";
+    $("#pMappings").value = "";
+    renderProfileList();
+  }
+
+  async function loadProfiles(){
+    const res = await fetch("/api/hospital-extraction-profiles/list");
+    const data = await res.json();
+    if(!data.ok){
+      $("#profileList").innerHTML = `<div class="tiny-note" style="color:var(--danger);">Failed to load profiles.</div>`;
+      return;
+    }
+    profiles = data.items || [];
+    renderProfileList();
+  }
+
+  async function saveProfile(){
+    const hospital_name = ($("#pHospital").value || "").trim();
+    const document_type = ($("#pDocType").value || "").trim();
+    const active = parseInt($("#pActive").value || "1", 10) ? 1 : 0;
+    const mappingDict = jsonFromMappingsText($("#pMappings").value || "");
+
+    if(!hospital_name || !document_type){
+      alert("Hospital + Document Type are required.");
+      return;
+    }
+    if(Object.keys(mappingDict).length === 0){
+      alert("Add at least one mapping line: section_key = heading term");
+      return;
+    }
+
+    const res = await fetch("/api/hospital-extraction-profiles/upsert", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        hospital_name,
+        document_type,
+        active,
+        profile_json: mappingDict
+      })
+    });
+    const data = await res.json();
+    if(!data.ok){
+      alert(data.error || "Failed to save profile.");
+      return;
+    }
+    await loadProfiles();
+
+    // auto-select the saved profile
+    const k = profileKey(hospital_name, document_type);
+    selectedProfileKey = k;
+    const p = profiles.find(x => profileKey(x.hospital_name, x.document_type) === k);
+    if(p) fillProfileEditor(p);
+  }
+
+
+  async function loadDischarges(){
+    $("#leftSub").textContent = "Loading…";
+    const res = await fetch("/api/hospital-discharges/list");
+    const data = await res.json();
+    if(!data.ok){
+      $("#leftSub").textContent = "Failed to load.";
+      return;
+    }
+    allItems = data.items || [];
+    populateHospitalDropdown();
+    applyFilters(false);
+    $("#leftSub").textContent = `${filteredItems.length} visits`;
+  }
+
+  function renderTable(){
+    const tbody = $("#dischargeTbody");
+    tbody.innerHTML = "";
+
+    if(filteredItems.length === 0){
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="5" class="muted">No discharges found.</td>`;
+      tbody.appendChild(tr);
+      return;
+    }
+
+    for(const row of filteredItems){
+      const tr = document.createElement("tr");
+      tr.dataset.visitId = row.visit_id || "";
+      if(selectedVisitId && row.visit_id === selectedVisitId) tr.classList.add("selected");
+
+      const admit = fmtDateOnly(row.admit_date);
+      const dc = fmtDateOnly(row.dc_date);
+      const dateRange = (admit === "—" && dc === "—") ? "—" : `${admit} – ${dc}`;
+
+      tr.innerHTML = `
+        <td class="cell-patient">
+          <strong>${safe(row.patient_name)}</strong>
+          <span class="sub">Visit ID: ${safe(row.visit_id)}</span>
+        </td>
+        <td>${safe(row.hospital_name)}</td>
+        <td class="muted">${dateRange}</td>
+        <td>${safe(row.disposition) === "—" ? '<span class="muted">—</span>' : safe(row.disposition)}</td>
+        <td><span class="status-chip">Doc</span></td>
+      `;
+      tr.addEventListener("click", () => selectVisit(row.visit_id));
+      tbody.appendChild(tr);
+    }
+  }
+
+  async function selectVisit(visitId){
+    if(!visitId) return;
+    selectedVisitId = visitId;
+    selectedDocId = null;
+    renderTable();
+
+    $("#rightSub").textContent = `Visit ID: ${visitId}`;
+    $("#visitDetailsBody").innerHTML = `<div class="tiny-note">Loading visit…</div>`;
+
+    const res = await fetch(`/api/hospital-discharges/visit/${encodeURIComponent(visitId)}`);
+    const data = await res.json();
+    if(!data.ok){
+      $("#visitDetailsBody").innerHTML = `<div class="tiny-note" style="color:var(--danger);">Failed to load visit.</div>`;
+      return;
+    }
+
+    const v = data.visit || {};
+    selectedVisitData = v; // NEW: keep for manual modal prefills
+    const docs = data.documents || [];
+    const sectionsByDoc = data.sections_by_doc || {};
+    const firstDocId = docs.length ? docs[0].id : null;
+    selectedDocId = firstDocId;
+
+    $("#visitDetailsBody").innerHTML = `
+      <div class="visit-head">
+        <div class="vh-top">
+          <div>
+            <div class="vh-name">${safe(v.patient_name)}</div>
+            <div class="vh-sub">
+              Visit ID: <b>${safe(v.visit_id || selectedVisitId)}</b>
+              • Admit: <b>${fmtDateOnly(v.admit_date)}</b>
+              • DC: <b>${fmtDateOnly(v.dc_date)}</b>
+            </div>
+          </div>
+
+          <div class="vh-meta" style="flex-direction:column; align-items:flex-end;">
+            <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+              <span class="vh-pill"><span class="mini-dot"></span> ${safe(v.hospital_name)}</span>
+              <span class="vh-pill"><span class="mini-dot"></span> Dispo: ${safe(v.disposition)}</span>
+              <span class="vh-pill"><span class="mini-dot"></span> Docs: ${docs.length}</span>
+            </div>
+
+            <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; width:100%;">
+              <span class="vh-pill"><span class="mini-dot"></span> Agency: ${safe(v.dc_agency)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="vh-kv">
+          <div class="k">Updated</div><div class="v">${safe(v.updated_at)}</div>
+        </div>
+      </div>
+
+      <div class="visit-panels">
+        <div class="subcard">
+          <div class="subhead">
+            <strong><span class="mint-accent"></span>Documents</strong>
+          </div>
+          <div class="subbody" id="docList"></div>
+        </div>
+
+        <div class="subcard">
+          <div class="subhead">
+            <strong><span class="mint-accent"></span>Document Sections</strong>
+          </div>
+          <div class="subbody" id="sectionList"></div>
+        </div>
+      </div>
+    `;
+
+    renderDocList(docs);
+
+    if(firstDocId && sectionsByDoc[String(firstDocId)]){
+      renderSections(sectionsByDoc[String(firstDocId)], docs.find(d=>d.id===firstDocId));
+    } else if(firstDocId){
+      await loadSections(firstDocId, docs.find(d=>d.id===firstDocId));
+    } else {
+      $("#sectionList").innerHTML = `<div class="tiny-note">No documents yet for this visit.</div>`;
+    }
+  }
+
+  function renderDocList(docs){
+    const el = $("#docList");
+    el.innerHTML = "";
+    if(!docs.length){
+      el.innerHTML = `<div class="tiny-note">No documents yet.</div>`;
+      return;
+    }
+    for(const d of docs){
+      const item = document.createElement("div");
+      item.className = "doc-item" + ((selectedDocId === d.id) ? " active" : "");
+      item.innerHTML = `
+        <div class="t">
+          <span>${safe(d.document_type)}</span>
+          <span class="muted" style="font-weight:900;">#${d.id}</span>
+        </div>
+        <div class="m">Doc DT: ${fmtDate(d.document_datetime)} • Added: ${fmtDate(d.created_at)}</div>
+      `;
+      item.addEventListener("click", async () => {
+        selectedDocId = d.id;
+        [...document.querySelectorAll(".doc-item")].forEach(x => x.classList.remove("active"));
+        item.classList.add("active");
+        await loadSections(d.id, d);
+      });
+      el.appendChild(item);
+    }
+  }
+
+  async function loadSections(docId, doc){
+    const el = $("#sectionList");
+    el.innerHTML = `<div class="tiny-note">Loading sections for ${safe(doc?.document_type)}…</div>`;
+    const res = await fetch(`/api/hospital-documents/${docId}/sections`);
+    const data = await res.json();
+    if(!data.ok){
+      el.innerHTML = `<div class="tiny-note" style="color:var(--danger);">Failed to load sections.</div>`;
+      return;
+    }
+    renderSections(data.items || [], doc);
+  }
+
+  function renderSections(items, doc){
+    const el = $("#sectionList");
+    if(!items.length){
+      el.innerHTML = `<div class="tiny-note">No sections found for this document.</div>`;
+      return;
+    }
+    el.innerHTML = items.map(s => `
+      <div class="section">
+        <h4>
+          ${safe(s.section_title) === "—" ? "Section" : safe(s.section_title)}
+          <span class="badge">${safe(s.section_key)}</span>
+        </h4>
+        <pre>${escapeHtml(s.section_text || "")}</pre>
+      </div>
+    `).join("");
+  }
+
+  function escapeHtml(str){
+    return String(str)
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
+  }
+
+  function applyFilters(rerender=true){
+    const h = ($("#fHospital")?.value || "").trim().toLowerCase();
+    const disp = ($("#fDisposition")?.value || "").trim().toLowerCase();
+    const dcFrom = $("#fDcFrom")?.value || "";
+    const dcTo = $("#fDcTo")?.value || "";
+
+    filteredItems = allItems.filter(r => {
+      const hosp = String(r.hospital_name || "").trim().toLowerCase();
+      const d = String(r.disposition || "").toLowerCase();
+      const dc = fmtDate(r.dc_date);
+
+      if(h && hosp !== h) return false;
+      if(disp && d !== disp) return false;
+      if(dcFrom && (dc === "—" || dc < dcFrom)) return false;
+      if(dcTo && (dc === "—" || dc > dcTo)) return false;
+      // NEW: search by patient_name OR visit_id (case-insensitive)
+      if(dischargeSearchTerm){
+        const hay1 = String(r.patient_name || "").toLowerCase();
+        const hay2 = String(r.visit_id || "").toLowerCase();
+        const needle = dischargeSearchTerm.toLowerCase();
+        if(!hay1.includes(needle) && !hay2.includes(needle)) return false;
+      }
+
+      return true;
+    });
+
+    if(rerender){
+      $("#leftSub").textContent = `${filteredItems.length} visits`;
+      renderTable();
+    }
+    updateFilterPills(h, disp, dcFrom, dcTo);
+  }
+
+  function updateFilterPills(h, disp, dcFrom, dcTo){
+    const pills = $("#activeFilterPills");
+    const selHospLabel = ($("#fHospital")?.value || "").trim();
+    const p1 = selHospLabel ? `Hospital: ${selHospLabel}` : "All hospitals";
+    const p2 = disp ? `Disposition: ${disp}` : "All dispositions";
+    const p3 = (dcFrom || dcTo) ? `DC: ${dcFrom || "…"} → ${dcTo || "…"}`
+                               : null;
+
+    pills.innerHTML = `
+      <span class="pill"><span class="mini-dot"></span> ${p1}</span>
+      <span class="pill"><span class="mini-dot"></span> ${p2}</span>
+      ${p3 ? `<span class="pill"><span class="mini-dot"></span> ${p3}</span>` : ``}
+    `;
+  }
+
+  function openModal(id){ $(id).classList.add("open"); }
+  function closeModal(id){ $(id).classList.remove("open"); }
+
+  $("#btnFilter").addEventListener("click", () => openModal("#filterModal"));
+  $("#btnFilterCancel").addEventListener("click", () => closeModal("#filterModal"));
+  $("#btnFilterApply").addEventListener("click", () => { applyFilters(true); closeModal("#filterModal"); });
+
+  $("#btnSettings").addEventListener("click", () => {
+    openModal("#settingsModal");
+    loadProfiles();
+  });
+
+  $("#btnSettingsClose").addEventListener("click", () => closeModal("#settingsModal"));
+
+  $("#btnProfileNew").addEventListener("click", () => clearProfileEditor());
+  $("#btnProfileSave").addEventListener("click", () => saveProfile());
+
+  // ============================
+  // NEW: Discharge search box
+  // ============================
+  const searchEl = document.getElementById("dischargeSearch");
+  if(searchEl){
+    searchEl.addEventListener("input", (e) => {
+      dischargeSearchTerm = String(e.target.value || "").trim();
+      applyFilters(true);
+    });
+  }
+
+  // ============================
+  // NEW: Admin token controls (moved into Settings modal)
+  // ============================
+  function refreshAdminTokenUi(){
+    const tok = getAdminToken();
+    setAdminTokenStatus(!!tok);
+    const inp = document.getElementById("adminTokenInput");
+    if(inp) inp.value = tok || "";
+  }
+
+  const btnTokSave = document.getElementById("btnAdminTokenSave");
+  if(btnTokSave){
+    btnTokSave.addEventListener("click", () => {
+      const inp = document.getElementById("adminTokenInput");
+      const tok = (inp?.value || "").trim();
+      if(tok){
+        localStorage.setItem("evolv_admin_token", tok);
+      }
+      refreshAdminTokenUi();
+    });
+  }
+
+  const btnTokClear = document.getElementById("btnAdminTokenClear");
+  if(btnTokClear){
+    btnTokClear.addEventListener("click", () => {
+      localStorage.removeItem("evolv_admin_token");
+      refreshAdminTokenUi();
+    });
+  }
+
+  // When opening settings, also refresh the token UI
+  $("#btnSettings").addEventListener("click", () => {
+    openModal("#settingsModal");
+    refreshAdminTokenUi();
+    loadProfiles();
+  });
+
+  /* ============================
+     NEW: Manual Hospital Doc modal
+     ============================ */
+
+  function getAdminToken(){
+    // matches the same token pattern used by SNF Admissions manual add flow
+    return (localStorage.getItem("evolv_admin_token") || "").trim();
+  }
+
+  async function loadHospitalOptionsForManualHospDoc(){
+    const token = getAdminToken();
+    const sel = document.getElementById("mhd-hospital-name");
+    if(!sel) return;
+
+    sel.innerHTML = `<option value="">(select)</option>`;
+    if(!token) return;
+
+    try{
+      const resp = await fetch("/admin/hospital-documents/hospitals", {
+        headers: { "X-Admin-Token": token }
+      });
+      if(!resp.ok) throw new Error("HTTP " + resp.status);
+      const data = await resp.json();
+      const hospitals = Array.isArray(data?.hospitals) ? data.hospitals : [];
+      hospitals.forEach(h => {
+        const name = (h || "").toString().trim();
+        if(!name) return;
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        sel.appendChild(opt);
+      });
+    }catch(e){
+      console.warn("loadHospitalOptionsForManualHospDoc failed:", e);
+    }
+  }
+
+  function setManualHospDocMsg(text, isError=false){
+    const el = document.getElementById("mhd-msg");
+    if(!el) return;
+    el.textContent = text || "";
+    el.style.color = isError ? "var(--danger)" : "var(--muted)";
+  }
+
+  async function openManualHospDocModal(){
+    openModal("#manualHospDocModal");
+    setManualHospDocMsg("");
+
+    // clear fields
+    [
+      "mhd-visit-id",
+      "mhd-hospital-name",
+      "mhd-patient-mrn",
+      "mhd-patient-name",
+      "mhd-dob",
+      "mhd-document-type",
+      "mhd-document-datetime",
+      "mhd-source-system",
+      "mhd-admit-date",
+      "mhd-dc-date",
+      "mhd-source-text"
+    ].forEach(id => {
+      const el = document.getElementById(id);
+      if(el) el.value = "";
+    });
+
+    // defaults
+    const src = document.getElementById("mhd-source-system");
+    if(src && !src.value) src.value = "EMR";
+
+    // load hospital dropdown options first (so we can set the selected value cleanly)
+    await loadHospitalOptionsForManualHospDoc();
+
+    // helper: set value only if non-empty
+    const setVal = (id, v) => {
+      const el = document.getElementById(id);
+      if(!el) return;
+      const val = (v == null) ? "" : String(v);
+      if(val.trim() !== "") el.value = val;
+    };
+
+    // helper: if hospital not in dropdown list, add it
+    const ensureHospOption = (name) => {
+      const sel = document.getElementById("mhd-hospital-name");
+      const v = (name || "").toString().trim();
+      if(!sel || !v) return;
+      const exists = Array.from(sel.options).some(o => o.value === v);
+      if(!exists){
+        const opt = document.createElement("option");
+        opt.value = v;
+        opt.textContent = v;
+        sel.appendChild(opt);
+      }
+    };
+
+    // PREFILL ONLY if a visit is selected
+    if(typeof selectedVisitId !== "undefined" && selectedVisitId){
+      setVal("mhd-visit-id", selectedVisitId);
+
+      // prefer the fully loaded visit object from /api/hospital-discharges/visit/:id
+      const v = selectedVisitData || {};
+
+      // fallback: find the row in allItems (list endpoint) if needed
+      const row = (Array.isArray(allItems) && selectedVisitId)
+        ? allItems.find(x => String(x.visit_id) === String(selectedVisitId))
+        : null;
+
+      const hospitalName = (v.hospital_name || row?.hospital_name || "").toString();
+      const patientName = (v.patient_name || row?.patient_name || "").toString();
+
+      // some fields may or may not exist on v depending on API payload; we set only when present
+      setVal("mhd-patient-name", patientName);
+      setVal("mhd-patient-mrn", v.patient_mrn || v.mrn); // if your API includes it
+      setVal("mhd-dob", v.dob);                          // if your API includes it
+      setVal("mhd-admit-date", v.admit_date || row?.admit_date);
+      setVal("mhd-dc-date", v.dc_date || row?.dc_date);
+
+      if(hospitalName.trim() !== ""){
+        ensureHospOption(hospitalName);
+        setVal("mhd-hospital-name", hospitalName);
+      }
+    }
+
+  }
+
+  function closeManualHospDocModal(){
+    closeModal("#manualHospDocModal");
+  }
+
+  async function submitManualHospDoc(){
+    setManualHospDocMsg("");
+
+    const payload = {
+      visit_id: (document.getElementById("mhd-visit-id")?.value || "").trim(),
+      hospital_name: (document.getElementById("mhd-hospital-name")?.value || "").trim(),
+      patient_mrn: (document.getElementById("mhd-patient-mrn")?.value || "").trim(),
+      patient_name: (document.getElementById("mhd-patient-name")?.value || "").trim(),
+      dob: (document.getElementById("mhd-dob")?.value || "").trim(),
+      document_type: (document.getElementById("mhd-document-type")?.value || "").trim(),
+      document_datetime: (document.getElementById("mhd-document-datetime")?.value || "").trim(),
+      source_system: (document.getElementById("mhd-source-system")?.value || "EMR").trim(),
+      admit_date: (document.getElementById("mhd-admit-date")?.value || "").trim(),
+      dc_date: (document.getElementById("mhd-dc-date")?.value || "").trim(),
+      source_text: (document.getElementById("mhd-source-text")?.value || "").trim()
+    };
+
+    if(!payload.visit_id || !payload.hospital_name || !payload.document_type || !payload.source_text){
+      setManualHospDocMsg("Visit ID, Hospital Name, Document Type, and Source Text are required.", true);
+      return;
+    }
+
+    const token = getAdminToken();
+    if(!token){
+      setManualHospDocMsg("Please paste your ADMIN_TOKEN in Settings first.", true);
+      return;
+    }
+
+    try{
+      const res = await fetch("/admin/hospital-documents/manual-add", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Token": token
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json().catch(()=> ({}));
+      if(!res.ok){
+        setManualHospDocMsg(data?.detail || "Failed to add document.", true);
+        return;
+      }
+
+      setManualHospDocMsg(`Added. document_id=${data.document_id || "?"} • sections=${data.sections_saved || "?"}`);
+
+      // Refresh left list + reload selected visit so the new doc shows immediately
+      if(typeof loadDischarges === "function") await loadDischarges();
+      if(typeof selectVisit === "function") await selectVisit(payload.visit_id);
+
+      setTimeout(() => closeManualHospDocModal(), 350);
+    }catch(err){
+      setManualHospDocMsg("Error adding document: " + (err?.message || err), true);
+    }
+  }
+
+  // Button wiring
+  function setHospAiMsg(text, isErr=false){
+    const el = document.getElementById("hosp-ai-msg");
+    if(!el) return;
+    el.textContent = text || "";
+    el.style.color = isErr ? "var(--danger)" : "var(--muted)";
+  }
+
+  function fillHospAiFields(){
+    // selectedVisitId / selectedVisitData are already used elsewhere in this page
+    const v = (typeof selectedVisitData !== "undefined" && selectedVisitData) ? selectedVisitData : {};
+    const vid = (typeof selectedVisitId !== "undefined" && selectedVisitId) ? selectedVisitId : "";
+
+    document.getElementById("hosp-ai-visit-id").value = vid || "—";
+    document.getElementById("hosp-ai-dispo").value = (v.disposition || "—");
+    document.getElementById("hosp-ai-agency").value = (v.dc_agency || "—");
+
+    const srcDt = v.dispo_source_dt || "";
+    const srcId = v.dispo_source_doc_id || "";
+    document.getElementById("hosp-ai-source").value =
+      (srcDt || srcId) ? `${srcDt || "—"} / doc ${srcId || "—"}` : "—";
+  }
+
+  function openHospAiModal(){
+    setHospAiMsg("");
+    fillHospAiFields();
+    openModal("#hospAiModal");
+  }
+
+  function closeHospAiModal(){
+    closeModal("#hospAiModal");
+  }
+
+  // Recompute call (admin)
+  async function recomputeHospAiForVisit(){
+    setHospAiMsg("");
+    const token = getAdminToken();
+    if(!token){
+      setHospAiMsg("Please paste your ADMIN_TOKEN in Settings first.", true);
+      return;
+    }
+
+    const vid = (typeof selectedVisitId !== "undefined" && selectedVisitId) ? String(selectedVisitId) : "";
+    if(!vid){
+      setHospAiMsg("Select a visit first (click a row).", true);
+      return;
+    }
+
+    setHospAiMsg("Recomputing…");
+
+    try{
+      const res = await fetch("/admin/hospital-discharges/visit/recompute", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Token": token
+        },
+        body: JSON.stringify({ visit_id: vid })
+      });
+
+      const data = await res.json().catch(()=> ({}));
+      if(!res.ok) throw new Error(data?.detail || ("HTTP " + res.status));
+
+      // Refresh list + reload selected visit so UI reflects updated AI fields
+      if(typeof loadDischarges === "function") await loadDischarges();
+      if(typeof selectVisit === "function") await selectVisit(vid);
+
+      // Now that selectedVisitData is fresh, re-fill fields
+      fillHospAiFields();
+
+      if(data.changed){
+        setHospAiMsg("Updated. (Disposition/Agency recomputed from last 5 docs.)");
+      } else {
+        setHospAiMsg("No change (no meaningful new disposition found).");
+      }
+    } catch(err){
+      console.error("recomputeHospAiForVisit error", err);
+      setHospAiMsg("Recompute failed: " + (err?.message || err), true);
+    }
+  }
+
+  // Button wiring
+  $("#btnHospAiSummary").addEventListener("click", () => openHospAiModal());
+  $("#btnHospAiCancel").addEventListener("click", () => closeHospAiModal());
+  $("#btnHospAiCloseX").addEventListener("click", () => closeHospAiModal());
+  $("#btnHospAiRecompute").addEventListener("click", () => recomputeHospAiForVisit());
+
+  $("#btnManualHospDoc").addEventListener("click", () => openManualHospDocModal());
+  $("#btnManualHospDocCancel").addEventListener("click", () => closeManualHospDocModal());
+  $("#btnManualHospDocCloseX").addEventListener("click", () => closeManualHospDocModal());
+  $("#btnManualHospDocSubmit").addEventListener("click", () => submitManualHospDoc());
+
+  ["#filterModal","#settingsModal","#hospAiModal"].forEach(id=>{
+    $(id).addEventListener("click", (e)=>{
+      if(e.target.classList.contains("modal-backdrop")) closeModal(id);
+    });
+  });
+
+  function setAdminTokenStatus(isSet){
+    const dot = $("#adminDot");
+    const txt = $("#adminStatusText");
+    if(isSet){
+      dot.classList.add("ok");
+      txt.textContent = "Admin token: set";
+    } else {
+      dot.classList.remove("ok");
+      txt.textContent = "Admin token: not set";
+    }
+  }
+  // initialize admin token status based on localStorage
+  setAdminTokenStatus(!!getAdminToken());
+
+  loadDischarges().then(renderTable);
+</script>
+</body>
+</html>

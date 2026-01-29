@@ -1,0 +1,279 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sensys — Home Health</title>
+</head>
+
+<body style="margin:0;font-family:Arial,Helvetica,sans-serif;background:#f6f7fb;">
+  <div style="max-width:1100px;margin:0 auto;padding:18px;">
+
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+      <div>
+        <div style="font-size:18px;font-weight:800;">Home Health — Linked Admissions</div>
+        <div id="subhead" style="font-size:12px;color:#667085;margin-top:4px;"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button id="refreshBtn"
+          style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+          Refresh
+        </button>
+        <button id="logoutBtn"
+          style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+          Log out
+        </button>
+      </div>
+    </div>
+
+    <div id="msg" style="margin-top:10px;font-size:12px;color:#b42318;display:none;"></div>
+
+    <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+      <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <input id="q" placeholder="Search patient / agency..."
+            style="width:260px;max-width:70vw;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+          <span id="count" style="font-size:12px;color:#667085;"></span>
+        </div>
+        <div style="font-size:12px;color:#667085;">
+          Tip: click a row to open details
+        </div>
+      </div>
+
+      <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f6;border-radius:12px;">
+        <table style="width:100%;border-collapse:collapse;min-width:820px;">
+          <thead>
+            <tr style="background:#f9fafb;color:#475467;font-size:12px;">
+              <th style="text-align:left;padding:10px;border-bottom:1px solid #eef0f6;">Patient</th>
+              <th style="text-align:left;padding:10px;border-bottom:1px solid #eef0f6;">DOB</th>
+              <th style="text-align:left;padding:10px;border-bottom:1px solid #eef0f6;">Admit</th>
+              <th style="text-align:left;padding:10px;border-bottom:1px solid #eef0f6;">DC</th>
+              <th style="text-align:left;padding:10px;border-bottom:1px solid #eef0f6;">Referral Agency</th>
+              <th style="text-align:left;padding:10px;border-bottom:1px solid #eef0f6;">Admission Agency</th>
+              <th style="text-align:left;padding:10px;border-bottom:1px solid #eef0f6;">Updated</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <!-- ✅ NEW: Notifications card (Dashboard inbox) -->
+    <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <div style="font-size:13px;color:#111827;font-weight:800;">
+          Notifications
+          <span id="notifCount" style="margin-left:8px;font-size:12px;color:#667085;font-weight:700;"></span>
+        </div>
+        <button id="notifRefreshBtn"
+          style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+          Refresh
+        </button>
+      </div>
+
+      <div id="notifMsg" style="margin-top:10px;font-size:12px;color:#b42318;display:none;"></div>
+
+      <div id="notifList" style="margin-top:10px;display:flex;flex-direction:column;gap:10px;"></div>
+    </div>
+
+  </div>
+
+<script>
+  function showMsg(s){
+    const el = document.getElementById('msg');
+    if(!s){ el.style.display='none'; el.textContent=''; return; }
+    el.style.display='block';
+    el.textContent = String(s);
+  }
+
+  function getToken(){
+    return localStorage.getItem('sensys_token') || '';
+  }
+
+  async function apiGet(url){
+    const tok = getToken();
+    const resp = await fetch(url, {
+      headers: { 'Authorization': 'Bearer ' + tok }
+    });
+    if(!resp.ok){
+      const t = await resp.text().catch(()=> '');
+      throw new Error(t || ('Request failed: ' + resp.status));
+    }
+    return await resp.json();
+  }
+
+  function esc(s){
+    return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  let ALL = [];
+
+  let NOTIFS = [];
+
+  function showNotifMsg(s){
+    const el = document.getElementById('notifMsg');
+    if(!el) return;
+    if(!s){ el.style.display='none'; el.textContent=''; return; }
+    el.style.display='block';
+    el.textContent = String(s);
+  }
+
+  async function apiPost(url, payload){
+    const tok = getToken();
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + tok,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload || {})
+    });
+    if(!resp.ok){
+      const t = await resp.text().catch(()=> '');
+      throw new Error(t || ('Request failed: ' + resp.status));
+    }
+    return await resp.json();
+  }
+
+  function renderNotifs(){
+    const host = document.getElementById('notifList');
+    const badge = document.getElementById('notifCount');
+    if(!host) return;
+
+    const unread = (NOTIFS || []).filter(n => !n.read_at).length;
+    if(badge) badge.textContent = unread ? (`${unread} unread`) : ('0 unread');
+
+    if(!NOTIFS.length){
+      host.innerHTML = `<div style="font-size:12px;color:#667085;">No notifications.</div>`;
+      return;
+    }
+
+    host.innerHTML = '';
+    NOTIFS.forEach(n => {
+      const card = document.createElement('div');
+      card.style.border = '1px solid #eef0f6';
+      card.style.borderRadius = '12px';
+      card.style.padding = '12px';
+      card.style.background = n.read_at ? '#fbfcfe' : '#ffffff';
+
+      const title = esc(n.title || n.notif_name || n.notif_key || 'Notification');
+      const body = esc(n.body || '');
+      const meta = esc(n.created_at || '');
+
+      card.innerHTML = `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+          <div>
+            <div style="font-size:13px;font-weight:800;color:#111827;">${title}</div>
+            <div style="margin-top:4px;font-size:12px;color:#475467;white-space:pre-wrap;">${body}</div>
+            <div style="margin-top:8px;font-size:11px;color:#667085;">${meta}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
+            ${n.read_at ? `<span style="font-size:11px;color:#667085;font-weight:700;">Read</span>` : `<button data-id="${esc(n.id)}"
+              style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;font-weight:700;">
+              Mark read
+            </button>`}
+          </div>
+        </div>
+      `;
+
+      // wire mark-read button
+      const btn = card.querySelector('button[data-id]');
+      if(btn){
+        btn.onclick = async () => {
+          try{
+            btn.disabled = true;
+            // BACKEND TO ADD IN SEGMENT 2:
+            // POST /api/sensys/notifications/mark-read { id }
+            await apiPost('/api/sensys/notifications/mark-read', { id: Number(n.id) });
+            await loadNotifs();
+          }catch(e){
+            showNotifMsg(e.message || String(e));
+          }finally{
+            btn.disabled = false;
+          }
+        };
+      }
+
+      host.appendChild(card);
+    });
+  }
+
+  async function loadNotifs(){
+    try{
+      showNotifMsg('');
+      // BACKEND TO ADD IN SEGMENT 2:
+      // GET /api/sensys/my-notifications
+      const resp = await apiGet('/api/sensys/my-notifications');
+      NOTIFS = (resp && resp.notifications) ? resp.notifications : [];
+      renderNotifs();
+    }catch(e){
+      showNotifMsg(e.message || String(e));
+    }
+  }
+
+
+  function render(){
+    const q = (document.getElementById('q').value || '').trim().toLowerCase();
+    const tbody = document.getElementById('tbody');
+    tbody.innerHTML = '';
+
+    const items = (ALL || []).filter(r => {
+      if(!q) return true;
+      const hay = `${r.patient_name||''} ${r.agency_name||''} ${r.referral_agency_name||''}`.toLowerCase();
+      return hay.includes(q);
+    });
+
+    document.getElementById('count').textContent = `${items.length} referrals`;
+
+    items.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.style.cursor = 'pointer';
+      tr.onmouseenter = () => tr.style.background = '#fbfdff';
+      tr.onmouseleave = () => tr.style.background = '';
+      tr.onclick = () => {
+        const id = Number(r.admission_id);
+        window.location.href = `/sensys/home-health/admission-details?admission_id=${encodeURIComponent(id)}`;
+      };
+
+      tr.innerHTML = `
+        <td style="padding:10px;border-bottom:1px solid #f2f4f7;"><b>${esc(r.patient_name||'')}</b></td>
+        <td style="padding:10px;border-bottom:1px solid #f2f4f7;">${esc(r.patient_dob||'')}</td>
+        <td style="padding:10px;border-bottom:1px solid #f2f4f7;">${esc(r.admit_date||'')}</td>
+        <td style="padding:10px;border-bottom:1px solid #f2f4f7;">${esc(r.dc_date||'')}</td>
+        <td style="padding:10px;border-bottom:1px solid #f2f4f7;">${esc(r.referral_agency_name||'—')}</td>
+        <td style="padding:10px;border-bottom:1px solid #f2f4f7;">${esc(r.agency_name||'—')}</td>
+        <td style="padding:10px;border-bottom:1px solid #f2f4f7;color:#667085;font-size:12px;">${esc(r.referral_updated_at||r.referral_created_at||'')}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function load(){
+    try{
+      showMsg('');
+      const me = await apiGet('/api/sensys/me');
+      const u = (me && me.user) || {};
+      document.getElementById('subhead').textContent =
+        `${u.display_name || u.email || ''} • Roles: ${(u.role_keys||[]).join(', ')}`;
+
+      const resp = await apiGet('/api/sensys/my-referrals');
+      ALL = (resp && resp.referrals) || [];
+      render();
+    }catch(e){
+      showMsg(e.message || String(e));
+    }
+  }
+
+  document.getElementById('q').addEventListener('input', render);
+  document.getElementById('refreshBtn').addEventListener('click', () => { load(); loadNotifs(); });
+  document.getElementById('notifRefreshBtn').addEventListener('click', loadNotifs);
+
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('sensys_token');
+    window.location.href = '/sensys/login';
+  });
+
+  load();
+  loadNotifs();
+</script>
+</body>
+</html>

@@ -1,0 +1,2388 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sensys - Admission Details</title>
+  <style>
+    :root{
+      --navy:#0D3B66;
+      --mint:#A8E6CF;
+      --mint-strong:#86d9ba;
+      --bg:#ffffff;
+      --bg-2:#F5F7FA;
+      --text:#0f172a;
+      --muted:#5b6b84;
+      --line: rgba(13,59,102,.14);
+      --shadow:0 18px 36px rgba(13,59,102,.08);
+      --r-lg:20px;
+      --r-md:12px;
+      --sidebar-w:78px;
+      --logo-offset-x:-68px;
+      --logo-offset-y:-58px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    html,body{
+      margin:0;
+      background:
+        radial-gradient(900px 320px at 50% 1%, rgba(15,23,42,.035), rgba(255,255,255,0) 80%),
+        linear-gradient(180deg, #ffffff 0%, #f5f7fa 100%);
+      background-repeat:no-repeat;
+      background-attachment:fixed;
+      color:var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    .layout{
+      min-height:100vh;
+      display:flex;
+    }
+    .sidebar{
+      width:var(--sidebar-w);
+      background:#fff;
+      border-right:1px solid rgba(13,59,102,.08);
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      padding:0 0 14px;
+      position:relative;
+    }
+    .sidebar-logo{
+      width:100%;
+      height:92px;
+      overflow:hidden;
+      margin-bottom:18px;
+      position:relative;
+    }
+    .sidebar-logo img{
+      width:150px;
+      height:150px;
+      position:absolute;
+      left:-6px;
+      top:-6px;
+      transform: translate(var(--logo-offset-x), var(--logo-offset-y));
+      display:block;
+    }
+    .side-nav{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:14px;
+      margin-top:6px;
+    }
+    .side-btn{
+      width:42px;
+      height:42px;
+      border-radius:14px;
+      border:0;
+      background:#fff;
+      display:flex;
+      align-items:center;
+      color:var(--navy);
+      cursor:pointer;
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .side-btn:hover{
+      box-shadow:0 0 0 2px rgba(168,230,207,.35);
+      transform: translateY(-1px);
+    }
+    .side-btn svg{
+      width:35px;
+      height:35px;
+    }
+    .side-btn .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:3.2px;
+    }
+    .side-spacer{flex:1}
+    .profile-wrap{
+      position:relative;
+      margin-bottom:6px;
+    }
+    .profile-menu{
+      position:absolute;
+      left:52px;
+      bottom:-12px;
+      background:#fff;
+      border:1px solid rgba(13,59,102,.12);
+      border-radius:12px;
+      box-shadow:0 18px 36px rgba(13,59,102,.16);
+      padding:8px;
+      min-width:170px;
+      display:none;
+      z-index:10;
+    }
+    .profile-menu button{
+      width:100%;
+      border:0;
+      background:#fff;
+      text-align:left;
+      padding:8px 10px;
+      border-radius:10px;
+      font-size:12px;
+      font-weight:800;
+      color:#111827;
+      cursor:pointer;
+    }
+    .profile-menu button:hover{
+      background:rgba(168,230,207,.18);
+    }
+    .page{
+      min-height:100vh;
+      padding:18px 28px 24px;
+      max-width:1400px;
+      margin:0 auto;
+      display:flex;
+      flex-direction:column;
+      flex:1;
+    }
+    .topbar{
+      display:grid;
+      grid-template-columns: 320px 1fr auto;
+      align-items:center;
+      gap:16px;
+      margin-bottom:8px;
+    }
+    .alert-banner{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:10px 14px;
+      height:44px;
+      padding:5.5px 14px 10px;
+      border-radius:14px;
+      border:1px solid rgba(192,107,107,.35);
+      background:linear-gradient(90deg, rgba(192,107,107,.18) 0%, rgba(192,107,107,.08) 100%, #ffffff 100%);
+      color:#5b2c2c;
+      font-size:13px;
+      margin:0;
+      width:100%;
+    }
+    .alert-banner-title{
+      font-weight:800;
+      letter-spacing:.04em;
+      text-transform:uppercase;
+      font-size:12px;
+    }
+    .alert-banner-item{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(192,107,107,.35);
+      background:#fff;
+      font-weight:600;
+      color:#7a3a3a;
+    }
+    .title h1{
+      margin:-14px 0 2px;
+      font-size:40px;
+      font-weight:400;
+      color:var(--navy);
+      letter-spacing:.2px;
+    }
+    .title p{
+      margin:0;
+      font-size:14px;
+      color:var(--muted);
+    }
+    .icon-btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:44px;
+      height:44px;
+      border-radius:14px;
+      border:1px solid var(--line);
+      background:#fff;
+      cursor:pointer;
+      color:var(--navy);
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .icon-btn:hover{
+      border-color: rgba(168,230,207,.9);
+      box-shadow:0 0 0 3px rgba(168,230,207,.35);
+      transform: translateY(-1px);
+    }
+    .icon-btn svg{width:24px;height:24px}
+    .icon-btn .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:5.5px;
+    }
+
+    .main-grid{
+      display:grid;
+      grid-template-columns: 320px 1fr;
+      gap:16px;
+      align-items:stretch;
+      min-height:calc(100vh - 190px);
+    }
+    .left-col{
+      display:flex;
+      flex-direction:column;
+      gap:16px;
+      min-height:calc(100vh - 190px);
+      max-width:320px;
+    }
+    .top-row{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:16px;
+    }
+    .card{
+      background:#fff;
+      border:1px solid rgba(13,59,102,.12);
+      border-radius:18px;
+      box-shadow:none;
+      padding:18px;
+    }
+    .card.square{
+      border-radius:16px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+    }
+    .identity{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:8px;
+      min-width:160px;
+    }
+    .mini-demographics{
+      flex:1;
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:10px;
+    }
+    .mini-demographics .label{
+      font-size:11px;
+      font-weight:600;
+      color:#334155;
+      letter-spacing:.2px;
+      text-transform:uppercase;
+    }
+    .mini-demographics .value{
+      font-size:13px;
+      font-weight:100;
+      color:#0f172a;
+    }
+    .card.no-hover{
+      border-color:rgba(168,230,207,.95);
+      box-shadow:none;
+    }
+    .card.no-hover:hover{
+      border-color:rgba(168,230,207,.95);
+      box-shadow:none;
+      transform:none;
+    }
+    .avatar{
+      width:140px;
+      height:140px;
+      border-radius:999px;
+      border:2px solid #7C6D8A;
+      background:#fff;
+      overflow:hidden;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:#7C6D8A;
+    }
+    .avatar svg{width:110px;height:110px}
+    .avatar .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:1.2px;
+    }
+    .patient-name{
+      font-size:20px;
+      font-weight:800;
+      color:var(--navy);
+      margin:0;
+    }
+    .patient-dob{
+      font-size:12px;
+      color:var(--muted);
+      margin:0;
+    }
+    .meta-grid{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap:12px 16px;
+      margin-top:6px;
+    }
+    .meta-item{
+      display:flex;
+      flex-direction:column;
+      gap:0px;
+    }
+    .meta-item .label{
+      font-size:11px;
+      font-weight:800;
+      color:#334155;
+      letter-spacing:.2px;
+      text-transform:uppercase;
+    }
+    .meta-item .value{
+      font-size:14px;
+      font-weight:700;
+      color:#0f172a;
+    }
+    .mini-demographics .meta-item .value{
+      font-size:13px;
+      font-weight:500;
+      color:#0f172a;
+    }
+    .screen-compact .left-col{max-width:320px;}
+    .screen-compact .patient-name{font-size:18px;}
+    .screen-compact .avatar{width:128px;height:128px;}
+    .screen-compact .avatar svg{width:100px;height:100px;}
+    .screen-compact .mini-demographics .label{font-size:10px;}
+    .screen-compact .mini-demographics .meta-item .value{font-size:12px;}
+    .screen-compact .status-list{gap:var(--status-gap);}
+    .screen-compact .status-dot{width:20px;height:20px;}
+    .screen-compact .status-ico svg{width:24px;height:24px;}
+    .screen-compact .page{padding:22px 22px 18px;}
+    .screen-compact .topbar{margin-bottom:12px;}
+    .screen-compact .card{padding:14px;}
+    .screen-compact .bottom-card{min-height:425px;}
+    .bottom-card{
+      flex:1;
+      min-height:430px;
+    }
+    .status-card{
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+    }
+    .status-title{
+      font-size:14px;
+      font-weight:900;
+      color:var(--navy);
+      margin:0;
+    }
+    .status-list{
+      display:grid;
+      gap: var(--status-gap);
+      position:relative;
+      padding-left:6px;
+    }
+    .status-list{
+      --status-gap: 28px;
+      --status-dot: 20px;
+      --status-track: rgba(13,59,102,.2);
+      --status-track-right: 19px;
+      flex:1;
+      padding-top:14px;
+      padding-bottom:14px;
+    }
+    .screen-compact .status-list{
+      --status-gap: 24px;
+    }
+    .screen-wide .status-list{
+      --status-gap: 36px;
+    }
+    .status-list::before{
+      content:"";
+      position:absolute;
+      right:var(--status-track-right);
+      top:8px;
+      bottom:8px;
+      width:2px;
+      background:var(--status-track);
+      border-radius:999px;
+    }
+    .status-track-progress{
+      position:absolute;
+      right:var(--status-track-right);
+      top:8px;
+      width:2px;
+      height:0;
+      background:rgba(168,230,207,.7);
+      border-radius:999px;
+    }
+    .status-item{
+      display:grid;
+      grid-template-columns: 44px 1fr 18px;
+      gap:12px;
+      align-items:center;
+      position:relative;
+    }
+    .status-ico{
+      width:42px;
+      height:42px;
+      border-radius:14px;
+      border:0;
+      background:transparent;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:var(--navy);
+    }
+    .status-ico svg{
+      width:26px;
+      height:26px;
+    }
+    .status-ico .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:5.5px;
+    }
+    .status-text{
+      display:flex;
+      flex-direction:column;
+      gap:2px;
+    }
+    .status-label{
+      font-size:11px;
+      font-weight:800;
+      color:#64748b;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+    }
+    .status-value{
+      font-size:14px;
+      font-weight:700;
+      color:#0f172a;
+    }
+    .status-dot{
+      width:var(--status-dot);
+      height:var(--status-dot);
+      border-radius:999px;
+      border:2px solid rgba(13,59,102,.25);
+      background:#fff;
+      position:relative;
+      justify-self:start;
+      margin-left:-12px;
+      color: rgba(13,59,102,.25);
+    }
+    .status-dot::after{display:none;}
+    .status-item.done .status-dot{
+      border-color:rgba(134,217,186,.95);
+      background:rgba(134,217,186,.95);
+      color:rgba(134,217,186,.95);
+    }
+    .status-item.done .status-dot::before{
+      content:"";
+      position:absolute;
+      left:50%;
+      top:50%;
+      width:8px;
+      height:4px;
+      border-left:2px solid #fff;
+      border-bottom:2px solid #fff;
+      transform:translate(-50%,-60%) rotate(-45deg);
+    }
+    .status-item.done .status-dot::after{
+      background:rgba(168,230,207,.6);
+    }
+    .status-item.pending .status-dot{
+      border-color:rgba(168,230,207,.95);
+      background:#fff;
+      color:rgba(168,230,207,.95);
+    }
+    .status-item.pending .status-dot::before{
+      content:"";
+    }
+    .status-item.todo .status-dot{
+      border-color:rgba(13,59,102,.25);
+      background:#fff;
+      color:rgba(13,59,102,.25);
+    }
+    .card-title{
+      font-size:18px;
+      font-weight:600;
+      color:var(--navy);
+      margin:0 0 8px;
+      padding-left:6px;
+    }
+    .card-title-row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:8px;
+    }
+    .card-title-row .card-title{
+      margin:0;
+      padding-left:6px;
+    }
+    .icon-btn.compact{
+      width:34px;
+      height:34px;
+      border-radius:10px;
+    }
+    .icon-btn.compact svg{width:16px;height:16px}
+    .icon-btn.compact .cls-1{stroke-width:5.5px}
+    .dc-plan-meta{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+      padding:6px 8px 0;
+    }
+    .dc-plan-date{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    .dc-plan-label{
+      font-size:11px;
+      font-weight:700;
+      color:#64748b;
+      letter-spacing:.14em;
+      text-transform:uppercase;
+    }
+    .dc-plan-date-row{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-size:16px;
+      font-weight:700;
+      color:#0f172a;
+    }
+    .dc-plan-confirm{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:22px;
+      height:22px;
+      border-radius:999px;
+      border:2px solid #94a3b8;
+      color:#94a3b8;
+    }
+    .dc-plan-confirm.confirmed{
+      color:rgba(168,230,207,.95);
+      border-color:rgba(168,230,207,.95);
+    }
+    .dc-plan-confirm svg{
+      width:14px;
+      height:14px;
+    }
+    .dc-plan-confirm .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:16px;
+    }
+    .dc-plan-urgent{
+      display:none;
+      align-items:center;
+      justify-content:center;
+      color:#C06B6B;
+    }
+    .dc-plan-urgent.on{
+      display:inline-flex;
+    }
+    .dc-plan-urgent svg{
+      width:22px;
+      height:22px;
+    }
+    .dc-plan-urgent .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:12px;
+    }
+    .dc-plan-grid{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:10px;
+      padding:16px 8px 8px;
+      position:relative;
+    }
+    .dc-plan-row{
+      position:relative;
+      background:linear-gradient(90deg, rgba(124,109,138,.08) 0%, rgba(124,109,138,.08) 92%, #ffffff 100%);
+      border-radius:0 14px 14px 0;
+      padding:10px 14px;
+    }
+    .dc-plan-row::before{
+      content:"";
+      position:absolute;
+      left:0;
+      top:0;
+      bottom:0;
+      width:2px;
+      background:#7C6D8A;
+    }
+    .dc-plan-row.dme{
+      background:linear-gradient(90deg, rgba(77,168,218,.12) 0%, rgba(77,168,218,.12) 92%, #ffffff 100%);
+    }
+    .dc-plan-row.dme::before{
+      background:#4DA8DA;
+    }
+    .dc-plan-grid > .dc-plan-section{
+      min-width:0;
+    }
+    .dc-plan-section{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    .dc-plan-row-split{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:10px 14px;
+    }
+    .dc-plan-section-title{
+      font-size:14px;
+      font-weight:600;
+      color:#334155;
+      letter-spacing:.16em;
+      text-transform:uppercase;
+      display:flex;
+      align-items:baseline;
+      gap:6px;
+      flex-wrap:wrap;
+    }
+    .dc-plan-title-inline{
+      display:inline-flex;
+      align-items:baseline;
+      gap:6px;
+      letter-spacing:normal;
+      text-transform:none;
+      color:#0f172a;
+      font-weight:600;
+      font-size:13px;
+    }
+    .dc-plan-line{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:baseline;
+      gap:8px 12px;
+      font-size:14px;
+      color:#0f172a;
+    }
+    .dc-plan-label{
+      font-size:11px;
+      font-weight:700;
+      color:#64748b;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+    }
+    .dc-plan-label.lowercase{
+      text-transform:none;
+      letter-spacing:.04em;
+    }
+    .dc-plan-value{
+      font-size:15px;
+      font-weight:700;
+      color:#0f172a;
+    }
+    .dc-plan-chips{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+    .dc-plan-section{
+      padding-right:8px;
+    }
+    .dc-plan-section + .dc-plan-section{
+      padding-left:16px;
+      padding-right:0;
+    }
+    .dc-plan-chip{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(15,23,42,.12);
+      background:#fff;
+      font-size:12px;
+      font-weight:700;
+      color:#0f172a;
+      box-shadow:none;
+    }
+    .dc-plan-chip.hh{
+      border-color:rgba(168,230,207,.8);
+      background:rgba(168,230,207,.2);
+    }
+    .dc-plan-chip.dme{
+      border-color:rgba(168,230,207,.8);
+      background:rgba(168,230,207,.2);
+    }
+    .card-sub{
+      font-size:12px;
+      color:var(--muted);
+      margin:0 0 12px;
+    }
+    .right-col{
+      display:flex;
+      flex-direction:column;
+      gap:16px;
+      height:calc(100vh - 190px);
+    }
+    .right-card{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap:16px;
+      grid-auto-rows: minmax(0, 1fr);
+      flex:0 0 321px;
+      height:321px;
+      min-height:0;
+      align-content:space-between;
+      align-self:stretch;
+      padding-top:20px;
+      padding-bottom:20px;
+    }
+    .right-card-top{
+      min-height:300px;
+      flex:1;
+    }
+    .mini-card{
+      border-radius:16px;
+      border:1px solid rgba(15,23,42,.12);
+      background:#fff;
+      padding:14px;
+      min-height:80px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .mini-card.clickable{
+      cursor:pointer;
+    }
+    .mini-card:hover{
+      border-color: rgba(168,230,207,.9);
+      box-shadow:0 0 0 3px rgba(168,230,207,.25);
+      transform: translateY(-1px);
+    }
+    .mini-card-content{
+      display:flex;
+      align-items:center;
+      gap:24px;
+      padding-top:0;
+      padding-left:10px;
+      margin-top:-2px;
+    }
+    .mini-card-icon{
+      width:60px;
+      height:60px;
+      border-radius:50%;
+      flex:0 0 auto;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:var(--mint-strong);
+    }
+    .mini-card-icon svg{
+      overflow:visible;
+    }
+    .mini-card-icon.n-name svg{
+      width:var(--mini-icon-name-size, 48px);
+      height:var(--mini-icon-name-size, 48px);
+    }
+    .mini-card-icon.n-asset svg{
+      width:var(--mini-icon-asset-size, 48px);
+      height:var(--mini-icon-asset-size, 48px);
+    }
+    .mini-card-icon.n-name .cls-1{
+      stroke:currentColor !important;
+      stroke-width:var(--mini-icon-name-stroke, 5.5px) !important;
+    }
+    .mini-card-icon.n-asset .cls-1{
+      stroke:currentColor !important;
+      stroke-width:var(--mini-icon-asset-stroke, 2px) !important;
+    }
+    .mini-card-icon svg :where(path, line, polyline, polygon, rect, circle, ellipse){
+      fill:none !important;
+      stroke:currentColor !important;
+      stroke-linecap:round !important;
+      stroke-linejoin:round !important;
+    }
+    .mini-card-text{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      min-width:0;
+    }
+    .mini-card h4{
+      margin:0;
+      font-size:13px;
+      font-weight:900;
+      color:var(--navy);
+    }
+    .mini-card p{
+      margin:0;
+      font-size:12px;
+      color:var(--muted);
+    }
+    .doc-modal-backdrop{
+      position:fixed;
+      inset:0;
+      background:rgba(15,23,42,.55);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:16px;
+      z-index:9999;
+    }
+    .doc-modal{
+      width:min(860px,96vw);
+      background:#fff;
+      border-radius:16px;
+      border:1px solid #e6e8ef;
+      box-shadow:0 18px 60px rgba(0,0,0,.25);
+      overflow:hidden;
+    }
+    .doc-modal-head{
+      padding:14px 16px;
+      border-bottom:1px solid #eef0f4;
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .doc-modal-title{
+      font-size:14px;
+      font-weight:900;
+      color:#111827;
+    }
+    .doc-modal-sub{
+      margin-top:2px;
+      font-size:12px;
+      color:#667085;
+    }
+    .doc-modal-body{
+      padding:14px 16px;
+    }
+    .doc-modal-row{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .doc-upload-group{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      margin-left:auto;
+      flex-wrap:nowrap;
+      max-width:100%;
+    }
+    .doc-input{
+      box-sizing:border-box;
+      padding:10px;
+      border:1px solid #d0d5dd;
+      border-radius:12px;
+      font-size:13px;
+      outline:none;
+      background:#fff;
+    }
+    .doc-input.error{
+      border-color: rgba(199,107,107,.8);
+      box-shadow:0 0 0 2px rgba(199,107,107,.15);
+    }
+    .doc-field-msg{
+      margin-top:6px;
+      font-size:12px;
+      color:#9b3d3d;
+      display:none;
+    }
+    .doc-iconbtn{
+      width:40px;
+      height:40px;
+      border-radius:12px;
+      border:1px solid #d0d5dd;
+      background:#fff;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight:900;
+      color:#0d3b66;
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .doc-iconbtn:hover{
+      border-color: rgba(168,230,207,.9);
+      box-shadow:0 10px 18px rgba(13,59,102,.10);
+      transform: translateY(-1px);
+    }
+    .doc-iconbtn svg{
+      width:18px;
+      height:18px;
+    }
+    .doc-upload-group .doc-iconbtn{
+      flex:0 0 40px;
+    }
+    .doc-iconbtn .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:5px;
+    }
+    .doc-modal-table{
+      margin-top:12px;
+      border:1px solid #eef0f4;
+      border-radius:14px;
+      overflow:hidden;
+    }
+    .doc-modal-table table{
+      width:100%;
+      border-collapse:collapse;
+    }
+    .doc-modal-table thead tr{
+      background:#f8fafc;
+    }
+    .doc-modal-table th{
+      text-align:left;
+      padding:10px;
+      font-size:12px;
+      color:#475467;
+    }
+    .doc-modal-table td{
+      padding:10px;
+      font-size:13px;
+      color:#111827;
+      border-bottom:1px solid #eef0f5;
+    }
+    .doc-actions{
+      display:flex;
+      justify-content:flex-end;
+      gap:8px;
+    }
+    .doc-modal-table tbody tr:last-child td{
+      border-bottom:0;
+    }
+    .doc-modal-footer{
+      padding:12px 16px;
+      border-top:1px solid #eef0f4;
+      display:flex;
+      justify-content:flex-end;
+      gap:10px;
+    }
+    .doc-modal-close{
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid #d0d5dd;
+      background:#fff;
+      cursor:pointer;
+      font-size:12px;
+      font-weight:800;
+    }
+    .doc-msg{
+      display:none;
+      margin-top:10px;
+      padding:10px;
+      border-radius:12px;
+      background:rgba(239,68,68,.08);
+      border:1px solid rgba(239,68,68,.25);
+      color:#991b1b;
+      font-size:12px;
+    }
+    .appt-modal-backdrop{
+      position:fixed;
+      inset:0;
+      background:rgba(15,23,42,.55);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:16px;
+      z-index:9999;
+    }
+    .appt-modal{
+      width:min(920px,96vw);
+      background:#fff;
+      border-radius:16px;
+      border:1px solid #e6e8ef;
+      box-shadow:0 18px 60px rgba(0,0,0,.25);
+      overflow:hidden;
+    }
+    .appt-modal-head{
+      padding:14px 16px;
+      border-bottom:1px solid #eef0f4;
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .appt-modal-title{
+      font-size:14px;
+      font-weight:900;
+      color:#111827;
+    }
+    .appt-modal-sub{
+      margin-top:2px;
+      font-size:12px;
+      color:#667085;
+    }
+    .appt-modal-body{
+      padding:14px 16px;
+    }
+    .appt-modal-row{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .appt-section{
+      margin-top:12px;
+      padding:12px;
+      border:1px solid #eef0f4;
+      border-radius:14px;
+      background:#f9fafb;
+    }
+    .appt-section-title{
+      font-size:12px;
+      font-weight:800;
+      color:#475467;
+      margin-bottom:8px;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+    }
+    .appt-modal-table{
+      margin-top:12px;
+      border:1px solid #eef0f4;
+      border-radius:14px;
+      overflow:hidden;
+    }
+    .appt-modal-table table{
+      width:100%;
+      border-collapse:collapse;
+    }
+    .appt-modal-table thead tr{
+      background:#f8fafc;
+    }
+    .appt-modal-table th{
+      text-align:left;
+      padding:10px;
+      font-size:12px;
+      color:#475467;
+    }
+    .appt-modal-table td{
+      padding:10px;
+      font-size:13px;
+      color:#111827;
+      border-bottom:1px solid #eef0f5;
+    }
+    .appt-modal-table tbody tr:last-child td{
+      border-bottom:0;
+    }
+    .appt-modal-footer{
+      padding:12px 16px;
+      border-top:1px solid #eef0f4;
+      display:flex;
+      justify-content:flex-end;
+      gap:10px;
+    }
+    @media (max-width: 1100px){
+      .main-grid{grid-template-columns:1fr}
+      .top-row{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <img id="sidebarLogo" src="../backend/static/images/Evolv-Health-E-Color.svg" alt="Evolv Health" />
+      </div>
+      <div class="side-nav">
+        <button class="side-btn" id="navHome" title="Home" aria-label="Home">
+          <svg viewBox="0 0 84.28 75.71" aria-hidden="true">
+            <g>
+              <polygon class="cls-1" points="72.76 74.32 72.76 41.92 82.89 41.92 82.89 35.62 71 25.54 71 7.55 58.75 7.55 58.75 15.16 42.14 1.79 1.39 35.62 1.39 41.92 11.52 41.92 11.52 74.31 32.09 74.32 32.09 52.8 52.18 52.8 52.18 74.32 72.76 74.32" />
+              <polyline class="cls-1" points="11.52 41.92 42.14 16.92 72.76 41.92" />
+            </g>
+          </svg>
+        </button>
+        <button class="side-btn" id="navInpatient" title="Inpatient List" aria-label="Inpatient List">
+          <svg viewBox="0 0 77.02 76.67" aria-hidden="true">
+            <g>
+              <g>
+                <path class="cls-1" d="M75.63,58.69v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06v-14.55c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                <line class="cls-1" x1="65.85" y1="66.01" x2="58.74" y2="66.01" />
+              </g>
+              <g>
+                <path class="cls-1" d="M75.63,31.08v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06v-14.55c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                <line class="cls-1" x1="65.85" y1="38.4" x2="58.74" y2="38.4" />
+              </g>
+              <g>
+                <path class="cls-1" d="M75.63,3.46v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06V3.45c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                <line class="cls-1" x1="65.85" y1="10.78" x2="58.74" y2="10.78" />
+              </g>
+            </g>
+          </svg>
+        </button>
+        <button class="side-btn" id="navDischarged" title="Discharged Patients" aria-label="Discharged Patients">
+          <svg viewBox="0 0 63.35 80.07" aria-hidden="true">
+            <g>
+              <g>
+                <path class="cls-1" d="M14.34,33.31l-3.49,3.35v20.24l-5.37,8.59c-1.29,2.06-.6,4.78,1.52,5.97l.05.03c1.96,1.11,4.44.5,5.67-1.38l6.59-10.08.07-10.59,8.37,5.92,2.54,6.78c.53,1.41,2.19,2.56,3.69,2.56h.44c2.9,0,4.88-2.91,3.83-5.61l-3.91-9.97-9.06-6.49.03-16.43" />
+                <path class="cls-1" d="M25.68,10.8c.39,3.99-2.52,7.54-6.51,7.93-3.99.39-7.54-2.52-7.93-6.51-.39-3.99,2.52-7.54,6.51-7.93,3.99-.39,7.54,2.52,7.93,6.51Z" />
+                <path class="cls-1" d="M25.6,35.54l4.38,2.32c2,1.06,4.48.27,5.5-1.75h0c.99-1.96.23-4.35-1.71-5.39l-12.71-6.8h-8.41s-9.81,8.84-9.81,8.84v9.8c0,2.68,2.17,4.86,4.86,4.86h3.14" />
+              </g>
+              <polyline class="cls-1" points="0 78.69 21.94 78.69 21.94 71.37 44.55 71.37 44.55 62.95 61.96 62.95 61.96 1.39 41.17 1.39 46.02 9.76 41.17 18.33 61.96 18.33" />
+            </g>
+          </svg>
+        </button>
+        <button class="side-btn" id="navCalendar" title="Discharge Calendar" aria-label="Discharge Calendar">
+          <svg viewBox="0 0 74.16 76.04" aria-hidden="true">
+            <g>
+              <g>
+                <g>
+                  <line class="cls-1" x1="26.55" y1="10.08" x2="52.53" y2="10.08" />
+                  <path class="cls-1" d="M66.54,10.08h2.08c2.3,0,4.16,1.86,4.16,4.16v56.27c0,2.3-1.86,4.16-4.16,4.16H5.54c-2.3,0-4.16-1.86-4.16-4.16V14.23c0-2.3,1.86-4.16,4.16-4.16h7.14" />
+                  <line class="cls-1" x1="1.39" y1="26.73" x2="72.78" y2="26.73" />
+                </g>
+                <line class="cls-1" x1="32.51" y1="50.58" x2="41.55" y2="50.58" />
+                <line class="cls-1" x1="32.51" y1="63.68" x2="41.55" y2="63.68" />
+                <line class="cls-1" x1="12.09" y1="63.68" x2="21.13" y2="63.68" />
+                <line class="cls-1" x1="52.93" y1="37.47" x2="61.97" y2="37.47" />
+                <line class="cls-1" x1="32.51" y1="37.47" x2="41.55" y2="37.47" />
+                <line class="cls-1" x1="12.09" y1="37.47" x2="21.13" y2="37.47" />
+                <line class="cls-1" x1="52.93" y1="50.58" x2="61.97" y2="50.58" />
+                <line class="cls-1" x1="12.09" y1="50.58" x2="21.13" y2="50.58" />
+              </g>
+              <rect class="cls-1" x="13.22" y="1.39" width="7.89" height="17.38" rx="3.94" ry="3.94" />
+              <path class="cls-1" d="M57,18.77h0c-2.18,0-3.94-1.77-3.94-3.94V5.33c0-2.18,1.77-3.94,3.94-3.94h0c2.18,0,3.94,1.77,3.94,3.94v9.5c0,2.18-1.77,3.94-3.94,3.94Z" />
+            </g>
+          </svg>
+        </button>
+      </div>
+      <div class="side-spacer"></div>
+      <div class="profile-wrap">
+        <button class="side-btn" id="profileBtn" title="Account" aria-label="Account">
+          <svg viewBox="0 0 65.83 73.85" aria-hidden="true">
+            <g>
+              <g>
+                <path class="cls-1" d="M64.44,73.85v-21.35c-.11-.1-10.45-8.89-31.53-8.89S1.47,52.43,1.39,52.5h0v21.35" />
+                <path class="cls-1" d="M46.83,16.09c0,9.32-6.14,16.65-13.71,16.65s-13.71-7.32-13.71-16.65S25.55,1.39,33.12,1.39s13.71,5.38,13.71,14.7Z" />
+              </g>
+              <line class="cls-1" x1="17.42" y1="73.85" x2="17.42" y2="60.4" />
+              <line class="cls-1" x1="48.82" y1="73.85" x2="48.82" y2="60.4" />
+            </g>
+          </svg>
+        </button>
+        <div class="profile-menu" id="profileMenu">
+          <button id="changePasswordBtn">Change Password</button>
+          <button id="signOutBtn">Sign Out</button>
+        </div>
+      </div>
+    </aside>
+
+    <div class="page">
+      <div class="topbar">
+        <div class="title">
+          <h1>Patient Details</h1>
+        </div>
+        <div class="alert-banner" aria-live="polite">
+          <span class="alert-banner-title">Waiting On</span>
+          <span class="alert-banner-item">O2 walk test</span>
+          <span class="alert-banner-item">Hospital Bed Order</span>
+        </div>
+        <button class="icon-btn" id="bellBtn" aria-label="Notifications">
+          <svg viewBox="0 0 216.18 263.34" aria-hidden="true">
+            <g>
+              <path class="cls-1" d="M211.75,204.56l-13.8-20.09c-8.42-12.26-12.93-26.79-12.93-41.66v-28.8c0-32.92-20.67-61-49.75-71.98-3.98-1.5-6.61-5.3-6.61-9.55v-9.15c0-11.36-9.21-20.57-20.57-20.57h0c-11.36,0-20.57,9.21-20.57,20.57v9.15c0,4.25-2.64,8.05-6.61,9.55-29.07,10.98-49.75,39.07-49.75,71.98v28.8c0,14.88-4.51,29.4-12.93,41.66l-13.8,20.09c-4.33,6.31.18,14.89,7.84,14.89h191.63c7.65,0,12.17-8.58,7.84-14.89Z"/>
+              <path class="cls-1" d="M78.75,238.56c3.69,12.73,15.43,22.03,29.34,22.03s25.66-9.3,29.34-22.03"/>
+            </g>
+          </svg>
+        </button>
+      </div>
+
+      <div class="main-grid">
+        <div class="left-col">
+          <div class="top-row">
+            <div class="card square no-hover">
+              <div class="identity">
+                <div class="avatar" aria-hidden="true">
+                <svg viewBox="0 0 74.42 77.39">
+                  <g>
+                    <g>
+                      <path class="cls-1" d="M29.76,41.57c-.05,3.12-.88,5.84-2.57,8.1l-16.67,4.74c-5.41,1.54-9.14,6.48-9.14,12.1v9.49h71.65v-9.49c0-5.62-3.73-10.56-9.14-12.1l-16.67-4.74c-1.69-2.27-2.52-4.98-2.57-8.1" />
+                      <line class="cls-1" x1="16.08" y1="75.15" x2="16.08" y2="67.05" />
+                      <line class="cls-1" x1="58.34" y1="75.15" x2="58.34" y2="67.05" />
+                      <polyline class="cls-1" points="47.43 50.22 37.21 66.4 26.99 50.22" />
+                      <line class="cls-1" x1="37.21" y1="66.4" x2="37.21" y2="75.17" />
+                    </g>
+                    <g>
+                      <path class="cls-1" d="M53.48,20.19S56.92,1.39,37.06,1.39s-16.52,18.81-16.52,18.81" />
+                      <path class="cls-1" d="M27.97,17.86c-1.92,1.59-4.24,2.6-7.2,2.6-1.55.02-2.82,1.12-3.12,2.56-.11.51-.05,1.04.09,1.54l.99,3.45c.3,1.04,1.11,1.83,2.11,2.13h0c.82.24,1.48.83,1.8,1.62,2.75,6.89,8.17,12.11,14.43,12.11s11.59-5.13,14.36-11.95c.35-.87,1.07-1.53,1.96-1.81h0c.95-.32,1.72-1.1,2.01-2.1l.99-3.45c.14-.5.2-1.03.09-1.54-.31-1.43-1.57-2.54-3.12-2.56-7.81,0-15.44-1.64-20.89-8.18" />
+                    </g>
+                  </g>
+                </svg>
+              </div>
+              <p class="patient-name" id="patientName"></p>
+              </div>
+              <div class="mini-demographics">
+                <div class="meta-item">
+                  <span class="label">Admit</span>
+                  <span class="value"><span id="admitDateMini"></span> - <span id="dcDateMini"></span></span>
+                </div>
+                <div class="meta-item">
+                  <span class="label">DOB</span>
+                  <span class="value" id="patientDobMini"></span>
+                </div>
+                <div class="meta-item">
+                  <span class="label">Ins</span>
+                  <span class="value"><span id="insuranceNameMini"></span> (<span id="insuranceNumberMini"></span>)</span>
+                </div>
+                <div class="meta-item">
+                  <span class="label">Attend</span>
+                  <span class="value" id="attendingNameMini"></span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="card bottom-card no-hover status-card">
+            <div class="status-list" id="statusList">
+              <div class="status-track-progress" id="statusTrackProgress" aria-hidden="true"></div>
+              <div class="status-item done">
+                <div class="status-ico" aria-hidden="true">
+                  <svg viewBox="0 0 65.83 73.85">
+                    <g>
+                      <g>
+                        <path class="cls-1" d="M64.44,73.85v-21.35c-.11-.1-10.45-8.89-31.53-8.89S1.47,52.43,1.39,52.5h0v21.35" />
+                        <path class="cls-1" d="M46.83,16.09c0,9.32-6.14,16.65-13.71,16.65s-13.71-7.32-13.71-16.65S25.55,1.39,33.12,1.39s13.71,5.38,13.71,14.7Z" />
+                      </g>
+                      <line class="cls-1" x1="17.42" y1="73.85" x2="17.42" y2="60.4" />
+                      <line class="cls-1" x1="48.82" y1="73.85" x2="48.82" y2="60.4" />
+                    </g>
+                  </svg>
+                </div>
+                <div class="status-text">
+                  <div class="status-label">Step 1</div>
+                  <div class="status-value">Discharge Submitted</div>
+                </div>
+                <div class="status-dot" aria-hidden="true"></div>
+              </div>
+
+              <div class="status-item done">
+                <div class="status-ico" aria-hidden="true">
+                  <svg viewBox="0 0 77.02 76.67">
+                    <g>
+                      <g>
+                        <path class="cls-1" d="M75.63,58.69v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06v-14.55c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                        <line class="cls-1" x1="65.85" y1="66.01" x2="58.74" y2="66.01" />
+                      </g>
+                      <g>
+                        <path class="cls-1" d="M75.63,31.08v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06v-14.55c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                        <line class="cls-1" x1="65.85" y1="38.4" x2="58.74" y2="38.4" />
+                      </g>
+                      <g>
+                        <path class="cls-1" d="M75.63,3.46v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06V3.45c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                        <line class="cls-1" x1="65.85" y1="10.78" x2="58.74" y2="10.78" />
+                      </g>
+                    </g>
+                  </svg>
+                </div>
+                <div class="status-text">
+                  <div class="status-label">Step 2</div>
+                  <div class="status-value">Referrals Created</div>
+                </div>
+                <div class="status-dot" aria-hidden="true"></div>
+              </div>
+
+              <div class="status-item pending">
+                <div class="status-ico" aria-hidden="true">
+                  <svg viewBox="0 0 74.16 76.04">
+                    <g>
+                      <g>
+                        <g>
+                          <line class="cls-1" x1="26.55" y1="10.08" x2="52.53" y2="10.08" />
+                          <path class="cls-1" d="M66.54,10.08h2.08c2.3,0,4.16,1.86,4.16,4.16v56.27c0,2.3-1.86,4.16-4.16,4.16H5.54c-2.3,0-4.16-1.86-4.16-4.16V14.23c0-2.3,1.86-4.16,4.16-4.16h7.14" />
+                          <line class="cls-1" x1="1.39" y1="26.73" x2="72.78" y2="26.73" />
+                        </g>
+                        <line class="cls-1" x1="32.51" y1="50.58" x2="41.55" y2="50.58" />
+                        <line class="cls-1" x1="32.51" y1="63.68" x2="41.55" y2="63.68" />
+                        <line class="cls-1" x1="12.09" y1="63.68" x2="21.13" y2="63.68" />
+                        <line class="cls-1" x1="52.93" y1="37.47" x2="61.97" y2="37.47" />
+                        <line class="cls-1" x1="32.51" y1="37.47" x2="41.55" y2="37.47" />
+                        <line class="cls-1" x1="12.09" y1="37.47" x2="21.13" y2="37.47" />
+                        <line class="cls-1" x1="52.93" y1="50.58" x2="61.97" y2="50.58" />
+                        <line class="cls-1" x1="12.09" y1="50.58" x2="21.13" y2="50.58" />
+                      </g>
+                      <rect class="cls-1" x="13.22" y="1.39" width="7.89" height="17.38" rx="3.94" ry="3.94" />
+                      <path class="cls-1" d="M57,18.77h0c-2.18,0-3.94-1.77-3.94-3.94V5.33c0-2.18,1.77-3.94,3.94-3.94h0c2.18,0,3.94,1.77,3.94,3.94v9.5c0,2.18-1.77,3.94-3.94,3.94Z" />
+                    </g>
+                  </svg>
+                </div>
+                <div class="status-text">
+                  <div class="status-label">Step 3</div>
+                  <div class="status-value">Patient Contacted</div>
+                </div>
+                <div class="status-dot" aria-hidden="true"></div>
+              </div>
+
+              <div class="status-item todo">
+                <div class="status-ico" aria-hidden="true">
+                  <svg viewBox="0 0 63.35 80.07">
+                    <g>
+                      <g>
+                        <path class="cls-1" d="M14.34,33.31l-3.49,3.35v20.24l-5.37,8.59c-1.29,2.06-.6,4.78,1.52,5.97l.05.03c1.96,1.11,4.44.5,5.67-1.38l6.59-10.08.07-10.59,8.37,5.92,2.54,6.78c.53,1.41,2.19,2.56,3.69,2.56h.44c2.9,0,4.88-2.91,3.83-5.61l-3.91-9.97-9.06-6.49.03-16.43" />
+                        <path class="cls-1" d="M25.68,10.8c.39,3.99-2.52,7.54-6.51,7.93-3.99.39-7.54-2.52-7.93-6.51-.39-3.99,2.52-7.54,6.51-7.93,3.99-.39,7.54,2.52,7.93,6.51Z" />
+                        <path class="cls-1" d="M25.6,35.54l4.38,2.32c2,1.06,4.48.27,5.5-1.75h0c.99-1.96.23-4.35-1.71-5.39l-12.71-6.8h-8.41s-9.81,8.84-9.81,8.84v9.8c0,2.68,2.17,4.86,4.86,4.86h3.14" />
+                      </g>
+                      <polyline class="cls-1" points="0 78.69 21.94 78.69 21.94 71.37 44.55 71.37 44.55 62.95 61.96 62.95 61.96 1.39 41.17 1.39 46.02 9.76 41.17 18.33 61.96 18.33" />
+                    </g>
+                  </svg>
+                </div>
+                <div class="status-text">
+                  <div class="status-label">Step 4</div>
+                  <div class="status-value">Home Health Booked</div>
+                </div>
+                <div class="status-dot" aria-hidden="true"></div>
+              </div>
+              <div class="status-item todo">
+                <div class="status-ico" aria-hidden="true">
+                  <svg viewBox="0 0 74.16 76.04">
+                    <g>
+                      <g>
+                        <g>
+                          <line class="cls-1" x1="26.55" y1="10.08" x2="52.53" y2="10.08" />
+                          <path class="cls-1" d="M66.54,10.08h2.08c2.3,0,4.16,1.86,4.16,4.16v56.27c0,2.3-1.86,4.16-4.16,4.16H5.54c-2.3,0-4.16-1.86-4.16-4.16V14.23c0-2.3,1.86-4.16,4.16-4.16h7.14" />
+                          <line class="cls-1" x1="1.39" y1="26.73" x2="72.78" y2="26.73" />
+                        </g>
+                        <line class="cls-1" x1="32.51" y1="50.58" x2="41.55" y2="50.58" />
+                        <line class="cls-1" x1="32.51" y1="63.68" x2="41.55" y2="63.68" />
+                        <line class="cls-1" x1="12.09" y1="63.68" x2="21.13" y2="63.68" />
+                        <line class="cls-1" x1="52.93" y1="37.47" x2="61.97" y2="37.47" />
+                        <line class="cls-1" x1="32.51" y1="37.47" x2="41.55" y2="37.47" />
+                        <line class="cls-1" x1="12.09" y1="37.47" x2="21.13" y2="37.47" />
+                        <line class="cls-1" x1="52.93" y1="50.58" x2="61.97" y2="50.58" />
+                        <line class="cls-1" x1="12.09" y1="50.58" x2="21.13" y2="50.58" />
+                      </g>
+                      <rect class="cls-1" x="13.22" y="1.39" width="7.89" height="17.38" rx="3.94" ry="3.94" />
+                      <path class="cls-1" d="M57,18.77h0c-2.18,0-3.94-1.77-3.94-3.94V5.33c0-2.18,1.77-3.94,3.94-3.94h0c2.18,0,3.94,1.77,3.94,3.94v9.5c0,2.18-1.77,3.94-3.94,3.94Z" />
+                    </g>
+                  </svg>
+                </div>
+                <div class="status-text">
+                  <div class="status-label">Step 5</div>
+                  <div class="status-value">DME Booked</div>
+                </div>
+                <div class="status-dot" aria-hidden="true"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="right-col">
+          <div class="card right-card-top no-hover">
+            <div class="card-title-row">
+              <h3 class="card-title">Discharge Planning</h3>
+              <button class="icon-btn compact" id="dischargePlanBtn" aria-label="Edit discharge plan">
+                <svg viewBox="0 0 237.85 237.86" aria-hidden="true">
+                  <g>
+                    <line class="cls-1" x1="34.25" y1="178.82" x2="57.97" y2="202.54"/>
+                    <path class="cls-1" d="M68.74,219.9c-3.65,3.65-8.34,6.09-13.43,6.97l-47.25,8.18c-3.09.53-5.78-2.15-5.24-5.24l8.17-47.25c.88-5.09,3.31-9.78,6.97-13.44L173.79,13.27c14.02-14.02,36.76-14.03,50.78,0h0c14.02,14.02,14.03,36.76,0,50.79L68.74,219.9Z"/>
+                  </g>
+                </svg>
+              </button>
+            </div>
+            <div class="dc-plan-meta">
+              <div class="dc-plan-date">
+                <div class="dc-plan-label">Discharge Date</div>
+                <div class="dc-plan-date-row">
+                  <span id="dcPlanDate"></span>
+                  <span class="dc-plan-confirm confirmed" id="dcPlanConfirm" title="Confirmed">
+                    <svg viewBox="0 0 90 90" aria-hidden="true">
+                      <polyline class="cls-1" points="19 48 38 66 70 28" />
+                    </svg>
+                  </span>
+                  <span class="dc-plan-urgent" id="dcPlanUrgent" title="Urgent">
+                    <svg viewBox="0 0 261.99 261.99" aria-hidden="true">
+                      <g>
+                        <g>
+                          <path class="cls-1" d="M259.08,137.39c-3.53,70.74-63.74,125.22-134.48,121.69C53.86,255.55-.62,195.34,2.91,124.6,6.44,53.86,66.65-.62,137.39,2.91c70.74,3.53,125.22,63.74,121.69,134.47Z"/>
+                          <path class="cls-1" d="M145.06,195.32c0,7.77-6.3,14.07-14.07,14.07s-14.07-6.3-14.07-14.07,6.3-14.07,14.07-14.07,14.07,6.3,14.07,14.07Z"/>
+                        </g>
+                        <rect class="cls-1" x="116.88" y="57.16" width="28.07" height="101.27" rx="14.04" ry="14.04"/>
+                      </g>
+                    </svg>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="dc-plan-grid">
+              <div class="dc-plan-section dc-plan-row dme">
+                <div class="dc-plan-row-split">
+                  <div class="dc-plan-section-title">
+                    <span>Home Health</span>
+                    <span class="dc-plan-title-inline">
+                      <span class="dc-plan-label lowercase">with</span>
+                      <span class="dc-plan-value" id="dcPlanAgencyName"></span>
+                    </span>
+                  </div>
+                  <div class="dc-plan-chips" id="dcPlanHhChips"></div>
+                </div>
+                <div class="dc-plan-line">
+                  <span class="dc-plan-label">SOC:</span>
+                  <span class="dc-plan-value" id="dcPlanSocDate"></span>
+                </div>
+              </div>
+              <div class="dc-plan-section dc-plan-row">
+                <div class="dc-plan-row-split">
+                  <div class="dc-plan-section-title">DME</div>
+                  <div class="dc-plan-chips" id="dcPlanDmeChips"></div>
+                </div>
+                <div class="dc-plan-line">
+                  <span class="dc-plan-label">Delivery Date:</span>
+                  <span class="dc-plan-value" id="dcPlanDmeDate"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card right-card no-hover">
+          <div class="mini-card clickable" id="documentsCard">
+            <div class="mini-card-content">
+              <div class="mini-card-icon n-name" aria-hidden="true">
+                <svg viewBox="0 0 239.95 243.92" aria-hidden="true">
+                  <g>
+                    <path class="cls-1" d="M118.15,33.54l-23.86-27.42c-1.86-2.14-4.56-3.37-7.4-3.37H12.56C7.14,2.75,2.75,7.14,2.75,12.56v218.8c0,5.42,4.39,9.81,9.81,9.81h214.82c5.42,0,9.81-4.39,9.81-9.81V46.72c0-5.42-4.39-9.81-9.81-9.81h-101.84c-2.84,0-5.54-1.23-7.4-3.37Z"/>
+                    <path class="cls-1" d="M24.85,81.53h155.98c5.42,0,9.81,4.39,9.81,9.81v127.73"/>
+                  </g>
+                </svg>
+              </div>
+              <div class="mini-card-text">
+                <h4>Documents</h4>
+                <p><span id="docsCount">0</span> items uploaded - Last file uploaded: <span id="docsLatest">—</span></p>
+              </div>
+            </div>
+          </div>
+          <div class="mini-card clickable" id="appointmentsCard">
+            <div class="mini-card-content">
+              <div class="mini-card-icon n-asset" aria-hidden="true">
+                <svg viewBox="0 0 53.91 76.32" aria-hidden="true">
+                  <g>
+                    <path class="cls-1" d="M42.31,58.1c6.2,1.71,10.22,4.42,10.22,7.48,0,5.17-11.45,9.35-25.57,9.35S1.39,70.75,1.39,65.58c0-3.06,4.01-5.77,10.22-7.48" />
+                    <g>
+                      <path class="cls-1" d="M27.09,1.39h0c20.85,0,32.25,24.31,18.91,40.34l-18.51,22.24h-.79l-18.51-22.24C-5.16,25.7,6.24,1.39,27.09,1.39Z" />
+                      <path class="cls-1" d="M38.08,26.03c0,6.07-4.92,10.99-10.99,10.99s-10.99-4.92-10.99-10.99,4.92-10.99,10.99-10.99,10.99,4.92,10.99,10.99Z" />
+                    </g>
+                  </g>
+                </svg>
+              </div>
+              <div class="mini-card-text">
+                <h4>Appointments</h4>
+                <p><span id="apptsCount">0</span> upcoming - Last scheduled: <span id="apptsLatest">—</span></p>
+              </div>
+            </div>
+          </div>
+          <div class="mini-card">
+            <div class="mini-card-content">
+              <div class="mini-card-icon n-asset" aria-hidden="true">
+                <svg viewBox="0 0 83.92 75.06" aria-hidden="true">
+                  <g>
+                    <g>
+                      <g>
+                        <g>
+                          <path class="cls-1" d="M72.39,10.9l-35.5,35.5-3.11,11.52,11.52-3.11,35.5-35.5c2.32-2.32,2.32-6.09,0-8.41h0c-2.32-2.32-6.09-2.32-8.41,0Z" />
+                          <path class="cls-1" d="M76.73,23.71l2.11,2.11c1.49,1.49,1.49,3.91,0,5.4l-10.06,10.06" />
+                        </g>
+                        <line class="cls-1" x1="33.77" y1="57.93" x2="30.75" y2="60.95" />
+                      </g>
+                      <polyline class="cls-1" points="60.87 46.97 60.87 73.67 1.39 73.67 1.39 18.52 19.51 1.39 60.87 1.39 60.87 15.15" />
+                      <line class="cls-1" x1="14.38" y1="34.58" x2="39.07" y2="34.58" />
+                      <line class="cls-1" x1="14.38" y1="47.32" x2="29.52" y2="47.32" />
+                      <line class="cls-1" x1="14.38" y1="60.06" x2="25.2" y2="60.06" />
+                    </g>
+                    <polyline class="cls-1" points="7.59 20.48 21.52 20.48 21.52 7.59" />
+                    <line class="cls-1" x1="64.14" y1="36.3" x2="55.54" y2="27.7" />
+                  </g>
+                </svg>
+              </div>
+              <div class="mini-card-text">
+                <h4>Post-DC Notes</h4>
+                <p>2 open tasks - Confirm HH agency, verify transport.</p>
+              </div>
+            </div>
+          </div>
+          <div class="mini-card">
+            <div class="mini-card-content">
+              <div class="mini-card-icon n-asset" aria-hidden="true">
+                <svg viewBox="0 0 80.2 78.11" aria-hidden="true">
+                  <g>
+                    <g>
+                      <polygon class="cls-1" points="51.34 9.59 43.52 8.6 40.14 1.39 40.06 1.39 36.68 8.6 28.86 9.59 28.86 9.74 34.59 15.18 33.08 22.96 33.24 22.96 40.1 19.17 46.95 22.96 47.11 22.96 45.61 15.18 51.34 9.74 51.34 9.59" />
+                      <polygon class="cls-1" points="78.81 9.59 70.99 8.6 67.62 1.39 67.53 1.39 64.16 8.6 56.33 9.59 56.33 9.74 62.06 15.18 60.56 22.96 60.72 22.96 67.57 19.17 74.43 22.96 74.59 22.96 73.08 15.18 78.81 9.74 78.81 9.59" />
+                      <polygon class="cls-1" points="1.39 9.59 9.21 8.6 12.58 1.39 12.67 1.39 16.04 8.6 23.86 9.59 23.86 9.74 18.13 15.18 19.64 22.96 19.48 22.96 12.62 19.17 5.77 22.96 5.61 22.96 7.12 15.18 1.39 9.74 1.39 9.59" />
+                    </g>
+                    <g>
+                      <path class="cls-1" d="M40.65,45.83l-10.29-14.83c-1.22-1.75-3.62-2.18-5.37-.97h0c-1.75,1.21-2.18,3.62-.97,5.37l16.11,23.21-.2.14-8.11-2.61c-1.72-.55-3.59.14-4.53,1.69h0c-1.23,2.02-.4,4.66,1.76,5.61l19.61,8.62c1.79.79,3.33,2.05,4.44,3.66h0c.73,1.05,2.18,1.32,3.24.58l17.86-12.4c1.05-.73,1.32-2.18.58-3.24l-.05-.07c-.76-1.1-1.25-2.36-1.41-3.69-.04-.36-.08-.72-.12-1.1-.33-2.9-1.38-5.68-3.05-8.07l-9.65-13.9c-1.21-1.75-3.62-2.18-5.37-.97h0c-1.75,1.21-2.18,3.62-.97,5.37l3.77,5.43" />
+                      <path class="cls-1" d="M49.45,44.97l-3.77-5.43c-1.22-1.75-3.62-2.18-5.37-.97h0c-1.75,1.22-2.18,3.62-.97,5.37l3.77,5.43" />
+                      <path class="cls-1" d="M55.4,40.02l-2.46-3.55c-1.21-1.75-3.62-2.18-5.37-.97h0c-1.75,1.21-2.18,3.62-.97,5.37l3.77,5.43" />
+                    </g>
+                  </g>
+                </svg>
+              </div>
+              <div class="mini-card-text">
+                <h4>Survey</h4>
+                <p>Latest update from CCC: awaiting insurance auth.</p>
+              </div>
+            </div>
+          </div>
+          <div class="mini-card">
+            <div class="mini-card-content">
+              <div class="mini-card-icon n-asset" aria-hidden="true">
+                <svg viewBox="0 0 66.61 85.63" aria-hidden="true">
+                  <g>
+                    <polyline class="cls-1" points="51.08 15.78 65.22 15.78 65.22 84.25 1.39 84.25 1.39 15.78 15.53 15.78" />
+                    <g>
+                      <polyline class="cls-1" points="25.06 36.76 18.86 42.95 14.82 38.91" />
+                      <polyline class="cls-1" points="25.06 49.89 18.86 56.09 14.82 52.05" />
+                      <polyline class="cls-1" points="25.06 63.03 18.86 69.23 14.82 65.18" />
+                      <line class="cls-1" x1="30.85" y1="40.39" x2="51.79" y2="40.39" />
+                      <line class="cls-1" x1="30.85" y1="53.53" x2="51.79" y2="53.53" />
+                      <line class="cls-1" x1="30.85" y1="66.66" x2="51.79" y2="66.66" />
+                    </g>
+                    <path class="cls-1" d="M26.13,8.56v1.85h-6.13c-2.47,0-4.47,2-4.47,4.47v8.93h35.55v-8.93c0-2.47-2-4.47-4.47-4.47h-6.13v-1.85c0-3.96-3.21-7.17-7.17-7.17h0c-3.96,0-7.17,3.21-7.17,7.17Z" />
+                    <line class="cls-1" x1="33.3" y1="8.95" x2="33.3" y2="11.95" />
+                  </g>
+                </svg>
+              </div>
+              <div class="mini-card-text">
+                <h4>Forms</h4>
+                <p>Insurance verification in progress.</p>
+              </div>
+            </div>
+          </div>
+          <div class="mini-card">
+            <div class="mini-card-content">
+              <div class="mini-card-icon n-asset" aria-hidden="true">
+                <svg viewBox="0 0 77.02 76.67" aria-hidden="true">
+                  <g>
+                    <g>
+                      <path class="cls-1" d="M75.63,58.69v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06v-14.55c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                      <line class="cls-1" x1="65.85" y1="66.01" x2="58.74" y2="66.01" />
+                    </g>
+                    <g>
+                      <path class="cls-1" d="M75.63,31.08v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06v-14.55c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                      <line class="cls-1" x1="65.85" y1="38.4" x2="58.74" y2="38.4" />
+                    </g>
+                    <g>
+                      <path class="cls-1" d="M75.63,3.46v14.53c0,1.14-.92,2.06-2.06,2.06H3.45c-1.14,0-2.06-.92-2.06-2.06V3.45c0-1.14.92-2.06,2.06-2.06l70.12.02c1.14,0,2.06.92,2.06,2.06Z" />
+                      <line class="cls-1" x1="65.85" y1="10.78" x2="58.74" y2="10.78" />
+                    </g>
+                  </g>
+                </svg>
+              </div>
+              <div class="mini-card-text">
+                <h4>Historical Admissions</h4>
+                <p>DME delivery window not confirmed.</p>
+              </div>
+            </div>
+          </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="docsModalBackdrop" class="doc-modal-backdrop" aria-live="polite">
+    <div class="doc-modal">
+      <div class="doc-modal-head">
+        <div>
+          <div class="doc-modal-title">Documents</div>
+          <div class="doc-modal-sub">Search, upload, and review admission documents.</div>
+        </div>
+        <button id="docsModalCloseBtn" class="doc-iconbtn" aria-label="Close">
+          X
+        </button>
+      </div>
+      <div class="doc-modal-body">
+        <div class="doc-modal-row">
+          <input id="docsSearch" class="doc-input" placeholder="Search document type or name" style="flex:1 1 220px;min-width:220px;max-width:320px;" />
+          <div class="doc-upload-group">
+            <input id="docsTypeInput" class="doc-input" placeholder="Document type (e.g., Discharge Summary)" style="flex:0 1 260px;min-width:200px;max-width:260px;" />
+          <button id="docsUploadBtn" class="doc-iconbtn" title="Upload document" type="button">
+            <svg viewBox="0 0 251.6 261.78" aria-hidden="true">
+              <g>
+                <path class="cls-1" d="M82.81,106.67v97.45c0,5.42,4.39,9.81,9.81,9.81h66.35c5.42,0,9.81-4.39,9.81-9.81v-97.45h45.05c5.55,0,8.32-6.7,4.4-10.63L129.81,4.41c-2.21-2.21-5.81-2.21-8.02,0L33.36,96.05c-3.92,3.92-1.14,10.63,4.4,10.63h45.05Z"/>
+                <path class="cls-1" d="M2.75,202.34v41.97c0,8.13,6.59,14.72,14.72,14.72h216.66c8.13,0,14.72-6.59,14.72-14.72v-41.97"/>
+              </g>
+            </svg>
+          </button>
+          <input id="docsFileInput" type="file" accept="application/pdf" style="display:none;" />
+          </div>
+        </div>
+        <div id="docsTypeMsg" class="doc-field-msg">Please add document type.</div>
+        <div id="docsMsg" class="doc-msg"></div>
+        <div class="doc-modal-table">
+          <div style="max-height:360px;overflow:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:35%;">Document Type</th>
+                  <th>Document Name</th>
+                  <th style="width:120px;text-align:right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="docsTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="doc-modal-footer">
+        <button id="docsModalCloseBtn2" class="doc-modal-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="apptsModalBackdrop" class="appt-modal-backdrop" aria-live="polite">
+    <div class="appt-modal">
+      <div class="appt-modal-head">
+        <div>
+          <div class="appt-modal-title">Appointments</div>
+          <div class="appt-modal-sub">Review and add appointments for this admission.</div>
+        </div>
+        <button id="apptsModalCloseBtn" class="doc-iconbtn" aria-label="Close">X</button>
+      </div>
+      <div class="appt-modal-body">
+        <div class="appt-modal-row">
+          <input id="apptsSearch" class="doc-input" placeholder="Search appointments..." style="flex:1 1 260px;min-width:220px;max-width:360px;" />
+        </div>
+        <div class="appt-section">
+          <div class="appt-section-title">Add Appointment</div>
+          <div class="appt-modal-row">
+            <select id="apptsCareTeamSelect" class="doc-input" style="flex:1 1 240px;min-width:200px;">
+              <option value="">Select care team…</option>
+            </select>
+            <input id="apptsDatetime" type="datetime-local" class="doc-input" style="width:220px;min-width:200px;" />
+            <select id="apptsStatus" class="doc-input" style="width:180px;">
+              <option>New</option>
+              <option>Attended</option>
+              <option>Missed</option>
+              <option>Rescheduled</option>
+            </select>
+            <button id="apptsAddBtn" class="doc-iconbtn" title="Add appointment">
+              <svg viewBox="0 0 218.13 218.13" aria-hidden="true">
+                <g>
+                  <line class="cls-1" x1="109.07" y1="2.75" x2="109.07" y2="215.38"/>
+                  <line class="cls-1" x1="215.38" y1="109.07" x2="2.75" y2="109.07"/>
+                </g>
+              </svg>
+            </button>
+          </div>
+          <div id="apptsMsg" class="doc-msg"></div>
+        </div>
+        <div class="appt-modal-table">
+          <div style="max-height:360px;overflow:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:28%;">Date/Time</th>
+                  <th>Care Team</th>
+                  <th style="width:18%;">Status</th>
+                  <th style="width:90px;text-align:right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="apptsTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="appt-modal-footer">
+        <button id="apptsModalCloseBtn2" class="doc-modal-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const qs = (k) => new URLSearchParams(window.location.search).get(k);
+  const admissionId = Number(qs("admission_id") || 0);
+  const sidebarLogo = document.getElementById("sidebarLogo");
+  const patientName = document.getElementById("patientName");
+  const patientDob = document.getElementById("patientDob");
+  const admitDateMini = document.getElementById("admitDateMini");
+  const dcDateMini = document.getElementById("dcDateMini");
+  const patientDobMini = document.getElementById("patientDobMini");
+  const insuranceNameMini = document.getElementById("insuranceNameMini");
+  const insuranceNumberMini = document.getElementById("insuranceNumberMini");
+  const attendingNameMini = document.getElementById("attendingNameMini");
+  const dcPlanDate = document.getElementById("dcPlanDate");
+  const dcPlanConfirm = document.getElementById("dcPlanConfirm");
+  const dcPlanUrgent = document.getElementById("dcPlanUrgent");
+  const dcPlanAgencyName = document.getElementById("dcPlanAgencyName");
+  const dcPlanSocDate = document.getElementById("dcPlanSocDate");
+  const dcPlanDmeDate = document.getElementById("dcPlanDmeDate");
+  const dcPlanHhChips = document.getElementById("dcPlanHhChips");
+  const dcPlanDmeChips = document.getElementById("dcPlanDmeChips");
+  const documentsCard = document.getElementById("documentsCard");
+  const docsCount = document.getElementById("docsCount");
+  const docsLatest = document.getElementById("docsLatest");
+  const docsModalBackdrop = document.getElementById("docsModalBackdrop");
+  const docsModalCloseBtn = document.getElementById("docsModalCloseBtn");
+  const docsModalCloseBtn2 = document.getElementById("docsModalCloseBtn2");
+  const docsSearch = document.getElementById("docsSearch");
+  const docsTypeInput = document.getElementById("docsTypeInput");
+  const docsTypeMsg = document.getElementById("docsTypeMsg");
+  const docsUploadBtn = document.getElementById("docsUploadBtn");
+  const docsFileInput = document.getElementById("docsFileInput");
+  const docsTbody = document.getElementById("docsTbody");
+  const docsMsg = document.getElementById("docsMsg");
+  const appointmentsCard = document.getElementById("appointmentsCard");
+  const apptsCount = document.getElementById("apptsCount");
+  const apptsLatest = document.getElementById("apptsLatest");
+  const apptsModalBackdrop = document.getElementById("apptsModalBackdrop");
+  const apptsModalCloseBtn = document.getElementById("apptsModalCloseBtn");
+  const apptsModalCloseBtn2 = document.getElementById("apptsModalCloseBtn2");
+  const apptsSearch = document.getElementById("apptsSearch");
+  const apptsCareTeamSelect = document.getElementById("apptsCareTeamSelect");
+  const apptsDatetime = document.getElementById("apptsDatetime");
+  const apptsStatus = document.getElementById("apptsStatus");
+  const apptsAddBtn = document.getElementById("apptsAddBtn");
+  const apptsTbody = document.getElementById("apptsTbody");
+  const apptsMsg = document.getElementById("apptsMsg");
+
+  const profileBtn = document.getElementById("profileBtn");
+  const profileMenu = document.getElementById("profileMenu");
+  const signOutBtn = document.getElementById("signOutBtn");
+  const changePasswordBtn = document.getElementById("changePasswordBtn");
+  const navHome = document.getElementById("navHome");
+  const navInpatient = document.getElementById("navInpatient");
+  const navDischarged = document.getElementById("navDischarged");
+  const navCalendar = document.getElementById("navCalendar");
+  const dischargePlanBtn = document.getElementById("dischargePlanBtn");
+
+  const SAMPLE = {};
+  let PDFS = [];
+  let APPOINTMENTS = [];
+  let CARE_TEAM = [];
+
+  function token(){
+    return (localStorage.getItem("sensys_token") || "").trim();
+  }
+  function syncLogo(){
+    if(!sidebarLogo) return;
+    if(token()){
+      sidebarLogo.src = "/static/images/Evolv-Health-E-Color.svg";
+      sidebarLogo.onerror = () => {
+        sidebarLogo.onerror = null;
+        sidebarLogo.src = "../backend/static/images/Evolv-Health-E-Color.svg";
+      };
+    }else{
+      sidebarLogo.src = "../backend/static/images/Evolv-Health-E-Color.svg";
+      sidebarLogo.onerror = () => {
+        sidebarLogo.onerror = null;
+        sidebarLogo.src = "/static/images/Evolv-Health-E-Color.svg";
+      };
+    }
+  }
+  function authHeaders(){
+    return { "Authorization": "Bearer " + token() };
+  }
+  function fmtDate(s){
+    if(!s) return "";
+    const raw = String(s).trim();
+    if(!raw) return "";
+    const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if(dateOnlyMatch){
+      const [_, y, m, d] = dateOnlyMatch;
+      const dt = new Date(Number(y), Number(m) - 1, Number(d));
+      if(!Number.isNaN(dt.getTime())) return dt.toLocaleDateString();
+      return `${m}/${d}/${y}`;
+    }
+    const dt = new Date(raw);
+    if(Number.isNaN(dt.getTime())) return raw;
+    return dt.toLocaleDateString();
+  }
+  function fmtDateTime(s){
+    if(!s) return "";
+    const raw = String(s).trim();
+    if(!raw) return "";
+    const dt = new Date(raw);
+    if(Number.isNaN(dt.getTime())) return raw;
+    return dt.toLocaleString([], { month:"short", day:"numeric", year:"numeric", hour:"numeric", minute:"2-digit" });
+  }
+  function showDocsMsg(text){
+    if(!docsMsg) return;
+    if(!text){
+      docsMsg.style.display = "none";
+      docsMsg.textContent = "";
+      return;
+    }
+    docsMsg.style.display = "block";
+    docsMsg.textContent = text;
+  }
+  function showDocsTypeError(on){
+    if(!docsTypeInput || !docsTypeMsg) return;
+    docsTypeInput.classList.toggle("error", !!on);
+    docsTypeMsg.style.display = on ? "block" : "none";
+    if(on){
+      docsTypeInput.style.borderColor = "rgba(199,107,107,.8)";
+      docsTypeInput.style.boxShadow = "0 0 0 2px rgba(199,107,107,.15)";
+    }else{
+      docsTypeInput.style.borderColor = "";
+      docsTypeInput.style.boxShadow = "";
+    }
+  }
+  function updateDocsMiniCard(){
+    if(!docsCount || !docsLatest) return;
+    const count = PDFS.length;
+    docsCount.textContent = String(count);
+    if(!count){
+      docsLatest.textContent = "—";
+      return;
+    }
+    let latest = null;
+    let latestRaw = "";
+    PDFS.forEach(p => {
+      const raw = p.created_at || p.uploaded_at || "";
+      const dt = new Date(raw);
+      if(Number.isNaN(dt.getTime())) return;
+      if(!latest || dt > latest){
+        latest = dt;
+        latestRaw = raw;
+      }
+    });
+    docsLatest.textContent = latest ? fmtDateTime(latestRaw) : "—";
+  }
+  function renderDocsTable(){
+    if(!docsTbody) return;
+    const q = (docsSearch && docsSearch.value ? docsSearch.value.trim().toLowerCase() : "");
+    const rows = (PDFS || []).filter(r => {
+      const name = (r.original_filename || r.filename || ("PDF #" + r.id)).toLowerCase();
+      const type = (r.doc_type || "").toLowerCase();
+      return !q || name.includes(q) || type.includes(q);
+    });
+    if(!rows.length){
+      docsTbody.innerHTML = `<tr><td colspan="3" style="padding:12px;font-size:12px;color:#667085;">No documents found.</td></tr>`;
+      return;
+    }
+    docsTbody.innerHTML = rows.map(r => {
+      const name = r.original_filename || r.filename || ("PDF #" + r.id);
+      const type = r.doc_type || "";
+      const dl = `/api/sensys/pdfs/${r.id}/download?token=${encodeURIComponent(token())}`;
+      return `
+        <tr>
+          <td>${type}</td>
+          <td>${name}</td>
+          <td>
+            <div class="doc-actions">
+              <button class="doc-iconbtn" data-doc-edit="${r.id}" title="Edit document type">
+              <svg viewBox="0 0 237.85 237.86" aria-hidden="true">
+                <g>
+                  <line class="cls-1" x1="34.25" y1="178.82" x2="57.97" y2="202.54"/>
+                  <path class="cls-1" d="M68.74,219.9c-3.65,3.65-8.34,6.09-13.43,6.97l-47.25,8.18c-3.09.53-5.78-2.15-5.24-5.24l8.17-47.25c.88-5.09,3.31-9.78,6.97-13.44L173.79,13.27c14.02-14.02,36.76-14.03,50.78,0h0c14.02,14.02,14.03,36.76,0,50.79L68.74,219.9Z"/>
+                </g>
+              </svg>
+              </button>
+              <a class="doc-iconbtn" href="${dl}" title="Download PDF">
+              <svg viewBox="0 0 251.6 261.78" aria-hidden="true">
+                <g>
+                  <path class="cls-1" d="M168.79,110.02V12.56c0-5.42-4.39-9.81-9.81-9.81h-66.35c-5.42,0-9.81,4.39-9.81,9.81v97.45h-45.05c-5.55,0-8.32,6.7-4.4,10.63l88.43,91.63c2.21,2.21,5.81,2.21,8.02,0l88.43-91.63c3.92-3.92,1.14-10.63-4.4-10.63h-45.05Z"/>
+                  <path class="cls-1" d="M2.75,202.34v41.97c0,8.13,6.59,14.72,14.72,14.72h216.66c8.13,0,14.72-6.59,14.72-14.72v-41.97"/>
+                </g>
+              </svg>
+              </a>
+            </div>
+          </td>
+        </tr>`;
+    }).join("");
+    docsTbody.querySelectorAll("[data-doc-edit]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = Number(btn.getAttribute("data-doc-edit"));
+        const row = (PDFS || []).find(r => Number(r.id) === id);
+        if(docsTypeInput){
+          docsTypeInput.value = row && row.doc_type ? String(row.doc_type) : "";
+          docsTypeInput.focus();
+          docsTypeInput.select();
+        }
+        showDocsTypeError(false);
+      });
+    });
+  }
+  function showApptMsg(text){
+    if(!apptsMsg) return;
+    if(!text){
+      apptsMsg.style.display = "none";
+      apptsMsg.textContent = "";
+      return;
+    }
+    apptsMsg.style.display = "block";
+    apptsMsg.textContent = text;
+  }
+  function renderAppointmentsTable(){
+    if(!apptsTbody) return;
+    const q = (apptsSearch && apptsSearch.value ? apptsSearch.value.trim().toLowerCase() : "");
+    const rows = (APPOINTMENTS || []).filter(r => {
+      const dt = String(r.appt_datetime || "").toLowerCase();
+      const name = String(r.care_team_name || "").toLowerCase();
+      const status = String(r.appt_status || "").toLowerCase();
+      return !q || dt.includes(q) || name.includes(q) || status.includes(q);
+    });
+    if(!rows.length){
+      apptsTbody.innerHTML = `<tr><td colspan="4" style="padding:12px;font-size:12px;color:#667085;">No appointments found.</td></tr>`;
+      return;
+    }
+    apptsTbody.innerHTML = rows.map(r => {
+      return `
+        <tr>
+          <td>${fmtDateTime(r.appt_datetime || "")}</td>
+          <td>${r.care_team_name || ""}</td>
+          <td>${r.appt_status || ""}</td>
+          <td style="text-align:right;">
+            <button class="doc-iconbtn" data-appt-del="${r.id}" title="Delete appointment">
+              <svg viewBox="0 0 224.65 262.72" aria-hidden="true">
+                <g>
+                  <path class="cls-1" d="M205.74,105.45v128.84c0,14.18-11.49,25.67-25.67,25.67H43.59c-14.18,0-25.67-11.49-25.67-25.67V105.45"/>
+                  <path class="cls-1" d="M24.99,41.02h174.66c12.28,0,22.24,9.97,22.24,22.24v13.37c0,5.42-4.4,9.81-9.81,9.81H12.56c-5.42,0-9.81-4.4-9.81-9.81v-13.37c0-12.28,9.97-22.24,22.24-22.24Z"/>
+                  <path class="cls-1" d="M63.83,39.75v-23.26c0-7.58,6.15-13.73,13.73-13.73h68.53c7.58,0,13.73,6.15,13.73,13.73v23.26"/>
+                  <line class="cls-1" x1="80.17" y1="125.24" x2="80.17" y2="217.29"/>
+                  <line class="cls-1" x1="144.48" y1="125.24" x2="144.48" y2="217.29"/>
+                </g>
+              </svg>
+            </button>
+          </td>
+        </tr>`;
+    }).join("");
+    apptsTbody.querySelectorAll("[data-appt-del]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = Number(btn.getAttribute("data-appt-del"));
+        try{
+          showApptMsg("");
+          await fetch("/api/sensys/admission-appointments/delete", {
+            method:"POST",
+            headers: { "Content-Type":"application/json", ...authHeaders() },
+            body: JSON.stringify({ id })
+          });
+          await load();
+        }catch(e){
+          showApptMsg(e.message || "Delete failed.");
+        }
+      });
+    });
+  }
+  function renderCareTeamOptions(){
+    if(!apptsCareTeamSelect) return;
+    const opts = ['<option value="">Select care team…</option>']
+      .concat((CARE_TEAM || []).map(c => {
+        const label = `${c.name || ""}${c.type ? " — " + c.type : ""}`;
+        const id = c.care_team_id || c.id;
+        return `<option value="${id}">${label}</option>`;
+      }));
+    apptsCareTeamSelect.innerHTML = opts.join("");
+  }
+  function updateApptsMiniCard(){
+    if(!apptsCount || !apptsLatest) return;
+    const count = (APPOINTMENTS || []).length;
+    apptsCount.textContent = String(count);
+    if(!count){
+      apptsLatest.textContent = "—";
+      return;
+    }
+    let latest = null;
+    let latestRaw = "";
+    APPOINTMENTS.forEach(a => {
+      const raw = a.appt_datetime || "";
+      const dt = new Date(raw);
+      if(Number.isNaN(dt.getTime())) return;
+      if(!latest || dt > latest){
+        latest = dt;
+        latestRaw = raw;
+      }
+    });
+    apptsLatest.textContent = latest ? fmtDateTime(latestRaw) : "—";
+  }
+  async function loadPdfs(){
+    if(!token() || !admissionId){
+      PDFS = [];
+      updateDocsMiniCard();
+      renderDocsTable();
+      return;
+    }
+    try{
+      const res = await fetch("/api/sensys/admissions/" + admissionId + "/pdfs", { headers: authHeaders() });
+      const data = await res.json();
+      if(!res.ok) throw new Error("Failed to load documents.");
+      PDFS = (data && data.pdfs) || [];
+      updateDocsMiniCard();
+      renderDocsTable();
+    }catch(e){
+      PDFS = [];
+      updateDocsMiniCard();
+      renderDocsTable();
+    }
+  }
+  function openDocsModal(){
+    if(!docsModalBackdrop) return;
+    docsModalBackdrop.style.display = "flex";
+    showDocsMsg("");
+    renderDocsTable();
+    if(docsSearch) docsSearch.focus();
+  }
+  function closeDocsModal(){
+    if(!docsModalBackdrop) return;
+    docsModalBackdrop.style.display = "none";
+    showDocsMsg("");
+  }
+  function setDcPlan(admission, d){
+    if(!dcPlanDate || !dcPlanConfirm || !dcPlanUrgent) return;
+    const dateVal = admission && admission.dc_date ? fmtDate(admission.dc_date) : "";
+    dcPlanDate.textContent = dateVal;
+    const confirmed = String(d && d.dc_confirmed) === "1" || d.dc_confirmed === true;
+    dcPlanConfirm.classList.toggle("confirmed", confirmed);
+    dcPlanConfirm.classList.toggle("unconfirmed", !confirmed);
+    const urgent = String(d && d.dc_urgent) === "1" || d.dc_urgent === true;
+    dcPlanUrgent.classList.toggle("on", urgent);
+    if(dcPlanAgencyName){
+      const agency = d.hh_agency_name || d.hh_carecompare_name || d.hh_carecompare_dba || "";
+      dcPlanAgencyName.textContent = agency || "";
+      dcPlanAgencyName.classList.toggle("muted", !agency);
+    }
+    if(dcPlanSocDate){
+      dcPlanSocDate.textContent = "";
+    }
+    if(dcPlanDmeDate){
+      dcPlanDmeDate.textContent = "";
+    }
+    renderPlanChips(d);
+  }
+
+  function serviceTypeKey(s){
+    const rawCode = (s.service_type_code || "").toString().trim().toLowerCase();
+    const rawType = (s.service_type || "").toString().trim().toLowerCase();
+    const raw = rawCode || rawType;
+    if(raw === "hh" || raw === "home health" || raw === "homehealth" || raw === "home_health") return "hh";
+    if(raw === "dme" || raw === "durable medical equipment" || raw === "durable_medical_equipment") return "dme";
+    return "";
+  }
+
+  function renderPlanChips(d){
+    if(!dcPlanHhChips || !dcPlanDmeChips) return;
+    const services = Array.isArray(d.services) ? d.services : [];
+    const hh = services.filter(s => serviceTypeKey(s) === "hh");
+    const dme = services.filter(s => serviceTypeKey(s) === "dme");
+    dcPlanHhChips.innerHTML = "";
+    dcPlanDmeChips.innerHTML = "";
+    if(!hh.length){
+      dcPlanHhChips.innerHTML = "";
+    }else{
+      hh.forEach(s => {
+        const chip = document.createElement("span");
+        chip.className = "dc-plan-chip hh";
+        chip.textContent = s.service_name || s.name || "Service";
+        dcPlanHhChips.appendChild(chip);
+      });
+    }
+    if(!dme.length){
+      dcPlanDmeChips.innerHTML = "";
+    }else{
+      dme.forEach(s => {
+        const chip = document.createElement("span");
+        chip.className = "dc-plan-chip dme";
+        chip.textContent = s.service_name || s.name || "Item";
+        dcPlanDmeChips.appendChild(chip);
+      });
+    }
+  }
+
+  function setData(d){
+    const first = d.patient_first_name || "";
+    const last = d.patient_last_name || "";
+    const nameFromParts = [first, last].filter(Boolean).join(" ");
+    const nameFromLegacy = d.patient_name || "";
+    const name = nameFromParts || (nameFromLegacy.includes(",")
+      ? nameFromLegacy.split(",").slice(0, 2).reverse().map(s => s.trim()).filter(Boolean).join(" ")
+      : nameFromLegacy) || "";
+    patientName.textContent = name;
+    admitDateMini.textContent = d.admit_date ? fmtDate(d.admit_date) : "";
+    dcDateMini.textContent = d.dc_date ? fmtDate(d.dc_date) : "";
+    patientDobMini.textContent = d.patient_dob ? fmtDate(d.patient_dob) : "";
+    insuranceNameMini.textContent = d.patient_insurance_name1 || "";
+    insuranceNumberMini.textContent = d.patient_insurance_number1 || "";
+    attendingNameMini.textContent = d.snf_physician_name || "";
+    setDcPlan(d, d.latest_dc_submission || {});
+  }
+
+  async function load(){
+    syncScreenClass();
+    syncLogo();
+    if(!token() || !admissionId){
+      setData(SAMPLE);
+      PDFS = [];
+      updateDocsMiniCard();
+      renderDocsTable();
+      return;
+    }
+    try{
+      const [res, pdfsRes] = await Promise.all([
+        fetch("/api/sensys/admission-details/" + admissionId, { headers: authHeaders() }),
+        fetch("/api/sensys/admissions/" + admissionId + "/pdfs", { headers: authHeaders() })
+      ]);
+      const data = await res.json();
+      let pdfsData = { pdfs: [] };
+      try{
+        pdfsData = await pdfsRes.json();
+      }catch(e){
+        pdfsData = { pdfs: [] };
+      }
+      if(!res.ok || !data || !data.admission) throw new Error("Load failed");
+      const admission = data.admission || {};
+      const dcSubmissions = Array.isArray(data.dc_submissions) ? data.dc_submissions : [];
+      const latestDc = dcSubmissions.length ? dcSubmissions[0] : null;
+      CARE_TEAM = Array.isArray(data.care_team) ? data.care_team : [];
+      APPOINTMENTS = Array.isArray(data.appointments) ? data.appointments : [];
+      setData({
+        patient_name: admission.patient_name,
+        patient_first_name: admission.patient_first_name,
+        patient_last_name: admission.patient_last_name,
+        patient_dob: admission.patient_dob,
+        admit_date: admission.admit_date,
+        dc_date: admission.dc_date,
+        room: admission.room,
+        patient_insurance_name1: admission.patient_insurance_name1,
+        patient_insurance_number1: admission.patient_insurance_number1,
+        snf_physician_name: data.snf_physician_name,
+        latest_dc_submission: latestDc || {}
+      });
+      PDFS = (pdfsData && pdfsData.pdfs) || [];
+      updateDocsMiniCard();
+      renderDocsTable();
+      renderCareTeamOptions();
+      renderAppointmentsTable();
+      updateApptsMiniCard();
+    }catch(e){
+      setData(SAMPLE);
+      PDFS = [];
+      updateDocsMiniCard();
+      renderDocsTable();
+      CARE_TEAM = [];
+      APPOINTMENTS = [];
+      renderCareTeamOptions();
+      renderAppointmentsTable();
+      updateApptsMiniCard();
+    }
+  }
+
+  profileBtn.addEventListener("click", () => {
+    const isOpen = profileMenu.style.display === "block";
+    profileMenu.style.display = isOpen ? "none" : "block";
+  });
+  document.addEventListener("click", (e) => {
+    if(!profileMenu.contains(e.target) && !profileBtn.contains(e.target)){
+      profileMenu.style.display = "none";
+    }
+  });
+  signOutBtn.addEventListener("click", () => {
+    localStorage.removeItem("sensys_token");
+    window.location.href = "/sensys/login";
+  });
+  changePasswordBtn.addEventListener("click", () => {
+    window.location.href = "/sensys/change-password";
+  });
+  navHome.addEventListener("click", () => {
+    window.location.href = "/sensys/snf-user";
+  });
+  navInpatient.addEventListener("click", () => {
+    window.location.href = "/sensys/snf-user/patient-list";
+  });
+  navDischarged.addEventListener("click", () => {
+    window.location.href = "/sensys/snf-user/discharged-patients";
+  });
+  navCalendar.addEventListener("click", () => {
+    window.location.href = "/sensys/snf-user/calendar";
+  });
+  if(dischargePlanBtn){
+    dischargePlanBtn.addEventListener("click", () => {
+      const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+      const base = "/sensys/snf-user/discharge-plan";
+      const target = admissionId
+        ? `${base}?admission_id=${admissionId}&return_to=${returnTo}`
+        : `${base}?return_to=${returnTo}`;
+      window.location.href = target;
+    });
+  }
+  if(documentsCard){
+    documentsCard.addEventListener("click", openDocsModal);
+  }
+  if(docsModalCloseBtn){
+    docsModalCloseBtn.addEventListener("click", closeDocsModal);
+  }
+  if(docsModalCloseBtn2){
+    docsModalCloseBtn2.addEventListener("click", closeDocsModal);
+  }
+  if(docsModalBackdrop){
+    docsModalBackdrop.addEventListener("click", (e) => {
+      if(e.target === docsModalBackdrop) closeDocsModal();
+    });
+  }
+  if(docsSearch){
+    docsSearch.addEventListener("input", renderDocsTable);
+  }
+  if(docsTypeInput){
+    docsTypeInput.addEventListener("input", () => {
+      if(docsTypeInput.value.trim()){
+        showDocsTypeError(false);
+      }
+    });
+  }
+  if(docsUploadBtn){
+    docsUploadBtn.addEventListener("click", () => {
+      if(!token() || !admissionId){
+        showDocsMsg("Upload unavailable: missing admission.");
+        return;
+      }
+      const hasType = docsTypeInput && docsTypeInput.value.trim();
+      showDocsTypeError(!hasType);
+      if(!hasType){
+        if(docsTypeInput) docsTypeInput.focus();
+        return;
+      }
+      if(docsFileInput){
+        docsFileInput.value = "";
+        docsFileInput.click();
+      }
+    });
+  }
+  if(docsFileInput){
+    docsFileInput.addEventListener("change", async () => {
+      const f = docsFileInput.files && docsFileInput.files[0];
+      if(!f) return;
+      const docType = (docsTypeInput && docsTypeInput.value ? docsTypeInput.value.trim() : "");
+      if(!docType){
+        showDocsTypeError(true);
+        docsFileInput.value = "";
+        return;
+      }
+      showDocsTypeError(false);
+      showDocsMsg("Uploading...");
+      try{
+        const fd = new FormData();
+        fd.append("doc_type", docType);
+        fd.append("retention_hours", "0");
+        fd.append("file", f);
+        const resp = await fetch("/api/sensys/admissions/" + admissionId + "/pdfs/upload", {
+          method:"POST",
+          headers: authHeaders(),
+          body: fd
+        });
+        const data = await resp.json().catch(() => ({}));
+        if(!resp.ok) throw new Error(data.message || "Upload failed.");
+        docsFileInput.value = "";
+        if(docsTypeInput) docsTypeInput.value = "";
+        await loadPdfs();
+        showDocsMsg("");
+      }catch(e){
+        showDocsMsg(e.message || "Upload failed.");
+      }
+    });
+  }
+  if(appointmentsCard){
+    appointmentsCard.addEventListener("click", () => {
+      if(apptsModalBackdrop){
+        apptsModalBackdrop.style.display = "flex";
+        showApptMsg("");
+        renderAppointmentsTable();
+        renderCareTeamOptions();
+        if(apptsSearch) apptsSearch.focus();
+      }
+    });
+  }
+  if(apptsModalCloseBtn){
+    apptsModalCloseBtn.addEventListener("click", () => {
+      if(apptsModalBackdrop) apptsModalBackdrop.style.display = "none";
+      showApptMsg("");
+    });
+  }
+  if(apptsModalCloseBtn2){
+    apptsModalCloseBtn2.addEventListener("click", () => {
+      if(apptsModalBackdrop) apptsModalBackdrop.style.display = "none";
+      showApptMsg("");
+    });
+  }
+  if(apptsModalBackdrop){
+    apptsModalBackdrop.addEventListener("click", (e) => {
+      if(e.target === apptsModalBackdrop){
+        apptsModalBackdrop.style.display = "none";
+        showApptMsg("");
+      }
+    });
+  }
+  if(apptsSearch){
+    apptsSearch.addEventListener("input", renderAppointmentsTable);
+  }
+  if(apptsAddBtn){
+    apptsAddBtn.addEventListener("click", async () => {
+      try{
+        showApptMsg("");
+        if(!token() || !admissionId) throw new Error("Missing admission.");
+        const careTeamId = Number(apptsCareTeamSelect && apptsCareTeamSelect.value || 0);
+        const apptDatetime = apptsDatetime && apptsDatetime.value ? apptsDatetime.value.trim() : "";
+        const status = apptsStatus && apptsStatus.value ? apptsStatus.value.trim() : "";
+        if(!careTeamId) throw new Error("Select a care team.");
+        if(!apptDatetime) throw new Error("Select a date/time.");
+        const resp = await fetch("/api/sensys/admission-appointments/upsert", {
+          method:"POST",
+          headers: { "Content-Type":"application/json", ...authHeaders() },
+          body: JSON.stringify({
+            admission_id: admissionId,
+            appt_datetime: apptDatetime,
+            care_team_id: careTeamId,
+            appt_status: status || "New"
+          })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if(!resp.ok) throw new Error(data.message || "Appointment not saved.");
+        if(apptsDatetime) apptsDatetime.value = "";
+        if(apptsStatus) apptsStatus.value = "New";
+        if(apptsCareTeamSelect) apptsCareTeamSelect.value = "";
+        await load();
+      }catch(e){
+        showApptMsg(e.message || "Appointment not saved.");
+      }
+    });
+  }
+
+  function syncScreenClass(){
+    const w = window.innerWidth || 0;
+    const h = window.innerHeight || 0;
+    const isCompact = w <= 2880 && h <= 1800;
+    document.documentElement.classList.toggle("screen-compact", isCompact);
+    document.documentElement.classList.toggle("screen-wide", !isCompact);
+  }
+
+  function syncStatusTrack(){
+    const list = document.getElementById("statusList");
+    const progress = document.getElementById("statusTrackProgress");
+    if(!list || !progress) return;
+    const steps = Array.from(list.querySelectorAll(".status-item"));
+    const target = steps.find(step => step.classList.contains("pending"))
+      || steps.slice().reverse().find(step => step.classList.contains("done"))
+      || steps[0];
+    if(!target) return;
+    const dot = target.querySelector(".status-dot");
+    if(!dot) return;
+    const listRect = list.getBoundingClientRect();
+    const dotRect = dot.getBoundingClientRect();
+    const center = dotRect.top - listRect.top + (dotRect.height / 2);
+    progress.style.height = Math.max(0, Math.round(center)) + "px";
+    const color = getComputedStyle(dot).borderColor || "rgba(168,230,207,.7)";
+    progress.style.background = color;
+  }
+
+  window.addEventListener("resize", () => {
+    syncScreenClass();
+    syncStatusTrack();
+  });
+
+  load();
+  window.requestAnimationFrame(syncStatusTrack);
+})();
+</script>
+</body>
+</html>

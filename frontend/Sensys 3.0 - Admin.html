@@ -218,6 +218,64 @@
       font-size:12px;
       color:#0f172a;
     }
+    .user-list{
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      margin-top:6px;
+    }
+    .user-row{
+      background:#fff;
+      border:1px solid rgba(168,230,207,.55);
+      border-radius:14px;
+      padding:14px 16px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+      cursor:pointer;
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .user-row:hover{
+      border-color:rgba(168,230,207,.95);
+      box-shadow:0 10px 18px rgba(13,59,102,.10);
+      transform: translateY(-1px);
+    }
+    .user-main{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      min-width:0;
+    }
+    .user-name{
+      font-size:14px;
+      font-weight:900;
+      color:var(--navy);
+    }
+    .user-meta{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      font-size:12px;
+      color:var(--muted);
+      align-items:center;
+    }
+    .user-meta-gap{margin-left:12px;}
+    .user-pill{
+      padding:6px 10px;
+      border-radius:999px;
+      background:transparent;
+      border:1px solid rgba(168,230,207,.85);
+      color:var(--muted);
+      font-weight:600;
+      font-size:11px;
+    }
+    .user-actions{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      opacity:.7;
+    }
     .toast.ok{color:#065f46}
     .toast.err{color:#991b1b}
     .mini{
@@ -379,6 +437,33 @@
      height:20px;
      display:block;
    }
+   .iconbtn svg .cls-1{
+     fill:none;
+     stroke:currentColor;
+     stroke-linecap:round;
+     stroke-linejoin:round;
+     stroke-width:5.5px;
+   }
+   .iconbtn.n-named svg{
+     width:18px;
+     height:18px;
+   }
+   :root{
+     --n-named-stroke:16px;
+     --n-alert-stroke:5.5px;
+   }
+   .iconbtn.n-named svg .cls-1{
+     stroke:currentColor;
+     stroke-width:var(--n-named-stroke);
+   }
+   .iconbtn.n-alert svg{
+     width:18px;
+     height:18px;
+   }
+   .iconbtn.n-alert svg .cls-1{
+     stroke:currentColor;
+     stroke-width:var(--n-alert-stroke);
+   }
    .iconbtn:hover{ box-shadow: 0 0 0 3px rgba(168,230,207,.45); border-color: rgba(168,230,207,.95); }
    .iconbtn.sm{
      width:32px;
@@ -390,6 +475,19 @@
    .iconbtn.sm svg{
      width:18px;
      height:18px;
+   }
+   .iconbtn.sm.n-named svg{
+     width:20px;
+     height:20px;
+   }
+   .reminder-btn{
+     border-color:#e5e7eb;
+     color:#6b7280;
+   }
+   .reminder-btn.has-reminder{
+     border-color: var(--mint);
+     color: var(--navy);
+     box-shadow: 0 0 0 3px rgba(168,230,207,.25);
    }
    .upload-progress{
      height:10px;
@@ -586,24 +684,29 @@
       <!-- LEFT SIDEBAR -->
       <div class="sidebar">
         <div class="mini" style="font-weight:900;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;">
-          Sections
+          Main
         </div>
 
         <div class="navitem on" id="tabUsers">Users</div>
-        <div class="navitem" id="tabAgencies">Agencies</div>
-        <div class="navitem" id="tabProviderLibrary">Provider Library</div>
-        <div class="navitem" id="tabPatients">Patients</div>
-        <div class="navitem" id="tabAdmissions">Admissions</div>
-        <div class="navitem" id="tabClientSurveys">Client Surveys</div>
 
         <div style="height:10px"></div>
         <div class="mini" style="font-weight:900;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;">
-          Reference
+          Data
         </div>
+        <div class="navitem" id="tabAgencies">Agencies</div>
+        <div class="navitem" id="tabPatients">Patients</div>
+        <div class="navitem" id="tabAdmissions">Admissions</div>
         <div class="navitem" id="tabServices">Services</div>
         <div class="navitem" id="tabCareTeam">Care Team</div>
+
+        <div style="height:10px"></div>
+        <div class="mini" style="font-weight:900;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;">
+          Actions
+        </div>
+        <div class="navitem" id="tabClientSurveys">Client Surveys</div>
         <div class="navitem" id="tabNotes">Notes</div>
         <div class="navitem" id="tabNotifications">Notifications</div>
+        <div class="navitem" id="tabProviderLibrary">Provider Library</div>
       </div>
 
       <!-- USERS PANEL -->
@@ -618,7 +721,28 @@
 
             <!-- Add New User (top-right icon) -->
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="bulkUsersIcon" title="Bulk upload users" aria-label="Bulk upload users">
+              <input class="input" id="userSearch" placeholder="Search username, email, or name." style="width:220px;max-width:220px;" />
+              <button class="iconbtn n-named" id="usersFilterIcon" title="User filters" aria-label="User filters">
+                <svg viewBox="0 0 253.2 249.69" aria-hidden="true"><defs>
+                  <style>
+                    .cls-1 {
+                      fill: none;
+                      stroke: #121212;
+                      stroke-linecap: round;
+                      stroke-miterlimit: 10;
+                      stroke-width: 5.5px;
+                    }
+                  </style>
+                </defs>
+                <g>
+                  <g>
+                    <path class="cls-1" d="M250.45,2.75v39.04c0,7.59-3.01,14.86-8.36,20.23l-78.27,78.52c-6.72,6.74-10.5,15.88-10.5,25.4v59.57c0,4.07-2.58,7.7-6.43,9.03l-34.32,11.86c-6.21,2.14-12.67-2.46-12.67-9.03v-71.55c0-9.5-3.76-18.62-10.45-25.36L11.08,61.6c-5.33-5.37-8.33-12.63-8.33-20.2V2.75"/>
+                    <line class="cls-1" x1="28.56" y1="43.43" x2="222.5" y2="43.43"/>
+                    <line class="cls-1" x1="26.93" y1="2.75" x2="224.14" y2="2.75"/>
+                  </g>
+                </g></svg>
+              </button>
+              <button class="iconbtn n-named" id="bulkUsersIcon" title="Bulk upload users" aria-label="Bulk upload users">
                 <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
                   <style>
                     .cls-1 {
@@ -637,7 +761,12 @@
                   </g>
                 </g></svg>
               </button>
-              <button class="iconbtn" id="addUserIcon" title="Add new user" aria-label="Add new user">+</button>
+              <button class="iconbtn n-named" id="addUserIcon" title="Add new user" aria-label="Add new user">
+                <svg viewBox="0 0 218.13 218.13" aria-hidden="true"><g>
+                  <line class="cls-1" x1="109.07" y1="2.75" x2="109.07" y2="215.38"/>
+                  <line class="cls-1" x1="215.38" y1="109.07" x2="2.75" y2="109.07"/>
+                </g></svg>
+              </button>
             </div>
           </div>
           <div class="body">
@@ -645,16 +774,11 @@
               <table>
                 <thead>
                   <tr>
-                    <th>Login</th>
-                    <th>Email</th>
-                    <th>Name</th>
-                    <th>Active</th>
-                    <th>Roles</th>
-                    <th>Last Login</th>
-                    <th>Locked</th>
+                    <th>User</th>
+                    <th style="text-align:right;">Actions</th>
                   </tr>
                 </thead>
-                <tbody id="tbody"></tbody>
+                <tbody id="usersTbody"></tbody>
               </table>
             </div>
             <div id="listMsg" class="toast"></div>
@@ -665,6 +789,122 @@
         <div class="card" style="display:none"></div>
 
       </div><!-- /panelUsers -->
+
+      <!-- =========================
+           USERS FILTER MODAL
+      ========================= -->
+      <div class="modal-backdrop" id="usersFilterModalBackdrop">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="usersFilterModalTitle">
+          <div class="modal-hd">
+            <div>
+              <h3 class="modal-title" id="usersFilterModalTitle">User Filters</h3>
+              <div class="modal-sub">Filter by role, lock status, and last login dates.</div>
+            </div>
+            <button class="xbtn" id="closeUsersFilterModal" aria-label="Close">
+              <svg viewBox="0 0 183.48 183.48" aria-hidden="true"><defs>
+                <style>
+                  .cls-1 {
+                    fill: none;
+                    stroke: #121212;
+                    stroke-linecap: round;
+                    stroke-miterlimit: 10;
+                    stroke-width: 5.5px;
+                  }
+                </style>
+              </defs>
+              <g>
+                <g>
+                  <line class="cls-1" x1="180.73" y1="2.75" x2="2.75" y2="180.73"/>
+                  <line class="cls-1" x1="180.73" y1="180.73" x2="2.75" y2="2.75"/>
+                </g>
+              </g></svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+              <div>
+                <div class="label">Role</div>
+                <select class="select" id="userFilterRole">
+                  <option value="">All roles</option>
+                </select>
+              </div>
+              <div>
+                <div class="label">Account Locked</div>
+                <select class="select" id="userFilterLocked">
+                  <option value="">All</option>
+                  <option value="1">Yes</option>
+                  <option value="0">No</option>
+                </select>
+              </div>
+              <div>
+                <div class="label">Last Login From</div>
+                <input class="input" id="userFilterLoginFrom" type="date" />
+              </div>
+              <div>
+                <div class="label">Last Login To</div>
+                <input class="input" id="userFilterLoginTo" type="date" />
+              </div>
+            </div>
+
+            <div style="height:12px"></div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <button class="btn primary" id="userApplyFilters">Apply Filters</button>
+              <button class="btn" id="userClearFilters">Clear</button>
+              <div class="mini" id="userFilterMsg"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- =========================
+           USER LOGIN LOG MODAL
+      ========================= -->
+      <div class="modal-backdrop" id="userLoginLogModalBackdrop">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="userLoginLogModalTitle">
+          <div class="modal-hd">
+            <div>
+              <h3 class="modal-title" id="userLoginLogModalTitle">User Login History</h3>
+              <div class="modal-sub">User: <b id="userLoginLogName">-</b></div>
+            </div>
+            <button class="xbtn" id="closeUserLoginLogModal" aria-label="Close">
+              <svg viewBox="0 0 183.48 183.48" aria-hidden="true"><defs>
+                <style>
+                  .cls-1 {
+                    fill: none;
+                    stroke: #121212;
+                    stroke-linecap: round;
+                    stroke-miterlimit: 10;
+                    stroke-width: 5.5px;
+                  }
+                </style>
+              </defs>
+              <g>
+                <g>
+                  <line class="cls-1" x1="180.73" y1="2.75" x2="2.75" y2="180.73"/>
+                  <line class="cls-1" x1="180.73" y1="180.73" x2="2.75" y2="2.75"/>
+                </g>
+              </g></svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Attempted</th>
+                    <th>Status</th>
+                    <th>IP</th>
+                    <th>User Agent</th>
+                    <th>Details</th>
+                  </tr>
+                </thead>
+                <tbody id="userLoginLogTbody"></tbody>
+              </table>
+            </div>
+            <div id="userLoginLogMsg" class="toast"></div>
+          </div>
+        </div>
+      </div>
       
       <!-- =========================
            AGENCIES PANEL
@@ -679,7 +919,7 @@
 
             <!-- Add New Agency (top-right icon) -->
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="bulkAgenciesIcon" title="Bulk upload agencies" aria-label="Bulk upload agencies">
+              <button class="iconbtn n-named" id="bulkAgenciesIcon" title="Bulk upload agencies" aria-label="Bulk upload agencies">
                 <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
                   <style>
                     .cls-1 {
@@ -698,7 +938,12 @@
                   </g>
                 </g></svg>
               </button>
-              <button class="iconbtn" id="addAgencyIcon" title="Add new agency" aria-label="Add new agency">+</button>
+              <button class="iconbtn n-named" id="addAgencyIcon" title="Add new agency" aria-label="Add new agency">
+                <svg viewBox="0 0 218.13 218.13" aria-hidden="true"><g>
+                  <line class="cls-1" x1="109.07" y1="2.75" x2="109.07" y2="215.38"/>
+                  <line class="cls-1" x1="215.38" y1="109.07" x2="2.75" y2="109.07"/>
+                </g></svg>
+              </button>
             </div>
           </div>
 
@@ -742,7 +987,7 @@
           </div>
 
           <!-- Subtabs (libraries) -->
-          <div id="plSubtabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"></div>
+          <div id="plSubtabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;margin-bottom:8px;"></div>
 
           <!-- Search row -->
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px;">
@@ -786,7 +1031,7 @@
               <div class="hint">Manual add/edit for sensys_patients.</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="bulkPatientsIcon" title="Bulk upload patients" aria-label="Bulk upload patients">
+              <button class="iconbtn n-named" id="bulkPatientsIcon" title="Bulk upload patients" aria-label="Bulk upload patients">
                 <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
                   <style>
                     .cls-1 {
@@ -805,7 +1050,12 @@
                   </g>
                 </g></svg>
               </button>
-              <button class="iconbtn" id="addPatientIcon" title="Add new patient" aria-label="Add new patient">+</button>
+              <button class="iconbtn n-named" id="addPatientIcon" title="Add new patient" aria-label="Add new patient">
+                <svg viewBox="0 0 218.13 218.13" aria-hidden="true"><g>
+                  <line class="cls-1" x1="109.07" y1="2.75" x2="109.07" y2="215.38"/>
+                  <line class="cls-1" x1="215.38" y1="109.07" x2="2.75" y2="109.07"/>
+                </g></svg>
+              </button>
             </div>
           </div>
 
@@ -845,7 +1095,7 @@
               <div class="hint">Manual add/edit for sensys_admissions (patient + agency + dates).</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="bulkAdmissionsIcon" title="Bulk upload admissions" aria-label="Bulk upload admissions">
+              <button class="iconbtn n-named" id="bulkAdmissionsIcon" title="Bulk upload admissions" aria-label="Bulk upload admissions">
                 <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
                   <style>
                     .cls-1 {
@@ -864,7 +1114,12 @@
                   </g>
                 </g></svg>
               </button>
-              <button class="iconbtn" id="addAdmissionIcon" title="Add new admission" aria-label="Add new admission">+</button>
+              <button class="iconbtn n-named" id="addAdmissionIcon" title="Add new admission" aria-label="Add new admission">
+                <svg viewBox="0 0 218.13 218.13" aria-hidden="true"><g>
+                  <line class="cls-1" x1="109.07" y1="2.75" x2="109.07" y2="215.38"/>
+                  <line class="cls-1" x1="215.38" y1="109.07" x2="2.75" y2="109.07"/>
+                </g></svg>
+              </button>
             </div>
           </div>
 
@@ -904,7 +1159,7 @@
               <div class="hint">Review survey runs and results for clients.</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="clientSurveysUploadIcon" title="Upload client survey file" aria-label="Upload client survey file">
+              <button class="iconbtn n-named" id="clientSurveysUploadIcon" title="Upload client survey file" aria-label="Upload client survey file">
                 <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
                   <style>
                     .cls-1 {
@@ -923,7 +1178,7 @@
                   </g>
                 </g></svg>
               </button>
-              <button class="iconbtn" id="clientSurveysSettingsIcon" title="Client survey settings" aria-label="Client survey settings">
+              <button class="iconbtn n-named" id="clientSurveysSettingsIcon" title="Client survey settings" aria-label="Client survey settings">
                 <svg viewBox="0 0 246.98 255.82" aria-hidden="true"><defs>
                   <style>
                     .cls-1 {
@@ -967,7 +1222,7 @@
                 </div>
                 <div style="display:flex;gap:8px;align-items:center">
                   <input class="input" id="clientSurveySearch" placeholder="Search patient name." style="width:190px;max-width:190px;" />
-                  <button class="iconbtn" id="clientSurveyFilterIcon" title="Survey filters" aria-label="Survey filters">
+                  <button class="iconbtn n-named" id="clientSurveyFilterIcon" title="Survey filters" aria-label="Survey filters">
                     <svg viewBox="0 0 253.2 249.69" aria-hidden="true"><defs>
                       <style>
                         .cls-1 {
@@ -987,7 +1242,7 @@
                       </g>
                     </g></svg>
                   </button>
-                  <button class="iconbtn" id="clientSurveyEmailIcon" title="Email surveys" aria-label="Email surveys">
+                  <button class="iconbtn n-named" id="clientSurveyEmailIcon" title="Email surveys" aria-label="Email surveys">
                     <svg viewBox="0 0 256.63 204.3" aria-hidden="true"><defs>
                       <style>
                         .cls-1 {
@@ -1047,7 +1302,7 @@
               <div class="hint">Reference list used for DC submissions (DME / HH) and E-Sign orders.</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="bulkServicesIcon" title="Bulk upload services" aria-label="Bulk upload services">
+              <button class="iconbtn n-named" id="bulkServicesIcon" title="Bulk upload services" aria-label="Bulk upload services">
                 <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
                   <style>
                     .cls-1 {
@@ -1066,13 +1321,23 @@
                   </g>
                 </g></svg>
               </button>
-              <button class="iconbtn" id="addServiceIcon" title="Add new service" aria-label="Add new service">+</button>
-              <button class="iconbtn" id="addServiceTypeIcon" title="Add new service type" aria-label="Add new service type" style="display:none;">＋T</button>
+              <button class="iconbtn n-named" id="addServiceIcon" title="Add new service" aria-label="Add new service">
+                <svg viewBox="0 0 218.13 218.13" aria-hidden="true"><g>
+                  <line class="cls-1" x1="109.07" y1="2.75" x2="109.07" y2="215.38"/>
+                  <line class="cls-1" x1="215.38" y1="109.07" x2="2.75" y2="109.07"/>
+                </g></svg>
+              </button>
+              <button class="iconbtn n-named" id="addServiceTypeIcon" title="Add new service type" aria-label="Add new service type" style="display:none;">
+                <svg viewBox="0 0 218.13 218.13" aria-hidden="true"><g>
+                  <line class="cls-1" x1="109.07" y1="2.75" x2="109.07" y2="215.38"/>
+                  <line class="cls-1" x1="215.38" y1="109.07" x2="2.75" y2="109.07"/>
+                </g></svg>
+              </button>
             </div>
           </div>
 
           <!-- Subtabs -->
-          <div id="servicesSubtabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"></div>
+          <div id="servicesSubtabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;margin-bottom:8px;"></div>
 
           <div class="body">
 
@@ -1091,6 +1356,7 @@
                       <th>Name</th>
                       <th>Type</th>
                       <th>Dropdown</th>
+                      <th style="text-align:right;">Reminder</th>
                     </tr>
                   </thead>
                   <tbody id="servicesTbody"></tbody>
@@ -1139,7 +1405,7 @@
           </div>
 
           <!-- Notes Subtabs (pills) -->
-          <div id="notesSubtabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"></div>
+          <div id="notesSubtabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;margin-bottom:8px;"></div>
 
           <div class="body">
 
@@ -1273,7 +1539,7 @@
               <div class="hint">Reference list of providers/contacts used on admissions.</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="bulkCareTeamIcon" title="Bulk upload care team" aria-label="Bulk upload care team">
+              <button class="iconbtn n-named" id="bulkCareTeamIcon" title="Bulk upload care team" aria-label="Bulk upload care team">
                 <svg viewBox="0 0 251.6 261.78" aria-hidden="true"><defs>
                   <style>
                     .cls-1 {
@@ -1292,7 +1558,12 @@
                   </g>
                 </g></svg>
               </button>
-              <button class="iconbtn" id="addCareTeamIcon" title="Add new care team member" aria-label="Add new care team member">+</button>
+              <button class="iconbtn n-named" id="addCareTeamIcon" title="Add new care team member" aria-label="Add new care team member">
+                <svg viewBox="0 0 218.13 218.13" aria-hidden="true"><g>
+                  <line class="cls-1" x1="109.07" y1="2.75" x2="109.07" y2="215.38"/>
+                  <line class="cls-1" x1="215.38" y1="109.07" x2="2.75" y2="109.07"/>
+                </g></svg>
+              </button>
             </div>
           </div>
 
@@ -1330,7 +1601,12 @@
               <div class="hint">Manage notification templates (subject/body) used for email/SMS/dashboard.</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="iconbtn" id="addNotifIcon" title="Add notification template" aria-label="Add notification template">+</button>
+              <button class="iconbtn n-named" id="addNotifIcon" title="Add notification template" aria-label="Add notification template">
+                <svg viewBox="0 0 218.13 218.13" aria-hidden="true"><g>
+                  <line class="cls-1" x1="109.07" y1="2.75" x2="109.07" y2="215.38"/>
+                  <line class="cls-1" x1="215.38" y1="109.07" x2="2.75" y2="109.07"/>
+                </g></svg>
+              </button>
             </div>
           </div>
 
@@ -1428,43 +1704,6 @@
         <option value="0">No</option>
         <option value="1">Yes (Locked)</option>
       </select>
-
-      <div style="height:14px"></div>
-
-      <div class="label">Agencies (multi-select)</div>
-      <div class="checkwrap">
-        <input class="checksearch" id="agencySearch" placeholder="Search agencies." />
-        <div class="checklist" id="agencyChecklist"></div>
-      </div>
-
-      <div style="height:14px"></div>
-
-      <!-- ✅ NEW: Notification Preferences -->
-      <div class="label">Notification Preferences</div>
-      <div class="notif-pref-wrap">
-        <div class="notif-pref-top">
-          <div class="hint">Assign which notifications this user receives + delivery methods.</div>
-          <div class="notif-pref-addrow">
-            <select class="select" id="userNotifSelect" style="width:min(360px, 70vw);">
-              <option value="">Loading notifications…</option>
-            </select>
-
-            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;font-weight:800;">
-              <input type="checkbox" id="userNotifEmail" /> Email
-            </label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;font-weight:800;">
-              <input type="checkbox" id="userNotifSms" /> SMS
-            </label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;font-weight:800;">
-              <input type="checkbox" id="userNotifDash" checked /> Dashboard
-            </label>
-
-            <button class="btn" id="addUserNotifBtn" style="padding:10px 12px;">+ Add</button>
-          </div>
-        </div>
-
-        <div class="notif-pref-list" id="userNotifList"></div>
-      </div>
 
       <div style="height:14px"></div>
 
@@ -1694,8 +1933,88 @@
 
       <div style="height:10px"></div>
 
+      <div class="label">Phone 2</div>
+      <input class="input" id="p_phone2" />
+
+      <div style="height:10px"></div>
+
       <div class="label">Email</div>
       <input class="input" id="p_email" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Email 2</div>
+      <input class="input" id="p_email2" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Address 1</div>
+      <input class="input" id="p_address1" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Address 2</div>
+      <input class="input" id="p_address2" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">City</div>
+      <input class="input" id="p_city" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">State</div>
+      <input class="input" id="p_state" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Zip</div>
+      <input class="input" id="p_zip" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Insurance Name 1</div>
+      <input class="input" id="p_insurance_name1" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Insurance Number 1</div>
+      <input class="input" id="p_insurance_number1" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Insurance Name 2</div>
+      <input class="input" id="p_insurance_name2" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Insurance Number 2</div>
+      <input class="input" id="p_insurance_number2" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Notes 1</div>
+      <textarea class="input" id="p_notes1" rows="3"></textarea>
+
+      <div style="height:10px"></div>
+
+      <div class="label">Notes 2</div>
+      <textarea class="input" id="p_notes2" rows="3"></textarea>
+
+      <div style="height:10px"></div>
+
+      <div class="label">External Patient ID</div>
+      <input class="input" id="p_external_patient_id" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">MRN</div>
+      <input class="input" id="p_mrn" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Source</div>
+      <input class="input" id="p_source" placeholder="manual" />
 
       <div style="height:10px"></div>
 
@@ -1757,12 +2076,12 @@
       <div style="height:10px"></div>
 
       <div class="label">Admit Date</div>
-      <input class="input" id="a_admit_date" placeholder="YYYY-MM-DD" />
+      <input class="input" id="a_admit_date" type="date" placeholder="YYYY-MM-DD" />
 
       <div style="height:10px"></div>
 
       <div class="label">DC Date</div>
-      <input class="input" id="a_dc_date" placeholder="YYYY-MM-DD" />
+      <input class="input" id="a_dc_date" type="date" placeholder="YYYY-MM-DD" />
 
       <div style="height:10px"></div>
 
@@ -1773,6 +2092,36 @@
 
       <div class="label">Reason</div>
       <input class="input" id="a_reason" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Referring Agency</div>
+      <input class="input" id="a_referring_agency" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Latest PCP</div>
+      <input class="input" id="a_latest_pcp" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Notes 1</div>
+      <textarea class="input" id="a_notes1" rows="3"></textarea>
+
+      <div style="height:10px"></div>
+
+      <div class="label">Notes 2</div>
+      <textarea class="input" id="a_notes2" rows="3"></textarea>
+
+      <div style="height:10px"></div>
+
+      <div class="label">Next Location</div>
+      <input class="input" id="a_next_location" />
+
+      <div style="height:10px"></div>
+
+      <div class="label">Next Agency ID</div>
+      <input class="input" id="a_next_agency_id" placeholder="Agency ID" />
 
       <div style="height:10px"></div>
 
@@ -2114,6 +2463,8 @@
           <div style="display:flex;gap:8px;align-items:center">
             <button class="btn primary" id="clientSurveySaveSummary">Save Summary</button>
             <div class="mini" id="clientSurveyDetailMsg"></div>
+            <div style="flex:1"></div>
+            <button class="btn" id="clientSurveyDeleteBtn" style="border-color:#C76B6B;color:#C76B6B;">Delete</button>
           </div>
         </div>
       </div>
@@ -2175,10 +2526,14 @@
     <div class="modal-body">
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <input id="svc_id" type="hidden" />
-        <div style="flex:1;min-width:240px;">
-          <div class="label">Name</div>
-          <input id="svc_name" class="input" placeholder="Service name" />
-        </div>
+          <div style="flex:1;min-width:240px;">
+            <div class="label">Name</div>
+            <input id="svc_name" class="input" placeholder="Service name" />
+          </div>
+          <div style="flex:1;min-width:220px;">
+            <div class="label">Aliases</div>
+            <input id="svc_aliases" class="input" placeholder="Comma separated (optional)" />
+          </div>
         <div style="width:180px;">
           <div class="label">Type</div>
           <select id="svc_type" class="input">
@@ -2192,12 +2547,80 @@
             <option value="0">No</option>
           </select>
         </div>
+        <div style="width:200px;">
+          <div class="label">Reminder ID</div>
+          <input id="svc_reminder_id" class="input" placeholder="Reminder ID" />
+        </div>
       </div>
 
       <div id="svcMsg" class="toast"></div>
 
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;">
         <button id="saveServiceBtn" class="btn primary">Save Service</button>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ✅ Service Reminder modal -->
+<div id="svcReminderModalBackdrop" class="modal-backdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="svcReminderModalTitle">
+    <div class="modal-hd">
+      <div>
+        <h3 class="modal-title" id="svcReminderModalTitle">Service Reminder</h3>
+        <div class="modal-sub">Service: <b id="svcReminderServiceName">—</b></div>
+      </div>
+      <button class="xbtn" id="closeSvcReminderModal" aria-label="Close">✖</button>
+    </div>
+
+    <div class="modal-body">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:240px;">
+          <div class="label">Reminder Title</div>
+          <input id="svcReminderTitle" class="input" placeholder="Optional short title" />
+        </div>
+        <div style="width:180px;">
+          <div class="label">Severity</div>
+          <select id="svcReminderSeverity" class="input">
+            <option value="info">Info</option>
+            <option value="important">Important</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
+        <div style="width:200px;">
+          <div class="label">Follow-up Window</div>
+          <select id="svcReminderFollowup" class="input">
+            <option value="na">Not specified</option>
+            <option value="Same day">Same day</option>
+            <option value="Within 48 hours">Within 48 hours</option>
+            <option value="Within 7 days">Within 7 days</option>
+          </select>
+        </div>
+        <div style="width:140px;">
+          <div class="label">Active</div>
+          <select id="svcReminderActive" class="input">
+            <option value="1">Yes</option>
+            <option value="0">No</option>
+          </select>
+        </div>
+        <div style="width:220px;">
+          <div class="label">Last Updated</div>
+          <input id="svcReminderUpdated" class="input" disabled />
+        </div>
+        <div style="flex:1;min-width:260px;">
+          <div class="label">Reminder Message</div>
+          <textarea id="svcReminderText" class="input" placeholder="Add reminder details..." style="min-height:90px;resize:vertical;"></textarea>
+        </div>
+      </div>
+
+      <div class="smallhint" style="margin-top:8px;">
+        Shown to SNF users after DC submission when this service is selected.
+      </div>
+
+      <div id="svcReminderMsg" class="toast"></div>
+
+      <div style="display:flex;justify-content:space-between;gap:10px;margin-top:12px;">
+        <button id="clearSvcReminderBtn" class="btn">Clear Reminder</button>
+        <button id="saveSvcReminderBtn" class="btn primary">Save Reminder</button>
       </div>
     </div>
   </div>
@@ -2278,6 +2701,74 @@
             <option value="1">Yes</option>
             <option value="0">No</option>
           </select>
+        </div>
+      </div>
+
+      <div style="height:10px"></div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:220px;">
+          <div class="label">Aliases</div>
+          <input id="ct_aliases" class="input" placeholder="Aliases" />
+        </div>
+        <div style="flex:1;min-width:220px;">
+          <div class="label">Practice Name</div>
+          <input id="ct_practice_name" class="input" placeholder="Practice name" />
+        </div>
+      </div>
+
+      <div style="height:10px"></div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:240px;">
+          <div class="label">Address 1</div>
+          <input id="ct_address1" class="input" placeholder="Address 1" />
+        </div>
+        <div style="flex:1;min-width:240px;">
+          <div class="label">Address 2</div>
+          <input id="ct_address2" class="input" placeholder="Address 2" />
+        </div>
+      </div>
+
+      <div style="height:10px"></div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="width:180px;">
+          <div class="label">City</div>
+          <input id="ct_city" class="input" placeholder="City" />
+        </div>
+        <div style="width:120px;">
+          <div class="label">State</div>
+          <input id="ct_state" class="input" placeholder="State" />
+        </div>
+        <div style="width:140px;">
+          <div class="label">Zip</div>
+          <input id="ct_zip" class="input" placeholder="Zip" />
+        </div>
+      </div>
+
+      <div style="height:10px"></div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="width:180px;">
+          <div class="label">Phone 1</div>
+          <input id="ct_phone1" class="input" placeholder="Phone 1" />
+        </div>
+        <div style="width:180px;">
+          <div class="label">Phone 2</div>
+          <input id="ct_phone2" class="input" placeholder="Phone 2" />
+        </div>
+        <div style="width:200px;">
+          <div class="label">Email 1</div>
+          <input id="ct_email1" class="input" placeholder="Email 1" />
+        </div>
+        <div style="width:200px;">
+          <div class="label">Email 2</div>
+          <input id="ct_email2" class="input" placeholder="Email 2" />
+        </div>
+        <div style="width:160px;">
+          <div class="label">Fax</div>
+          <input id="ct_fax" class="input" placeholder="Fax" />
         </div>
       </div>
 
@@ -2539,6 +3030,74 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="userAgenciesModalBackdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="userAgenciesModalTitle">
+    <div class="modal-hd">
+      <div>
+        <h3 class="modal-title" id="userAgenciesModalTitle">User Agencies</h3>
+        <div class="modal-sub">User: <b id="userAgenciesName">—</b></div>
+      </div>
+      <button class="xbtn" id="closeUserAgenciesModal" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="label">Agencies (multi-select)</div>
+      <div class="checkwrap">
+        <input class="checksearch" id="agencySearch" placeholder="Search agencies." />
+        <div class="checklist" id="agencyChecklist"></div>
+      </div>
+      <div style="height:14px"></div>
+      <div class="stack">
+        <button class="btn primary" id="saveUserAgencies">Save Agencies</button>
+      </div>
+      <div id="userAgenciesMsg" class="toast"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="userNotifsModalBackdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="userNotifsModalTitle">
+    <div class="modal-hd">
+      <div>
+        <h3 class="modal-title" id="userNotifsModalTitle">User Notifications</h3>
+        <div class="modal-sub">User: <b id="userNotifsName">—</b></div>
+      </div>
+      <button class="xbtn" id="closeUserNotifsModal" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="label">Notification Preferences</div>
+      <div class="notif-pref-wrap">
+        <div class="notif-pref-top">
+          <div class="hint">Assign which notifications this user receives + delivery methods.</div>
+          <div class="notif-pref-addrow">
+            <select class="select" id="userNotifSelect" style="width:min(360px, 70vw);">
+              <option value="">Loading notifications…</option>
+            </select>
+
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;font-weight:800;">
+              <input type="checkbox" id="userNotifEmail" /> Email
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;font-weight:800;">
+              <input type="checkbox" id="userNotifSms" /> SMS
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;font-weight:800;">
+              <input type="checkbox" id="userNotifDash" checked /> Dashboard
+            </label>
+
+            <button class="btn" id="addUserNotifBtn" style="padding:10px 12px;">+ Add</button>
+          </div>
+        </div>
+
+        <div class="notif-pref-list" id="userNotifList"></div>
+      </div>
+      <div style="height:14px"></div>
+      <div class="stack">
+        <button class="btn primary" id="saveUserNotifs">Save Notifications</button>
+      </div>
+      <div id="userNotifsMsg" class="toast"></div>
+    </div>
+  </div>
+</div>
+
 <!-- =========================
      Survey Preferences Modal (Agency)
 ========================= -->
@@ -2593,25 +3152,55 @@
   document.addEventListener("dragover", (e) => e.preventDefault());
   document.addEventListener("drop", (e) => e.preventDefault());
 
-  function openServiceModal(service){
+  function applyServiceModal(service){
     $("svc_id").value = service ? String(service.id || "") : "";
-    $("selServiceId").textContent = service && service.id ? String(service.id) : "—";
+    $("selServiceId").textContent = service && service.id ? String(service.id) : "-";
     $("svc_name").value = service ? (service.name || "") : "";
-    $("svc_type").value = service ? (service.service_type || "dme") : "dme";
+    $("svc_aliases").value = service ? (service.aliases || "") : "";
+
+    let stVal = "";
+    if(service){
+      if(service.service_type_id){
+        stVal = String(service.service_type_id);
+      }else{
+        const code = String(service.service_type_code || service.service_type || "").toLowerCase();
+        const match = serviceTypesCache.find(t => String(t.code || "").toLowerCase() === code);
+        if(match) stVal = String(match.id);
+      }
+    }else{
+      const dme = serviceTypesCache.find(t => String(t.code || "").toLowerCase() === "dme");
+      if(dme) stVal = String(dme.id);
+    }
+
+    $("svc_type").value = stVal || "";
     $("svc_dropdown").value = service ? String(service.dropdown ? 1 : 0) : "1";
+    $("svc_reminder_id").value = service ? (service.reminder_id || "") : "";
     setMsg($("svcMsg"), "", true);
     $("serviceModalBackdrop").classList.add("on");
+  }
+
+  function openServiceModal(service){
+    if(!serviceTypesCache.length){
+      refreshServiceTypes()
+        .then(() => applyServiceModal(service))
+        .catch(() => applyServiceModal(service));
+      return;
+    }
+    applyServiceModal(service);
   }
   function closeServiceModal(){ $("serviceModalBackdrop").classList.remove("on"); }
   $("closeServiceModal").onclick = closeServiceModal;
 
   $("saveServiceBtn").onclick = async () => {
     try{
+      const nextAgencyRaw = ($("a_next_agency_id").value || "").trim();
       const payload = {
         id: $("svc_id").value ? Number($("svc_id").value) : null,
         name: ($("svc_name").value || "").trim(),
+        aliases: ($("svc_aliases").value || "").trim(),
         service_type_id: Number($("svc_type").value || 0),
-        dropdown: Number($("svc_dropdown").value || 1)
+        dropdown: Number($("svc_dropdown").value || 1),
+        reminder_id: ($("svc_reminder_id").value || "").trim()
       };
       await apiPost("/api/sensys/admin/services/upsert", payload);
       await refreshServicesList();
@@ -2621,6 +3210,13 @@
       setMsg($("svcMsg"), String(e.message || e), false);
     }
   };
+
+  $("closeSvcReminderModal").onclick = closeServiceReminderModal;
+  $("saveSvcReminderBtn").onclick = saveServiceReminder;
+  $("clearSvcReminderBtn").onclick = clearServiceReminder;
+  $("svcReminderModalBackdrop").addEventListener("click", (e) => {
+    if(e.target.id === "svcReminderModalBackdrop") closeServiceReminderModal();
+  });
 
   function $safe(id){
     return document.getElementById(id);
@@ -2636,10 +3232,22 @@
 
   function openCareTeamModal(row){
     $("ct_id").value = row ? String(row.id || "") : "";
-    $("selCareTeamId").textContent = row && row.id ? String(row.id) : "—";
+    $("selCareTeamId").textContent = row && row.id ? String(row.id) : "-";
     $("ct_name").value = row ? (row.name || "") : "";
     $("ct_type").value = row ? (row.type || "") : "";
     $("ct_npi").value = row ? (row.npi || "") : "";
+    $("ct_aliases").value = row ? (row.aliases || "") : "";
+    $("ct_practice_name").value = row ? (row.practice_name || "") : "";
+    $("ct_address1").value = row ? (row.address1 || "") : "";
+    $("ct_address2").value = row ? (row.address2 || "") : "";
+    $("ct_city").value = row ? (row.city || "") : "";
+    $("ct_state").value = row ? (row.state || "") : "";
+    $("ct_zip").value = row ? (row.zip || "") : "";
+    $("ct_phone1").value = row ? (row.phone1 || "") : "";
+    $("ct_phone2").value = row ? (row.phone2 || "") : "";
+    $("ct_email1").value = row ? (row.email1 || "") : "";
+    $("ct_email2").value = row ? (row.email2 || "") : "";
+    $("ct_fax").value = row ? (row.fax || "") : "";
     $("ct_active").value = row ? String(row.active ? 1 : 0) : "1";
     setMsg($("ctMsg"), "", true);
     $("careTeamModalBackdrop").classList.add("on");
@@ -2654,6 +3262,18 @@
         name: ($("ct_name").value || "").trim(),
         type: ($("ct_type").value || "").trim(),
         npi: ($("ct_npi").value || "").trim(),
+        aliases: ($("ct_aliases").value || "").trim(),
+        practice_name: ($("ct_practice_name").value || "").trim(),
+        address1: ($("ct_address1").value || "").trim(),
+        address2: ($("ct_address2").value || "").trim(),
+        city: ($("ct_city").value || "").trim(),
+        state: ($("ct_state").value || "").trim(),
+        zip: ($("ct_zip").value || "").trim(),
+        phone1: ($("ct_phone1").value || "").trim(),
+        phone2: ($("ct_phone2").value || "").trim(),
+        email1: ($("ct_email1").value || "").trim(),
+        email2: ($("ct_email2").value || "").trim(),
+        fax: ($("ct_fax").value || "").trim(),
         active: Number($("ct_active").value || 1)
       };
       await apiPost("/api/sensys/admin/care-team/upsert", payload);
@@ -2682,8 +3302,20 @@
   $("userModalBackdrop").addEventListener("click", (e) => {
     if(e.target.id === "userModalBackdrop") closeUserModal();
   });
+  $("userAgenciesModalBackdrop").addEventListener("click", (e) => {
+    if(e.target.id === "userAgenciesModalBackdrop") closeUserAgenciesModal();
+  });
+  $("userNotifsModalBackdrop").addEventListener("click", (e) => {
+    if(e.target.id === "userNotifsModalBackdrop") closeUserNotifsModal();
+  });
   $("agencyModalBackdrop").addEventListener("click", (e) => {
     if(e.target.id === "agencyModalBackdrop") closeAgencyModal();
+  });
+  $("usersFilterModalBackdrop").addEventListener("click", (e) => {
+    if(e.target.id === "usersFilterModalBackdrop") closeUsersFilterModal();
+  });
+  $("userLoginLogModalBackdrop").addEventListener("click", (e) => {
+    if(e.target.id === "userLoginLogModalBackdrop") closeUserLoginLogModal();
   });
 
   // ✅ ADD: close services + care team when clicking the dark backdrop
@@ -2696,7 +3328,11 @@
 
   // Close buttons
   $("closeUserModal").onclick = closeUserModal;
+  $("closeUserAgenciesModal").onclick = closeUserAgenciesModal;
+  $("closeUserNotifsModal").onclick = closeUserNotifsModal;
   $("closeAgencyModal").onclick = closeAgencyModal;
+  $("closeUsersFilterModal").onclick = closeUsersFilterModal;
+  $("closeUserLoginLogModal").onclick = closeUserLoginLogModal;
 
   // ESC key closes whichever modal is open
   document.addEventListener("keydown", (e) => {
@@ -2710,6 +3346,8 @@
       closeClientSurveysFilterModal();
       closeClientSurveyDetailsModal();
       closeSurveyPrefsModal();
+      closeUsersFilterModal();
+      closeUserLoginLogModal();
       closeServiceModal();
     closeCareTeamModal();
     closeBulkModal();
@@ -3174,6 +3812,46 @@
     openUserModal();
   }
 
+  async function openUserAgenciesModal(userId){
+    const u = (usersCache || []).find(x => Number(x.user_id) === Number(userId));
+    if(!u) return;
+    selectedUserId = u.user_id;
+    $("userAgenciesName").textContent = u.display_name || u.email || "-";
+    selectedAgencyIds = new Set(u.agency_ids || []);
+
+    if(!agenciesMaster.length){
+      const ag = await apiGet("/api/sensys/admin/agencies");
+      agenciesMaster = ag.agencies || [];
+    }
+    renderAgencyChecklist();
+    setMsg($("userAgenciesMsg"), "", true);
+    $("userAgenciesModalBackdrop").classList.add("on");
+  }
+
+  function closeUserAgenciesModal(){ $("userAgenciesModalBackdrop").classList.remove("on"); }
+
+  async function openUserNotifsModal(userId){
+    const u = (usersCache || []).find(x => Number(x.user_id) === Number(userId));
+    if(!u) return;
+    selectedUserId = u.user_id;
+    $("userNotifsName").textContent = u.display_name || u.email || "-";
+
+    selectedUserNotifPrefs = Array.isArray(u.notification_prefs) ? (u.notification_prefs || []).map(p => ({
+      notif_key: p.notif_key,
+      deliver_email: Number(p.deliver_email ?? p.email ?? 0),
+      deliver_sms: Number(p.deliver_sms ?? p.sms ?? 0),
+      deliver_dashboard: Number(p.deliver_dashboard ?? p.dashboard ?? 0),
+    })) : [];
+
+    await ensureNotificationsMasterLoaded();
+    renderUserNotifSelectOptions();
+    renderUserNotifPrefs();
+    setMsg($("userNotifsMsg"), "", true);
+    $("userNotifsModalBackdrop").classList.add("on");
+  }
+
+  function closeUserNotifsModal(){ $("userNotifsModalBackdrop").classList.remove("on"); }
+
   function renderEsignLinkChecklist(){
     const wrap = $("esignLinkChecklist");
     if(!wrap) return;
@@ -3223,44 +3901,212 @@
   }
 
   function renderUsersTable(){
-    const tbody = $("tbody");
+    const tbody = $("usersTbody");
     tbody.innerHTML = "";
 
-    usersCache.forEach(u => {
+    const q = ($("userSearch")?.value || "").trim().toLowerCase();
+    const roleFilter = (userFilterState.role || "").trim().toLowerCase();
+    const lockedFilter = (userFilterState.locked || "").trim();
+    const fromDate = userFilterState.login_from ? new Date(userFilterState.login_from + "T00:00:00") : null;
+    const toDate = userFilterState.login_to ? new Date(userFilterState.login_to + "T23:59:59") : null;
+
+    const items = (usersCache || []).filter(u => {
+      const hay = `${u.email || ""} ${u.display_name || ""}`.toLowerCase();
+      if(q && !hay.includes(q)) return false;
+
+      if(roleFilter){
+        const roles = (u.role_keys || []).map(r => String(r).toLowerCase());
+        if(!roles.includes(roleFilter)) return false;
+      }
+
+      if(lockedFilter !== ""){
+        const lockedVal = u.account_locked ? "1" : "0";
+        if(lockedVal !== lockedFilter) return false;
+      }
+
+      if(fromDate || toDate){
+        if(!u.last_login_at) return false;
+        const dt = new Date(String(u.last_login_at).replace(" ", "T") + "Z");
+        if(fromDate && dt < fromDate) return false;
+        if(toDate && dt > toDate) return false;
+      }
+
+      return true;
+    });
+
+    const roleMap = new Map((rolesMaster || []).map(r => [String(r.role_key || ""), String(r.role_name || "")]));
+
+    items.forEach(u => {
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
       tr.onclick = () => selectUser(u);
 
-      const roles = (u.role_keys || []).join(", ");
-
+      const roles = (u.role_keys || []).map(r => {
+        const key = String(r);
+        return roleMap.get(key) || key;
+      }).filter(Boolean);
       const lastLogin = u.last_login_at
         ? new Date(u.last_login_at.replace(" ", "T") + "Z").toLocaleString()
-        : "—";
+        : "-";
+      const activeLabel = u.is_active ? "Active" : "Inactive";
+      const lockedLabel = u.account_locked ? "Locked" : "Unlocked";
 
       tr.innerHTML = `
-        <td style="width:78px;">
-          <button class="miniIconBtn"
-                  title="Login as this user"
-                  onclick="event.stopPropagation(); loginAsUser(${Number(u.user_id)})">
-            🔑
-          </button>
-          <button class="miniIconBtn"
-                  title="Copy this user"
-                  onclick="event.stopPropagation(); startCopyUser(usersCache.find(x => Number(x.user_id)===${Number(u.user_id)}))">
-            📄
-          </button>
+        <td>
+          <div class="user-main">
+            <div class="user-name">${escapeHtml(u.display_name || u.email || "User")}</div>
+            <div class="user-meta">
+              <span class="user-pill">${escapeHtml(u.email || "no-email")}</span>
+              <span class="user-pill">${activeLabel}</span>
+              <span class="user-pill">${lockedLabel}</span>
+              <span class="user-meta-gap"><b>Roles:</b> ${escapeHtml(roles.join(", ") || "—")}</span>
+              <span><b>Last login:</b> ${escapeHtml(lastLogin)}</span>
+            </div>
+          </div>
         </td>
-        <td><b>${escapeHtml(u.email || "")}</b></td>
-        <td>${escapeHtml(u.display_name || "")}</td>
-        <td>${u.is_active ? "Yes" : "No"}</td>
-        <td>${escapeHtml(roles)}</td>
-        <td>${escapeHtml(lastLogin)}</td>
-        <td>${u.account_locked ? "Yes" : "No"}</td>
+        <td style="text-align:right;">
+          <div class="user-actions">
+            <button class="iconbtn sm"
+                    title="User Linking"
+                    aria-label="User Linking"
+                    onclick="event.stopPropagation(); openUserAgenciesModal(${Number(u.user_id)})">
+              <svg viewBox="0 0 78.99 74.57" aria-hidden="true"><g>
+                <g>
+                  <g>
+                    <g>
+                      <line class="cls-1" x1="58.08" y1="55.98" x2="70.42" y2="43.64" />
+                      <polyline class="cls-1" points="70.79 52.6 70.79 43.27 61.45 43.27" />
+                    </g>
+                    <g>
+                      <line class="cls-1" x1="6.96" y1="43.27" x2="19.3" y2="55.6" />
+                      <polyline class="cls-1" points="10.33 55.97 19.67 55.98 19.67 46.64" />
+                    </g>
+                  </g>
+                  <g>
+                    <line class="cls-1" x1="49.04" y1="14.51" x2="31.59" y2="14.51" />
+                    <polyline class="cls-1" points="37.67 7.91 31.07 14.51 37.67 21.1" />
+                  </g>
+                </g>
+                <g>
+                  <path class="cls-1" d="M77.6,33.6v-9.5s-4.36-3.71-13.15-3.71-13.12,3.68-13.15,3.71h0s0,9.5,0,9.5h26.3Z" />
+                  <path class="cls-1" d="M70.25,7.52c0,3.89-2.56,6.94-5.72,6.94s-5.72-3.06-5.72-6.94,2.56-6.13,5.72-6.13,5.72,2.24,5.72,6.13Z" />
+                </g>
+                <g>
+                  <path class="cls-1" d="M52.6,73.18v-9.5s-4.36-3.71-13.15-3.71-13.12,3.68-13.15,3.71h0v9.5h26.3Z" />
+                  <path class="cls-1" d="M45.25,47.1c0,3.89-2.56,6.94-5.72,6.94s-5.72-3.06-5.72-6.94,2.56-6.13,5.72-6.13,5.72,2.24,5.72,6.13Z" />
+                </g>
+                <g>
+                  <path class="cls-1" d="M27.69,33.6v-9.5s-4.36-3.71-13.15-3.71-13.12,3.68-13.15,3.71h0v9.5h26.3Z" />
+                  <path class="cls-1" d="M20.34,7.52c0,3.89-2.56,6.94-5.72,6.94s-5.72-3.06-5.72-6.94S11.46,1.39,14.62,1.39s5.72,2.24,5.72,6.13Z" />
+                </g>
+              </g></svg>
+            </button>
+            <button class="iconbtn sm n-named"
+                    title="Notifications"
+                    aria-label="Notifications"
+                    onclick="event.stopPropagation(); openUserNotifsModal(${Number(u.user_id)})">
+              <svg viewBox="0 0 216.18 263.34" aria-hidden="true"><g>
+                <path class="cls-1" d="M211.75,204.56l-13.8-20.09c-8.42-12.26-12.93-26.79-12.93-41.66v-28.8c0-32.92-20.67-61-49.75-71.98-3.98-1.5-6.61-5.3-6.61-9.55v-9.15c0-11.36-9.21-20.57-20.57-20.57h0c-11.36,0-20.57,9.21-20.57,20.57v9.15c0,4.25-2.64,8.05-6.61,9.55-29.07,10.98-49.75,39.07-49.75,71.98v28.8c0,14.88-4.51,29.4-12.93,41.66l-13.8,20.09c-4.33,6.31.18,14.89,7.84,14.89h191.63c7.65,0,12.17-8.58,7.84-14.89Z" />
+                <path class="cls-1" d="M78.75,238.56c3.69,12.73,15.43,22.03,29.34,22.03s25.66-9.3,29.34-22.03" />
+              </g></svg>
+            </button>
+            <button class="iconbtn sm"
+                    title="Login As"
+                    aria-label="Login As"
+                    onclick="event.stopPropagation(); loginAsUser(${Number(u.user_id)})">
+              <svg viewBox="0 0 77.14 77.14" aria-hidden="true"><g>
+                <path class="cls-1" d="M29.36,21.33v34.49c0,.26.29.42.51.28l26.72-17.25c.2-.13.2-.43,0-.56l-26.72-17.25c-.22-.14-.51.02-.51.28Z" />
+                <circle class="cls-1" cx="38.57" cy="38.57" r="37.19" />
+              </g></svg>
+            </button>
+            <button class="iconbtn sm"
+                    title="New User from Copy"
+                    aria-label="New User from Copy"
+                    onclick="event.stopPropagation(); startCopyUser(usersCache.find(x => Number(x.user_id)===${Number(u.user_id)}))">
+              <svg viewBox="0 0 75.98 75.98" aria-hidden="true"><g>
+                <g>
+                  <polyline class="cls-1" points="57.36 44.8 74.59 27.56 74.59 14.94 61.04 1.39 48.42 1.39 24.13 25.67 24.8 38.96 33.39 47.55" />
+                  <polyline class="cls-1" points="40.52 40.52 34.15 34.15 34.15 29.82 52.56 11.4 56.89 11.4 64.58 19.09 64.58 23.42 51.33 36.66" />
+                </g>
+                <g>
+                  <polyline class="cls-1" points="18.12 31.68 1.39 48.42 1.39 61.04 14.94 74.59 27.56 74.59 51.85 50.31 51.18 37.02 43.03 28.87" />
+                  <polyline class="cls-1" points="24.65 39.32 11.4 52.56 11.4 56.89 19.09 64.58 23.42 64.58 44 44 40.52 40.52" />
+                </g>
+              </g></svg>
+            </button>
+            <button class="iconbtn sm"
+                    title="Login History"
+                    aria-label="Login History"
+                    onclick="event.stopPropagation(); openUserLoginLogModal(${Number(u.user_id)})">
+              <svg viewBox="0 0 96.85 72.14" aria-hidden="true"><g>
+                <polyline class="cls-1" points="51.14 14.87 32.81 14.87 32.81 1.39 32.1 1.39 2.21 25.47 32.1 49.55 32.81 49.55 32.81 36.07 64.04 36.07 64.04 22.59 64.75 22.59 94.64 46.67 64.75 70.75 64.04 70.75 64.04 57.27 45.71 57.27" />
+              </g></svg>
+            </button>
+          </div>
+        </td>
       `;
 
       tbody.appendChild(tr);
     });
   }
+
+  const userFilterState = {
+    role: "",
+    locked: "",
+    login_from: "",
+    login_to: ""
+  };
+
+  function renderUserFilterOptions(){
+    const sel = $("userFilterRole");
+    if(!sel) return;
+
+    sel.innerHTML = `<option value="">All roles</option>` + (rolesMaster || []).map(r => (
+      `<option value="${escapeHtml(r.role_key)}">${escapeHtml(r.role_name)}</option>`
+    )).join("");
+
+    sel.value = userFilterState.role || "";
+    $("userFilterLocked").value = userFilterState.locked || "";
+    $("userFilterLoginFrom").value = userFilterState.login_from || "";
+    $("userFilterLoginTo").value = userFilterState.login_to || "";
+  }
+
+  function openUsersFilterModal(){
+    renderUserFilterOptions();
+    $("usersFilterModalBackdrop").classList.add("on");
+  }
+  function closeUsersFilterModal(){ $("usersFilterModalBackdrop").classList.remove("on"); }
+
+  async function openUserLoginLogModal(userId){
+    const u = (usersCache || []).find(x => Number(x.user_id) === Number(userId));
+    $("userLoginLogName").textContent = u ? (u.display_name || u.email || "-") : "-";
+    $("userLoginLogTbody").innerHTML = "";
+    $("userLoginLogMsg").textContent = "Loading.";
+    $("userLoginLogModalBackdrop").classList.add("on");
+    try{
+      const resp = await apiGet(`/api/sensys/admin/users/login-log?user_id=${encodeURIComponent(userId)}`);
+      const rows = resp.logins || [];
+      if(!rows.length){
+        $("userLoginLogTbody").innerHTML = `<tr><td colspan="5" style="padding:12px;color:#667085;font-size:12px;">No login history found.</td></tr>`;
+        $("userLoginLogMsg").textContent = "";
+        return;
+      }
+      $("userLoginLogTbody").innerHTML = rows.map(r => `
+        <tr>
+          <td>${escapeHtml(r.attempted_at || "-")}</td>
+          <td>${escapeHtml(r.status || "-")}</td>
+          <td>${escapeHtml(r.ip || "-")}</td>
+          <td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.user_agent || "-")}</td>
+          <td>${escapeHtml(r.details || "-")}</td>
+        </tr>
+      `).join("");
+      $("userLoginLogMsg").textContent = "";
+    }catch(e){
+      $("userLoginLogMsg").textContent = String(e.message || e);
+    }
+  }
+
+  function closeUserLoginLogModal(){ $("userLoginLogModalBackdrop").classList.remove("on"); }
 
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, (m) => ({
@@ -3321,9 +4167,35 @@
   async function refreshAll(){
     setMsg($("listMsg"), "Loading…", true);
     try{
+      const token = getToken();
+      if(!token){
+        rolesMaster = [
+          { role_key: "admin", role_name: "Admin" },
+          { role_key: "developer", role_name: "Developer" },
+          { role_key: "snf_user", role_name: "SNF User" }
+        ];
+        agenciesMaster = [
+          { id: 1, agency_name: "Evolv Health", agency_type: "SNF", city: "Phoenix", state: "AZ" },
+          { id: 2, agency_name: "Harbor View", agency_type: "SNF", city: "Tampa", state: "FL" }
+        ];
+        usersCache = [
+          { user_id: 1, display_name: "Jamie Rivera", email: "jamie@evolvhealth.com", is_active: 1, account_locked: 0, role_keys: ["admin"], last_login_at: "2026-01-22 14:02:00", agency_ids: [1] },
+          { user_id: 2, display_name: "Taylor Nguyen", email: "taylor@harborview.com", is_active: 1, account_locked: 0, role_keys: ["snf_user"], last_login_at: "2026-01-23 09:45:00", agency_ids: [2] },
+          { user_id: 3, display_name: "Alex Morgan", email: "alex@evolvhealth.com", is_active: 0, account_locked: 1, role_keys: ["developer"], last_login_at: "", agency_ids: [1,2] }
+        ];
+        renderRolesPills();
+        renderUserFilterOptions();
+        renderAgencyChecklist();
+        renderClientSurveyEmailAgencyOptions();
+        renderUsersTable();
+        setMsg($("listMsg"), "Preview mode: sample users shown (set ADMIN_TOKEN to load live data).", true);
+        return;
+      }      
+
       const rolesResp = await apiGet("/api/sensys/admin/roles");
       rolesMaster = rolesResp.roles || [];
       renderRolesPills();
+      renderUserFilterOptions();
 
       const agResp = await apiGet("/api/sensys/admin/agencies");
       agenciesMaster = agResp.agencies || [];
@@ -3432,6 +4304,28 @@
 
   // NEW: top-right icon
   $("addUserIcon").onclick = startNewUser;
+  $("usersFilterIcon").onclick = openUsersFilterModal;
+  $("userSearch").addEventListener("input", renderUsersTable);
+
+  $("userApplyFilters").onclick = () => {
+    userFilterState.role = ($("userFilterRole").value || "").trim();
+    userFilterState.locked = ($("userFilterLocked").value || "").trim();
+    userFilterState.login_from = ($("userFilterLoginFrom").value || "").trim();
+    userFilterState.login_to = ($("userFilterLoginTo").value || "").trim();
+    $("userFilterMsg").textContent = "Filters applied.";
+    renderUsersTable();
+    closeUsersFilterModal();
+  };
+
+  $("userClearFilters").onclick = () => {
+    userFilterState.role = "";
+    userFilterState.locked = "";
+    userFilterState.login_from = "";
+    userFilterState.login_to = "";
+    $("userFilterMsg").textContent = "Filters cleared.";
+    renderUserFilterOptions();
+    renderUsersTable();
+  };
 
   $("bulkUsersIcon").onclick = () => openBulkModal("users");
   $("bulkAgenciesIcon").onclick = () => openBulkModal("agencies");
@@ -3503,6 +4397,39 @@
     }
   };
 
+  $("saveUserAgencies").onclick = async () => {
+    try{
+      await apiPost("/api/sensys/admin/users/set-agencies", {
+        user_id: selectedUserId,
+        agency_ids: Array.from(selectedAgencyIds)
+      });
+      setMsg($("userAgenciesMsg"), "Saved.", true);
+      await refreshAll();
+      closeUserAgenciesModal();
+    }catch(e){
+      setMsg($("userAgenciesMsg"), String(e.message || e), false);
+    }
+  };
+
+  $("saveUserNotifs").onclick = async () => {
+    try{
+      await apiPost("/api/sensys/admin/users/set-notification-prefs", {
+        user_id: selectedUserId,
+        prefs: (selectedUserNotifPrefs || []).map(p => ({
+          notif_key: p.notif_key,
+          deliver_email: Number(p.deliver_email ?? p.email ?? 0),
+          deliver_sms: Number(p.deliver_sms ?? p.sms ?? 0),
+          deliver_dashboard: Number(p.deliver_dashboard ?? p.dashboard ?? 0),
+        }))
+      });
+      setMsg($("userNotifsMsg"), "Saved.", true);
+      await refreshAll();
+      closeUserNotifsModal();
+    }catch(e){
+      setMsg($("userNotifsMsg"), String(e.message || e), false);
+    }
+  };
+
   $("saveToken").onclick = async () => {
     const t = ($("token").value || "").trim();
     if(!t){
@@ -3560,9 +4487,14 @@
 
     wrap.innerHTML = "";
     tabs.forEach(t => {
-      const pill = document.createElement("span");
-      pill.className = "tag " + (notesSubtabKey === t.key ? "on" : "");
+      const pill = document.createElement("button");
+      pill.className = "btn";
       pill.textContent = t.label;
+
+      const active = (notesSubtabKey === t.key);
+      pill.style.fontWeight = active ? "900" : "800";
+      pill.style.borderColor = active ? "#7f56d9" : "#d0d5dd";
+      pill.style.background = active ? "rgba(127,86,217,.10)" : "#fff";
 
       pill.onclick = () => {
         notesSubtabKey = t.key;
@@ -3700,7 +4632,7 @@
       tr.onclick = () => selectAgency(a);
 
       const surveyPrefsBtn = a.evolv_client ? `
-          <button class="iconbtn sm" title="Survey Preferences" aria-label="Survey Preferences"
+          <button class="iconbtn sm n-named" title="Survey Preferences" aria-label="Survey Preferences"
                   onclick="event.stopPropagation(); openSurveyPrefsModal(${Number(a.id)})">
             <svg viewBox="0 0 271.18 260.93" aria-hidden="true"><defs>
               <style>
@@ -3725,11 +4657,24 @@
         <td>${a.evolv_client ? "Yes" : "No"}</td>
         <td style="text-align:right;">
           <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">
-            <button class="iconbtn sm"
-                    title="PDW Preferences"
-                    aria-label="PDW Preferences"
+            <button class="iconbtn sm n-named"
+                    title="Post-DC Preferences"
+                    aria-label="Post-DC Preferences"
                     onclick="event.stopPropagation(); openPdwPrefsModal(${Number(a.id)})">
-              PDW
+              <svg viewBox="0 0 256.55 256.55" aria-hidden="true"><defs>
+                <style>
+                  .cls-1 {
+                    fill: none;
+                    stroke: #121212;
+                    stroke-linecap: round;
+                    stroke-miterlimit: 10;
+                    stroke-width: 5.5px;
+                  }
+                </style>
+              </defs>
+              <g>
+                <path class="cls-1" d="M93.4,54.82L61.52,8.04c-2.81-4.12-7.85-6.08-12.72-5-6.33,1.4-15.4,4.78-24.72,12.85C7.59,30.17-.1,51.85,3.71,73.33c4.91,27.7,25.06,62.73,70.92,108.59h0c45.86,45.86,80.89,66.01,108.59,70.92,21.48,3.81,43.16-3.88,57.44-20.37,8.07-9.32,11.45-18.39,12.85-24.72,1.08-4.87-.88-9.91-5-12.72l-46.8-31.9c-5.43-3.7-12.63-3.49-17.83.53l-21.27,16.42c-6.43,4.97-15.34,5.19-22.01.55-8.04-5.58-19.9-14.94-34.82-29.85-14.82-14.82-23.75-26.22-28.96-33.87-4.32-6.35-4.28-14.7.08-21.02l16.46-23.9c3.56-5.17,3.57-11.99.04-17.17Z"/>
+              </g></svg>
             </button>
             ${surveyPrefsBtn}
           </div>
@@ -3770,6 +4715,20 @@
   async function refreshAgenciesList(){
     setMsg($("agencyListMsg"), "Loading…", true);
     try{
+      const token = getToken();
+      if(!token){
+        agenciesCache = [
+          { id: 1, agency_name: "Evolv Health - Scottsdale", agency_type: "SNF", evolv_client: 1, city: "Scottsdale", state: "AZ" },
+          { id: 2, agency_name: "Harbor View SNF", agency_type: "SNF", evolv_client: 0, city: "Tampa", state: "FL" }
+        ];
+        agenciesMaster = agenciesCache;
+        renderAgenciesTable();
+        renderAgencyChecklist();
+        renderClientSurveyEmailAgencyOptions();
+        setMsg($("agencyListMsg"), "Preview mode: sample agencies shown (set ADMIN_TOKEN to load live data).", true);
+        return;
+      }
+
       const agResp = await apiGet("/api/sensys/admin/agencies");
       agenciesCache = agResp.agencies || [];
       agenciesMaster = agenciesCache;       // keep master in sync for user checklist
@@ -4329,11 +5288,7 @@
         $("clientSurveyEmailMsg").textContent = "Select a single agency in filters before sending.";
         return;
       }
-      if(!agencyObj){
-        $("clientSurveyEmailMsg").textContent = "Select an Evolv Client agency for recipients.";
-        return;
-      }
-      if(agencyName && agencyName.toLowerCase() !== agency.toLowerCase()){
+      if(agencyObj && agencyName && agencyName.toLowerCase() !== agency.toLowerCase()){
         $("clientSurveyEmailMsg").textContent = "Email agency must match the active filter.";
         return;
       }
@@ -4393,6 +5348,22 @@
 
         $("clientSurveyDetailMsg").textContent = "Saved.";
         renderClientSurveysTable();
+      }catch(e){
+        $("clientSurveyDetailMsg").textContent = String(e.message || e);
+      }
+    };
+
+    $("clientSurveyDeleteBtn").onclick = async () => {
+      if(!selectedClientSurveyId){
+        $("clientSurveyDetailMsg").textContent = "Select a survey first.";
+        return;
+      }
+      $("clientSurveyDetailMsg").textContent = "Deleting.";
+      try{
+        await apiPost("/api/sensys/admin/client-surveys/delete", { id: Number(selectedClientSurveyId) });
+        $("clientSurveyDetailMsg").textContent = "Deleted.";
+        closeClientSurveyDetailsModal();
+        await refreshClientSurveysList();
       }catch(e){
         $("clientSurveyDetailMsg").textContent = String(e.message || e);
       }
@@ -4491,7 +5462,23 @@
     $("p_dob").value = p.dob || "";
     $("p_gender").value = p.gender || "";
     $("p_phone1").value = p.phone1 || "";
+    $("p_phone2").value = p.phone2 || "";
     $("p_email").value = p.email || "";
+    $("p_email2").value = p.email2 || "";
+    $("p_address1").value = p.address1 || "";
+    $("p_address2").value = p.address2 || "";
+    $("p_city").value = p.city || "";
+    $("p_state").value = p.state || "";
+    $("p_zip").value = p.zip || "";
+    $("p_insurance_name1").value = p.insurance_name1 || "";
+    $("p_insurance_number1").value = p.insurance_number1 || "";
+    $("p_insurance_name2").value = p.insurance_name2 || "";
+    $("p_insurance_number2").value = p.insurance_number2 || "";
+    $("p_notes1").value = p.notes1 || "";
+    $("p_notes2").value = p.notes2 || "";
+    $("p_external_patient_id").value = p.external_patient_id || "";
+    $("p_mrn").value = p.mrn || "";
+    $("p_source").value = p.source || "";
     $("p_active").value = String(p.active ? 1 : 0);
 
     setMsg($("patientEditMsg"), "", true);
@@ -4520,7 +5507,23 @@
     $("p_dob").value = "";
     $("p_gender").value = "";
     $("p_phone1").value = "";
+    $("p_phone2").value = "";
     $("p_email").value = "";
+    $("p_email2").value = "";
+    $("p_address1").value = "";
+    $("p_address2").value = "";
+    $("p_city").value = "";
+    $("p_state").value = "";
+    $("p_zip").value = "";
+    $("p_insurance_name1").value = "";
+    $("p_insurance_number1").value = "";
+    $("p_insurance_name2").value = "";
+    $("p_insurance_number2").value = "";
+    $("p_notes1").value = "";
+    $("p_notes2").value = "";
+    $("p_external_patient_id").value = "";
+    $("p_mrn").value = "";
+    $("p_source").value = "manual";
     $("p_active").value = "1";
     setMsg($("patientEditMsg"), "New patient mode (Save Patient to create).", true);
     openPatientModal();
@@ -4537,7 +5540,23 @@
         dob: ($("p_dob").value || "").trim(),
         gender: ($("p_gender").value || "").trim(),
         phone1: ($("p_phone1").value || "").trim(),
+        phone2: ($("p_phone2").value || "").trim(),
         email: ($("p_email").value || "").trim(),
+        email2: ($("p_email2").value || "").trim(),
+        address1: ($("p_address1").value || "").trim(),
+        address2: ($("p_address2").value || "").trim(),
+        city: ($("p_city").value || "").trim(),
+        state: ($("p_state").value || "").trim(),
+        zip: ($("p_zip").value || "").trim(),
+        insurance_name1: ($("p_insurance_name1").value || "").trim(),
+        insurance_number1: ($("p_insurance_number1").value || "").trim(),
+        insurance_name2: ($("p_insurance_name2").value || "").trim(),
+        insurance_number2: ($("p_insurance_number2").value || "").trim(),
+        notes1: ($("p_notes1").value || "").trim(),
+        notes2: ($("p_notes2").value || "").trim(),
+        external_patient_id: ($("p_external_patient_id").value || "").trim(),
+        mrn: ($("p_mrn").value || "").trim(),
+        source: ($("p_source").value || "").trim(),
         active: parseInt($("p_active").value, 10)
       };
       await apiPost("/api/sensys/admin/patients/upsert", payload);
@@ -4566,7 +5585,8 @@
 
     const q = ($("admissionListSearch").value || "").trim().toLowerCase();
     const items = (admissionsCache || []).filter(a => {
-      const hay = `${a.patient_name||""} ${a.agency_name||""} ${a.admit_date||""} ${a.dc_date||""}`.toLowerCase();
+      const fullName = a.patient_name || `${a.patient_first_name||""} ${a.patient_last_name||""}`.trim();
+      const hay = `${fullName} ${a.agency_name||""} ${a.admit_date||""} ${a.dc_date||""}`.toLowerCase();
       return !q || hay.includes(q);
     });
 
@@ -4574,8 +5594,9 @@
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
       tr.onclick = () => selectAdmission(a);
+      const fullName = a.patient_name || `${a.patient_first_name||""} ${a.patient_last_name||""}`.trim();
       tr.innerHTML = `
-        <td><b>${escapeHtml(a.patient_name||"")}</b></td>
+        <td><b>${escapeHtml(fullName||"")}</b></td>
         <td>${escapeHtml(a.agency_name||"")}</td>
         <td>${escapeHtml(a.admit_date||"")}</td>
         <td>${escapeHtml(a.dc_date||"")}</td>
@@ -4639,6 +5660,12 @@
     $("a_dc_date").value = a.dc_date || "";
     $("a_room").value = a.room || "";
     $("a_reason").value = a.reason || "";
+    $("a_referring_agency").value = a.referring_agency || "";
+    $("a_latest_pcp").value = a.latest_pcp || "";
+    $("a_notes1").value = a.notes1 || "";
+    $("a_notes2").value = a.notes2 || "";
+    $("a_next_location").value = a.next_location || "";
+    $("a_next_agency_id").value = a.next_agency_id || "";
     $("a_active").value = String(a.active ? 1 : 0);
 
     setMsg($("admissionEditMsg"), "", true);
@@ -4673,6 +5700,12 @@
     $("a_dc_date").value = "";
     $("a_room").value = "";
     $("a_reason").value = "";
+    $("a_referring_agency").value = "";
+    $("a_latest_pcp").value = "";
+    $("a_notes1").value = "";
+    $("a_notes2").value = "";
+    $("a_next_location").value = "";
+    $("a_next_agency_id").value = "";
     $("a_active").value = "1";
 
     setMsg($("admissionEditMsg"), "New admission mode (Save Admission to create).", true);
@@ -4733,7 +5766,7 @@
       label: "Services",
       endpoint: "/api/sensys/admin/services/bulk",
       filename: "sensys_services_template.csv",
-      headers: ["id","name","service_type","dropdown"]
+      headers: ["id","name","service_type","dropdown","aliases"]
     },
 
     // ✅ ADD  (NOTE: this matches your icon call openBulkModal("care-team")【turn13:0†Sensys 3.0 - Admin - DEV.html†L75-L76】)
@@ -4771,7 +5804,15 @@
         <td>${escapeHtml(n.name||"")}</td>
         <td>${String(n.active||0)==="1" ? "Yes" : "No"}</td>
         <td style="text-align:right;">
-          <button class="mini" onclick="event.stopPropagation(); openNotifModal(${JSON.stringify(n)})">Edit</button>
+          <button class="iconbtn sm n-named"
+                  title="Edit"
+                  aria-label="Edit"
+                  onclick="event.stopPropagation(); openNotifModal(${JSON.stringify(n)})">
+            <svg viewBox="0 0 237.85 237.86" aria-hidden="true"><g>
+              <line class="cls-1" x1="34.25" y1="178.82" x2="57.97" y2="202.54"/>
+              <path class="cls-1" d="M68.74,219.9c-3.65,3.65-8.34,6.09-13.43,6.97l-47.25,8.18c-3.09.53-5.78-2.15-5.24-5.24l8.17-47.25c.88-5.09,3.31-9.78,6.97-13.44L173.79,13.27c14.02-14.02,36.76-14.03,50.78,0h0c14.02,14.02,14.03,36.76,0,50.79L68.74,219.9Z"/>
+            </g></svg>
+          </button>
         </td>
       `;
       tb.appendChild(tr);
@@ -4781,6 +5822,17 @@
   async function refreshNotificationsAdmin(){
     setMsg($("notifMsg"), "Loading…", true);
     try{
+      const token = getToken();
+      if(!token){
+        notifTemplatesCache = [
+          { id: 1, notif_key: "new_discharge", name: "New Discharge", active: 1 },
+          { id: 2, notif_key: "updated_discharge", name: "Updated Discharge", active: 1 },
+          { id: 3, notif_key: "pending_task", name: "Pending Task", active: 0 }
+        ];
+        renderNotificationsAdminTable();
+        setMsg($("notifMsg"), "Preview mode: sample notifications shown (set ADMIN_TOKEN to load live data).", true);
+        return;
+      }
       // BACKEND TO ADD IN SEGMENT 2:
       // GET /api/sensys/admin/notifications
       const resp = await apiGet("/api/sensys/admin/notifications");
@@ -4875,6 +5927,70 @@
   // Services page logic
   // -----------------------------
   let servicesCache = [];
+  let editingServiceReminder = null;
+
+  function formatReminderUpdated(ts){
+    if(!ts) return "â€”";
+    const d = new Date(ts);
+    if(Number.isNaN(d.getTime())) return String(ts);
+    return d.toLocaleString();
+  }
+
+  function openServiceReminderModal(service){
+    editingServiceReminder = service || null;
+    const r = service || {};
+    $("svcReminderServiceName").textContent = service ? (service.name || "â€”") : "â€”";
+    $("svcReminderTitle").value = r.reminder_title || "";
+    $("svcReminderSeverity").value = r.reminder_severity || "info";
+    $("svcReminderFollowup").value = r.reminder_followup || "na";
+    $("svcReminderActive").value = String(r.reminder_active ?? "1");
+    $("svcReminderText").value = r.reminder_message || "";
+    $("svcReminderUpdated").value = formatReminderUpdated(r.reminder_updated_at);
+    setMsg($("svcReminderMsg"), "", true);
+    $("svcReminderModalBackdrop").classList.add("on");
+  }
+
+  function closeServiceReminderModal(){
+    $("svcReminderModalBackdrop").classList.remove("on");
+  }
+
+  async function saveServiceReminder(){
+    if(!editingServiceReminder) return;
+    try{
+      const message = ($("svcReminderText").value || "").trim();
+      const reminderActive = message ? Number($("svcReminderActive").value || "1") : 0;
+      const payload = {
+        id: Number(editingServiceReminder.id || 0),
+        name: (editingServiceReminder.name || "").trim(),
+        service_type_id: Number(editingServiceReminder.service_type_id || 0),
+        dropdown: Number(editingServiceReminder.dropdown ? 1 : 0),
+        reminder_id: (editingServiceReminder.reminder_id || "").trim(),
+        aliases: (editingServiceReminder.aliases || "").trim(),
+        reminder_title: ($("svcReminderTitle").value || "").trim(),
+        reminder_message: message,
+        reminder_severity: ($("svcReminderSeverity").value || "info").trim(),
+        reminder_followup: ($("svcReminderFollowup").value || "na").trim(),
+        reminder_active: reminderActive,
+        reminder_updated_at: message ? new Date().toISOString() : ""
+      };
+      await apiPost("/api/sensys/admin/services/upsert", payload);
+      await refreshServicesList();
+      setMsg($("svcReminderMsg"), message ? "Reminder saved." : "Reminder cleared.", true);
+    }catch(e){
+      setMsg($("svcReminderMsg"), String(e.message || e), false);
+    }
+  }
+
+  async function clearServiceReminder(){
+    if(!editingServiceReminder) return;
+    $("svcReminderTitle").value = "";
+    $("svcReminderSeverity").value = "info";
+    $("svcReminderFollowup").value = "na";
+    $("svcReminderActive").value = "1";
+    $("svcReminderText").value = "";
+    $("svcReminderUpdated").value = "â€”";
+    await saveServiceReminder();
+  }
 
   function renderServicesTable(){
     const tbody = $("servicesTbody");
@@ -4893,12 +6009,35 @@
       tr.onclick = () => openServiceModal(s);
 
       const typeLabel = (s.service_type_name || s.service_type_code || "").trim();
+      const hasReminder = !!((s.reminder_message || "").trim() && String(s.reminder_active ?? "1") === "1");
 
       tr.innerHTML = `
         <td><b>${escapeHtml(s.name||"")}</b></td>
         <td>${escapeHtml(typeLabel)}</td>
         <td>${(String(s.dropdown||0)==="1") ? "Yes" : "No"}</td>
+        <td style="text-align:right;">
+          <button class="iconbtn n-alert reminder-btn ${hasReminder ? "has-reminder" : ""}" title="${hasReminder ? "Edit reminder" : "Add reminder"}" aria-label="Service reminder">
+            <svg viewBox="0 0 261.99 261.99" aria-hidden="true">
+              <g>
+                <g>
+                  <g>
+                    <path class="cls-1" d="M259.08,137.39c-3.53,70.74-63.74,125.22-134.48,121.69C53.86,255.55-.62,195.34,2.91,124.6,6.44,53.86,66.65-.62,137.39,2.91c70.74,3.53,125.22,63.74,121.69,134.47Z"/>
+                    <path class="cls-1" d="M145.06,195.32c0,7.77-6.3,14.07-14.07,14.07s-14.07-6.3-14.07-14.07,6.3-14.07,14.07-14.07,14.07,6.3,14.07,14.07Z"/>
+                  </g>
+                  <rect class="cls-1" x="116.88" y="57.16" width="28.07" height="101.27" rx="14.04" ry="14.04"/>
+                </g>
+              </g>
+            </svg>
+          </button>
+        </td>
       `;
+      const reminderBtn = tr.querySelector(".reminder-btn");
+      if(reminderBtn){
+        reminderBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openServiceReminderModal(s);
+        });
+      }
       tbody.appendChild(tr);
     });
   }
@@ -5721,11 +6860,17 @@
 
     wrap.innerHTML = "";
     tabs.forEach(t => {
-      const pill = document.createElement("span");
-      pill.className = "tag " + (plLibraryKey === t.key ? "on" : "");
+      const pill = document.createElement("button");
+      pill.className = "btn";
+      pill.textContent = t.label;
+
+      const active = (plLibraryKey === t.key);
+      pill.style.fontWeight = active ? "900" : "800";
+      pill.style.borderColor = active ? "#7f56d9" : "#d0d5dd";
+      pill.style.background = active ? "rgba(127,86,217,.10)" : "#fff";
       pill.style.cursor = t.disabled ? "not-allowed" : "pointer";
       pill.style.opacity = t.disabled ? "0.55" : "1";
-      pill.textContent = t.label;
+      pill.disabled = !!t.disabled;
 
       pill.onclick = () => {
         if(t.disabled) return;
@@ -5905,6 +7050,7 @@
 
   $("saveAdmission").onclick = async () => {
     try{
+      const nextAgencyRaw = ($("a_next_agency_id").value || "").trim();
       const payload = {
         id: selectedAdmissionId,
         patient_id: parseInt($("a_patient_id").value, 10),
@@ -5918,7 +7064,13 @@
         admit_date: ($("a_admit_date").value || "").trim(),
         dc_date: ($("a_dc_date").value || "").trim(),
         room: ($("a_room").value || "").trim(),
+        referring_agency: ($("a_referring_agency").value || "").trim(),
         reason: ($("a_reason").value || "").trim(),
+        latest_pcp: ($("a_latest_pcp").value || "").trim(),
+        notes1: ($("a_notes1").value || "").trim(),
+        notes2: ($("a_notes2").value || "").trim(),
+        next_location: ($("a_next_location").value || "").trim(),
+        next_agency_id: nextAgencyRaw ? parseInt(nextAgencyRaw, 10) : null,
         active: parseInt($("a_active").value, 10)
       }
 
@@ -5934,3 +7086,4 @@
 </script>
 </body>
 </html>
+

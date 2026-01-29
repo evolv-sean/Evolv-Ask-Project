@@ -1,0 +1,2371 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sensys - Admission Details</title>
+</head>
+
+<body style="margin:0;font-family:Arial,Helvetica,sans-serif;background:#f6f7fb;">
+  <div style="max-width:1100px;margin:0 auto;padding:18px;">
+
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+      <div>
+        <div style="font-size:18px;font-weight:800;">Admission Details</div>
+        <div id="subhead" style="font-size:12px;color:#667085;margin-top:4px;"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button id="backBtn"
+          style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+          ← Back
+        </button>
+        <button id="logoutBtn"
+          style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+          Log out
+        </button>
+      </div>
+    </div>
+
+    <div id="msg" style="margin-top:10px;font-size:12px;color:#b42318;display:none;"></div>
+
+    <!-- Header -->
+    <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
+        <div>
+          <div id="patientName" style="font-size:16px;font-weight:800;color:#111827;">—</div>
+          <div id="metaLine" style="margin-top:4px;font-size:12px;color:#667085;">—</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <div style="font-size:12px;color:#475467;">Admission ID: <span id="admissionIdTag" style="font-weight:800;color:#111827;"></span></div>
+          <button id="refreshBtn"
+            style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">
+            Refresh
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SIDE TABS LAYOUT -->
+    <div style="margin-top:14px;display:flex;gap:14px;align-items:flex-start;">
+
+      <!-- LEFT: Tabs -->
+      <div style="width:240px;flex:0 0 240px;">
+        <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:10px;position:sticky;top:12px;">
+          <div style="font-size:12px;color:#667085;font-weight:900;padding:8px 10px;">Admission Panels</div>
+
+          <div id="sideTabs" style="display:flex;flex-direction:column;gap:8px;padding:6px;">
+            <button data-tab="tasks" class="sideTabBtn">Tasks</button>
+            <button data-tab="notes" class="sideTabBtn">Notes</button>
+            <button data-tab="sms" class="sideTabBtn">SMS</button>
+            <button data-tab="fax" class="sideTabBtn">E-Fax</button>
+            <button data-tab="dc" class="sideTabBtn">DC Submissions</button>
+            <button data-tab="referrals" class="sideTabBtn">Referrals</button>
+            <button data-tab="appts" class="sideTabBtn">Appointments</button>
+            <button data-tab="pdfs" class="sideTabBtn">PDFs</button>
+            <button data-tab="careteam" class="sideTabBtn">Care Team</button>
+            <button data-tab="esign" class="sideTabBtn">E-Sign</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Panels -->
+      <div style="flex:1;min-width:0;">
+
+        <!-- PANEL: Tasks -->
+        <div class="tabPanel" data-panel="tasks" style="display:none;">
+          <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div style="font-size:13px;color:#111827;font-weight:800;">Tasks</div>
+            </div>
+
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+              <select id="taskStatus"
+                style="padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+                <option>New</option>
+                <option>Moved</option>
+                <option>Pending</option>
+                <option>Completed</option>
+              </select>
+              <input id="taskName" placeholder="Task name"
+                style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+              <input id="taskAssignedUser" placeholder="Assigned user id (optional)"
+                style="width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+              <input id="taskComments" placeholder="Comments (optional)"
+                style="flex:1;min-width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+              <button id="addTaskBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Add
+              </button>
+            </div>
+
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:760px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Status</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Task</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Assigned</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Comments</th>
+                    <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="tasksTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANEL: Notes -->
+        <div class="tabPanel" data-panel="notes" style="display:none;">
+          <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div style="font-size:13px;color:#111827;font-weight:800;">Notes</div>
+            </div>
+
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <select id="noteTemplateSelect"
+                style="width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+                <option value="">Select note type…</option>
+              </select>
+
+              <input id="noteName" placeholder="Note name (optional / legacy)"
+                style="width:240px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <input id="noteTitle" placeholder="Note title"
+                style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <select id="noteStatus"
+                style="width:170px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+                <option value="New">New</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Completed">Completed</option>
+              </select>
+
+              <input id="noteResponse1" placeholder="Response 1"
+                style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <input id="noteResponse2" placeholder="Response 2"
+                style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <button id="addNoteBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Add
+              </button>
+            </div>
+
+            <div style="margin-top:8px;">
+              <input id="noteComments" placeholder="Legacy comments (optional)"
+                style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+            </div>
+
+            <div id="noteDynamicFields" style="margin-top:10px;"></div>
+
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:760px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Name</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Comments</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Created</th>
+                    <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="notesTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANEL: SMS -->
+        <div class="tabPanel" data-panel="sms" style="display:none;">
+          <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div>
+                <div style="font-size:13px;color:#111827;font-weight:800;">SMS</div>
+                <div id="smsAutoRefreshMeta" style="margin-top:2px;font-size:12px;color:#667085;">
+                  Auto-refresh: On • Last checked: —
+                </div>
+              </div>
+
+              <div style="display:flex;gap:8px;align-items:center;">
+                <button id="smsRefreshBtn"
+                  style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+                  Refresh SMS
+                </button>
+              </div>
+            </div>
+
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <input id="smsToPhone" placeholder="To phone (E.164 preferred, e.g. +15551234567)"
+                style="width:280px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <input id="smsText" placeholder="Message"
+                style="flex:1;min-width:300px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <button id="sendSmsBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Send SMS
+              </button>
+            </div>
+
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:760px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">To</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Message</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Created</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Status</th>
+                  </tr>
+                </thead>
+                <tbody id="smsTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANEL: E-Fax -->
+        <div class="tabPanel" data-panel="fax" style="display:none;">
+          <div style="background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div>
+                <div style="font-size:13px;color:#111827;font-weight:800;">E-Fax</div>
+                <div id="faxAutoRefreshMeta" style="margin-top:2px;font-size:12px;color:#667085;">
+                  Auto-refresh: On • Last checked: —
+                </div>
+              </div>
+
+              <div style="display:flex;gap:8px;align-items:center;">
+                <button id="faxRefreshBtn"
+                  style="padding:8px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+                  Refresh Fax
+                </button>
+              </div>
+            </div>
+
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <input id="faxToNumber" placeholder="To fax (E.164 preferred, e.g. +15551234567)"
+                style="width:280px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <select id="faxPdfSelect"
+                style="flex:1;min-width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+                <option value="">Select PDF to fax…</option>
+              </select>
+
+              <button id="sendFaxBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Send Fax
+              </button>
+            </div>
+
+            <div style="margin-top:8px;">
+              <input id="faxCoverText" placeholder="Cover page text (optional)"
+                style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+            </div>
+
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:760px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">To</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">PDF</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Created</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Status</th>
+                  </tr>
+                </thead>
+                <tbody id="faxTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANEL: DC Submissions -->
+        <div class="tabPanel" data-panel="dc" style="display:none;">
+          <!-- DC submissions (full width) -->
+          <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div style="font-size:13px;color:#111827;font-weight:800;">DC Submissions</div>
+
+              <button id="careCompareOpenBtn" title="Search Care Compare (national)"
+                style="width:38px;height:38px;border-radius:12px;border:1px solid #d0d5dd;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:900;">
+                🔎
+              </button>
+            </div>
+
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <input id="dcDate" type="date" placeholder="DC date (YYYY-MM-DD)"
+                style="width:190px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+              <input id="dcTime" placeholder="DC time (HH:MM)"
+                style="width:150px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <label style="font-size:12px;color:#475467;display:flex;gap:6px;align-items:center;">
+                <input id="dcConfirmed" type="checkbox" /> Confirmed
+              </label>
+              <label style="font-size:12px;color:#475467;display:flex;gap:6px;align-items:center;">
+                <input id="dcUrgent" type="checkbox" /> Urgent
+              </label>
+
+              <input id="urgentComments" placeholder="Urgent comments"
+                style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <select id="dcDestination"
+                style="padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+                <option>Home</option>
+                <option>ALF</option>
+                <option>ILF</option>
+                <option>Hospital</option>
+                <option>LTC</option>
+                <option>AMA</option>
+                <option>Other</option>
+              </select>
+
+              <input id="destinationComments" placeholder="Destination comments"
+                style="flex:1;min-width:220px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <select id="dcWith"
+                style="padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+                <option>alone</option>
+                <option>spouse</option>
+                <option>other family</option>
+                <option>caregiver</option>
+              </select>
+
+              <select id="hhAgencySelect"
+                style="min-width:260px;max-width:320px;height:42px;padding:8px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+              </select>
+
+              <select id="dcServicesMulti" multiple
+                style="min-width:260px;max-width:320px;height:42px;padding:8px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+              </select>
+
+              <button id="addDcBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Add DC Submission
+              </button>
+            </div>
+
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:1050px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">DC</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Destination</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Urgent</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Services</th>
+                    <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="dcTbody"></tbody>
+              </table>
+            </div>
+            <div style="margin-top:10px;font-size:12px;color:#667085;">
+              Tip: Services are loaded from your Services admin tab (DME / HH). Use “Edit services” per submission.
+            </div>
+          </div>
+        </div>
+
+        <!-- PANEL: Referrals -->
+        <div class="tabPanel" data-panel="referrals" style="display:none;">
+          <!-- Referrals (full width) -->
+          <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div style="font-size:13px;color:#111827;font-weight:800;">Referrals</div>
+            </div>
+
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <select id="referralAgencySelect"
+                style="flex:1;min-width:320px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+                <option value="">Loading agencies…</option>
+              </select>
+
+              <button id="addReferralBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Add Referral
+              </button>
+            </div>
+
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:900px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Agency</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Type</th>
+                    <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="referralsTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANEL: Appointments -->
+        <div class="tabPanel" data-panel="appts" style="display:none;">
+          <!-- Appointments (full width) -->
+          <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div style="font-size:13px;color:#111827;font-weight:800;">Appointments</div>
+            </div>
+
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <select id="apptCareTeamSelect"
+                style="flex:1;min-width:320px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+                <option value="">Loading care team…</option>
+              </select>
+
+              <input id="apptDatetime" type="datetime-local"
+                style="width:240px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <select id="apptStatus"
+                style="width:210px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+                <option>New</option>
+                <option>Attended</option>
+                <option>Missed</option>
+                <option>Rescheduled</option>
+              </select>
+
+              <button id="addApptBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Add Appointment
+              </button>
+            </div>
+
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:1050px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Date/Time</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Care Team</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Status</th>
+                    <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="apptsTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANEL: PDFs -->
+        <div class="tabPanel" data-panel="pdfs" style="display:none;">
+          <!-- PDFs (uploaded docs) -->
+          <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div style="font-size:13px;color:#111827;font-weight:800;">PDFs</div>
+            </div>
+
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <input id="pdfDocType" placeholder="Doc type (e.g., SNF, Insurance, Orders)"
+                style="flex:1;min-width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <input id="pdfRetentionHours" type="number" min="0" placeholder="Retention hrs (0 = keep)"
+                style="width:190px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <input id="pdfFile" type="file" accept="application/pdf"
+                style="flex:1;min-width:260px;box-sizing:border-box;padding:8px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;" />
+
+              <button id="uploadPdfBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Upload PDF
+              </button>
+            </div>
+
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:1050px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">File</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Type</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Size</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Created</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Expires</th>
+                    <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="pdfsTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANEL: Care Team -->
+        <div class="tabPanel" data-panel="careteam" style="display:none;">
+          <!-- Care team (full width) -->
+          <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div style="font-size:13px;color:#111827;font-weight:800;">Care Team (linked to this admission)</div>
+            </div>
+
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <select id="careTeamSelect"
+                style="flex:1;min-width:320px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+                <option value="">Loading care team…</option>
+              </select>
+
+              <button id="addCareTeamBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Link to Admission
+              </button>
+            </div>
+
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:900px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Name</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Type</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Phone</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Email</th>
+                    <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="careTeamTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <!-- PANEL: E-Sign -->
+        <div class="tabPanel" data-panel="esign" style="display:none;">
+          <div style="margin-top:14px;background:#fff;border:1px solid #e6e8ef;border-radius:14px;padding:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div style="font-size:13px;color:#111827;font-weight:800;">E-Sign Orders</div>
+            </div>
+
+            <!-- Entry form -->
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <select id="esignCareTeamSelect"
+                style="flex:1;min-width:260px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+                <option value="">Loading care team…</option>
+              </select>
+
+              <select id="esignServiceTypeSelect"
+                style="flex:1;min-width:240px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;">
+                <option value="">Select service type…</option>
+              </select>
+
+              <select id="esignServicesMulti" multiple
+                style="flex:1;min-width:320px;min-height:44px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+              </select>
+
+              <input id="esignComments" placeholder="Comments (optional)"
+                style="flex:1;min-width:240px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+
+              <button id="addEsignBtn"
+                style="padding:10px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:13px;font-weight:800;cursor:pointer;">
+                Add E-Sign
+              </button>
+            </div>
+
+            <!-- List -->
+            <div style="margin-top:12px;overflow:auto;border:1px solid #eef0f5;border-radius:12px;">
+              <table style="width:100%;border-collapse:collapse;min-width:1050px;">
+                <thead>
+                  <tr style="background:#f9fafb;border-bottom:1px solid #eef0f5;">
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Care Team</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Service Type</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Services</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Status</th>
+                    <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Comments</th>
+                    <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="esignTbody"></tbody>
+              </table>
+            </div>
+
+            <div style="margin-top:8px;font-size:12px;color:#667085;">
+              Status defaults to <b>Pending</b>. Signed/Declined fields will populate later from the signer workflow.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+<!-- Generated DC Note modal -->
+<div id="dcNoteModalBackdrop" style="position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;padding:16px;z-index:9999;">
+  <div style="width:min(900px,96vw);background:#fff;border-radius:16px;border:1px solid #e6e8ef;box-shadow:0 18px 60px rgba(0,0,0,.25);overflow:hidden;">
+    <div style="padding:14px 16px;border-bottom:1px solid #eef0f5;background:#f9fafb;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+      <div>
+        <div style="font-size:14px;font-weight:900;color:#111827;">Generated Social Service DC Note</div>
+        <div id="dcNoteModalMeta" style="margin-top:2px;font-size:12px;color:#667085;">—</div>
+      </div>
+      <button id="dcNoteCloseBtn" style="width:40px;height:40px;border-radius:12px;border:1px solid #d0d5dd;background:#fff;cursor:pointer;font-weight:900;">✕</button>
+    </div>
+
+    <div style="padding:14px 16px;">
+      <textarea id="dcNoteTextArea" style="width:100%;min-height:280px;border:1px solid #d0d5dd;border-radius:12px;padding:12px;font-size:13px;line-height:1.45;outline:none;"></textarea>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;">
+        <button id="dcNoteCopyBtn" style="padding:10px 12px;border:1px solid #d0d5dd;background:#fff;border-radius:12px;cursor:pointer;font-size:12px;font-weight:800;">
+          Copy
+        </button>
+        <button id="dcNoteCloseBtn2" style="padding:10px 12px;border:0;background:#111827;color:#fff;border-radius:12px;cursor:pointer;font-size:12px;font-weight:900;">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- Care Compare (Home Health) Search modal -->
+<div id="careCompareModalBackdrop" style="position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;padding:16px;z-index:9999;">
+  <div style="width:min(980px,96vw);background:#fff;border-radius:16px;border:1px solid #e6e8ef;box-shadow:0 18px 60px rgba(0,0,0,.25);overflow:hidden;">
+    <div style="padding:14px 16px;border-bottom:1px solid #eef0f4;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+      <div>
+        <div style="font-size:14px;font-weight:900;color:#111827;">Care Compare — Home Health Agency Search</div>
+        <div style="margin-top:2px;font-size:12px;color:#667085;">Search national CMS provider data by name/DBA, county, city, zip, CCN.</div>
+      </div>
+      <button id="careCompareCloseBtn" style="width:40px;height:40px;border-radius:12px;border:1px solid #d0d5dd;background:#fff;cursor:pointer;font-weight:900;">✕</button>
+    </div>
+
+    <div style="padding:14px 16px;">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+        <input id="cc_q" placeholder="Agency name or DBA"
+          style="width:260px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+        <input id="cc_county" placeholder="County"
+          style="width:160px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+        <input id="cc_city" placeholder="City"
+          style="width:160px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+        <input id="cc_state" placeholder="State"
+          style="width:90px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+        <input id="cc_zip" placeholder="Zip"
+          style="width:120px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+        <input id="cc_ccn" placeholder="CCN"
+          style="width:120px;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:12px;font-size:13px;outline:none;" />
+
+        <button id="ccSearchBtn"
+          style="padding:10px 12px;border-radius:12px;border:1px solid #0d3b66;background:#0d3b66;color:#fff;cursor:pointer;font-size:12px;font-weight:900;">
+          Search
+        </button>
+      </div>
+
+      <div id="ccErr" style="display:none;margin-top:10px;padding:10px;border-radius:12px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);color:#991b1b;font-size:12px;"></div>
+
+      <div id="ccStatus" style="display:none;margin-top:10px;padding:10px;border-radius:12px;background:#f9fafb;border:1px solid #eef0f4;color:#475467;font-size:12px;">
+        —
+      </div>
+
+      <div style="margin-top:12px;border:1px solid #eef0f4;border-radius:14px;overflow:hidden;">
+        <div style="max-height:360px;overflow:auto;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="background:#f8fafc;">
+                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">Name / DBA</th>
+                <th style="text-align:left;padding:10px;font-size:12px;color:#475467;">CCN</th>
+                <th style="text-align:right;padding:10px;font-size:12px;color:#475467;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="ccTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div style="padding:12px 16px;border-top:1px solid #eef0f4;display:flex;justify-content:flex-end;gap:10px;">
+      <button id="ccCancelBtn" style="padding:10px 12px;border-radius:12px;border:1px solid #d0d5dd;background:#fff;cursor:pointer;font-size:12px;font-weight:800;">
+        Close
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ======================
+  // Side panel tab system
+  // ======================
+  function styleSideTabButtons(){
+    document.querySelectorAll(".sideTabBtn").forEach(btn => {
+      btn.style.padding = "10px 12px";
+      btn.style.borderRadius = "12px";
+      btn.style.border = "1px solid #e6e8ef";
+      btn.style.background = "#fff";
+      btn.style.cursor = "pointer";
+      btn.style.textAlign = "left";
+      btn.style.fontSize = "13px";
+      btn.style.fontWeight = "900";
+      btn.style.color = "#111827";
+    });
+  }
+
+  function setActiveTab(tabKey){
+    // toggle active button
+    document.querySelectorAll(".sideTabBtn").forEach(btn => {
+      const on = btn.getAttribute("data-tab") === tabKey;
+      btn.style.background = on ? "#111827" : "#fff";
+      btn.style.borderColor = on ? "#111827" : "#e6e8ef";
+      btn.style.color = on ? "#fff" : "#111827";
+    });
+
+    // toggle panels
+    document.querySelectorAll(".tabPanel").forEach(p => {
+      const on = p.getAttribute("data-panel") === tabKey;
+      p.style.display = on ? "block" : "none";
+    });
+
+    // OPTIONAL but recommended: only poll SMS/Fax when on those tabs
+    if (tabKey === "sms") startSmsAutoRefresh(); else stopSmsAutoRefresh();
+    if (tabKey === "fax") startFaxAutoRefresh(); else stopFaxAutoRefresh();
+  }
+
+  function wireSideTabs(){
+    styleSideTabButtons();
+
+    document.querySelectorAll(".sideTabBtn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const tab = btn.getAttribute("data-tab");
+        setActiveTab(tab);
+      });
+    });
+  }
+  
+  function qs(name) {
+    const u = new URL(window.location.href);
+    return u.searchParams.get(name);
+  }
+
+  function showMsg(text) {
+    const el = document.getElementById('msg');
+    el.style.display = text ? 'block' : 'none';
+    el.textContent = text || '';
+  }
+
+  function token() {
+    return localStorage.getItem('sensys_token') || '';
+  }
+
+  async function api(path, opts) {
+    const t = token();
+    if (!t) {
+      // Front-end visible error + console error
+      console.error('[SENSYS][API][ERROR] Missing token for request:', path);
+      showMsg("Missing token. Please log in again.");
+      throw new Error("Missing token. Please log in again.");
+    }
+
+    let res;
+    try {
+      res = await fetch(path, {
+        ...(opts || {}),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + t,
+          ...((opts && opts.headers) || {})
+        }
+      });
+    } catch (err) {
+      console.error('[SENSYS][API][NETWORK_ERROR]', path, err);
+      showMsg("Network error calling " + path + ". Check connection / server logs.");
+      throw err;
+    }
+
+    if (!res.ok) {
+      let msg = 'Request failed (' + res.status + ')';
+      try {
+        const j = await res.json();
+        if (j && j.detail) msg = j.detail;
+      } catch (e) {}
+
+      console.error('[SENSYS][API][HTTP_ERROR]', path, res.status, msg);
+
+      // If auth-related, give a clearer message
+      if (res.status === 401) {
+        msg = "Unauthorized (401). Your session may be expired. Please log in again.";
+      } else if (res.status === 403) {
+        msg = "Forbidden (403). You may not have access to this admission.";
+      }
+
+      showMsg(msg + " (Endpoint: " + path + ")");
+      throw new Error(msg);
+    }
+
+    return await res.json();
+  }
+
+  async function apiForm(path, formData, opts){
+    const t = token();
+    if(!t){
+      console.error('[SENSYS][API_FORM][ERROR] Missing token for request:', path);
+      showMsg("Missing token. Please log in again.");
+      throw new Error("Missing token. Please log in again.");
+    }
+
+    let res;
+    try{
+      res = await fetch(path, {
+        method: 'POST',
+        body: formData,
+        ...(opts || {}),
+        headers: {
+          'Authorization': 'Bearer ' + t,
+          ...((opts && opts.headers) || {})
+        }
+      });
+    }catch(err){
+      console.error('[SENSYS][API_FORM][NETWORK_ERROR]', path, err);
+      showMsg("Network error calling " + path + ". Check connection / server logs.");
+      throw err;
+    }
+
+    if(!res.ok){
+      let msg = 'Request failed (' + res.status + ')';
+      try{
+        const j = await res.json();
+        if(j && j.detail) msg = j.detail;
+      }catch(e){}
+      console.error('[SENSYS][API_FORM][HTTP_ERROR]', path, res.status, msg);
+      showMsg(msg + " (Endpoint: " + path + ")");
+      throw new Error(msg);
+    }
+
+    return await res.json();
+  }
+
+
+  let ADMISSION_ID = null;
+  let SERVICES = [];
+  let CARE_TEAM = [];
+  let DETAILS = null;
+  let AGENCIES = [];
+  let NOTE_TEMPLATES = []; // ✅ NEW
+  let SMS_LOG = [];
+  let FAX_LOG = [];
+  let PDFS = [];
+  let ESIGNS = [];
+  let SERVICE_TYPES = [];
+
+  // ✅ NEW: SMS auto refresh controls (lightweight)
+  let SMS_AUTO_REFRESH_MS = 60000; // 60s (change to 120000 for 2 min if you want even lighter)
+  let SMS_POLL_TIMER = null;
+  let SMS_LAST_CHECKED_AT = null;
+
+  function setSmsMeta(){
+    const el = document.getElementById('smsAutoRefreshMeta');
+    if(!el) return;
+    const ts = SMS_LAST_CHECKED_AT ? SMS_LAST_CHECKED_AT : '—';
+    el.textContent = `Auto-refresh: On • Last checked: ${ts}`;
+  }
+
+  async function loadSmsOnly(opts){
+    const refreshStatuses = !!(opts && opts.refreshStatuses);
+
+    if(refreshStatuses){
+      // ✅ call the light backend refresh (recent + capped)
+      await api('/api/sensys/admission-sms/refresh-recent/' + ADMISSION_ID, {
+        method:'POST',
+        body: JSON.stringify({ max_age_minutes: 120, max_rows: 10 })
+      });
+    }
+
+    const smsLogs = await api('/api/sensys/admission-sms/' + ADMISSION_ID, { method:'GET' });
+    SMS_LOG = (smsLogs && smsLogs.sms) || [];
+    renderSms();
+
+    SMS_LAST_CHECKED_AT = new Date().toLocaleTimeString();
+    setSmsMeta();
+  }
+
+  function stopSmsAutoRefresh(){
+    if(SMS_POLL_TIMER){
+      clearInterval(SMS_POLL_TIMER);
+      SMS_POLL_TIMER = null;
+    }
+  }
+
+  function startSmsAutoRefresh(){
+    stopSmsAutoRefresh();
+
+    // do an immediate lightweight refresh once
+    loadSmsOnly({ refreshStatuses:true }).catch(e => console.error('[SENSYS][SMS][AUTO_REFRESH_ERR]', e));
+
+    SMS_POLL_TIMER = setInterval(() => {
+      // skip if tab hidden
+      if(document.hidden) return;
+      loadSmsOnly({ refreshStatuses:true }).catch(e => console.error('[SENSYS][SMS][AUTO_REFRESH_ERR]', e));
+    }, SMS_AUTO_REFRESH_MS);
+  }
+
+  // ✅ NEW: Fax auto refresh controls (lightweight)
+  let FAX_AUTO_REFRESH_MS = 60000; // 60s
+  let FAX_POLL_TIMER = null;
+  let FAX_LAST_CHECKED_AT = null;
+
+  function setFaxMeta(){
+    const el = document.getElementById('faxAutoRefreshMeta');
+    if(!el) return;
+    const ts = FAX_LAST_CHECKED_AT ? FAX_LAST_CHECKED_AT : '—';
+    el.textContent = `Auto-refresh: On • Last checked: ${ts}`;
+  }
+
+  async function loadFaxOnly(opts){
+    const refreshStatuses = !!(opts && opts.refreshStatuses);
+
+    if(refreshStatuses){
+      // ✅ call the light backend refresh (recent + capped)
+      await api('/api/sensys/admission-fax/refresh-recent/' + ADMISSION_ID, {
+        method:'POST',
+        body: JSON.stringify({ max_age_minutes: 240, max_rows: 10 })
+      });
+    }
+
+    const faxLogs = await api('/api/sensys/admission-fax/' + ADMISSION_ID, { method:'GET' });
+    FAX_LOG = (faxLogs && faxLogs.fax) || [];
+    renderFax();
+
+    FAX_LAST_CHECKED_AT = new Date().toLocaleTimeString();
+    setFaxMeta();
+  }
+
+  function stopFaxAutoRefresh(){
+    if(FAX_POLL_TIMER){
+      clearInterval(FAX_POLL_TIMER);
+      FAX_POLL_TIMER = null;
+    }
+  }
+
+  function startFaxAutoRefresh(){
+    stopFaxAutoRefresh();
+
+    // do an immediate lightweight refresh once
+    loadFaxOnly({ refreshStatuses:true }).catch(e => console.error('[SENSYS][FAX][AUTO_REFRESH_ERR]', e));
+
+    FAX_POLL_TIMER = setInterval(() => {
+      // skip if tab hidden
+      if(document.hidden) return;
+      loadFaxOnly({ refreshStatuses:true }).catch(e => console.error('[SENSYS][FAX][AUTO_REFRESH_ERR]', e));
+    }, FAX_AUTO_REFRESH_MS);
+  }
+
+  function escapeHtml(s) {
+    return (s || '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+  }
+
+  function renderNoteTemplatesSelect(){
+    const sel = document.getElementById('noteTemplateSelect');
+    if(!sel) return;
+
+    sel.innerHTML = ['<option value="">Select note type…</option>']
+      .concat((NOTE_TEMPLATES || []).map(t => {
+        const name = t.template_name || t.name || '';
+        return `<option value="${t.id}">${escapeHtml(name)}</option>`;
+      }))
+      .join('');
+  }
+
+  function renderDynamicNoteFieldsForSelectedTemplate(){
+    const tplId = document.getElementById('noteTemplateSelect')?.value;
+    const wrap = document.getElementById('noteDynamicFields');
+    if(!wrap) return;
+
+    wrap.innerHTML = '';
+    if(!tplId) return;
+
+    const tpl = (NOTE_TEMPLATES || []).find(x => String(x.id) === String(tplId));
+    const fields = (tpl && tpl.fields) ? tpl.fields : [];
+
+    wrap.innerHTML = fields
+      .slice()
+      .sort((a,b)=> (a.sort_order||0)-(b.sort_order||0))
+      .map(f => {
+        const key = f.field_key || '';
+        const label = f.field_label || key;
+        const type = (f.field_type || 'text').toLowerCase();
+
+        // checkbox
+        if(type === 'boolean' || type === 'checkbox'){
+          return `
+            <label style="display:flex;gap:10px;align-items:center;margin-top:10px;font-size:12px;color:#475467;">
+              <input type="checkbox" data-note-field-key="${escapeHtml(key)}" />
+              <span style="font-weight:800;color:#111827;">${escapeHtml(label)}</span>
+            </label>`;
+        }
+
+        // date
+        if(type === 'date'){
+          return `
+            <div style="margin-top:10px;">
+              <div style="font-size:12px;color:#475467;font-weight:800;margin-bottom:6px;">${escapeHtml(label)}</div>
+              <input type="date" data-note-field-key="${escapeHtml(key)}"
+                style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+            </div>`;
+        }
+
+        // number
+        if(type === 'number' || type === 'int' || type === 'float'){
+          return `
+            <div style="margin-top:10px;">
+              <div style="font-size:12px;color:#475467;font-weight:800;margin-bottom:6px;">${escapeHtml(label)}</div>
+              <input type="number" data-note-field-key="${escapeHtml(key)}"
+                style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+            </div>`;
+        }
+
+        // select
+        if(type === 'select'){
+          let opts = [];
+          try { opts = JSON.parse(f.options_json || '[]'); } catch(e) { opts = []; }
+          const optionsHtml = ['<option value="">Select…</option>']
+            .concat((opts||[]).map(o => `<option value="${escapeHtml(String(o))}">${escapeHtml(String(o))}</option>`))
+            .join('');
+
+          return `
+            <div style="margin-top:10px;">
+              <div style="font-size:12px;color:#475467;font-weight:800;margin-bottom:6px;">${escapeHtml(label)}</div>
+              <select data-note-field-key="${escapeHtml(key)}"
+                style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;background:#fff;">
+                ${optionsHtml}
+              </select>
+            </div>`;
+        }
+
+        // default text
+        return `
+          <div style="margin-top:10px;">
+            <div style="font-size:12px;color:#475467;font-weight:800;margin-bottom:6px;">${escapeHtml(label)}</div>
+            <input type="text" data-note-field-key="${escapeHtml(key)}"
+              style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:13px;outline:none;" />
+          </div>`;
+      })
+      .join('');
+  }
+
+  // hook change event once
+  document.getElementById('noteTemplateSelect')?.addEventListener('change', renderDynamicNoteFieldsForSelectedTemplate);
+
+
+  function renderTasks() {
+    const tb = document.getElementById('tasksTbody');
+    const rows = (DETAILS && DETAILS.tasks) || [];
+    tb.innerHTML = rows.map(r => {
+      return `
+        <tr style="border-bottom:1px solid #eef0f5;">
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.task_status || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.task_name || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(String(r.assigned_user_id || ''))}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.task_comments || '')}</td>
+          <td style="padding:10px;text-align:right;">
+            <button data-del-task="${r.id}"
+              style="padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+              Delete
+            </button>
+          </td>
+        </tr>`;
+    }).join('');
+
+    tb.querySelectorAll('[data-del-task]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-del-task');
+        try {
+          showMsg('');
+          await api('/api/sensys/admission-tasks/delete', {
+            method:'POST',
+            body: JSON.stringify({ id: Number(id) })
+          });
+          await loadAll();
+        } catch(e) { showMsg(e.message); }
+      });
+    });
+  }
+  function renderEsignCareTeamSelect(){
+    const sel = document.getElementById('esignCareTeamSelect');
+    if(!sel) return;
+
+    // ✅ ONLY care team linked to THIS admission (DETAILS.care_team)
+    const linked = ((DETAILS && DETAILS.care_team) || []);
+
+    if(linked.length === 0){
+      sel.innerHTML = '<option value="">No linked care team yet…</option>';
+      return;
+    }
+
+    sel.innerHTML =
+      '<option value="">Select care team…</option>' +
+      linked.map(r => {
+        // IMPORTANT: backend returns care_team_id (the real sensys_care_team.id)
+        const id = Number(r.care_team_id || 0);
+        const label = `${(r.name || 'Care Team #' + id)} — ${(r.type || '')}`.trim();
+        return `<option value="${id}">${escapeHtml(label)}</option>`;
+      }).join('');
+  }
+
+  function renderEsignServiceTypes(){
+    const sel = document.getElementById('esignServiceTypeSelect');
+    if(!sel) return;
+
+    // Build unique service types from SERVICES
+    const seen = new Map();
+    (SERVICES || []).forEach(s => {
+      const stid = (s.service_type_id ?? s.service_type ?? s.type_id ?? null);
+      const stname = (s.service_type_name ?? s.service_type_label ?? s.service_type ?? s.type_name ?? null);
+      if(stid == null) return;
+      if(!seen.has(String(stid))){
+        seen.set(String(stid), stname || ('Service Type ' + stid));
+      }
+    });
+
+    SERVICE_TYPES = Array.from(seen.entries()).map(([id, name]) => ({ id: Number(id), name }));
+    SERVICE_TYPES.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+
+    sel.innerHTML = `<option value="">Select service type…</option>` + SERVICE_TYPES.map(st =>
+      `<option value="${st.id}">${st.name}</option>`
+    ).join('');
+
+    // reset services multi
+    renderEsignServicesMultiForSelectedType();
+  }
+
+  function renderEsignServicesMultiForSelectedType(){
+    const multi = document.getElementById('esignServicesMulti');
+    const stSel = document.getElementById('esignServiceTypeSelect');
+    if(!multi || !stSel) return;
+
+    const stid = stSel.value ? Number(stSel.value) : null;
+    const rows = (SERVICES || []).filter(s => Number(s.service_type_id ?? s.service_type ?? s.type_id) === stid);
+
+    // Sort by service name
+    rows.sort((a,b) => ((a.service_name||a.name||'') + '').localeCompare((b.service_name||b.name||'') + ''));
+
+    multi.innerHTML = rows.map(s => {
+      const id = s.id;
+      const name = s.service_name || s.name || ('Service #' + id);
+      return `<option value="${id}">${name}</option>`;
+    }).join('');
+  }
+
+  function renderEsigns(){
+    // ESIGNS are returned inside DETAILS (backend change below)
+    ESIGNS = ((DETAILS && DETAILS.esigns) || []);
+
+    const tb = document.getElementById('esignTbody');
+    if(!tb) return;
+
+    tb.innerHTML = ESIGNS.map(r => {
+      const servicesText = (r.services || []).map(s => s.service_name || s.name || '').filter(Boolean).join(', ');
+      const status = r.status || 'Pending';
+
+      return `
+        <tr style="border-bottom:1px solid #eef0f5;">
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.care_team_name || '—')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.service_type_name || '—')}</td>
+          <td style="padding:10px;font-size:12px;color:#475467;">${escapeHtml(servicesText || '—')}</td>
+          <td style="padding:10px;font-size:12px;color:#475467;">${escapeHtml(status)}</td>
+          <td style="padding:10px;font-size:12px;color:#475467;">${escapeHtml(r.comments || '')}</td>
+          <td style="padding:10px;text-align:right;">
+            <button data-esign-del="${r.id}"
+              style="padding:8px 10px;border-radius:10px;border:1px solid #d0d5dd;background:#fff;cursor:pointer;font-size:12px;font-weight:800;">
+              Delete
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    tb.querySelectorAll('[data-esign-del]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = Number(btn.getAttribute('data-esign-del'));
+        try{
+          showMsg('');
+          await api('/api/sensys/admission-esigns/delete', {
+            method:'POST',
+            body: JSON.stringify({ id })
+          });
+          await loadAll();
+        }catch(e){ showMsg(e.message); }
+      });
+    });
+  }
+
+  // small helper (safe)
+  function escapeHtml(s){
+    return (s ?? '').toString()
+      .replaceAll('&','&amp;')
+      .replaceAll('<','&lt;')
+      .replaceAll('>','&gt;')
+      .replaceAll('"','&quot;')
+      .replaceAll("'","&#039;");
+  }
+
+  function renderNotes() {
+    const tb = document.getElementById('notesTbody');
+    const rows = (DETAILS && DETAILS.notes) || [];
+    tb.innerHTML = rows.map(r => {
+      return `
+        <tr style="border-bottom:1px solid #eef0f5;">
+          <td style="padding:10px;font-size:13px;color:#111827;">
+            ${escapeHtml(r.note_name || '')}${r.note_title ? (' • ' + escapeHtml(r.note_title)) : ''}
+          </td>
+          <td style="padding:10px;font-size:13px;color:#111827;">
+            <div style="font-size:12px;color:#475467;"><b>Status:</b> ${escapeHtml(r.status || '')}</div>
+            <div style="margin-top:6px;"><b>R1:</b> ${escapeHtml(r.response1 || '')}</div>
+            <div style="margin-top:4px;"><b>R2:</b> ${escapeHtml(r.response2 || '')}</div>
+            ${r.note_comments ? (`<div style="margin-top:6px;color:#667085;">${escapeHtml(r.note_comments || '')}</div>`) : ''}
+          </td>
+          <td style="padding:10px;font-size:12px;color:#667085;">
+            ${escapeHtml(r.created_at || '')}${r.created_by_name ? (' • ' + escapeHtml(r.created_by_name)) : ''}
+          </td>
+          <td style="padding:10px;text-align:right;">
+            <button data-del-note="${r.id}"
+              style="padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+              Delete
+            </button>
+          </td>
+        </tr>`;
+    }).join('');
+
+    tb.querySelectorAll('[data-del-note]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-del-note');
+        try {
+          showMsg('');
+          await api('/api/sensys/admission-notes/delete', {
+            method:'POST',
+            body: JSON.stringify({ id: Number(id) })
+          });
+          await loadAll();
+        } catch(e) { showMsg(e.message); }
+      });
+    });
+  }
+
+  function renderSms(){
+    const tb = document.getElementById('smsTbody');
+    if(!tb) return;
+
+    const rows = (SMS_LOG || []);
+    tb.innerHTML = rows.map(r => `
+      <tr style="border-bottom:1px solid #eef0f5;">
+        <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.to_phone || '')}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.message || '')}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.created_at || '')}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">
+          ${escapeHtml(r.status || '')}${r.error ? (' • ' + escapeHtml(r.error)) : ''}
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function renderFaxPdfSelect(){
+    const sel = document.getElementById('faxPdfSelect');
+    if(!sel) return;
+
+    const opts = ['<option value="">Select PDF to fax…</option>']
+      .concat((PDFS || []).map(p => {
+        const label = (p.original_filename || ('pdf_id=' + p.id)) + (p.doc_type ? (' • ' + p.doc_type) : '');
+        return `<option value="${p.id}">${escapeHtml(label)}</option>`;
+      }));
+
+    sel.innerHTML = opts.join('');
+  }
+
+  function renderFax(){
+    const tb = document.getElementById('faxTbody');
+    if(!tb) return;
+
+    const rows = (FAX_LOG || []);
+    tb.innerHTML = rows.map(r => `
+      <tr style="border-bottom:1px solid #eef0f5;">
+        <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.to_fax || '')}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(String(r.pdf_id || ''))}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.created_at || '')}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">
+          ${escapeHtml(r.status || '')}${r.error ? (' • ' + escapeHtml(r.error)) : ''}
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function renderReferralsSelect(){
+    const sel = document.getElementById('referralAgencySelect');
+    if(!sel) return;
+
+    sel.innerHTML = ['<option value="">Select an agency…</option>']
+      .concat((AGENCIES || []).map(a => {
+        const label = (a.agency_name || '') + (a.agency_type ? (' — ' + a.agency_type) : '');
+        return `<option value="${a.id}">${escapeHtml(label)}</option>`;
+      }))
+      .join('');
+  }
+
+  function renderReferrals(){
+    const tb = document.getElementById('referralsTbody');
+    if(!tb) return;
+
+    const rows = (DETAILS && DETAILS.referrals) || [];
+    tb.innerHTML = rows.map(r => {
+      return `
+        <tr style="border-bottom:1px solid #eef0f5;">
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.agency_name || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.agency_type || '')}</td>
+          <td style="padding:10px;text-align:right;">
+            <button data-del-ref="${r.id}"
+              style="padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+              Delete
+            </button>
+          </td>
+        </tr>`;
+    }).join('');
+
+    tb.querySelectorAll('[data-del-ref]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-del-ref');
+        try{
+          showMsg('');
+          await api('/api/sensys/admission-referrals/delete', {
+            method:'POST',
+            body: JSON.stringify({ id: Number(id) })
+          });
+          await loadAll();
+        }catch(e){ showMsg(e.message); }
+      });
+    });
+  }
+
+  function renderAppointmentsSelect(){
+    const sel = document.getElementById('apptCareTeamSelect');
+    if(!sel) return;
+
+    sel.innerHTML = ['<option value="">Select a care team person…</option>']
+      .concat((CARE_TEAM || []).map(c => {
+        const label = (c.name || '') + ' — ' + (c.type || '');
+        return `<option value="${c.id}">${escapeHtml(label)}</option>`;
+      }))
+      .join('');
+  }
+
+  function renderAppointments(){
+    const tb = document.getElementById('apptsTbody');
+    if(!tb) return;
+
+    const rows = (DETAILS && DETAILS.appointments) || [];
+    tb.innerHTML = rows.map(r => {
+      return `
+        <tr style="border-bottom:1px solid #eef0f5;">
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.appt_datetime || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.care_team_name || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.appt_status || '')}</td>
+          <td style="padding:10px;text-align:right;">
+            <button data-del-appt="${r.id}"
+              style="padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+              Delete
+            </button>
+          </td>
+        </tr>`;
+    }).join('');
+
+    tb.querySelectorAll('[data-del-appt]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-del-appt');
+        try{
+          showMsg('');
+          await api('/api/sensys/admission-appointments/delete', {
+            method:'POST',
+            body: JSON.stringify({ id: Number(id) })
+          });
+          await loadAll();
+        }catch(e){ showMsg(e.message); }
+      });
+    });
+  }
+
+  function prettyBytes(n){
+    const x = Number(n || 0);
+    if(!x) return '0 B';
+    const units = ['B','KB','MB','GB'];
+    let v = x, i = 0;
+    while(v >= 1024 && i < units.length-1){ v /= 1024; i++; }
+    return (v.toFixed(i===0?0:1) + ' ' + units[i]);
+  }
+
+  function renderPdfs(){
+    const tb = document.getElementById('pdfsTbody');
+    if(!tb) return;
+
+    const rows = (PDFS || []);
+    tb.innerHTML = rows.map(r => {
+      const name = r.original_filename || ('PDF #' + r.id);
+      const dl = `/api/sensys/pdfs/${r.id}/download?token=${encodeURIComponent(token())}`;
+      return `
+        <tr style="border-bottom:1px solid #eef0f5;">
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(name)}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.doc_type || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(prettyBytes(r.size_bytes))}</td>
+          <td style="padding:10px;font-size:12px;color:#667085;">${escapeHtml(r.created_at || '')}</td>
+          <td style="padding:10px;font-size:12px;color:#667085;">${escapeHtml(r.expires_at || '—')}</td>
+          <td style="padding:10px;text-align:right;">
+            <a href="${dl}" target="_blank"
+               style="display:inline-block;padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;text-decoration:none;color:#111827;">
+              Download
+            </a>
+          </td>
+        </tr>`;
+    }).join('');
+  }
+
+  function serviceNameById(id) {
+    const s = SERVICES.find(x => Number(x.id) === Number(id));
+    return s ? (s.name + ' (' + s.service_type + ')') : ('#' + id);
+  }
+
+  // ===============================
+  // Care Compare (Home Health) modal
+  // ===============================
+  let CARE_COMPARE_SELECTED = null;
+
+  // ✅ NEW: control in-flight searches so UI feels fluid
+  let CC_SEARCH_SEQ = 0;
+
+  function setCcStatus(text, isBusy){
+    const st = document.getElementById("ccStatus");
+    const btn = document.getElementById("ccSearchBtn");
+
+    if(st){
+      st.style.display = text ? "block" : "none";
+      st.textContent = text || "";
+    }
+    if(btn){
+      btn.disabled = !!isBusy;
+      btn.style.opacity = isBusy ? "0.75" : "1";
+      btn.style.cursor = isBusy ? "not-allowed" : "pointer";
+      btn.textContent = isBusy ? "Searching…" : "Search";
+    }
+  }
+
+  function resetCareCompareModal(){
+    // clear inputs
+    ["cc_q","cc_county","cc_city","cc_state","cc_zip","cc_ccn"].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el) el.value = "";
+    });
+
+    // clear errors + status
+    const err = document.getElementById("ccErr");
+    if(err){
+      err.style.display = "none";
+      err.textContent = "";
+    }
+    setCcStatus("", false);
+
+    // clear results
+    const tbody = document.getElementById("ccTbody");
+    if(tbody) tbody.innerHTML = "";
+
+    // OPTIONAL: don’t clear selection (keeps last selected HH on the DC screen)
+    // CARE_COMPARE_SELECTED = null;
+  }
+
+  function openCareCompareModal(){
+    document.getElementById("careCompareModalBackdrop").style.display = "flex";
+    // start fresh each time you open
+    // (if you prefer to keep the last search when re-opening, remove next line)
+    resetCareCompareModal();
+    document.getElementById("cc_q").focus();
+  }
+
+  function closeCareCompareModal(){
+    document.getElementById("careCompareModalBackdrop").style.display = "none";
+    // ✅ requirement: clear when you close so user can search again next time
+    resetCareCompareModal();
+  }
+
+  async function runCareCompareSearch(){
+    const err = document.getElementById("ccErr");
+    err.style.display = "none";
+    err.textContent = "";
+
+    const tbody = document.getElementById("ccTbody");
+    if(tbody) tbody.innerHTML = "";
+
+    const q = (document.getElementById("cc_q").value || "").trim();
+    const county = (document.getElementById("cc_county").value || "").trim();
+    const city = (document.getElementById("cc_city").value || "").trim();
+    const state = (document.getElementById("cc_state").value || "").trim();
+    const zip = (document.getElementById("cc_zip").value || "").trim();
+    const ccn = (document.getElementById("cc_ccn").value || "").trim();
+
+    // ✅ nice UX: require at least one filter
+    if(!q && !county && !city && !state && !zip && !ccn){
+      err.style.display = "block";
+      err.textContent = "Enter at least one search field (name/DBA, county, city, state, zip, or CCN).";
+      setCcStatus("", false);
+      return;
+    }
+
+    const qs = new URLSearchParams({ q, county, city, state, zip, ccn });
+
+    // ✅ “latest search wins”
+    const mySeq = ++CC_SEARCH_SEQ;
+
+    setCcStatus("Searching Provider Library…", true);
+
+    let resp;
+    try{
+      resp = await api(`/api/sensys/care-compare/hha-search?${qs.toString()}`, { method:"GET" });
+    }catch(e){
+      // only show error if this is still the latest search
+      if(mySeq !== CC_SEARCH_SEQ) return;
+
+      err.style.display = "block";
+      err.textContent = "Search failed. Try again or narrow the search.";
+      setCcStatus("", false);
+      return;
+    }
+
+    // if another search started after this one, ignore this response
+    if(mySeq !== CC_SEARCH_SEQ) return;
+
+    const results = (resp && resp.results) ? resp.results : [];
+    const note = (resp && resp.note) ? String(resp.note) : "";
+
+    if(!results.length){
+      if(tbody){
+        tbody.innerHTML = `<tr><td colspan="3" style="padding:12px;color:#667085;font-size:12px;">No results</td></tr>`;
+      }
+      setCcStatus("Done • 0 results", false);
+      return;
+    }
+
+    setCcStatus(`Loaded ${results.length} result${results.length===1?"":"s"} • Scroll to view`, false);
+
+    results.forEach((row) => {
+      const name = String(row.provider_name || "").trim();
+      const dba = String(row.dba || "").trim();
+      const ccnV = String(row.ccn || "").trim();
+      const cityV = String(row.city || "").trim();
+      const stateV = String(row.state || "").trim();
+      const zipV = String(row.zip || "").trim();
+      const countyV = String(row.county || "").trim();
+
+      // provider library contact
+      const phoneV = String(row.phone || "").trim();
+      const faxV = String(row.fax || "").trim();
+
+      // if this provider is already linked to an internal agency, use that
+      const matchedAgencyId = row.matched_agency_id ? Number(row.matched_agency_id) : null;
+      const matchedAgencyName = String(row.matched_agency_name || "").trim();
+      const matchedAgencyFax = String(row.matched_agency_fax || "").trim();
+      const matchedAgencyPhone = String(row.matched_agency_phone || "").trim();
+
+      const displayName = dba ? `${dba} (DBA)` : name;
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td style="padding:10px;border-top:1px solid #eef0f4;">
+          <div style="font-weight:900;color:#111827;font-size:12px;">
+            ${escapeHtml(displayName || "—")}
+            ${matchedAgencyId ? `<span style="margin-left:8px;font-size:11px;font-weight:900;padding:3px 8px;border-radius:999px;border:1px solid #b7ebc6;background:#ecfdf3;color:#027a48;">Saved Agency</span>` : ``}
+          </div>
+          <div style="font-size:11px;color:#667085;margin-top:2px;">
+            ${escapeHtml([cityV,stateV,zipV].filter(Boolean).join(", "))}${countyV ? ` • ${escapeHtml(countyV)} County` : ``}
+          </div>
+
+          ${(phoneV || faxV || matchedAgencyPhone || matchedAgencyFax) ? `
+            <div style="font-size:11px;color:#111827;margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;">
+              ${(matchedAgencyPhone || phoneV) ? `<span>📞 ${escapeHtml(matchedAgencyPhone || phoneV)}</span>` : ``}
+              ${(matchedAgencyFax || faxV) ? `<span>📠 ${escapeHtml(matchedAgencyFax || faxV)}</span>` : ``}
+            </div>` : ``}
+        </td>
+
+        <td style="padding:10px;border-top:1px solid #eef0f4;font-size:12px;color:#475467;">${escapeHtml(ccnV || "—")}</td>
+
+        <td style="padding:10px;border-top:1px solid #eef0f4;text-align:right;">
+          <button style="padding:8px 10px;border-radius:10px;border:1px solid #0d3b66;background:#fff;color:#0d3b66;cursor:pointer;font-size:12px;font-weight:900;">
+            ${matchedAgencyId ? "Select Saved" : "Select"}
+          </button>
+        </td>
+      `;
+
+      tr.querySelector("button").onclick = () => {
+        // If linked to an internal agency, select that agency id
+        if(matchedAgencyId){
+          const sel = document.getElementById("hhAgencySelect");
+          sel.value = String(matchedAgencyId);
+          closeCareCompareModal();
+          return;
+        }
+
+        // Otherwise, keep legacy Care Compare selection behavior
+        CARE_COMPARE_SELECTED = {
+          name: name,
+          dba: dba,
+          ccn: ccnV,
+          city: cityV,
+          state: stateV,
+          zip: zipV,
+          county: countyV,
+          phone: phoneV,
+          fax: faxV,
+        };
+
+        const sel = document.getElementById("hhAgencySelect");
+        const optVal = `carecompare|${CARE_COMPARE_SELECTED.ccn || CARE_COMPARE_SELECTED.name}`;
+
+        let opt = Array.from(sel.options).find(o => o.value === optVal);
+        if(!opt){
+          opt = document.createElement("option");
+          opt.value = optVal;
+          opt.textContent = `Care Compare: ${CARE_COMPARE_SELECTED.dba || CARE_COMPARE_SELECTED.name} (${CARE_COMPARE_SELECTED.city || ""}${CARE_COMPARE_SELECTED.state ? ", "+CARE_COMPARE_SELECTED.state : ""})`;
+          sel.appendChild(opt);
+        }
+        sel.value = optVal;
+
+        closeCareCompareModal();
+      };
+
+      tbody.appendChild(tr);
+    });
+  }
+
+
+  // Wire buttons
+  document.getElementById("careCompareOpenBtn").onclick = openCareCompareModal;
+  document.getElementById("careCompareCloseBtn").onclick = closeCareCompareModal;
+  document.getElementById("ccCancelBtn").onclick = closeCareCompareModal;
+  document.getElementById("ccSearchBtn").onclick = runCareCompareSearch;
+
+  // Enter key triggers search
+  ["cc_q","cc_county","cc_city","cc_state","cc_zip","cc_ccn"].forEach(id=>{
+    document.getElementById(id).addEventListener("keydown", (e)=>{
+      if(e.key === "Enter" && !document.getElementById("ccSearchBtn").disabled) runCareCompareSearch();
+    });
+  });
+
+  function openDcNoteModal(meta, text){
+    const bd = document.getElementById("dcNoteModalBackdrop");
+    document.getElementById("dcNoteModalMeta").textContent = meta || "—";
+    document.getElementById("dcNoteTextArea").value = text || "";
+    bd.style.display = "flex";
+  }
+  function closeDcNoteModal(){
+    document.getElementById("dcNoteModalBackdrop").style.display = "none";
+  }
+
+  document.getElementById("dcNoteCloseBtn").addEventListener("click", closeDcNoteModal);
+  document.getElementById("dcNoteCloseBtn2").addEventListener("click", closeDcNoteModal);
+  document.getElementById("dcNoteModalBackdrop").addEventListener("click", (e)=>{ if(e.target.id==="dcNoteModalBackdrop") closeDcNoteModal(); });
+
+  document.getElementById("dcNoteCopyBtn").addEventListener("click", async ()=>{
+    try{
+      await navigator.clipboard.writeText(document.getElementById("dcNoteTextArea").value || "");
+      showMsg("Copied note to clipboard.");
+    }catch(e){
+      showMsg("Copy failed: " + String(e.message||e));
+    }
+  });
+
+  function renderDc() {
+    const tb = document.getElementById('dcTbody');
+    const rows = (DETAILS && DETAILS.dc_submissions) || [];
+    tb.innerHTML = rows.map(r => {
+      const serviceIds = (r.services || []).map(x => Number(x.services_id));
+      const svcLabel = serviceIds.length
+        ? serviceIds.map(serviceNameById).join(', ')
+        : '—';
+
+      const urgent = Number(r.dc_urgent || 0) === 1 ? ('Yes: ' + (r.urgent_comments || '')) : 'No';
+
+      return `
+        <tr style="border-bottom:1px solid #eef0f5;">
+          <td style="padding:10px;font-size:13px;color:#111827;">
+            ${escapeHtml((r.dc_date || '') + ' ' + (r.dc_time || ''))}
+            <div style="font-size:12px;color:#667085;margin-top:2px;">
+              Confirmed: ${Number(r.dc_confirmed||0)===1 ? 'Yes' : 'No'} • With: ${escapeHtml(r.dc_with || '')}
+            </div>
+          </td>
+          <td style="padding:10px;font-size:13px;color:#111827;">
+            ${escapeHtml(r.dc_destination || '')}
+            <div style="font-size:12px;color:#667085;margin-top:2px;">
+              ${escapeHtml(r.destination_comments || '')}
+              ${(r.hh_agency_id ? ('<div style="margin-top:4px;">HH: ' + escapeHtml(agencyNameById(r.hh_agency_id)) + '</div>') : '')}              
+            </div>
+          </td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(urgent)}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">
+            ${escapeHtml(svcLabel)}
+            <div style="margin-top:6px;">
+              <button data-edit-services="${r.id}"
+                style="padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+                Edit services
+              </button>
+            </div>
+          </td>
+          <td style="padding:10px;text-align:right;">
+            <button data-gen-dc-note="${r.id}"
+              style="padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;margin-right:6px;">
+              Generate SW Note
+            </button>
+            <button data-del-dc="${r.id}"
+              style="padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+              Delete
+            </button>
+          </td>
+        </tr>`;
+    }).join('');
+
+    tb.querySelectorAll('[data-del-dc]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-del-dc');
+        try {
+          showMsg('');
+          await api('/api/sensys/admission-dc-submissions/delete', {
+            method:'POST',
+            body: JSON.stringify({ id: Number(id) })
+          });
+          await loadAll();
+        } catch(e) { showMsg(e.message); }
+      });
+    });
+
+    tb.querySelectorAll('[data-gen-dc-note]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-gen-dc-note');
+        try {
+          showMsg('');
+          const resp = await api(`/api/sensys/dc-note/render?dc_submission_id=${encodeURIComponent(id)}`);
+          const meta = (resp && resp.template_name) ? (`Template: ${resp.template_name} • DC Submission #${id}`) : (`DC Submission #${id}`);
+          openDcNoteModal(meta, (resp && resp.note_text) ? resp.note_text : '');
+        } catch(e) { showMsg(e.message); }
+      });
+    });
+
+    tb.querySelectorAll('[data-edit-services]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const submissionId = Number(btn.getAttribute('data-edit-services'));
+        const row = rows.find(x => Number(x.id) === submissionId);
+        const current = new Set(((row && row.services) || []).map(x => Number(x.services_id)));
+
+        // simple prompt-based multi-select
+        const lines = SERVICES.map(s => {
+          const on = current.has(Number(s.id)) ? '[x]' : '[ ]';
+          return `${on} ${s.id}: ${s.name} (${s.service_type})`;
+        }).join('\n');
+
+        const input = prompt(
+          'Select services for DC Submission #' + submissionId + '\n\n' +
+          'Copy/paste the service IDs you want, comma-separated.\n\n' +
+          lines + '\n\nExample: 1,2,5'
+        );
+
+        if (input === null) return;
+
+        const ids = input.split(',').map(x => Number((x||'').trim())).filter(x => Number.isFinite(x) && x > 0);
+
+        try {
+          showMsg('');
+          await api('/api/sensys/dc-submission-services/set', {
+            method:'POST',
+            body: JSON.stringify({
+              admission_dc_submission_id: submissionId,
+              services_ids: ids
+            })
+          });
+          await loadAll();
+        } catch(e) { showMsg(e.message); }
+      });
+    });
+  }
+
+  function renderCareTeamSelect() {
+    const sel = document.getElementById('careTeamSelect');
+    sel.innerHTML = ['<option value="">Select a care team person…</option>']
+      .concat(CARE_TEAM.map(c => {
+        const label = (c.name || '') + ' — ' + (c.type || '');
+        return `<option value="${c.id}">${escapeHtml(label)}</option>`;
+      }))
+      .join('');
+  }
+
+  function agencyNameById(id){
+    const a = (AGENCIES || []).find(x => Number(x.id) === Number(id));
+    return a ? (a.agency_name || '') : '';
+  }
+
+  function renderHhAgencySelect(){
+    const sel = document.getElementById("hhAgencySelect");
+    if(!sel) return;
+
+    const preferred = new Set(((DETAILS && DETAILS.preferred_provider_ids) || []).map(x => Number(x)));
+    const hh = (AGENCIES || []).filter(a => String(a.agency_type || "").toLowerCase() === "home health");
+
+    const byName = (a,b) => String(a.agency_name||"").localeCompare(String(b.agency_name||""), undefined, { sensitivity:"base" });
+
+    const preferredList = hh.filter(a => preferred.has(Number(a.id))).sort(byName);
+    const otherList = hh.filter(a => !preferred.has(Number(a.id))).sort(byName);
+
+    const opts = ['<option value="">Home Health agency (optional)…</option>']
+      .concat(preferredList.map(a => `<option value="${a.id}">★ ${escapeHtml(a.agency_name || "")}</option>`))
+      .concat(otherList.map(a => `<option value="${a.id}">${escapeHtml(a.agency_name || "")}</option>`));
+
+    sel.innerHTML = opts.join('');
+  }
+
+  function renderDcServicesMulti(){
+    const el = document.getElementById("dcServicesMulti");
+    const opts = ['']
+      .concat((SERVICES || []).map(s => {
+        const label = `${s.name || ''} (${(s.service_type || '').toUpperCase()})`;
+        return `<option value="${s.id}">${escapeHtml(label)}</option>`;
+      }));
+    el.innerHTML = opts.join('');
+  }
+
+  function renderCareTeamLinked() {
+    const tb = document.getElementById('careTeamTbody');
+    const rows = (DETAILS && DETAILS.care_team) || [];
+    tb.innerHTML = rows.map(r => {
+      return `
+        <tr style="border-bottom:1px solid #eef0f5;">
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.name || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.type || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.phone1 || r.phone2 || '')}</td>
+          <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.email1 || r.email2 || '')}</td>
+          <td style="padding:10px;text-align:right;">
+            <button data-unlink-ct="${r.link_id}"
+              style="padding:7px 10px;border:1px solid #d0d5dd;background:#fff;border-radius:10px;cursor:pointer;font-size:12px;">
+              Unlink
+            </button>
+          </td>
+        </tr>`;
+    }).join('');
+
+    tb.querySelectorAll('[data-unlink-ct]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const linkId = Number(btn.getAttribute('data-unlink-ct'));
+        try {
+          showMsg('');
+          await api('/api/sensys/admission-care-team/unlink', {
+            method:'POST',
+            body: JSON.stringify({ id: linkId })
+          });
+          await loadAll();
+        } catch(e) { showMsg(e.message); }
+      });
+    });
+  }
+
+  function renderHeader() {
+    const a = DETAILS && DETAILS.admission;
+    if (!a) return;
+    document.getElementById('admissionIdTag').textContent = String(a.id || '');
+    document.getElementById('patientName').textContent = a.patient_name || '—';
+    document.getElementById('metaLine').textContent =
+      (a.agency_name ? ('Agency: ' + a.agency_name + ' • ') : '') +
+      (a.patient_dob ? ('DOB: ' + a.patient_dob + ' • ') : '') +
+      ('Admit: ' + (a.admit_date || '—') + ' • DC: ' + (a.dc_date || '—')) +
+      (a.room ? (' • Room: ' + a.room) : '');
+
+    document.getElementById('subhead').textContent =
+      (a.reason ? ('Reason: ' + a.reason) : 'View and edit tasks, notes, DC submissions, services, and care team.');
+  }
+
+  // ======================
+  // E-Sign: Service Types
+  // ======================
+  function renderEsignServiceTypeSelect(){
+    const sel = document.getElementById("esignServiceTypeSelect");
+    if(!sel) return; // if the E-Sign panel isn't on the page yet, this safely does nothing
+
+    sel.innerHTML = ['<option value="">Select service type…</option>']
+      .concat((SERVICE_TYPES || []).map(t => {
+        return `<option value="${t.id}">${escapeHtml(t.name || "")}</option>`;
+      }))
+      .join("");
+  }
+
+  function renderEsignServicesMulti(){
+    const typeEl = document.getElementById("esignServiceTypeSelect");
+    const multi = document.getElementById("esignServicesMulti");
+    if(!typeEl || !multi) return;
+
+    const selTypeId = Number(typeEl.value || 0);
+    const filtered = (SERVICES || []).filter(s => Number(s.service_type_id) === selTypeId);
+
+    multi.innerHTML = filtered
+      .map(s => `<option value="${s.id}">${escapeHtml(s.name || "")}</option>`)
+      .join("");
+  }
+
+  // Wire the change event once
+  document.getElementById("esignServiceTypeSelect")?.addEventListener("change", () => {
+    renderEsignServicesMulti();
+  });
+
+  async function loadAll() {
+    showMsg('');
+    const [details, servicesResp, careTeam, agencies, noteTemplates, smsLogs, faxResp, pdfsResp, serviceTypesResp] = await Promise.all([
+      api('/api/sensys/admission-details/' + ADMISSION_ID, { method:'GET' }),
+      api('/api/sensys/services', { method:'GET' }),
+      api('/api/sensys/care-team', { method:'GET' }),
+      api('/api/sensys/agencies', { method:'GET' }),
+      api('/api/sensys/note-templates', { method:'GET' }),
+      api('/api/sensys/admission-sms/' + ADMISSION_ID, { method:'GET' }).catch(() => ({ sms: [] })),
+      api('/api/sensys/admission-fax/' + ADMISSION_ID, { method:'GET' }).catch(() => ({ fax: [] })),
+      api('/api/sensys/admissions/' + ADMISSION_ID + '/pdfs', { method:'GET' }).catch(() => ({ pdfs: [] })),
+      api('/api/sensys/service-types', { method:'GET' }).catch(() => ({ service_types: [] }))
+    ]);
+
+    const stResp = await api('/api/sensys/service-types');
+    SERVICE_TYPES = stResp.service_types || [];
+    DETAILS = details;
+    SERVICES = (servicesResp && servicesResp.services) || [];
+    SERVICE_TYPES = (serviceTypesResp && serviceTypesResp.service_types) || [];
+    CARE_TEAM = (careTeam && careTeam.care_team) || [];
+    AGENCIES = (agencies && agencies.agencies) || []; // ✅ NEW
+    renderHhAgencySelect();
+    
+    NOTE_TEMPLATES = (noteTemplates && noteTemplates.templates) || [];
+    renderNoteTemplatesSelect();
+    renderDynamicNoteFieldsForSelectedTemplate();
+    SMS_LOG = (smsLogs && smsLogs.sms) || [];
+    FAX_LOG = (faxResp && faxResp.fax) || [];
+    PDFS = (pdfsResp && pdfsResp.pdfs) || [];
+
+    renderHeader();
+    renderTasks();
+    renderNotes();
+    renderSms();
+    renderFax();       // ✅ NEW
+    renderDc();
+    renderDcServicesMulti();
+    renderEsignServiceTypes();
+    renderEsignCareTeamSelect();
+    renderEsigns();
+    renderReferralsSelect();
+    renderReferrals();
+    renderAppointmentsSelect();
+    renderAppointments();
+    renderPdfs();              // ✅ NEW
+    renderFaxPdfSelect(); // ✅ NEW (keeps fax dropdown in sync)
+    renderCareTeamSelect();
+    renderCareTeamLinked();
+
+    renderEsignServiceTypeSelect();
+    renderEsignServicesMulti();
+
+    // ✅ NEW: start lightweight polling after initial data load
+    setSmsMeta();
+    startSmsAutoRefresh();
+
+    setFaxMeta();
+    startFaxAutoRefresh();
+    }
+
+
+  document.getElementById('sendSmsBtn')?.addEventListener('click', async () => {
+    try{
+      showMsg('');
+      const to_phone = document.getElementById('smsToPhone').value.trim();
+      const text = document.getElementById('smsText').value.trim();
+
+      if(!to_phone) throw new Error("SMS not sent: missing To phone.");
+      if(!text) throw new Error("SMS not sent: missing message text.");
+      if(!ADMISSION_ID) throw new Error("SMS not sent: missing ADMISSION_ID.");
+
+      console.log('[SENSYS][SMS][SUBMIT]', { admission_id: Number(ADMISSION_ID), to_phone, text_len: text.length });
+
+      const resp = await api('/api/sensys/admission-sms/send', {
+        method:'POST',
+        body: JSON.stringify({
+          admission_id: Number(ADMISSION_ID),
+          to_phone,
+          text
+        })
+      });
+
+      console.log('[SENSYS][SMS][SENT]', resp);
+      showMsg(`SMS sent • sms_log_id=${resp.id} • rc_message_id=${resp.message_id}`);
+
+      document.getElementById('smsText').value = '';
+      await loadAll();
+
+    }catch(e){
+      showMsg(e.message || 'SMS not sent.');
+    }
+  });
+
+  document.getElementById('sendFaxBtn')?.addEventListener('click', async () => {
+    try{
+      showMsg('');
+      if(!ADMISSION_ID) throw new Error("Fax not sent: missing ADMISSION_ID.");
+
+      const to_fax = document.getElementById('faxToNumber').value.trim();
+      const pdf_id = Number(document.getElementById('faxPdfSelect').value || 0);
+      const cover_text = document.getElementById('faxCoverText').value.trim();
+
+      if(!to_fax) throw new Error("Fax not sent: missing To fax.");
+      if(!pdf_id) throw new Error("Fax not sent: select a PDF.");
+
+      const resp = await api('/api/sensys/admission-fax/send', {
+        method:'POST',
+        body: JSON.stringify({
+          admission_id: Number(ADMISSION_ID),
+          to_fax,
+          pdf_id,
+          cover_text
+        })
+      });
+
+      showMsg(`Fax submitted • fax_log_id=${resp.id} • rc_fax_id=${resp.fax_id}`);
+      await loadAll();
+    }catch(e){
+      showMsg(e.message || 'Fax not sent.');
+    }
+  });
+
+  document.getElementById('faxRefreshBtn')?.addEventListener('click', async () => {
+    try{
+      showMsg('');
+      await loadFaxOnly({ refreshStatuses:true });
+    }catch(e){
+      showMsg(e.message || 'Fax refresh failed.');
+    }
+  });
+
+  document.getElementById('refreshBtn').addEventListener('click', () => loadAll().catch(e => showMsg(e.message)));
+
+  document.getElementById('uploadPdfBtn')?.addEventListener('click', async () => {
+    try{
+      showMsg('');
+
+      if(!ADMISSION_ID) throw new Error("PDF not uploaded: missing ADMISSION_ID.");
+
+      const f = document.getElementById('pdfFile').files[0];
+      if(!f) throw new Error("Select a PDF file first.");
+
+      const docType = (document.getElementById('pdfDocType').value || 'pdf').trim();
+      const retention = (document.getElementById('pdfRetentionHours').value || '').trim();
+
+      const fd = new FormData();
+      fd.append('doc_type', docType);
+      fd.append('retention_hours', retention ? retention : '0');
+      fd.append('file', f);
+
+      const resp = await apiForm('/api/sensys/admissions/' + ADMISSION_ID + '/pdfs/upload', fd);
+
+      showMsg(`PDF uploaded • pdf_id=${resp.pdf_id}`); 
+      document.getElementById('pdfFile').value = '';
+      await loadAll();
+    }catch(e){
+      showMsg(e.message || 'PDF upload failed.');
+    }
+  });
+
+  // ✅ NEW: manual SMS-only refresh (does NOT reload whole page)
+  document.getElementById('smsRefreshBtn')?.addEventListener('click', async () => {
+    try {
+      showMsg('');
+      await loadSmsOnly({ refreshStatuses:true });
+    } catch(e) {
+      showMsg(e.message || 'SMS refresh failed.');
+    }
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if(document.hidden){
+      stopSmsAutoRefresh();
+      stopFaxAutoRefresh();
+    } else {
+      startSmsAutoRefresh();
+      startFaxAutoRefresh();
+    }
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('sensys_token');
+    window.location.href = '/sensys/login';
+  });
+
+  document.getElementById('backBtn').addEventListener('click', () => {
+    window.location.href = '/sensys/snf-sw';
+  });
+
+  document.getElementById('addReferralBtn')?.addEventListener('click', async () => {
+    const endpoint = '/api/sensys/admission-referrals/upsert';
+
+    try{
+      showMsg('');
+
+      const agencyId = document.getElementById('referralAgencySelect').value;
+      if(!agencyId) throw new Error("Referral not saved: please select an agency first.");
+
+      if(!ADMISSION_ID) throw new Error("Referral not saved: missing ADMISSION_ID on page.");
+
+      console.log('[SENSYS][REFERRAL][SUBMIT]', { admission_id: Number(ADMISSION_ID), agency_id: Number(agencyId) });
+
+      const resp = await api(endpoint, {
+        method:'POST',
+        body: JSON.stringify({
+          admission_id: Number(ADMISSION_ID),
+          agency_id: Number(agencyId)
+        })
+      });
+
+      console.log('[SENSYS][REFERRAL][SAVED]', resp);
+      showMsg(`Referral saved (id ${resp.id}) • verify=${resp.verify_exists} • db=${resp.db_file}`);
+
+      document.getElementById('referralAgencySelect').value = '';
+      await loadAll();
+    }catch(e){
+      console.error('[SENSYS][REFERRAL][ERROR]', endpoint, e);
+      showMsg((e && e.message ? e.message : 'Referral not saved due to an unknown error.') + " (Referrals)");
+    }
+  });
+
+
+  document.getElementById('addApptBtn')?.addEventListener('click', async () => {
+    try{
+      showMsg('');
+      const careTeamId = document.getElementById('apptCareTeamSelect').value;
+      const dt = document.getElementById('apptDatetime').value;
+      const st = document.getElementById('apptStatus').value;
+
+      if(!dt) throw new Error("Select an appointment date/time first.");
+
+      await api('/api/sensys/admission-appointments/upsert', {
+        method:'POST',
+        body: JSON.stringify({
+          admission_id: Number(ADMISSION_ID),
+          appt_datetime: dt,
+          care_team_id: careTeamId ? Number(careTeamId) : null,
+          appt_status: st
+        })
+      });
+
+      document.getElementById('apptCareTeamSelect').value = '';
+      document.getElementById('apptDatetime').value = '';
+      document.getElementById('apptStatus').value = 'New';
+      await loadAll();
+    }catch(e){ showMsg(e.message); }
+  });
+
+  document.getElementById('addTaskBtn').addEventListener('click', async () => {
+    try {
+      showMsg('');
+      const payload = {
+        admission_id: Number(ADMISSION_ID),
+        assigned_user_id: document.getElementById('taskAssignedUser').value.trim() || null,
+        task_status: document.getElementById('taskStatus').value,
+        task_name: document.getElementById('taskName').value.trim(),
+        task_comments: document.getElementById('taskComments').value.trim()
+      };
+      await api('/api/sensys/admission-tasks/upsert', { method:'POST', body: JSON.stringify(payload) });
+      document.getElementById('taskName').value = '';
+      document.getElementById('taskComments').value = '';
+      document.getElementById('taskAssignedUser').value = '';
+      await loadAll();
+    } catch(e) { showMsg(e.message); }
+  });
+
+  document.getElementById('addNoteBtn').addEventListener('click', async () => {
+    try {
+      showMsg('');
+
+      const tplIdRaw = document.getElementById('noteTemplateSelect').value;
+      const template_id = tplIdRaw ? Number(tplIdRaw) : null;
+
+      // collect dynamic template answers
+      const answers = {};
+      document.querySelectorAll('[data-note-field-key]').forEach(el => {
+        const k = el.getAttribute('data-note-field-key');
+        if (!k) return;
+
+        if (el.type === 'checkbox') {
+          answers[k] = el.checked ? 1 : 0;
+        } else {
+          answers[k] = (el.value ?? '').toString().trim();
+        }
+      });
+
+      const payload = {
+        admission_id: Number(ADMISSION_ID),
+
+        // template + common fast fields
+        note_template_id: template_id,
+        note_name: document.getElementById('noteName').value.trim(),          // keep for now (legacy label)
+        note_title: document.getElementById('noteTitle').value.trim(),
+        status: document.getElementById('noteStatus').value,
+        response1: document.getElementById('noteResponse1').value.trim(),
+        response2: document.getElementById('noteResponse2').value.trim(),
+
+        // keep legacy free text too (optional)
+        note_comments: document.getElementById('noteComments').value.trim(),
+
+        // template answers
+        answers: answers
+      };
+
+      await api('/api/sensys/admission-notes/upsert', { method:'POST', body: JSON.stringify(payload) });
+
+      // clear
+      document.getElementById('noteName').value = '';
+      document.getElementById('noteTitle').value = '';
+      document.getElementById('noteStatus').value = 'New';
+      document.getElementById('noteResponse1').value = '';
+      document.getElementById('noteResponse2').value = '';
+      document.getElementById('noteComments').value = '';
+      document.getElementById('noteTemplateSelect').value = '';
+
+      // clear dynamic fields
+      document.getElementById('noteDynamicFields').innerHTML = '';
+
+      await loadAll();
+    } catch(e) { showMsg(e.message); }
+  });
+
+  document.getElementById('addDcBtn').addEventListener('click', async () => {
+    try {
+      showMsg('');
+      
+      const preferred = new Set(((DETAILS && DETAILS.preferred_provider_ids) || []).map(x => Number(x)));
+
+      // NOTE: hhAgencySelect can now contain either an internal agency id ("123")
+      // OR a Care Compare selection value like "carecompare|<ccn or name>"
+      const hhAgencyRaw = (document.getElementById('hhAgencySelect').value || "").trim();
+      const isCareCompare = hhAgencyRaw.startsWith("carecompare|");
+
+      // Only treat it as a numeric agency id if it's NOT a Care Compare selection
+      const hhAgencyId = (!isCareCompare && hhAgencyRaw) ? Number(hhAgencyRaw) : null;
+
+      const payload = {
+        admission_id: Number(ADMISSION_ID),
+        dc_date: document.getElementById('dcDate').value.trim(),
+        dc_time: document.getElementById('dcTime').value.trim(),
+        dc_confirmed: document.getElementById('dcConfirmed').checked ? 1 : 0,
+        dc_urgent: document.getElementById('dcUrgent').checked ? 1 : 0,
+        urgent_comments: document.getElementById('urgentComments').value.trim(),
+        dc_destination: document.getElementById('dcDestination').value,
+        destination_comments: document.getElementById('destinationComments').value.trim(),
+        dc_with: document.getElementById('dcWith').value,
+
+        // internal agency selection
+        hh_agency_id: (Number.isFinite(hhAgencyId) ? hhAgencyId : null),
+        hh_preferred: (hhAgencyId && preferred.has(hhAgencyId)) ? 1 : 0,
+
+        // Care Compare fields (only when a Care Compare selection is active)
+        hh_carecompare_ccn: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.ccn) || "") : "",
+        hh_carecompare_name: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.name) || "") : "",
+        hh_carecompare_dba: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.dba) || "") : "",
+        hh_carecompare_city: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.city) || "") : "",
+        hh_carecompare_state: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.state) || "") : "",
+        hh_carecompare_zip: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.zip) || "") : "",
+        hh_carecompare_county: isCareCompare ? ((CARE_COMPARE_SELECTED && CARE_COMPARE_SELECTED.county) || "") : ""
+      };
+      const resp = await api('/api/sensys/admission-dc-submissions/upsert', {
+        method:'POST',
+        body: JSON.stringify(payload)
+      });
+
+      const submissionId = resp && resp.id ? Number(resp.id) : null;
+
+      // ✅ write join table from the multi-select
+      const selectedServiceIds = Array.from(document.getElementById("dcServicesMulti").selectedOptions)
+        .map(o => Number(o.value))
+        .filter(n => Number.isFinite(n) && n > 0);
+
+      if(submissionId){
+        await api('/api/sensys/dc-submission-services/set', {
+          method:'POST',
+          body: JSON.stringify({
+            admission_dc_submission_id: submissionId,
+            services_ids: selectedServiceIds
+          })
+        });
+      }
+
+      document.getElementById('dcDate').value = '';
+      document.getElementById('dcTime').value = '';
+      document.getElementById('dcConfirmed').checked = false;
+      document.getElementById('dcUrgent').checked = false;
+      document.getElementById('urgentComments').value = '';
+      document.getElementById('destinationComments').value = '';
+      document.getElementById('hhAgencySelect').value = '';
+      document.getElementById('dcServicesMulti').selectedIndex = -1; // ✅ clear selection
+
+      await loadAll();
+    } catch(e) { showMsg(e.message); }
+  });
+
+  document.getElementById('esignServiceTypeSelect')?.addEventListener('change', () => {
+    renderEsignServicesMultiForSelectedType();
+  });
+
+  document.getElementById('addEsignBtn')?.addEventListener('click', async () => {
+    try{
+      showMsg('');
+
+      const careTeamId = document.getElementById('esignCareTeamSelect').value;
+      const stid = document.getElementById('esignServiceTypeSelect').value;
+
+      if(!careTeamId) throw new Error("Select a care team member first.");
+      if(!stid) throw new Error("Select a service type first.");
+
+      const selectedServiceIds = Array.from(document.getElementById("esignServicesMulti").selectedOptions)
+        .map(o => Number(o.value))
+        .filter(n => Number.isFinite(n) && n > 0);
+
+      if(selectedServiceIds.length === 0) throw new Error("Select at least 1 service.");
+
+      const payload = {
+        admission_id: Number(ADMISSION_ID),
+        care_team_id: Number(careTeamId),
+        service_type_id: Number(stid),
+        comments: document.getElementById('esignComments').value.trim(),
+        status: "Pending"
+      };
+
+      const resp = await api('/api/sensys/admission-esigns/upsert', {
+        method:'POST',
+        body: JSON.stringify(payload)
+      });
+
+      const esignId = resp && resp.id ? Number(resp.id) : null;
+      if(!esignId) throw new Error("E-Sign saved but no id returned.");
+
+      await api('/api/sensys/esign-services/set', {
+        method:'POST',
+        body: JSON.stringify({ esign_id: esignId, services_ids: selectedServiceIds })
+      });
+
+      // clear
+      document.getElementById('esignCareTeamSelect').value = '';
+      document.getElementById('esignServiceTypeSelect').value = '';
+      document.getElementById('esignServicesMulti').innerHTML = '';
+      document.getElementById('esignComments').value = '';
+
+      await loadAll();
+    }catch(e){
+      showMsg(e.message);
+    }
+  });
+
+  document.getElementById('addCareTeamBtn').addEventListener('click', async () => {
+    try {
+      showMsg('');
+      const careTeamId = document.getElementById('careTeamSelect').value;
+      if (!careTeamId) throw new Error("Select a care team person first.");
+      await api('/api/sensys/admission-care-team/link', {
+        method:'POST',
+        body: JSON.stringify({ admission_id: Number(ADMISSION_ID), care_team_id: Number(careTeamId) })
+      });
+      document.getElementById('careTeamSelect').value = '';
+      await loadAll();
+    } catch(e) { showMsg(e.message); }
+  });
+
+  (async function init(){
+    try {
+      wireSideTabs();
+
+      ADMISSION_ID = Number(qs('admission_id') || '');
+      if (!ADMISSION_ID) throw new Error("Missing admission_id in URL.");
+      document.getElementById('admissionIdTag').textContent = String(ADMISSION_ID);
+
+      await loadAll();
+
+      // Default opening panel
+      setActiveTab("tasks");
+    } catch(e) {
+      showMsg(e.message);
+    }
+  })();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,292 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sensys - Login</title>
+  <style>
+    :root{
+      --navy:#0D3B66;
+      --mint:#A8E6CF;
+      --mint-2: rgba(168,230,207,.35);
+      --sky:#4DA8DA;
+      --cool:#F5F7FA;
+      --surface:#ffffff;
+      --text:#0f172a;
+      --muted:#55657f;
+      --line: rgba(13,59,102,.18);
+      --shadow: 0 20px 40px rgba(13,59,102,.12);
+      --ring: 0 0 0 3px rgba(168,230,207,.50);
+      --r-lg:18px;
+      --r-md:12px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      background: linear-gradient(0deg, rgba(255, 255, 255, 0.04), rgba(168,230,207,0.01)), #F5F7FA;
+      color:var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    .page{
+      min-height:100vh;
+      display:flex;
+      flex-direction:column;
+      padding:22px 24px 28px;
+      gap:18px;
+    }
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+    .brand img{height:44px;width:auto}
+    .layout{
+      flex:1;
+      display:grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap:24px;
+      align-items:center;
+    }
+    .hero{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:12px;
+    }
+    .hero img{width:100%;max-width:730px;height:auto;display:block}
+    .panel{
+      background:transparent;
+      border:0;
+      border-radius:0;
+      box-shadow:none;
+      padding:18px 24px 26px;
+      max-width:420px;
+      justify-self:start;
+      margin-left:14px;
+      align-self:stretch;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      margin-top:-20px;
+    }
+    .panel-head{
+      margin-bottom:15px;
+      transform: translateY(0px);
+      max-width:460px;
+    }
+    .panel-fields{margin-top:8px;}
+    h1{
+      margin:10px 0 6px;
+      font-size:45px;
+      font-weight:400;
+      color:var(--navy);
+    }
+    .sub{
+      margin:0 0 26px;
+      font-size:13px;
+      color:var(--muted);
+      line-height:1.5;
+    }
+    label{display:block;font-size:12px;color:#374151;margin:0 0 6px;font-weight:800}
+    .field-row{
+      display:grid;
+      grid-template-columns:36px 1fr;
+      gap:12px;
+      align-items:center;
+      background:#fff;
+      border:1px solid rgba(13,59,102,.16);
+      border-radius:14px;
+      padding:6px 14px;
+      box-shadow: 0 8px 16px rgba(13,59,102,.06);
+      transition: box-shadow .15s ease, border-color .15s ease, transform .15s ease;
+    }
+    .field-row:hover,
+    .field-row:focus-within{
+      border-color: rgba(168,230,207,.95);
+      box-shadow: 0 10px 22px rgba(13,59,102,.12);
+      transform: translateY(-1px);
+    }
+    .field-ico{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:30px;
+      height:30px;
+      color:#0D3B66;
+      opacity:1;
+      flex:0 0 auto;
+    }
+    .field-ico svg{width:30px;height:30px}
+    .field-ico .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:5.5px;
+    }
+    .ipt{
+      width:100%;
+      padding:14px 6px;
+      border-radius:12px;
+      border:0;
+      background:transparent;
+      font-size:14px;
+      outline:none;
+      appearance:none;
+      -webkit-appearance:none;
+      transition: box-shadow .15s ease, border-color .15s ease;
+    }
+    .ipt:focus{outline:0 !important; box-shadow:none !important; border:0 !important; background:transparent !important;}
+    .ipt:focus-visible{outline:0 !important; box-shadow:none !important; border:0 !important; background:transparent !important;}
+    .ipt:focus{border-color: rgba(168,230,207,.95); box-shadow: var(--ring);}
+    .row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-top:10px;
+      font-size:12px;
+      color:var(--muted);
+    }
+    .row a{color:var(--navy);text-decoration:none;font-weight:700}
+    .btn{
+      margin-top:14px;
+      width:100%;
+      padding:12px 14px;
+      border:0;
+      border-radius:12px;
+      background:var(--navy);
+      color:#fff;
+      font-size:14px;
+      font-weight:800;
+      cursor:pointer;
+      box-shadow: 0 10px 22px rgba(13,59,102,.18);
+      transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+    }
+    .btn:hover{background:#0b3357; box-shadow: 0 14px 26px rgba(13,59,102,.22); transform: translateY(-1px);}
+    .btn:active{transform: translateY(0px);}
+    .fine{
+      margin-top:12px;
+      font-size:11px;
+      color:var(--muted);
+    }
+    @media (max-width: 980px){
+      .layout{grid-template-columns:1fr;}
+      .brand img{height:34px}
+      .panel{padding:22px 20px}
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="brand">
+      <img src="/static/images/Evolv-Health-hor-color.svg" alt="Evolv Health" />
+    </div>
+
+    <div class="layout">
+      <div class="hero">
+        <img src="/static/images/Random-Desk-Items-Updated.svg" alt="Sensys illustration" />
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h1>Welcome :)</h1>
+          <p class="sub">Please sign in with your email address and Sensys password to continue.</p>
+        </div>
+
+        <div class="panel-fields">
+          <label>Email / Username</label>
+          <div class="field-row">
+            <span class="field-ico" aria-hidden="true">
+              <svg viewBox="0 0 256.63 204.3">
+                <path class="cls-1" d="M253.87,26.22c0-12.96-10.51-23.47-23.47-23.47H26.22C13.26,2.75,2.75,13.26,2.75,26.22v23.02c0,3.6,1.97,6.9,5.13,8.62l115.75,62.92c2.92,1.59,6.45,1.59,9.37,0l115.75-62.92c3.16-1.72,5.13-5.03,5.13-8.62v-23.02Z"/>
+                <path class="cls-1" d="M253.87,85.27v92.81c0,12.96-10.51,23.47-23.47,23.47H26.22c-12.96,0-23.47-10.51-23.47-23.47v-92.81"/>
+              </svg>
+            </span>
+            <input id="email" class="ipt" type="email" placeholder="name@company.com" />
+          </div>
+
+          <label style="margin-top:12px;">Password</label>
+          <div class="field-row">
+            <span class="field-ico" aria-hidden="true">
+              <svg viewBox="0 0 185.26 252.81">
+                <path class="cls-1" d="M12.56,115.94h160.13c5.42,0,9.81,4.4,9.81,9.81v86.53c0,20.85-16.93,37.78-37.78,37.78H40.53c-20.85,0-37.78-16.93-37.78-37.78v-86.53c0-5.42,4.4-9.81,9.81-9.81Z"/>
+                <path class="cls-1" d="M27.4,113.51v-45.53C27.4,31.95,56.61,2.75,92.63,2.75s65.23,29.2,65.23,65.23v45.53"/>
+                <line class="cls-1" x1="92.63" y1="189.96" x2="92.63" y2="218.08"/>
+                <circle class="cls-1" cx="92.63" cy="167.86" r="20.41"/>
+              </svg>
+            </span>
+            <input id="password" class="ipt" type="password" placeholder="(ignored for testing)" />
+          </div>
+
+          <div class="row">
+            <label style="display:flex;align-items:center;gap:8px;font-weight:700;margin:0;">
+              <input type="checkbox" style="accent-color:#0D3B66;" />
+              Remember me
+            </label>
+            <a href="#">Forgot password?</a>
+          </div>
+
+          <button id="btn" class="btn">Sign In</button>
+
+          <div id="msg" style="margin-top:12px;font-size:12px;color:#b42318;display:none;"></div>
+
+          <div class="fine">
+            Tip: this stores a test token in <code>localStorage</code> as <code>sensys_token</code>.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const msg = document.getElementById('msg');
+  const btn = document.getElementById('btn');
+
+  function showError(t){
+    msg.style.display = 'block';
+    msg.textContent = t || 'Login failed';
+  }
+
+  btn.addEventListener('click', async function(){
+    msg.style.display = 'none';
+
+    const email = (document.getElementById('email').value || '').trim();
+    const password = (document.getElementById('password').value || '').trim();
+
+    if(!email){
+      showError('Email is required');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Signing in...';
+
+    try{
+      const res = await fetch('/api/sensys/login', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ email: email, password: password })
+      });
+
+      const data = await res.json();
+      if(!res.ok || !data || !data.ok){
+        showError((data && data.detail) ? data.detail : 'Invalid login');
+        return;
+      }
+
+      localStorage.setItem('sensys_token', data.token || '');
+      window.location.href = data.redirect_url || '/sensys/snf-sw';
+    }catch(e){
+      showError('Network error');
+    }finally{
+      btn.disabled = false;
+      btn.textContent = 'Sign In';
+    }
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1035 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sensys — CCC Staff Workspace</title>
+  <style>
+    body{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:0; background:#f6f7fb; color:#111; }
+    /* Prevent inputs from overflowing cards due to padding */
+    *, *::before, *::after{ box-sizing:border-box; }
+
+    /* Allow grid children to shrink without pushing outside the card */
+    .detailBlock{ min-width:0; }
+
+    .topbar{ display:flex; align-items:center; justify-content:space-between; padding:14px 18px; background:#fff; border-bottom:1px solid #e6e7ee; }
+    .wrap{ padding:16px; }
+    .grid{ display:grid; grid-template-columns: 1.35fr .85fr; gap:14px; align-items:start; }
+    .card{ background:#fff; border:1px solid #e6e7ee; border-radius:14px; box-shadow: 0 1px 0 rgba(0,0,0,.03); overflow:hidden; }
+    .cardHd{ padding:12px 14px; border-bottom:1px solid #eef0f6; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .cardBd{ padding:12px 14px; }
+    .muted{ color:#666; font-size:12px; }
+    .tabs{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .tab{ padding:8px 10px; border-radius:999px; border:1px solid #e6e7ee; background:#fff; cursor:pointer; font-size:13px; }
+    .tab.active{ background:#111; color:#fff; border-color:#111; }
+    .pill{ display:inline-block; padding:6px 10px; border-radius:999px; border:1px solid #e6e7ee; font-size:12px; background:#fff; }
+    .btn{ padding:8px 10px; border-radius:10px; border:1px solid #e6e7ee; background:#fff; cursor:pointer; font-size:13px; }
+    .btn:hover{ background:#f3f4f8; }
+    .btnPrimary{ border-color:#111; background:#111; color:#fff; }
+    .btnPrimary:hover{ background:#000; }
+    .input{ width:100%; padding:10px 12px; border-radius:12px; border:1px solid #e6e7ee; background:#fff; font-size:13px; }
+    .sel{ width:100%; padding:10px 12px; border-radius:12px; border:1px solid #e6e7ee; background:#fff; font-size:13px; }
+
+    table{ width:100%; border-collapse:collapse; font-size:13px; }
+    th, td{ padding:10px 8px; border-bottom:1px solid #eef0f6; text-align:left; vertical-align:top; }
+    th{ font-size:12px; color:#444; }
+    tr.clickable{ cursor:pointer; }
+    tr.clickable:hover td{ background:#fafbff; }
+    tr.selected td{ background:#f0f3ff; }
+
+    .stats{ display:grid; grid-template-columns: repeat(2, 1fr); gap:10px; margin-bottom:10px; }
+    .statBox{ border:1px solid #e6e7ee; border-radius:14px; padding:10px 12px; background:#fff; }
+    .statNum{ font-weight:900; font-size:18px; }
+
+    .msg{ margin-top:10px; font-size:12px; color:#b00020; }
+    .ok{ color:#0a7a2f; }
+
+    .detailTitle{ font-weight:900; font-size:14px; }
+    .detailBlock{ border:1px solid #eef0f6; border-radius:12px; padding:10px 12px; background:#fff; }
+    .detailRow{ display:flex; justify-content:space-between; gap:10px; }
+    .divider{ height:1px; background:#eef0f6; margin:10px 0; }
+
+    .attempt{ border:1px solid #eef0f6; border-radius:12px; padding:10px 12px; background:#fff; }
+    /* Mint highlight for Mark Complete toggle */
+    .btnMintOn{
+      background:#33d6c6;     /* mint */
+      border-color:#33d6c6;
+      color:#062b27;
+      font-weight:900;
+    }
+    .btnMintOn:hover{ background:#2ec7b8; }
+
+    /* Simple modal */
+    .modal-backdrop{
+      position:fixed; inset:0;
+      background:rgba(0,0,0,.35);
+      display:none;
+      align-items:center; justify-content:center;
+      padding:18px;
+      z-index:9999;
+    }
+    .modal{
+      width: min(920px, calc(100% - 18px));
+      background:#fff;
+      border:1px solid #e6e7ee;
+      border-radius:14px;
+      box-shadow: 0 12px 30px rgba(0,0,0,.20);
+      overflow:hidden;
+    }
+    .modalHd{
+      padding:12px 14px;
+      border-bottom:1px solid #eef0f6;
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .modalBd{ padding:12px 14px; }
+    .iconbtn{
+      border:1px solid #e6e7ee;
+      background:#fff;
+      border-radius:10px;
+      padding:6px 10px;
+      cursor:pointer;
+    }
+    .iconbtn:hover{ background:#f3f4f8; }
+
+    .noteCard{
+      border:1px solid #eef0f6;
+      border-radius:12px;
+      padding:10px 12px;
+      background:#fff;
+    }
+
+  </style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div>
+      <div style="font-weight:900;">CCC Staff Workspace</div>
+      <div class="muted">My assigned calls • Due + Attempt Log + Completion</div>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center;">
+      <button class="btn" onclick="goPDW()">PDW (Lead)</button>
+      <button class="btn" onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="grid">
+
+      <!-- LEFT: My Work List -->
+      <div class="card">
+        <div class="cardHd" style="align-items:flex-start;">
+          <div style="display:flex; flex-direction:column; gap:6px; min-width:240px;">
+            <div style="font-weight:900;">My Work Items</div>
+            <div class="muted" id="bucketHelp">Items assigned to me.</div>
+          </div>
+
+          <div class="tabs">
+            <button class="tab active" id="tabInc" onclick="setBucket('incomplete')">Incomplete</button>
+            <button class="tab" id="tabDone" onclick="setBucket('completed')">Completed</button>
+          </div>
+        </div>
+
+        <div class="cardBd">
+
+          <!-- Stat pills row -->
+          <div class="stats">
+            <div class="statBox">
+              <div class="muted">Total Due</div>
+              <div class="statNum" id="statDue">—</div>
+            </div>
+            <div class="statBox">
+              <div class="muted">Completed Today</div>
+              <div class="statNum" id="statCompletedToday">—</div>
+            </div>
+          </div>
+
+          <!-- Search + Sort -->
+          <div style="display:grid; grid-template-columns: 1fr 220px; gap:10px; margin-bottom:10px;">
+            <input class="input" id="q" placeholder="Search patient, agency, phone, task…" oninput="debouncedReload()" />
+            <select class="sel" id="sort" onchange="loadItems()">
+              <option value="due_at">Sort: Due Date</option>
+              <option value="patient">Sort: Patient</option>
+              <option value="agency">Sort: Agency</option>
+              <option value="dc_date">Sort: DC Date</option>
+              <option value="task_type">Sort: Task Type</option>
+            </select>
+          </div>
+
+          <div style="overflow:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Patient</th>
+                  <th>Task</th>
+                  <th>Due</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+
+          <div id="msg" class="msg"></div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Details Panel -->
+      <div class="card">
+        <div class="cardHd">
+          <div>
+            <div class="detailTitle">Details</div>
+            <div class="muted" id="detailSub">Select a row to view details.</div>
+          </div>
+
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button class="btn" id="btnViewAllNotes" onclick="openAllNotesModal()" disabled>All Notes</button>
+            <button class="btn" id="btnAddNote" onclick="openAddNoteModal()" disabled>Add Note</button>
+
+            <button class="btn" id="btnCompleteToggle"
+                    onclick="toggleCompleteFromHeader()"
+                    aria-pressed="false"
+                    title="Mark Complete">
+              ✓ Complete
+            </button>
+          </div>
+        </div>
+
+        <div class="cardBd" id="detailBody">
+          <div class="muted">No item selected.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+<!-- =========================
+     Add Note Modal
+========================= -->
+<div class="modal-backdrop" id="addNoteModalBackdrop">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modalHd">
+      <div>
+        <div style="font-weight:1000;font-size:16px;">Add Note</div>
+        <div class="muted" id="addNoteSub">—</div>
+      </div>
+      <button class="iconbtn" onclick="closeAddNoteModal()">✕</button>
+    </div>
+
+    <div class="modalBd">
+      <div style="display:grid; grid-template-columns: 320px 1fr; gap:12px; align-items:start;">
+
+        <!-- templates list -->
+        <div class="detailBlock">
+          <div style="font-weight:900; margin-bottom:8px;">Note Templates</div>
+          <input class="input" id="noteTplSearch" placeholder="Search templates…" oninput="renderNoteTemplateList()" />
+          <div style="height:10px;"></div>
+          <div id="noteTplList" style="display:grid; gap:8px; max-height:420px; overflow:auto;"></div>
+        </div>
+
+        <!-- template form -->
+        <div class="detailBlock">
+          <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+            <div>
+              <div style="font-weight:900;" id="noteTplTitle">Select a template</div>
+              <div class="muted" id="noteTplHint">—</div>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn" onclick="closeAddNoteModal()">Cancel</button>
+              <button class="btn btnPrimary" id="btnSaveNote" onclick="saveNoteFromTemplate()" disabled>Save Note</button>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div id="noteTplFields"></div>
+
+          <div class="divider"></div>
+
+          <div>
+            <div class="muted" style="margin-bottom:6px;">Share With</div>
+            <select class="sel" id="shareWithSel" disabled>
+              <option value="">Loading…</option>
+            </select>
+            <div class="muted" style="margin-top:6px; font-size:12px;">
+              (Only users with the allowed role(s) for this template and same admission agency.)
+            </div>
+          </div>
+
+          <div id="addNoteMsg" class="msg" style="margin-top:10px;"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+<!-- =========================
+     All Notes Modal
+========================= -->
+<div class="modal-backdrop" id="allNotesModalBackdrop">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modalHd">
+      <div>
+        <div style="font-weight:1000;font-size:16px;">All Admission Notes</div>
+        <div class="muted" id="allNotesSub">—</div>
+      </div>
+      <button class="iconbtn" onclick="closeAllNotesModal()">✕</button>
+    </div>
+
+    <div class="modalBd">
+      <div id="allNotesList" style="display:grid; gap:10px; max-height:560px; overflow:auto;"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function getToken(){ return localStorage.getItem("sensys_token") || ""; }
+
+  (function guard(){
+    const t = getToken();
+    if(!t){
+      window.location.href = "/sensys/login";
+      return;
+    }
+  })();
+
+  async function apiGet(url){
+    const resp = await fetch(url, { headers: { "Authorization": "Bearer " + getToken() }});
+    const data = await resp.json().catch(()=>({}));
+    if(!resp.ok) throw new Error(data.detail || "Request failed");
+    return data;
+  }
+
+  async function apiPost(url, payload){
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + getToken(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload || {})
+    });
+    const data = await resp.json().catch(()=>({}));
+    if(!resp.ok) throw new Error(data.detail || "Request failed");
+    return data;
+  }
+
+  function esc(s){
+    return String(s||"")
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;");
+  }
+
+  function safeJsonArray(s){
+    try{
+      const v = JSON.parse(String(s || "[]"));
+      return Array.isArray(v) ? v : [];
+    }catch(e){
+      return [];
+    }
+  }
+
+  function renderTplFieldHtml(f){
+    const id = Number(f.id);
+    const label = esc(f.field_label || ("Field " + id));
+    const rawType = String(f.field_type || "text").toLowerCase();
+    const type = (rawType === "int" || rawType === "float") ? "number" : rawType;
+    const required = (String(f.required || 0) === "1");
+    const reqStar = required ? ` <span style="color:#b91c1c">*</span>` : "";
+    const reqAttr = required ? "required" : "";
+
+    // NOTE: we store by field.id to match your existing save logic
+    // (selectedTemplateResponses[fieldId])
+    let inputHtml = "";
+
+    if(type === "textarea"){
+      inputHtml = `
+        <textarea class="input" id="tplField_${id}" ${reqAttr}
+                  style="min-height:90px;"
+                  oninput="selectedTemplateResponses[${id}] = this.value"></textarea>
+      `;
+    }
+    else if(type === "number"){
+      inputHtml = `
+        <input class="input" id="tplField_${id}" ${reqAttr}
+               type="number"
+               oninput="selectedTemplateResponses[${id}] = this.value" />
+      `;
+    }
+    else if(type === "date"){
+      inputHtml = `
+        <input class="input" id="tplField_${id}" ${reqAttr}
+               type="date"
+               oninput="selectedTemplateResponses[${id}] = this.value" />
+      `;
+    }
+    else if(type === "boolean" || type === "checkbox"){
+      // dropdown Yes/No as requested
+      inputHtml = `
+        <select class="sel" id="tplField_${id}" ${reqAttr}
+                onchange="selectedTemplateResponses[${id}] = this.value">
+          <option value="">Select…</option>
+          <option value="Yes">Yes</option>
+          <option value="No">No</option>
+        </select>
+      `;
+    }
+    else if(type === "select"){
+      const opts = safeJsonArray(f.options_json);
+      inputHtml = `
+        <select class="sel" id="tplField_${id}" ${reqAttr}
+                onchange="selectedTemplateResponses[${id}] = this.value">
+          <option value="">Select…</option>
+          ${opts.map(o => {
+            const v = String(o ?? "");
+            return `<option value="${esc(v)}">${esc(v)}</option>`;
+          }).join("")}
+        </select>
+      `;
+    }
+    else {
+      // default: text
+      inputHtml = `
+        <input class="input" id="tplField_${id}" ${reqAttr}
+               type="text"
+               oninput="selectedTemplateResponses[${id}] = this.value" />
+      `;
+    }
+
+    return `
+      <div style="margin-bottom:10px;">
+        <div class="muted" style="margin-bottom:6px;">${label}${reqStar}</div>
+        ${inputHtml}
+      </div>
+    `;
+  }
+
+
+  function fmtDateOnly(s){
+    if(!s) return "";
+    return String(s).replace("T"," ").slice(0,10);
+  }
+
+  function fmtDateTime(s){
+    if(!s) return "";
+    return String(s).replace("T"," ").slice(0,16);
+  }
+
+  function setMsg(text, ok){
+    const el = document.getElementById("msg");
+    el.textContent = text || "";
+    if(ok){ el.classList.add("ok"); } else { el.classList.remove("ok"); }
+  }
+
+  let currentBucket = "incomplete";
+  let itemsCache = [];
+  let selectedWorkItemId = null;
+  let reloadTimer = null;
+
+  function setBucket(b){
+    currentBucket = b;
+    document.getElementById("tabInc").classList.toggle("active", b==="incomplete");
+    document.getElementById("tabDone").classList.toggle("active", b==="completed");
+
+    const help = document.getElementById("bucketHelp");
+    if(b==="incomplete") help.textContent = "My assigned items not completed yet.";
+    if(b==="completed") help.textContent = "Items I completed.";
+
+    // clear selection when switching buckets
+    selectedWorkItemId = null;
+    selectedAdmissionId = null;
+    document.getElementById("detailSub").textContent = "Select a row to view details.";
+    document.getElementById("detailBody").innerHTML = `<div class="muted">No item selected.</div>`;
+
+    // reset header controls
+    syncCompleteToggle(false);
+    document.getElementById("btnAddNote").disabled = true;
+    document.getElementById("btnViewAllNotes").disabled = true;
+
+    loadItems();
+  }
+
+  function debouncedReload(){
+    if(reloadTimer) clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(()=>loadItems(), 250);
+  }
+
+  async function loadStats(){
+    try{
+      const d = await apiGet("/api/sensys/ccc-staff/summary");
+      document.getElementById("statDue").textContent = (d.total_due ?? "—");
+      document.getElementById("statCompletedToday").textContent = (d.completed_today ?? "—");
+    }catch(e){
+      // ignore
+    }
+  }
+
+  async function loadItems(){
+    setMsg("", true);
+    const tbody = document.getElementById("tbody");
+    tbody.innerHTML = `<tr><td colspan="4" class="muted">Loading…</td></tr>`;
+
+    const q = (document.getElementById("q").value || "").trim();
+    const sort = (document.getElementById("sort").value || "due_at").trim();
+
+    try{
+      const url =
+        "/api/sensys/ccc-staff/work-items"
+        + "?bucket=" + encodeURIComponent(currentBucket)
+        + "&q=" + encodeURIComponent(q)
+        + "&sort=" + encodeURIComponent(sort);
+
+      const d = await apiGet(url);
+      itemsCache = d.items || [];
+
+      if(!itemsCache.length){
+        tbody.innerHTML = `<tr><td colspan="4" class="muted">No items.</td></tr>`;
+        loadStats();
+        return;
+      }
+
+      tbody.innerHTML = "";
+      itemsCache.forEach(it => {
+        const id = Number(it.id);
+        const patient = (it.patient_last_name||"") + ", " + (it.patient_first_name||"");
+        const agency = it.agency_name || "—";
+        const dc = it.dc_date ? String(it.dc_date).slice(0,10) : "";
+        const task = it.task_label || it.task_type || "";
+        const due = fmtDateOnly(it.due_at);
+        const status = it.status || "—";
+
+        const tr = document.createElement("tr");
+        tr.className = "clickable" + (selectedWorkItemId===id ? " selected" : "");
+        tr.onclick = () => selectItem(id);
+
+        tr.innerHTML = `
+          <td>
+            <b>${esc(patient)}</b>
+            <div class="muted">${esc(agency)}${dc ? " • DC " + esc(dc) : ""}</div>
+          </td>
+          <td>
+            <b>${esc(task)}</b>
+            <div class="muted">Attempts: ${(it.attempt_count||0)}/${(it.max_attempts||2)}</div>
+          </td>
+          <td>
+            <b>${esc(due || "—")}</b>
+            <div class="muted">${esc(fmtDateTime(it.due_at) || "")}</div>
+          </td>
+          <td>
+            <span class="pill">${esc(status)}</span>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      loadStats();
+
+    }catch(e){
+      tbody.innerHTML = `<tr><td colspan="4" class="muted">Error loading.</td></tr>`;
+      setMsg(e.message || "Error", false);
+    }
+  }
+
+  async function selectItem(id){
+    selectedWorkItemId = Number(id);
+    // re-render selection highlight
+    const tbody = document.getElementById("tbody");
+    Array.from(tbody.querySelectorAll("tr")).forEach(tr => tr.classList.remove("selected"));
+    const idx = (itemsCache||[]).findIndex(x => Number(x.id)===selectedWorkItemId);
+    if(idx >= 0 && tbody.children[idx]) tbody.children[idx].classList.add("selected");
+
+    await loadDetails(selectedWorkItemId);
+  }
+
+  async function refreshSelected(){
+    if(!selectedWorkItemId) return;
+    await loadDetails(selectedWorkItemId);
+    await loadItems();
+  }
+
+  let selectedAdmissionId = null;
+
+  // cache for modals
+  let admissionDetailsCache = null;     // /admission-details/{id}
+  let noteTemplatesCache = [];          // /note-templates
+  let selectedTemplate = null;
+  let selectedTemplateResponses = {};   // field_id -> value
+
+  function syncCompleteToggle(isCompleted){
+    const btn = document.getElementById("btnCompleteToggle");
+    if(!btn) return;
+    btn.setAttribute("aria-pressed", isCompleted ? "true" : "false");
+    btn.classList.toggle("btnMintOn", !!isCompleted);
+  }
+
+  async function loadDetails(workItemId){
+    document.getElementById("detailSub").textContent = "Loading…";
+    const box = document.getElementById("detailBody");
+    box.innerHTML = `<div class="muted">Loading details…</div>`;
+
+    try{
+      const d = await apiGet("/api/sensys/ccc-staff/work-items/" + encodeURIComponent(String(workItemId)));
+      const wi = d.work_item || {};
+      const attempts = d.attempts || [];
+
+      selectedAdmissionId = Number(wi.admission_id || 0) || null;
+
+      // Enable header buttons once we have an admission
+      document.getElementById("btnAddNote").disabled = !selectedAdmissionId;
+      document.getElementById("btnViewAllNotes").disabled = !selectedAdmissionId;
+
+      // Pull admission details (DC submissions + notes + patient contact)
+      admissionDetailsCache = selectedAdmissionId
+        ? await apiGet("/api/sensys/admission-details/" + encodeURIComponent(String(selectedAdmissionId)))
+        : null;
+
+      const adm = (admissionDetailsCache && admissionDetailsCache.admission) ? admissionDetailsCache.admission : {};
+      const notes = (admissionDetailsCache && admissionDetailsCache.notes) ? admissionDetailsCache.notes : [];
+      const dcSubs = (admissionDetailsCache && admissionDetailsCache.dc_submissions) ? admissionDetailsCache.dc_submissions : [];
+
+      const patient = (wi.patient_last_name||"") + ", " + (wi.patient_first_name||"");
+      const agency = wi.agency_name || adm.agency_name || "—";
+      const dc = wi.dc_date ? String(wi.dc_date).slice(0,10) : (adm.dc_date ? String(adm.dc_date).slice(0,10) : "");
+
+      document.getElementById("detailSub").textContent = patient ? (patient + " • " + agency) : "—";
+
+      // completed toggle state
+      const isCompleted = String(wi.status || "").toLowerCase() === "completed";
+      syncCompleteToggle(isCompleted);
+
+      // patient contact (requires backend select additions - see step 7)
+      const phone1 = adm.patient_phone1 || wi.patient_phone || "";
+      const phone2 = adm.patient_phone2 || "";
+      const addr = [
+        adm.patient_address1 || "",
+        adm.patient_address2 || "",
+        [adm.patient_city || "", adm.patient_state || "", adm.patient_zip || ""].filter(Boolean).join(" ")
+      ].filter(Boolean).join(", ");
+
+      // DC submission: latest
+      const dcLatest = (dcSubs && dcSubs.length) ? dcSubs[0] : null;
+
+      // Notes: latest 4
+      const latest4 = (notes || []).slice(0, 4);
+
+      const assignmentNotes = (wi.assignment_notes || "").trim();
+
+      box.innerHTML = `
+        <div class="detailBlock">
+          <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+            <div>
+              <div style="font-weight:1000; font-size:14px;">Patient</div>
+              <div style="font-weight:900; font-size:14px; margin-top:4px;">${esc(patient || "—")}</div>
+              <div class="muted" style="margin-top:4px;">
+                ${esc(agency)}${dc ? " • DC " + esc(dc) : ""}
+              </div>
+            </div>
+            <div style="text-align:right; min-width:160px;">
+              <div class="muted">Attempts</div>
+              <div style="font-weight:1000; font-size:16px;">${esc(String(wi.attempt_count||0))}/${esc(String(wi.max_attempts||2))}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="detailBlock">
+          <div style="font-weight:1000;">Patient Contact</div>
+          <div class="muted" style="margin-top:6px;">
+            Phone: <b>${esc(phone1 || "—")}</b>${phone2 ? " • Alt: <b>"+esc(phone2)+"</b>" : ""}<br/>
+            Address: <b>${esc(addr || "—")}</b>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="detailBlock">
+          <div style="display:flex; justify-content:space-between; gap:10px; align-items:center;">
+            <div style="font-weight:1000;">DC Submission</div>
+            <div class="muted">${dcLatest ? ("Last updated: " + esc(fmtDateTime(dcLatest.updated_at || dcLatest.created_at || ""))) : "—"}</div>
+          </div>
+
+          ${
+            dcLatest
+            ? `
+              <div class="muted" style="margin-top:8px;">
+                Disposition: <b>${esc(dcLatest.dc_destination || "—")}</b>
+                ${dcLatest.destination_comments ? " • " + esc(dcLatest.destination_comments) : ""}
+                <br/>
+                DC With: <b>${esc(dcLatest.dc_with || "—")}</b>
+                <br/>
+                Home Health: <b>${esc(dcLatest.hh_carecompare_name || dcLatest.hh_carecompare_dba || dcLatest.hh_carecompare_ccn || "—")}</b>
+                ${dcLatest.hh_carecompare_city || dcLatest.hh_carecompare_state ? " • " + esc((dcLatest.hh_carecompare_city||"") + (dcLatest.hh_carecompare_state ? ", "+dcLatest.hh_carecompare_state : "")) : ""}
+                <br/>
+                Services: <b>${
+                  (dcLatest.services && dcLatest.services.length)
+                  ? esc(dcLatest.services.map(s => (s.service_name || s.services_id)).join(", "))
+                  : "—"
+                }</b>
+              </div>
+            `
+            : `<div class="muted" style="margin-top:8px;">No DC Submission on file.</div>`
+          }
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="detailBlock">
+          <div style="display:flex; justify-content:space-between; gap:10px; align-items:center;">
+            <div style="font-weight:1000;">Latest Notes (4)</div>
+            <div class="muted">${notes.length ? esc(notes.length + " total") : "0 total"}</div>
+          </div>
+
+          <div style="display:grid; gap:10px; margin-top:10px;">
+            ${
+              latest4.length
+              ? latest4.map(n => `
+                <div class="noteCard">
+                  <div style="display:flex; justify-content:space-between; gap:10px;">
+                    <div style="font-weight:900;">${esc(n.note_title || n.note_name || "Note")}</div>
+                    <div class="muted">${esc(fmtDateTime(n.created_at || ""))}</div>
+                  </div>
+                  <div class="muted" style="margin-top:6px;">
+                    ${n.response1 ? ("• " + esc(n.response1) + "<br/>") : ""}
+                    ${n.response2 ? ("• " + esc(n.response2) + "<br/>") : ""}
+                    ${n.note_comments ? ("<span class='muted'>" + esc(n.note_comments) + "</span>") : ""}
+                  </div>
+                  <div class="muted" style="margin-top:6px;">By: <b>${esc(n.created_by_name || "—")}</b></div>
+                </div>
+              `).join("")
+              : `<div class="muted">No notes yet.</div>`
+            }
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="detailBlock">
+          <div class="muted">Assignment Notes</div>
+          <div style="font-weight:700; margin-top:6px;">${assignmentNotes ? esc(assignmentNotes) : "<span class='muted'>—</span>"}</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div>
+          <div style="font-weight:1000; margin-bottom:8px;">Attempt Log</div>
+          <div style="display:grid; gap:10px;">
+            ${
+              attempts.length
+              ? attempts.map(a => `
+                  <div class="attempt">
+                    <div style="display:flex; justify-content:space-between; gap:10px;">
+                      <div style="font-weight:900;">Attempt #${esc(a.attempt_no)}</div>
+                      <div class="muted">${esc(fmtDateTime(a.created_at) || "")}</div>
+                    </div>
+                    <div class="muted" style="margin-top:4px;">Outcome: <b>${esc(a.outcome || "—")}</b></div>
+                    ${a.note ? `<div class="muted" style="margin-top:4px;">Note: ${esc(a.note)}</div>` : ""}
+                    ${a.next_due_at ? `<div class="muted" style="margin-top:4px;">Next Due: <b>${esc(fmtDateTime(a.next_due_at))}</b></div>` : ""}
+                  </div>
+                `).join("")
+              : `<div class="muted">No attempts logged yet.</div>`
+            }
+          </div>
+        </div>
+
+        <div class="msg" id="detailMsg" style="margin-top:12px;"></div>
+      `;
+
+    }catch(e){
+      document.getElementById("detailSub").textContent = "Error";
+      box.innerHTML = `<div class="muted">Error loading details.</div>`;
+    }
+  }
+
+  async function toggleCompleteFromHeader(){
+    const msg = document.getElementById("detailMsg");
+    if(msg){ msg.textContent = ""; msg.classList.remove("ok"); }
+
+    if(!selectedWorkItemId) return;
+
+    // If already completed, do nothing (your backend does not support "un-complete")
+    const cur = (itemsCache || []).find(x => Number(x.id) === Number(selectedWorkItemId));
+    const already = cur && String(cur.status||"").toLowerCase() === "completed";
+    if(already){
+      if(msg){ msg.textContent = "Already completed."; msg.classList.add("ok"); }
+      return;
+    }
+
+    try{
+      // Minimal required payload: backend requires outcome
+      await apiPost("/api/sensys/postdc/work-items/complete", {
+        work_item_id: Number(selectedWorkItemId),
+        outcome: "completed",
+        note: ""
+      });
+
+      syncCompleteToggle(true);
+      if(msg){ msg.textContent = "Marked complete."; msg.classList.add("ok"); }
+
+      await loadItems();
+      await loadStats();
+    }catch(e){
+      if(msg){ msg.textContent = e.message || "Complete failed"; msg.classList.remove("ok"); }
+    }
+  }
+
+  /* -------------------------
+     Add Note modal logic
+  ------------------------- */
+
+  function openAddNoteModal(){
+    if(!selectedAdmissionId) return;
+    document.getElementById("addNoteMsg").textContent = "";
+    document.getElementById("addNoteMsg").classList.remove("ok");
+
+    document.getElementById("addNoteSub").textContent =
+      "Admission ID: " + String(selectedAdmissionId) + " • Work Item ID: " + String(selectedWorkItemId || "—");
+
+    selectedTemplate = null;
+    selectedTemplateResponses = {};
+    document.getElementById("noteTplTitle").textContent = "Select a template";
+    document.getElementById("noteTplHint").textContent = "—";
+    document.getElementById("noteTplFields").innerHTML = "";
+    document.getElementById("btnSaveNote").disabled = true;
+
+    // reset share-with
+    const sw = document.getElementById("shareWithSel");
+    sw.disabled = true;
+    sw.innerHTML = `<option value="">Select template first…</option>`;
+
+    document.getElementById("addNoteModalBackdrop").style.display = "flex";
+
+    ensureNoteTemplatesLoaded();
+  }
+
+  function closeAddNoteModal(){
+    document.getElementById("addNoteModalBackdrop").style.display = "none";
+  }
+
+  async function ensureNoteTemplatesLoaded(){
+    try{
+      if(Array.isArray(noteTemplatesCache) && noteTemplatesCache.length){
+        renderNoteTemplateList();
+        return;
+      }
+      const d = await apiGet("/api/sensys/note-templates");
+      noteTemplatesCache = d.templates || [];
+      renderNoteTemplateList();
+    }catch(e){
+      document.getElementById("noteTplList").innerHTML =
+        `<div class="muted">Failed to load templates.</div>`;
+    }
+  }
+
+  function renderNoteTemplateList(){
+    const box = document.getElementById("noteTplList");
+    const q = (document.getElementById("noteTplSearch").value || "").trim().toLowerCase();
+
+    const list = (noteTemplatesCache || []).filter(t => {
+      const hay = `${t.template_name||""} ${t.note_name||""}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+
+    if(!list.length){
+      box.innerHTML = `<div class="muted">No templates.</div>`;
+      return;
+    }
+
+    box.innerHTML = list.map(t => {
+      const on = (selectedTemplate && Number(selectedTemplate.id)===Number(t.id));
+      return `
+        <button class="btn" style="text-align:left; width:100%; ${on ? "border-color:#111;" : ""}"
+                onclick='selectTemplate(${JSON.stringify(t).replaceAll("'","&#39;")})'>
+          <div style="font-weight:900;">${esc(t.template_name || t.note_name || ("Template " + t.id))}</div>
+          <div class="muted">${esc(t.note_name || "")}</div>
+        </button>
+      `;
+    }).join("");
+  }
+
+  async function selectTemplate(t){
+    selectedTemplate = t;
+    selectedTemplateResponses = {};
+
+    document.getElementById("btnSaveNote").disabled = false;
+    document.getElementById("noteTplTitle").textContent = t.template_name || t.note_name || "Template";
+    document.getElementById("noteTplHint").textContent =
+      "Template ID: " + String(t.id) + (Number(t.id)===2 ? " • (Log Call Attempts)" : "");
+
+    // render fields (uses Admin Field Label + Type)
+    const fields = Array.isArray(t.fields) ? t.fields : [];
+    document.getElementById("noteTplFields").innerHTML = fields.length
+      ? fields.map(f => renderTplFieldHtml(f)).join("")
+      : `<div class="muted">No fields configured for this template.</div>`;
+
+
+    // load Share With users for this admission + template
+    await loadShareWithUsersForTemplate(Number(t.id));
+    renderNoteTemplateList();
+  }
+
+  async function loadShareWithUsersForTemplate(templateId){
+    const sw = document.getElementById("shareWithSel");
+    sw.disabled = true;
+    sw.innerHTML = `<option value="">Loading…</option>`;
+
+    try{
+      const d = await apiGet(
+        "/api/sensys/admissions/" + encodeURIComponent(String(selectedAdmissionId)) +
+        "/note-templates/" + encodeURIComponent(String(templateId)) +
+        "/share-with-users?exclude_me=1"
+      );
+
+      const users = d.users || [];
+      if(!users.length){
+        sw.innerHTML = `<option value="">(No eligible users)</option>`;
+        sw.disabled = true;
+        return;
+      }
+
+      sw.innerHTML =
+        `<option value="">(Don’t share)</option>` +
+        users.map(u => `<option value="${Number(u.user_id)}">${esc(u.display_name || u.email || ("User " + u.user_id))}</option>`).join("");
+      sw.disabled = false;
+
+    }catch(e){
+      sw.innerHTML = `<option value="">(Failed to load)</option>`;
+      sw.disabled = true;
+    }
+  }
+
+  async function saveNoteFromTemplate(){
+    const msg = document.getElementById("addNoteMsg");
+    msg.textContent = "";
+    msg.classList.remove("ok");
+
+    if(!selectedAdmissionId || !selectedTemplate){
+      msg.textContent = "Select a template.";
+      return;
+    }
+
+    const templateId = Number(selectedTemplate.id);
+    const fields = Array.isArray(selectedTemplate.fields) ? selectedTemplate.fields : [];
+
+    // collect responses in field order
+    const orderedVals = fields.map(f => (selectedTemplateResponses[Number(f.id)] || "").trim());
+
+    // required mapping rule you gave:
+    // - Template ID 2 (Log Call Attempts)
+    //   - Field ID 2 = Outcome
+    //   - Field ID 3 = free text Note
+    const outcome = (selectedTemplateResponses[2] || "").trim();
+    const noteTxt = (selectedTemplateResponses[3] || "").trim();
+
+    const shareWithUserId = (document.getElementById("shareWithSel").value || "").trim();
+    const shareVal = shareWithUserId ? Number(shareWithUserId) : null;
+
+    try{
+      // Always create an admission note record (keeps it consistent with your "notes" area)
+      // Map first two ordered responses into response1/response2. Anything extra goes into note_comments.
+      const response1 = orderedVals[0] || null;
+      const response2 = orderedVals[1] || null;
+      const extra = orderedVals.slice(2).filter(Boolean);
+      const noteComments = extra.length ? extra.join(" | ") : null;
+
+      await apiPost("/api/sensys/admission-notes/upsert", {
+        id: null,
+        admission_id: Number(selectedAdmissionId),
+        note_name: (selectedTemplate.note_name || selectedTemplate.template_name || "Note"),
+        note_title: (selectedTemplate.template_name || selectedTemplate.note_name || "Note"),
+        status: "New",
+        response1: response1,
+        response2: response2,
+        note_comments: noteComments,
+        share_with_user_id: shareVal
+      });
+
+      // Special behavior: Template ID 2 increments Attempt Log
+      if(templateId === 2){
+        if(!selectedWorkItemId) throw new Error("No work item selected.");
+
+        if(!outcome) throw new Error("Outcome is required for Log Call Attempts (Field ID 2).");
+
+        await apiPost("/api/sensys/postdc/work-items/attempt", {
+          work_item_id: Number(selectedWorkItemId),
+          outcome: outcome,
+          note: noteTxt,
+          next_due_at: null
+        });
+      }
+
+      msg.textContent = "Saved.";
+      msg.classList.add("ok");
+
+      // refresh right panel
+      await loadDetails(Number(selectedWorkItemId));
+      await loadItems();
+      await loadStats();
+
+      // keep modal open for rapid note entry, but you can close if you want
+      // closeAddNoteModal();
+
+    }catch(e){
+      msg.textContent = e.message || "Save failed";
+      msg.classList.remove("ok");
+    }
+  }
+
+  /* -------------------------
+     All Notes modal logic
+  ------------------------- */
+
+  function openAllNotesModal(){
+    if(!admissionDetailsCache) return;
+    const adm = admissionDetailsCache.admission || {};
+    document.getElementById("allNotesSub").textContent =
+      (adm.patient_name ? adm.patient_name : "Admission") + " • Admission ID: " + String(selectedAdmissionId || "—");
+
+    const notes = admissionDetailsCache.notes || [];
+    const box = document.getElementById("allNotesList");
+
+    box.innerHTML = notes.length
+      ? notes.map(n => `
+          <div class="noteCard">
+            <div style="display:flex; justify-content:space-between; gap:10px;">
+              <div style="font-weight:900;">${esc(n.note_title || n.note_name || "Note")}</div>
+              <div class="muted">${esc(fmtDateTime(n.created_at || ""))}</div>
+            </div>
+            <div class="muted" style="margin-top:6px;">
+              ${n.response1 ? ("• " + esc(n.response1) + "<br/>") : ""}
+              ${n.response2 ? ("• " + esc(n.response2) + "<br/>") : ""}
+              ${n.note_comments ? ("<span class='muted'>" + esc(n.note_comments) + "</span>") : ""}
+            </div>
+            <div class="muted" style="margin-top:6px;">By: <b>${esc(n.created_by_name || "—")}</b></div>
+          </div>
+        `).join("")
+      : `<div class="muted">No notes yet.</div>`;
+
+    document.getElementById("allNotesModalBackdrop").style.display = "flex";
+  }
+
+  function closeAllNotesModal(){
+    document.getElementById("allNotesModalBackdrop").style.display = "none";
+  }
+
+
+  function logout(){
+    localStorage.removeItem("sensys_token");
+    window.location.href = "/sensys/login";
+  }
+
+  function goPDW(){
+    window.location.href = "/sensys/post-discharge";
+  }
+
+  // init
+  setBucket("incomplete");
+  loadStats();
+</script>
+
+</body>
+</html>

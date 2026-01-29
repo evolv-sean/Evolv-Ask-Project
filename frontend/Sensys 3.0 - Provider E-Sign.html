@@ -1,0 +1,448 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sensys • Provider E-Sign</title>
+  <style>
+    :root{
+      --bg:#f6f7fb;
+      --card:#fff;
+      --ink:#0f172a;
+      --muted:rgba(15,23,42,.62);
+      --line:rgba(15,23,42,.10);
+      --btn:#0d3b66;
+      --btn2:#fff;
+      --danger:#b42318;
+      --ok:#067647;
+      --shadow:0 10px 30px rgba(15,23,42,.08);
+      --r:18px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    *{ box-sizing:border-box; }
+    body{ margin:0; font-family:var(--sans); background:var(--bg); color:var(--ink); }
+    .wrap{ padding:18px; max-width:1200px; margin:0 auto; }
+    .topbar{
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      padding:14px 16px; background:var(--card); border:1px solid var(--line);
+      border-radius:var(--r); box-shadow:var(--shadow);
+      position:sticky; top:12px; z-index:10;
+    }
+    .brand .kicker{ font-size:12px; color:var(--muted); letter-spacing:.12em; text-transform:uppercase; font-weight:800; }
+    .brand .title{ font-size:18px; font-weight:900; }
+    .row{ display:flex; gap:10px; align-items:center; }
+    .btn{
+      border:1px solid rgba(13,59,102,.18);
+      background:var(--btn2);
+      padding:10px 12px; border-radius:14px;
+      cursor:pointer; font-weight:900;
+    }
+    .btn.primary{ background:var(--btn); color:#fff; border-color:rgba(13,59,102,.35); }
+    .btn.danger{ background:#fff; color:var(--danger); border-color:rgba(180,35,24,.25); }
+    .btn.ok{ background:#fff; color:var(--ok); border-color:rgba(6,118,71,.25); }
+    .btn:disabled{ opacity:.45; cursor:not-allowed; }
+    .grid{ display:grid; grid-template-columns: 1.6fr 1fr; gap:14px; margin-top:14px; }
+    @media (max-width: 980px){ .grid{ grid-template-columns:1fr; } }
+
+    .card{
+      background:var(--card); border:1px solid var(--line);
+      border-radius:var(--r); box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .card .hd{
+      display:flex; align-items:flex-end; justify-content:space-between; gap:10px;
+      padding:12px 14px; border-bottom:1px solid var(--line);
+    }
+    .card .hd .h{ font-weight:900; }
+    .card .hd .sub{ font-size:12px; color:var(--muted); }
+    .card .bd{ padding:12px 14px; }
+    .search{
+      width:100%; padding:11px 12px; border-radius:14px;
+      border:1px solid rgba(15,23,42,.14);
+      outline:none;
+    }
+    table{ width:100%; border-collapse:collapse; }
+    th, td{ padding:10px 8px; border-bottom:1px solid rgba(15,23,42,.08); vertical-align:top; }
+    th{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.10em; text-align:left; }
+    tr{ cursor:pointer; }
+    tr:hover{ background:rgba(13,59,102,.04); }
+    .pill{
+      display:inline-flex; align-items:center; gap:6px;
+      font-size:12px; font-weight:900;
+      padding:6px 10px; border-radius:999px;
+      border:1px solid rgba(15,23,42,.12);
+      background:#fff;
+    }
+    .pill.pending{ color:#92400e; border-color:rgba(146,64,14,.25); }
+    .pill.signed{ color:var(--ok); border-color:rgba(6,118,71,.25); }
+    .pill.declined{ color:var(--danger); border-color:rgba(180,35,24,.25); }
+    .muted{ color:var(--muted); font-size:12px; }
+    .mono{ font-family:var(--mono); font-size:12px; color:var(--muted); }
+    .msg{ margin-top:10px; color:var(--danger); font-weight:800; }
+    .kv{ display:grid; grid-template-columns: 140px 1fr; gap:8px 10px; }
+    .kv div{ padding:6px 0; border-bottom:1px dashed rgba(15,23,42,.10); }
+    .kv .k{ color:var(--muted); font-weight:900; font-size:12px; text-transform:uppercase; letter-spacing:.10em; }
+    .kv .v{ font-weight:800; }
+    .svc{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="kicker">Sensys 3.0</div>
+        <div class="title">Provider • E-Sign</div>
+      </div>
+      <div class="row">
+        <button class="btn" id="refreshBtn">Refresh</button>
+        <button class="btn" id="logoutBtn">Logout</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="hd">
+          <div>
+            <div class="h">Assigned E-Signs</div>
+            <div class="sub">Matches your E-Sign Linking (Care Team)</div>
+          </div>
+          <div class="mono" id="countMeta">—</div>
+        </div>
+        <div class="bd">
+          <input class="search" id="q" placeholder="Search patient, facility, care team, status…" />
+          <div style="height:12px"></div>
+          <div style="max-height: 60vh; overflow:auto; border:1px solid rgba(15,23,42,.10); border-radius:14px;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Patient</th>
+                  <th>Facility</th>
+                  <th>Care Team</th>
+                  <th>Status</th>
+                  <th>Updated</th>
+                </tr>
+              </thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+          <div class="msg" id="msg"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="hd">
+          <div>
+            <div class="h">Selected</div>
+            <div class="sub">Review details then Sign or Decline</div>
+          </div>
+          <div class="row">
+            <button class="btn ok" id="signBtn" disabled>Sign</button>
+            <button class="btn danger" id="declineBtn" disabled>Decline</button>
+          </div>
+        </div>
+        <div class="bd">
+          <div class="muted">Click an item on the left.</div>
+          <div style="height:10px"></div>
+          <div class="kv" id="kv"></div>
+
+          <div style="height:12px"></div>
+          <div class="muted" style="font-weight:900; letter-spacing:.10em; text-transform:uppercase;">Services</div>
+          <div class="svc" id="svc"></div>
+
+          <div style="height:12px"></div>
+          <div class="muted" style="font-weight:900; letter-spacing:.10em; text-transform:uppercase;">Comments</div>
+          <div id="comments" style="padding:10px 12px; border:1px solid rgba(15,23,42,10); border-radius:14px; min-height:54px;"></div>
+        </div>
+      </div>
+
+      <!-- ✅ NEW: Notifications -->
+      <div class="card">
+        <div class="hd">
+          <div>
+            <div class="h">Notifications <span class="mono" id="notifCount" style="margin-left:8px;">—</span></div>
+            <div class="sub">Your dashboard notifications</div>
+          </div>
+          <div class="row">
+            <button class="btn" id="notifRefreshBtn">Refresh</button>
+          </div>
+        </div>
+        <div class="bd">
+          <div class="msg" id="notifMsg" style="display:none;"></div>
+          <div id="notifList" style="display:flex;flex-direction:column;gap:10px;"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+<script>
+  function token(){ return localStorage.getItem('sensys_token') || ''; }
+
+  async function api(path, opts){
+    const t = token();
+    if(!t){ throw new Error("Missing token. Please log in again."); }
+    const res = await fetch(path, {
+      ...(opts||{}),
+      headers: {
+        'Content-Type':'application/json',
+        'Authorization': 'Bearer ' + t,
+        ...((opts && opts.headers) || {})
+      }
+    });
+    if(!res.ok){
+      let msg = 'Request failed ('+res.status+')';
+      try{ const j = await res.json(); if(j && j.detail) msg = j.detail; }catch(e){}
+      throw new Error(msg);
+    }
+    return await res.json();
+  }
+
+  const els = (id)=>document.getElementById(id);
+  const escapeHtml = (s)=>String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+
+  let ESIGNS = [];
+  let SELECTED = null;
+
+  // ✅ NEW: Notifications state
+  let NOTIFS = [];
+
+  function showNotifError(t){
+    const el = els('notifMsg');
+    if(!el) return;
+    if(!t){ el.style.display='none'; el.textContent=''; return; }
+    el.style.display='block';
+    el.textContent = String(t || 'Error');
+  }
+
+  function renderNotifs(){
+    const host = els('notifList');
+    const badge = els('notifCount');
+    if(!host) return;
+
+    const unread = (NOTIFS || []).filter(n => !n.read_at).length;
+    if(badge) badge.textContent = unread ? (`${unread} unread`) : ('0 unread');
+
+    if(!NOTIFS.length){
+      host.innerHTML = `<div class="muted">No notifications.</div>`;
+      return;
+    }
+
+    host.innerHTML = '';
+    NOTIFS.forEach(n => {
+      const card = document.createElement('div');
+      card.style.border = '1px solid rgba(15,23,42,10)';
+      card.style.borderRadius = '14px';
+      card.style.padding = '12px';
+      card.style.background = n.read_at ? '#fbfcfe' : '#ffffff';
+
+      const title = escapeHtml(n.title || n.notif_name || n.notif_key || 'Notification');
+      const body = escapeHtml(n.body || '');
+      const meta = escapeHtml(n.created_at || '');
+
+      card.innerHTML = `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+          <div>
+            <div style="font-size:13px;font-weight:900;color:#111827;">${title}</div>
+            <div style="margin-top:4px;font-size:12px;color:var(--muted);white-space:pre-wrap;">${body}</div>
+            <div style="margin-top:8px;font-size:11px;color:var(--muted);">${meta}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
+            ${n.read_at ? `<span class="mono" style="font-weight:900;">Read</span>` : `
+              <button class="btn" data-id="${escapeHtml(n.id)}" style="padding:9px 10px;">Mark read</button>
+            `}
+          </div>
+        </div>
+      `;
+
+      const btn = card.querySelector('button[data-id]');
+      if(btn){
+        btn.onclick = async () => {
+          try{
+            btn.disabled = true;
+            await api('/api/sensys/notifications/mark-read', {
+              method:'POST',
+              body: JSON.stringify({ id: Number(n.id) })
+            });
+            await loadNotifs();
+          }catch(e){
+            showNotifError(e.message || String(e));
+          }finally{
+            btn.disabled = false;
+          }
+        };
+      }
+
+      host.appendChild(card);
+    });
+  }
+
+  async function loadNotifs(){
+    try{
+      showNotifError('');
+      const resp = await api('/api/sensys/my-notifications', { method:'GET' });
+      NOTIFS = (resp && resp.notifications) ? resp.notifications : [];
+      renderNotifs();
+    }catch(e){
+      showNotifError(e.message || 'Failed to load notifications');
+    }
+  }
+
+
+  function pill(status){
+    const st = (status||'').toLowerCase();
+    if(st==='signed') return `<span class="pill signed">Signed</span>`;
+    if(st==='declined') return `<span class="pill declined">Declined</span>`;
+    return `<span class="pill pending">Pending</span>`;
+  }
+
+  function fmtTs(ts){
+    if(!ts) return '—';
+    return ts;
+  }
+
+  function renderTable(){
+    const q = (els('q').value||'').trim().toLowerCase();
+    const tbody = els('tbody');
+    tbody.innerHTML = '';
+
+    const items = ESIGNS.filter(e=>{
+      const hay = [
+        e.patient_first_name, e.patient_last_name,
+        e.agency_name,
+        e.care_team_name,
+        e.status,
+        e.service_type_name,
+        e.mrn, e.visit_id
+      ].join(' ').toLowerCase();
+      return !q || hay.includes(q);
+    });
+
+    els('countMeta').textContent = `${items.length} shown • ${ESIGNS.length} total`;
+
+    items.forEach(e=>{
+      const tr = document.createElement('tr');
+      tr.onclick = ()=>selectEsign(e);
+
+      const patient = `${escapeHtml(e.patient_last_name||'')}, ${escapeHtml(e.patient_first_name||'')}`;
+      const facility = escapeHtml(e.agency_name||'—');
+      const ct = escapeHtml(e.care_team_name||'—');
+
+      tr.innerHTML = `
+        <td><b>${patient}</b><div class="mono">MRN: ${escapeHtml(e.mrn||'—')} • Visit: ${escapeHtml(e.visit_id||'—')}</div></td>
+        <td>${facility}</td>
+        <td>${ct}</td>
+        <td>${pill(e.status)}</td>
+        <td class="mono">${escapeHtml(fmtTs(e.updated_at||e.created_at))}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderSelected(){
+    const kv = els('kv');
+    const svc = els('svc');
+    const comments = els('comments');
+
+    kv.innerHTML = '';
+    svc.innerHTML = '';
+    comments.textContent = '';
+
+    const signBtn = els('signBtn');
+    const declineBtn = els('declineBtn');
+
+    if(!SELECTED){
+      signBtn.disabled = true;
+      declineBtn.disabled = true;
+      return;
+    }
+
+    const e = SELECTED;
+    const patient = `${e.patient_last_name||''}, ${e.patient_first_name||''}`.trim();
+    const locked = (String((e.status||'')).toLowerCase()==='signed') || !!e.signed_at;
+
+    const rows = [
+      ['Patient', patient || '—'],
+      ['Facility', e.agency_name || '—'],
+      ['Care Team', e.care_team_name || '—'],
+      ['Service Type', e.service_type_name || (e.service_type_code||'—')],
+      ['Status', (e.status||'Pending')],
+      ['Admit Date', e.admit_date || '—'],
+      ['DC Date', e.dc_date || '—'],
+      ['Signed At', e.signed_at || '—'],
+      ['Declined At', e.declined_at || '—'],
+      ['E-Sign ID', String(e.id)]
+    ];
+
+    rows.forEach(([k,v])=>{
+      const dk = document.createElement('div'); dk.className='k'; dk.textContent=k;
+      const dv = document.createElement('div'); dv.className='v'; dv.textContent=v||'—';
+      kv.appendChild(dk); kv.appendChild(dv);
+    });
+
+    (e.services || []).forEach(s=>{
+      const sp = document.createElement('span');
+      sp.className = 'pill';
+      sp.textContent = s.service_name || ('Service #' + s.service_id);
+      svc.appendChild(sp);
+    });
+
+    comments.textContent = e.comments || '—';
+
+    // enable buttons only if not locked
+    signBtn.disabled = locked || String((e.status||'')).toLowerCase()!=='pending';
+    declineBtn.disabled = locked || String((e.status||'')).toLowerCase()!=='pending';
+  }
+
+  function selectEsign(e){
+    SELECTED = e;
+    renderSelected();
+  }
+
+  async function load(){
+    els('msg').textContent = '';
+    const resp = await api('/api/sensys/provider/esigns', { method:'GET' });
+    ESIGNS = (resp && resp.esigns) || [];
+    SELECTED = null;
+    renderTable();
+    renderSelected();
+  }
+
+  async function doSign(){
+    if(!SELECTED) return;
+    els('msg').textContent = '';
+    await api('/api/sensys/provider/esigns/sign', {
+      method:'POST',
+      body: JSON.stringify({ esign_id: Number(SELECTED.id) })
+    });
+    await load();
+    await loadNotifs();
+  }
+
+  async function doDecline(){
+    if(!SELECTED) return;
+    els('msg').textContent = '';
+    await api('/api/sensys/provider/esigns/decline', {
+      method:'POST',
+      body: JSON.stringify({ esign_id: Number(SELECTED.id) })
+    });
+    await load();
+  }
+
+  els('q').addEventListener('input', renderTable);
+  els('refreshBtn').addEventListener('click', ()=>{
+    load().catch(e=>els('msg').textContent=e.message);
+    loadNotifs();
+  });
+  els('logoutBtn').addEventListener('click', ()=>{
+    localStorage.removeItem('sensys_token');
+    window.location.href = '/sensys/login';
+  });
+
+  els('signBtn').addEventListener('click', ()=>doSign().catch(e=>els('msg').textContent=e.message));
+  els('declineBtn').addEventListener('click', ()=>doDecline().catch(e=>els('msg').textContent=e.message));
+
+  load().catch(e=>els('msg').textContent=e.message);
+  loadNotifs();
+</script>
+</body>
+</html>
