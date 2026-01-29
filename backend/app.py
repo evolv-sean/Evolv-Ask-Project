@@ -2719,8 +2719,9 @@ def build_snf_secure_link_email_html(secure_url: str, ttl_hours: int) -> str:
         </div>
 
         <p class="meta">
-          Questions or need to add recipients to these notifications?
-          Please contact Doug Neal (Doug.Neal@medrina.com) or Stephanie Sellers (ssellers@startevolv.com).
+          Need to add or update recipients for these notifications or need help with your PIN?
+          Please contact Stephanie Sellers (ssellers@startevolv.com). If you have FirstDocs or physician coverage 
+          questions, please contact Doug Neal (Doug.Neal@medrina.com).
         </p>
       </div>
 
@@ -14491,7 +14492,8 @@ async def admin_snf_ai_summary_run(request: Request, payload: Dict[str, Any] = B
             """,
             (visit_id,),
         )
-        current_latest_note_id = int((cur.fetchone() or {}).get("max_id") or 0)
+        _row = cur.fetchone()
+        current_latest_note_id = int((_row["max_id"] if _row else 0) or 0)
 
         # If not forcing, return latest cached ONLY if it matches the newest note + same notes_limit
         if not force:
@@ -16001,6 +16003,7 @@ async def admin_snf_email_log_export_csv(request: Request):
     Export SNF secure-link email log as CSV (no PHI).
     Columns: Facility Name, Patient count, Sent at, Recipients, Sender, Hospital, SNF Facility (resolved), Token, Expires, Used, Used At.
     """
+    require_admin(request)
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -16008,21 +16011,20 @@ async def admin_snf_email_log_export_csv(request: Request):
         cur.execute(
             """
             SELECT
-                l.created_at,
-                l.recipient_emails,
-                l.sender_email,
-                l.hospital_name,
+                l.sent_at,
+                l.sent_to,
+                l.admission_ids,
                 l.snf_facility_id,
                 f.facility_name AS snf_facility_name,
-                l.token,
+                l.token_hash,
+                l.for_date,
                 l.expires_at,
-                l.used,
-                l.used_at,
-                l.patient_count
+                l.used_at
             FROM snf_secure_links l
             LEFT JOIN snf_admission_facilities f
               ON f.id = l.snf_facility_id
-            ORDER BY l.created_at DESC
+            WHERE l.sent_at IS NOT NULL AND l.sent_at <> ''
+            ORDER BY l.sent_at DESC
             """
         )
         rows = cur.fetchall()
@@ -16036,32 +16038,33 @@ async def admin_snf_email_log_export_csv(request: Request):
             [
                 "Sent At",
                 "Recipients",
-                "Sender",
-                "Hospital",
                 "SNF Facility Name",
                 "SNF Facility ID",
-                "Token",
+                "Token Hash",
+                "For Date",
                 "Expires At",
-                "Used",
                 "Used At",
                 "Patient Count",
             ]
         )
 
         for r in rows:
+            try:
+                ids = json.loads(r["admission_ids"] or "[]")
+                patient_count = len(ids) if isinstance(ids, list) else 0
+            except Exception:
+                patient_count = 0
             w.writerow(
                 [
-                    r["created_at"],
-                    r["recipient_emails"],
-                    r["sender_email"],
-                    r["hospital_name"],
+                    r["sent_at"],
+                    r["sent_to"],
                     r["snf_facility_name"],
                     r["snf_facility_id"],
-                    r["token"],
+                    r["token_hash"],
+                    r["for_date"],
                     r["expires_at"],
-                    r["used"],
                     r["used_at"],
-                    r["patient_count"],
+                    patient_count,
                 ]
             )
 
@@ -16255,11 +16258,9 @@ def _snf_admission_summary_report(conn: sqlite3.Connection, dc_from: str, dc_to:
 
     opened_count = len(opened_facility_links)
     opened_pct = (opened_count / total_emails * 100.0) if total_emails else 0.0
-    unopened_pct = 100.0 - opened_pct if total_emails else 0.0
 
     provider_opened_count = len(opened_provider_links)
     provider_opened_pct = (provider_opened_count / total_emails * 100.0) if total_emails else 0.0
-    provider_unopened_pct = 100.0 - provider_opened_pct if total_emails else 0.0
 
     # -----------------------------
     # Facility list (from grouped SNF rows)
@@ -16272,8 +16273,8 @@ def _snf_admission_summary_report(conn: sqlite3.Connection, dc_from: str, dc_to:
         fac_opened = len([lid for lid in link_ids if lid in opened_facility_links])
         prov_opened = len([lid for lid in link_ids if lid in opened_provider_links])
 
-        fac_unopened_pct = (100.0 - (fac_opened / fac_total * 100.0)) if fac_total else 0.0
-        prov_unopened_pct = (100.0 - (prov_opened / fac_total * 100.0)) if fac_total else 0.0
+        fac_opened_pct = (fac_opened / fac_total * 100.0) if fac_total else 0.0
+        prov_opened_pct = (prov_opened / fac_total * 100.0) if fac_total else 0.0
 
         top_facilities.append(
             {
@@ -16281,8 +16282,8 @@ def _snf_admission_summary_report(conn: sqlite3.Connection, dc_from: str, dc_to:
                 "facility": v["facility"],
                 "count": v["count"],
                 "is_starred": bool(v.get("is_starred")),
-                "facility_pin_unopened_pct": round(fac_unopened_pct, 1),
-                "provider_pin_unopened_pct": round(prov_unopened_pct, 1),
+                "facility_pin_opened_pct": round(fac_opened_pct, 1),
+                "provider_pin_opened_pct": round(prov_opened_pct, 1),
             }
         )
 
@@ -16299,9 +16300,8 @@ def _snf_admission_summary_report(conn: sqlite3.Connection, dc_from: str, dc_to:
             "notified_count": notified_count,
             "notified_pct": round(notified_pct, 1),
             "facility_pin_opened_pct": round(opened_pct, 1),
-            "facility_pin_unopened_pct": round(unopened_pct, 1),
+            "facility_pin_opened_count": opened_count,
             "provider_pin_opened_pct": round(provider_opened_pct, 1),
-            "provider_pin_unopened_pct": round(provider_unopened_pct, 1),
             "provider_pin_opened_count": provider_opened_count,
             "assignment_counts": assign_counts,
             "assignment_pct": {k: round(assign_pct[k], 1) for k in assign_pct},
@@ -16352,9 +16352,9 @@ def _build_snf_admission_summary_email_html(data: dict) -> str:
     dc_to = esc((data.get("filters") or {}).get("dc_to") or "")
 
     opened_pct = m.get("facility_pin_opened_pct") or 0
-    unopened_pct = m.get("facility_pin_unopened_pct") or 0
-    provider_unopened_pct = m.get("provider_pin_unopened_pct") or 0
-    provider_unopened_count = (t.get("emails_in_cohort") or 0) - (m.get("provider_pin_opened_count") or 0)
+    provider_opened_pct = m.get("provider_pin_opened_pct") or 0
+    opened_count = m.get("facility_pin_opened_count") or 0
+    provider_opened_count = m.get("provider_pin_opened_count") or 0
 
     def _kpi(label: str, value: str, sub: str) -> str:
         return f"""
@@ -16370,8 +16370,8 @@ def _build_snf_admission_summary_email_html(data: dict) -> str:
         name = esc(x.get("facility") or "(Unknown)")
         star = " <span style='color:#A8E6CF;font-weight:900;'>★</span>" if x.get("is_starred") else ""
         count = x.get("count") if x.get("count") is not None else 0
-        fac_unopened = f"{x.get('facility_pin_unopened_pct', 0)}%"
-        prov_unopened = f"{x.get('provider_pin_unopened_pct', 0)}%"
+        fac_opened = f"{x.get('facility_pin_opened_pct', 0)}%"
+        prov_opened = f"{x.get('provider_pin_opened_pct', 0)}%"
         rows_html += f"""
                 <tr>
                   <td colspan="4" style="padding:8px 6px;">
@@ -16385,12 +16385,12 @@ def _build_snf_admission_summary_email_html(data: dict) -> str:
                         </td>
                         <td width="20%" align="left" style="padding:8px 10px;">
                           <div style="display:inline-block;font-size:12px;font-weight:900;color:#0D3B66;border:1px solid rgba(13,59,102,.16);background:rgba(13,59,102,.06);border-radius:999px;padding:6px 10px;">
-                            {fac_unopened}
+                            {fac_opened}
                           </div>
                         </td>
                         <td width="20%" align="left" style="padding:8px 10px;">
                           <div style="display:inline-block;font-size:12px;font-weight:900;color:#0D3B66;border:1px solid rgba(13,59,102,.16);background:rgba(13,59,102,.06);border-radius:999px;padding:6px 10px;">
-                            {prov_unopened}
+                            {prov_opened}
                           </div>
                         </td>
                       </tr>
@@ -16426,25 +16426,25 @@ def _build_snf_admission_summary_email_html(data: dict) -> str:
                       <tr><td style="padding:10px 12px;">
                         <div style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;">Emails opened (Facility PIN)</div>
                         <div style="font-size:18px;font-weight:950;color:#0D3B66;margin-top:4px;">{opened_pct}%</div>
-                        <div style="font-size:12px;color:#6b7280;margin-top:2px;">{t.get('emails_in_cohort', 0)} emails in cohort</div>
+                        <div style="font-size:12px;color:#6b7280;margin-top:2px;">{opened_count} / {t.get('emails_in_cohort', 0)}</div>
                       </td></tr>
                     </table>
                   </td>
                   <td width="33.33%" valign="top" style="padding-right:10px;">
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:12px;">
                       <tr><td style="padding:10px 12px;">
-                        <div style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;">Emails unopened (Facility PIN)</div>
-                        <div style="font-size:18px;font-weight:950;color:#0D3B66;margin-top:4px;">{unopened_pct}%</div>
-                        <div style="font-size:12px;color:#6b7280;margin-top:2px;">1 open max per email</div>
+                        <div style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;">Emails opened (Provider PIN)</div>
+                        <div style="font-size:18px;font-weight:950;color:#0D3B66;margin-top:4px;">{provider_opened_pct}%</div>
+                        <div style="font-size:12px;color:#6b7280;margin-top:2px;">{provider_opened_count} / {t.get('emails_in_cohort', 0)}</div>
                       </td></tr>
                     </table>
                   </td>
                   <td width="33.33%" valign="top">
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:12px;">
                       <tr><td style="padding:10px 12px;">
-                        <div style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;">Emails unopened (Provider PIN)</div>
-                        <div style="font-size:18px;font-weight:950;color:#0D3B66;margin-top:4px;">{provider_unopened_pct}%</div>
-                        <div style="font-size:12px;color:#6b7280;margin-top:2px;">{provider_unopened_count} / {t.get('emails_in_cohort', 0)}</div>
+                        <div style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;">Notified by Hospital</div>
+                        <div style="font-size:18px;font-weight:950;color:#0D3B66;margin-top:4px;">{m.get('notified_pct', 0)}%</div>
+                        <div style="font-size:12px;color:#6b7280;margin-top:2px;">{m.get('notified_count', 0)} / {t.get('snf_rows', 0)}</div>
                       </td></tr>
                     </table>
                   </td>
@@ -16459,8 +16459,8 @@ def _build_snf_admission_summary_email_html(data: dict) -> str:
                 <tr>
                   <td width="45%" style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Facility</td>
                   <td width="15%" style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Volume</td>
-                  <td width="20%" style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Facility PIN Unopened %</td>
-                  <td width="20%" style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Provider PIN Unopened %</td>
+                  <td width="20%" style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Facility PIN Opened %</td>
+                  <td width="20%" style="font-size:11px;color:#6b7280;font-weight:800;text-transform:uppercase;padding:0 6px 6px 6px;">Provider PIN Opened %</td>
                 </tr>
                 {rows_html or '<tr><td colspan="4" style="color:#6b7280;font-size:12px;padding:6px 6px;">No facility data in this range.</td></tr>'}
               </table>
@@ -28606,10 +28606,4 @@ if __name__ == "__main__":
 
     port = int(os.getenv("PORT", "8000"))
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
-
-
-
-
-
-
 
