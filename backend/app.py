@@ -16105,7 +16105,7 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
     try:
         cur = conn.cursor()
 
-        # Cohort = SNF admissions in date range (snf_admissions.dc_date)
+        # Cohort = SNF admissions in date range (dc_date, fallback to last_seen_active_date)
         cur.execute(
             """
             SELECT
@@ -16118,6 +16118,7 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
                 s.ai_snf_name_raw,
                 s.current_snf_facility_id,
                 s.current_snf_facility_name,
+                s.last_seen_active_date,
 
                 COALESCE(s.current_snf_facility_id, s.final_snf_facility_id, s.ai_snf_facility_id) AS effective_facility_id,
                 COALESCE(s.current_snf_facility_name, f.facility_name) AS effective_facility_name,
@@ -16125,9 +16126,8 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
             FROM snf_admissions s
             LEFT JOIN snf_admission_facilities f
               ON f.id = COALESCE(s.current_snf_facility_id, s.final_snf_facility_id, s.ai_snf_facility_id)
-            WHERE s.dc_date IS NOT NULL
-              AND date(s.dc_date) >= date(?)
-              AND date(s.dc_date) <= date(?)
+            WHERE date(COALESCE(NULLIF(s.dc_date, ''), s.last_seen_active_date)) >= date(?)
+              AND date(COALESCE(NULLIF(s.dc_date, ''), s.last_seen_active_date)) <= date(?)
             """,
             (dc_from, dc_to),
         )
@@ -16137,16 +16137,38 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
         total_snf = len(snf_rows)
 
         # -----------------------------
-        # Facility volume (all facilities with IDs)
+        # Facility volume (grouped by current_snf_facility_name)
         # -----------------------------
-        volume_counts: Dict[int, int] = {}
+        volume_map: Dict[str, Dict[str, Any]] = {}
         for r in snf_rows:
-            fac_id = r["effective_facility_id"]
-            try:
-                fac_id_int = int(fac_id)
-            except (TypeError, ValueError):
+            fac_label = (
+                (r["current_snf_facility_name"] or "").strip()
+                or (r["effective_facility_name"] or "").strip()
+                or (r["final_snf_name_display"] or "").strip()
+                or (r["ai_snf_name_raw"] or "").strip()
+            )
+            if not fac_label:
                 continue
-            volume_counts[fac_id_int] = volume_counts.get(fac_id_int, 0) + 1
+            if fac_label not in volume_map:
+                volume_map[fac_label] = {
+                    "facility": fac_label,
+                    "count": 0,
+                    "is_starred": False,
+                    "facility_id": None,
+                }
+
+            volume_map[fac_label]["count"] += 1
+
+            # Preserve any known numeric facility_id for PIN metrics
+            fac_id = r["effective_facility_id"]
+            if volume_map[fac_label]["facility_id"] is None:
+                try:
+                    volume_map[fac_label]["facility_id"] = int(fac_id)
+                except (TypeError, ValueError):
+                    pass
+
+            if (r["facility_attending"] or "").strip():
+                volume_map[fac_label]["is_starred"] = True
 
         # -----------------------------
         # Notified by Hospital
@@ -16230,25 +16252,12 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
         unopened_pct = 100.0 - opened_pct if total_emails else 0.0
 
         # -----------------------------
-        # Facility list (all facilities with IDs)
+        # Facility list (from grouped SNF rows)
         # -----------------------------
-        cur.execute(
-            """
-            SELECT id, facility_name, attending
-            FROM snf_admission_facilities
-            ORDER BY facility_name COLLATE NOCASE
-            """
-        )
-        fac_rows = cur.fetchall()
-
         top_facilities: List[Dict[str, Any]] = []
-        for f in fac_rows:
-            fac_id = int(f["id"])
-            fac_name = (f["facility_name"] or "").strip() or "(Unknown)"
-            is_starred = bool((f["attending"] or "").strip())
-            count = volume_counts.get(fac_id, 0)
-
-            link_ids = facility_link_ids.get(fac_id, [])
+        for v in volume_map.values():
+            fac_id = v.get("facility_id")
+            link_ids = facility_link_ids.get(fac_id, []) if fac_id is not None else []
             fac_total = len(link_ids)
             fac_opened = len([lid for lid in link_ids if lid in opened_facility_links])
             prov_opened = len([lid for lid in link_ids if lid in opened_provider_links])
@@ -16259,9 +16268,9 @@ async def admin_snf_reports_run(request: Request, payload: Dict[str, Any] = Body
             top_facilities.append(
                 {
                     "facility_id": fac_id,
-                    "facility": fac_name,
-                    "count": count,
-                    "is_starred": is_starred,
+                    "facility": v["facility"],
+                    "count": v["count"],
+                    "is_starred": bool(v.get("is_starred")),
                     "facility_pin_unopened_pct": round(fac_unopened_pct, 1),
                     "provider_pin_unopened_pct": round(prov_unopened_pct, 1),
                 }
