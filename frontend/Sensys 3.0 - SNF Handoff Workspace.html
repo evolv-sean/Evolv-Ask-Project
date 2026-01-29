@@ -1609,6 +1609,12 @@
                 </select>
               </div>
               <div>
+                <label class="checkline" style="margin:0;">
+                  <input id="report-ignore-unknown" type="checkbox" />
+                  <span>Ignore Unknown/Missing Current Facility</span>
+                </label>
+              </div>
+              <div>
                 <label for="report-dc-from">SNF DC Date From</label>
                 <input id="report-dc-from" type="date" />
               </div>
@@ -3817,7 +3823,7 @@
     }
 
     // ------- Reports modal -------
-    let lastReportFilters = { dc_from: "", dc_to: "", status: "all" };
+    let lastReportFilters = { dc_from: "", dc_to: "", status: "all", ignore_unknown: false };
     function openReportsModal() {
       const modal = document.getElementById("reports-modal");
       if (!modal) return;
@@ -3867,6 +3873,7 @@
 
       const reportKey = (document.getElementById("report-select") || {}).value || "";
       const status = (document.getElementById("report-status") || {}).value || "all";
+      const ignoreUnknown = !!(document.getElementById("report-ignore-unknown") || {}).checked;
       const dcFrom = (document.getElementById("report-dc-from") || {}).value || "";
       const dcTo = (document.getElementById("report-dc-to") || {}).value || "";
 
@@ -3876,7 +3883,7 @@
       }
 
       setReportsMsg("", "");
-      lastReportFilters = { dc_from: dcFrom, dc_to: dcTo, status };
+      lastReportFilters = { dc_from: dcFrom, dc_to: dcTo, status, ignore_unknown: ignoreUnknown };
       const out = document.getElementById("reports-output");
       if (out) out.innerHTML = `<div class="message">Running report…</div>`;
 
@@ -3890,6 +3897,7 @@
           body: JSON.stringify({
             report_key: reportKey,
             status,
+            ignore_unknown: ignoreUnknown,
             dc_from: dcFrom,
             dc_to: dcTo
           })
@@ -3927,6 +3935,9 @@
       const dcFrom = lastReportFilters.dc_from || (document.getElementById("report-dc-from") || {}).value || "";
       const dcTo = lastReportFilters.dc_to || (document.getElementById("report-dc-to") || {}).value || "";
       const status = lastReportFilters.status || (document.getElementById("report-status") || {}).value || "all";
+      const ignoreUnknown = (typeof lastReportFilters.ignore_unknown === "boolean")
+        ? lastReportFilters.ignore_unknown
+        : !!(document.getElementById("report-ignore-unknown") || {}).checked;
       if (!dcFrom || !dcTo) {
         if (msg) {
           msg.style.display = "block";
@@ -3942,6 +3953,7 @@
           body: JSON.stringify({
             report_key: "snf_admission_summary",
             status,
+            ignore_unknown: ignoreUnknown,
             dc_from: dcFrom,
             dc_to: dcTo,
             recipients: to
@@ -3965,6 +3977,9 @@
       const dcFrom = lastReportFilters.dc_from || (document.getElementById("report-dc-from") || {}).value || "";
       const dcTo = lastReportFilters.dc_to || (document.getElementById("report-dc-to") || {}).value || "";
       const status = lastReportFilters.status || (document.getElementById("report-status") || {}).value || "all";
+      const ignoreUnknown = (typeof lastReportFilters.ignore_unknown === "boolean")
+        ? lastReportFilters.ignore_unknown
+        : !!(document.getElementById("report-ignore-unknown") || {}).checked;
       if (!dcFrom || !dcTo) {
         showToast("Please select dates first.", "error");
         return;
@@ -3973,6 +3988,7 @@
       params.set("dc_from", dcFrom);
       params.set("dc_to", dcTo);
       params.set("status", status);
+      params.set("ignore_unknown", ignoreUnknown ? "1" : "0");
       fetch(`/admin/snf/reports/export.csv?${params.toString()}`, {
         headers: { "X-Admin-Token": token }
       })
@@ -4019,17 +4035,18 @@
       const dcFrom = escapeHtml((data.filters && data.filters.dc_from) || "");
       const dcTo = escapeHtml((data.filters && data.filters.dc_to) || "");
       const status = escapeHtml((data.filters && data.filters.status) || "all");
+      const ignoreUnknown = (data.filters && data.filters.ignore_unknown) ? "Yes" : "No";
 
       out.innerHTML = `
         <div class="report-head">
           <div class="report-title">SNF Admission Summary</div>
-          <div class="report-sub">Filtered by SNF DC Date (fallback to Last Seen Active Date): <strong>${dcFrom}</strong> → <strong>${dcTo}</strong> • Status: <strong>${status}</strong></div>
+          <div class="report-sub">Filtered by SNF DC Date (fallback to Last Seen Active Date): <strong>${dcFrom}</strong> → <strong>${dcTo}</strong> • Status: <strong>${status}</strong> • Ignore Unknown Facilities: <strong>${ignoreUnknown}</strong></div>
+          <div class="report-sub" style="margin-top:4px;">SNF Volume is calculated based on total hospital visits documented going to that location. Emails Opened is calculated based on total number of daily emails sent to that SNF. Multiple emails are sent on groups of patients and one visit is typically on multiple daily emails leading up to their hospital discharge.</div>
         </div>
 
         <div class="report-kpis">
           ${reportKpi("Emails opened (Facility PIN)", `${openedPct}%`, `${openedCount} / ${t.emails_in_cohort || 0}`)}
           ${reportKpi("Emails opened (Provider PIN)", `${providerOpenedPct}%`, `${providerOpenedCount} / ${t.emails_in_cohort || 0}`)}
-          ${reportKpi("Notified by Hospital", `${m.notified_pct || 0}%`, `${m.notified_count || 0} / ${t.snf_rows || 0}`)}
         </div>
 
         <div class="report-grid">
