@@ -1427,7 +1427,6 @@
         queueHeadEl.innerHTML = `
           <tr>
             <th>Patient</th>
-            <th>DC Date</th>
             <th>DC Day</th>
             <th>Services</th>
           </tr>
@@ -1508,13 +1507,15 @@
 
         if (activeQueue === "allTransitions") {
           const tr = document.createElement("tr");
+          const dcDateText = p.dischargeDateTime ? formatDateShort(p.dischargeDateTime) : "â€”";
+          const dcDayText = p.dischargeDateTime ? formatDcDay(p.dischargeDateTime) : "â€”";
           tr.innerHTML = `
             <td>
               <div style="font-weight:900;color:var(--navy)">${p.name}</div>
               <div style="font-size:11px;color:var(--muted);font-weight:800">${p.facilityName}</div>
+              <div style="font-size:11px;color:var(--muted);font-weight:800">DC: ${dcDateText}</div>
             </td>
-            <td>${p.dischargeDateTime ? formatDateShort(p.dischargeDateTime) : "â€”"}</td>
-            <td>${p.dischargeDateTime ? formatDcDay(p.dischargeDateTime) : "â€”"}</td>
+            <td>${dcDayText}</td>
             <td>${servicesHtml}</td>
           `;
           queueTableEl.appendChild(tr);
