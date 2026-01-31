@@ -4351,6 +4351,10 @@ def init_db():
 
             -- NOTE TYPE / TEMPLATE KEY (existing behavior)
             note_name    TEXT NOT NULL,
+            template_id  INTEGER,
+            workspace_key TEXT,
+            attempt_detail TEXT,
+            attempt_comments TEXT,
 
             -- NEW: common fields
             note_title   TEXT,
@@ -4383,6 +4387,14 @@ def init_db():
         cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN response1 TEXT")
     if "response2" not in existing_cols:
         cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN response2 TEXT")
+    if "template_id" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN template_id INTEGER")
+    if "workspace_key" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN workspace_key TEXT")
+    if "attempt_detail" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN attempt_detail TEXT")
+    if "attempt_comments" not in existing_cols:
+        cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN attempt_comments TEXT")
 
     # âœ… NEW: optional Share With user (for â€œnote sharedâ€ notifications)
     if "share_with_user_id" not in existing_cols:
@@ -4393,6 +4405,8 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_deleted ON sensys_admission_notes(deleted_at)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_status ON sensys_admission_notes(status)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_name ON sensys_admission_notes(note_name)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_tpl ON sensys_admission_notes(template_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_workspace ON sensys_admission_notes(workspace_key)")
 
     # Join table: admission â†” care team
     cur.execute(
@@ -26586,6 +26600,10 @@ class AdmissionNoteUpsert(BaseModel):
 
     # Note type/template key (keep required)
     note_name: str
+    template_id: Optional[int] = None
+    workspace_key: Optional[str] = ""
+    attempt_detail: Optional[str] = ""
+    attempt_comments: Optional[str] = ""
 
     # NEW fields
     note_title: Optional[str] = ""
@@ -26631,6 +26649,10 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
                    response2 = ?,
                    note_comments = ?,
                    share_with_user_id = ?,
+                   template_id = ?,
+                   workspace_key = ?,
+                   attempt_detail = ?,
+                   attempt_comments = ?,
                    updated_at = datetime('now')
              WHERE id = ?
             """,
@@ -26642,6 +26664,10 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
                 (payload.response2 or "").strip(),
                 (payload.note_comments or "").strip(),
                 int(payload.share_with_user_id) if payload.share_with_user_id else None,
+                int(payload.template_id) if payload.template_id else None,
+                (payload.workspace_key or "").strip(),
+                (payload.attempt_detail or "").strip(),
+                (payload.attempt_comments or "").strip(),
                 note_id,
             ),
         )
@@ -26649,9 +26675,9 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
         cur = conn.execute(
             """
             INSERT INTO sensys_admission_notes
-                (admission_id, note_name, note_title, status, response1, response2, note_comments, created_by, share_with_user_id)
+                (admission_id, note_name, note_title, status, response1, response2, note_comments, created_by, share_with_user_id, template_id, workspace_key, attempt_detail, attempt_comments)
             VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 int(payload.admission_id),
@@ -26663,6 +26689,10 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
                 (payload.note_comments or "").strip(),
                 int(u["user_id"]),
                 int(payload.share_with_user_id) if payload.share_with_user_id else None,
+                int(payload.template_id) if payload.template_id else None,
+                (payload.workspace_key or "").strip(),
+                (payload.attempt_detail or "").strip(),
+                (payload.attempt_comments or "").strip(),
             ),
         )
         note_id = int(cur.lastrowid)
@@ -26699,6 +26729,93 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
 
     conn.commit()
     return {"ok": True, "id": int(note_id) if note_id else None}
+
+
+# -----------------------------
+# Admission Details â€” Notes: list (ANCHOR: ADMISSION_NOTES_LIST)
+# -----------------------------
+@app.get("/api/sensys/admission-notes")
+def sensys_admission_notes_list(
+    request: Request,
+    admission_id: int = 0,
+    admission_ids: str = "",
+    workspace_key: str = "",
+):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    role_keys = u.get("role_keys") or []
+    user_id = int(u["user_id"])
+
+    ids = []
+    if admission_id:
+        ids = [int(admission_id)]
+    elif admission_ids:
+        ids = [int(x) for x in admission_ids.split(",") if x.strip().isdigit()]
+
+    if not ids:
+        return {"ok": True, "notes": []}
+
+    ws = (workspace_key or "").strip()
+
+    if "home_health" in role_keys:
+        my_adm_cte = """
+        WITH my_adm AS (
+            SELECT DISTINCT ar.admission_id
+            FROM sensys_user_agencies ua
+            JOIN sensys_admission_referrals ar
+                 ON ar.agency_id = ua.agency_id
+                AND ar.deleted_at IS NULL
+            WHERE ua.user_id = ?
+        )
+        """
+    else:
+        my_adm_cte = """
+        WITH my_adm AS (
+            SELECT DISTINCT a.id AS admission_id
+            FROM sensys_user_agencies ua
+            JOIN sensys_admissions a
+                 ON a.agency_id = ua.agency_id
+            WHERE ua.user_id = ?
+        )
+        """
+
+    params = [user_id]
+    params.extend(ids)
+    ws_clause = ""
+    if ws:
+        ws_clause = "AND COALESCE(n.workspace_key, '') = ?"
+        params.append(ws)
+
+    rows = conn.execute(
+        f"""
+        {my_adm_cte}
+        SELECT
+            n.id,
+            n.admission_id,
+            n.note_name,
+            n.note_title,
+            n.status,
+            n.response1,
+            n.response2,
+            n.note_comments,
+            n.template_id,
+            n.workspace_key,
+            n.attempt_detail,
+            n.attempt_comments,
+            n.created_at,
+            n.updated_at,
+            n.created_by
+        FROM sensys_admission_notes n
+        JOIN my_adm m ON m.admission_id = n.admission_id
+        WHERE n.deleted_at IS NULL
+          AND n.admission_id IN ({",".join(["?"] * len(ids))})
+          {ws_clause}
+        ORDER BY n.created_at DESC, n.id DESC
+        """,
+        params,
+    ).fetchall()
+
+    return {"ok": True, "notes": [dict(r) for r in rows]}
 
 
 # -----------------------------
