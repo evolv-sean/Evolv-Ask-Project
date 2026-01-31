@@ -19204,6 +19204,8 @@ def sensys_admin_users_login_as(payload: SensysAdminLoginAsIn, token: str):
             redirect_url = "/sensys/snf-sw"
         elif "snf_user" in role_keys:
             redirect_url = "/sensys/snf-user"
+        elif "evolv_snf" in role_keys:
+            redirect_url = "/sensys/evolv-snf"
         elif "home_health" in role_keys:
             redirect_url = "/sensys/home-health"
         elif "ccc_lead" in role_keys:
