@@ -458,6 +458,7 @@ SENSYS_SNF_USER_DISCHARGED_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Discha
 SENSYS_SNF_USER_PATIENT_SEARCH_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Patient Search.html"
 SENSYS_SNF_USER_DC_SUBMISSION_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - DC Submission.html"
 SENSYS_SNF_USER_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - SNF User - Admission Details.html"
+SENSYS_EVOLV_SNF_HTML = FRONTEND_DIR / "Sensys 3.0 - Evolv SNF - Workspace.html"
 SENSYS_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - Developer - Admission Details.html"
 SENSYS_HOME_HEALTH_HTML = FRONTEND_DIR / "Sensys 3.0 - HH - Workspace.html"
 SENSYS_HOME_HEALTH_ADMISSION_DETAILS_HTML = FRONTEND_DIR / "Sensys 3.0 - Home Health - Admission Details.html"
@@ -18944,6 +18945,7 @@ def _sensys_seed_roles(conn: sqlite3.Connection):
         ("hospital", "Hospital"),
         ("snf_sw", "Developer"),
         ("snf_user", "SNF User"),
+        ("evolv_snf", "Evolv-SNF"),
 
         # âœ… CCC Post-Discharge Workspace (CCC-PDW v1)
         ("ccc_lead", "CCC Lead"),
@@ -23049,6 +23051,8 @@ def sensys_login(payload: SensysLoginIn, request: Request):
         redirect_url = "/sensys/snf-sw"
     elif "snf_user" in role_keys:
         redirect_url = "/sensys/snf-user"
+    elif "evolv_snf" in role_keys:
+        redirect_url = "/sensys/evolv-snf"
     elif "home_health" in role_keys:
         redirect_url = "/sensys/home-health"
     elif "provider" in role_keys:
@@ -23100,7 +23104,7 @@ def sensys_my_admissions(request: Request, admitted_only: int = 0):
     """
     Returns admissions linked to the logged-in user.
 
-    Default:
+    Default (SNF User / Evolv-SNF / most roles):
       sensys_user_agencies.user_id -> sensys_admissions.agency_id
 
     Home Health role:
@@ -23127,6 +23131,30 @@ def sensys_my_admissions(request: Request, admitted_only: int = 0):
     if "home_health" in role_keys:
         rows = conn.execute(
             """
+            WITH latest_dc AS (
+                SELECT admission_id, MAX(id) AS latest_dc_id
+                FROM sensys_admission_dc_submissions
+                WHERE deleted_at IS NULL
+                GROUP BY admission_id
+            ),
+            hh_services AS (
+                SELECT
+                    j.admission_dc_submission_id AS dc_id,
+                    GROUP_CONCAT(DISTINCT s.name) AS hh_service_names
+                FROM sensys_dc_submission_services j
+                JOIN sensys_services s ON s.id = j.services_id
+                WHERE LOWER(COALESCE(s.service_type, '')) IN ('home health', 'homehealth', 'hh')
+                GROUP BY j.admission_dc_submission_id
+            ),
+            dme_services AS (
+                SELECT
+                    j.admission_dc_submission_id AS dc_id,
+                    GROUP_CONCAT(DISTINCT s.name) AS dme_service_names
+                FROM sensys_dc_submission_services j
+                JOIN sensys_services s ON s.id = j.services_id
+                WHERE LOWER(COALESCE(s.service_type, '')) IN ('dme', 'durable medical equipment', 'durable medical', 'equipment')
+                GROUP BY j.admission_dc_submission_id
+            )
             SELECT DISTINCT
                 a.id,
                 a.patient_id,
@@ -23150,7 +23178,42 @@ def sensys_my_admissions(request: Request, admitted_only: int = 0):
                 a.reason,
                 a.latest_pcp,
                 a.active,
-                a.updated_at
+                a.updated_at,
+
+                -- latest dc submission (if any)
+                dcs.id AS dc_sub_id,
+                dcs.created_at AS dc_sub_created_at,
+                dcs.created_by AS dc_sub_created_by,
+                dcs.dc_date AS dc_sub_dc_date,
+                dcs.dc_time AS dc_sub_dc_time,
+                dcs.dc_confirmed AS dc_sub_dc_confirmed,
+                dcs.dc_urgent AS dc_sub_dc_urgent,
+                dcs.urgent_comments AS dc_sub_urgent_comments,
+                dcs.dc_destination AS dc_sub_dc_destination,
+                dcs.destination_comments AS dc_sub_destination_comments,
+                dcs.dc_with AS dc_sub_dc_with,
+                dcs.hh_agency_id AS dc_sub_hh_agency_id,
+                dcs.hh_preferred AS dc_sub_hh_preferred,
+                dcs.hh_carecompare_ccn AS dc_sub_hh_carecompare_ccn,
+                dcs.hh_carecompare_name AS dc_sub_hh_carecompare_name,
+                dcs.hh_carecompare_dba AS dc_sub_hh_carecompare_dba,
+                dcs.hh_carecompare_city AS dc_sub_hh_carecompare_city,
+                dcs.hh_carecompare_state AS dc_sub_hh_carecompare_state,
+                dcs.hh_carecompare_zip AS dc_sub_hh_carecompare_zip,
+                dcs.hh_carecompare_county AS dc_sub_hh_carecompare_county,
+                dcs.hh_comments AS dc_sub_hh_comments,
+                dcs.hh_agency_comments AS dc_sub_hh_agency_comments,
+                dcs.dme_comments AS dc_sub_dme_comments,
+                dcs.aid_consult AS dc_sub_aid_consult,
+                dcs.pcp_freetext AS dc_sub_pcp_freetext,
+                dcs.coordinate_caregiver AS dc_sub_coordinate_caregiver,
+                dcs.caregiver_name AS dc_sub_caregiver_name,
+                dcs.caregiver_number AS dc_sub_caregiver_number,
+                dcs.apealling_dc AS dc_sub_apealling_dc,
+                dcs.appeal_comments AS dc_sub_appeal_comments,
+                dcs.updated_at AS dc_sub_updated_at,
+                hs.hh_service_names AS dc_sub_hh_service_names,
+                ds.dme_service_names AS dc_sub_dme_service_names
             FROM sensys_user_agencies ua
             JOIN sensys_admission_referrals ar
                  ON ar.agency_id = ua.agency_id
@@ -23163,6 +23226,14 @@ def sensys_my_admissions(request: Request, admitted_only: int = 0):
                  ON ag.id = a.agency_id
             LEFT JOIN sensys_agencies rag
                  ON rag.id = ar.agency_id
+            LEFT JOIN latest_dc ldc
+                 ON ldc.admission_id = a.id
+            LEFT JOIN sensys_admission_dc_submissions dcs
+                 ON dcs.id = ldc.latest_dc_id
+            LEFT JOIN hh_services hs
+                 ON hs.dc_id = dcs.id
+            LEFT JOIN dme_services ds
+                 ON ds.dc_id = dcs.id
             WHERE ua.user_id = ?
             {admitted_clause}
             ORDER BY
@@ -23174,9 +23245,33 @@ def sensys_my_admissions(request: Request, admitted_only: int = 0):
 
         return {"ok": True, "admissions": [dict(r) for r in rows]}
 
-    # Default (everyone else): admissions linked by admission.agency_id
+    # Default (SNF User, Evolv-SNF, everyone else): admissions linked by admission.agency_id
     rows = conn.execute(
         """
+        WITH latest_dc AS (
+            SELECT admission_id, MAX(id) AS latest_dc_id
+            FROM sensys_admission_dc_submissions
+            WHERE deleted_at IS NULL
+            GROUP BY admission_id
+        ),
+        hh_services AS (
+            SELECT
+                j.admission_dc_submission_id AS dc_id,
+                GROUP_CONCAT(DISTINCT s.name) AS hh_service_names
+            FROM sensys_dc_submission_services j
+            JOIN sensys_services s ON s.id = j.services_id
+            WHERE LOWER(COALESCE(s.service_type, '')) IN ('home health', 'homehealth', 'hh')
+            GROUP BY j.admission_dc_submission_id
+        ),
+        dme_services AS (
+            SELECT
+                j.admission_dc_submission_id AS dc_id,
+                GROUP_CONCAT(DISTINCT s.name) AS dme_service_names
+            FROM sensys_dc_submission_services j
+            JOIN sensys_services s ON s.id = j.services_id
+            WHERE LOWER(COALESCE(s.service_type, '')) IN ('dme', 'durable medical equipment', 'durable medical', 'equipment')
+            GROUP BY j.admission_dc_submission_id
+        )
         SELECT
             a.id,
             a.patient_id,
@@ -23199,11 +23294,54 @@ def sensys_my_admissions(request: Request, admitted_only: int = 0):
             a.reason,
             a.latest_pcp,
             a.active,
-            a.updated_at
+            a.updated_at,
+
+            -- latest dc submission (if any)
+            dcs.id AS dc_sub_id,
+            dcs.created_at AS dc_sub_created_at,
+            dcs.created_by AS dc_sub_created_by,
+            dcs.dc_date AS dc_sub_dc_date,
+            dcs.dc_time AS dc_sub_dc_time,
+            dcs.dc_confirmed AS dc_sub_dc_confirmed,
+            dcs.dc_urgent AS dc_sub_dc_urgent,
+            dcs.urgent_comments AS dc_sub_urgent_comments,
+            dcs.dc_destination AS dc_sub_dc_destination,
+            dcs.destination_comments AS dc_sub_destination_comments,
+            dcs.dc_with AS dc_sub_dc_with,
+            dcs.hh_agency_id AS dc_sub_hh_agency_id,
+            dcs.hh_preferred AS dc_sub_hh_preferred,
+            dcs.hh_carecompare_ccn AS dc_sub_hh_carecompare_ccn,
+            dcs.hh_carecompare_name AS dc_sub_hh_carecompare_name,
+            dcs.hh_carecompare_dba AS dc_sub_hh_carecompare_dba,
+            dcs.hh_carecompare_city AS dc_sub_hh_carecompare_city,
+            dcs.hh_carecompare_state AS dc_sub_hh_carecompare_state,
+            dcs.hh_carecompare_zip AS dc_sub_hh_carecompare_zip,
+            dcs.hh_carecompare_county AS dc_sub_hh_carecompare_county,
+            dcs.hh_comments AS dc_sub_hh_comments,
+            dcs.hh_agency_comments AS dc_sub_hh_agency_comments,
+            dcs.dme_comments AS dc_sub_dme_comments,
+            dcs.aid_consult AS dc_sub_aid_consult,
+            dcs.pcp_freetext AS dc_sub_pcp_freetext,
+            dcs.coordinate_caregiver AS dc_sub_coordinate_caregiver,
+            dcs.caregiver_name AS dc_sub_caregiver_name,
+            dcs.caregiver_number AS dc_sub_caregiver_number,
+            dcs.apealling_dc AS dc_sub_apealling_dc,
+            dcs.appeal_comments AS dc_sub_appeal_comments,
+            dcs.updated_at AS dc_sub_updated_at,
+            hs.hh_service_names AS dc_sub_hh_service_names,
+            ds.dme_service_names AS dc_sub_dme_service_names
         FROM sensys_user_agencies ua
         JOIN sensys_admissions a ON a.agency_id = ua.agency_id
         JOIN sensys_patients p ON p.id = a.patient_id
         JOIN sensys_agencies ag ON ag.id = a.agency_id
+        LEFT JOIN latest_dc ldc
+             ON ldc.admission_id = a.id
+        LEFT JOIN sensys_admission_dc_submissions dcs
+             ON dcs.id = ldc.latest_dc_id
+        LEFT JOIN hh_services hs
+             ON hs.dc_id = dcs.id
+        LEFT JOIN dme_services ds
+             ON ds.dc_id = dcs.id
         WHERE ua.user_id = ?
         {admitted_clause}
         ORDER BY
@@ -28500,6 +28638,10 @@ async def sensys_snf_user_dc_submission_ui():
 @app.get("/sensys/snf-user/admission-details", response_class=HTMLResponse)
 async def sensys_snf_user_admission_details_ui():
     return HTMLResponse(content=read_html(SENSYS_SNF_USER_ADMISSION_DETAILS_HTML))
+
+@app.get("/sensys/evolv-snf", response_class=HTMLResponse)
+async def sensys_evolv_snf_ui():
+    return HTMLResponse(content=read_html(SENSYS_EVOLV_SNF_HTML))
 
 
 @app.get("/sensys/admission-details", response_class=HTMLResponse)
