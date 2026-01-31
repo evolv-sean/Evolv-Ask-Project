@@ -313,6 +313,11 @@
     .row-actions.split{justify-content:space-between}
     .row-actions-left,.row-actions-right{display:flex;gap:8px;align-items:center}
     .row-actions .btn{white-space:nowrap}
+    .contact-meta-grid{display:grid;grid-template-columns: repeat(3, minmax(0,1fr));gap:12px;align-items:start}
+    .contact-meta-col{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px}
+    .contact-meta-label{font-size:11px;color:var(--muted);font-weight:800}
+    .contact-meta-value{font-size:11px;color:var(--muted);font-weight:800}
+    .contact-meta-actions{display:flex;gap:8px;align-items:center;justify-content:center}
 
     /* Drawer */
     .drawer-overlay{
@@ -437,6 +442,7 @@
     .btn-icon.reached{color:#2f7a5a;border-color: rgba(47,122,90,.35);}
     .btn-icon.vm{color:var(--neg);border-color: rgba(199,107,107,.45);}
     .btn-icon.vm svg{transform: scaleX(-1);}
+    .btn-icon.danger{color:var(--neg);border-color: rgba(199,107,107,.45);}
     .btn-icon.info{color:var(--neg);border-color: rgba(199,107,107,.45);}
     .card-expand{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
 
@@ -1182,8 +1188,9 @@
     const formatDcDay = (iso) => {
       const date = new Date(iso);
       const dayLabel = new Intl.DateTimeFormat("en-US", { weekday:"short" }).format(date);
-      const diffDays = Math.ceil((date.getTime() - Date.now()) / 86400000);
-      const suffix = diffDays < 0 ? "overdue" : diffDays === 0 ? "0" : `${diffDays}`;
+      const diffMs = date.getTime() - Date.now();
+      const diffDays = diffMs >= 0 ? Math.ceil(diffMs / 86400000) : Math.floor(diffMs / 86400000);
+      const suffix = diffDays === 0 ? "0" : `${diffDays}`;
       return `${dayLabel} (${suffix})`;
     };
 
@@ -1224,7 +1231,11 @@
         startOfCareDate: null,
         activityLog: [],
         hhServiceNames: hhServices,
-        dmeServiceNames: dmeServices
+        dmeServiceNames: dmeServices,
+        agencyCcm: {
+          medrina: Boolean(row.agency_medrina_ccm),
+          evolv: Boolean(row.agency_evolv_ccm)
+        }
       });
     };
 
@@ -1427,8 +1438,9 @@
         queueHeadEl.innerHTML = `
           <tr>
             <th>Patient</th>
-            <th>DC Day</th>
+            <th style="width:96px;">DC Day</th>
             <th>Services</th>
+            <th>Tasks</th>
           </tr>
         `;
         return;
@@ -1517,8 +1529,10 @@
             </td>
             <td>${dcDayText}</td>
             <td>${servicesHtml}</td>
+            <td><div class="task-chips">${taskChips(p)}</div></td>
           `;
           queueTableEl.appendChild(tr);
+          tr.addEventListener("click", () => openDrawer(p.id));
           return;
         }
 
@@ -1653,6 +1667,8 @@
         reached:"Reached",
         not_reachable_final:"Unreachable (final)"
       }[p.contactStatus] || "Unknown";
+      const showCcm = Boolean(p.agencyCcm?.medrina || p.agencyCcm?.evolv);
+      const ccmLabel = p.agencyCcm?.medrina ? "Medrina CCM" : "CCM Accepted";
 
       const statusPills = `
         <div class="status-pill ${p.contactStatus === "reached" ? "done" : ""}">Intake</div>
@@ -1690,27 +1706,50 @@
                 <div class="card-meta">${contactLabel}</div>
               </div>
               <div class="card-body">
-                <div class="card-meta">Last attempt: ${p.lastContactAttemptAt ? formatDateTime(p.lastContactAttemptAt) : "—"} • Next due: ${p.nextContactDueAt ? formatDateTime(p.nextContactDueAt) : "—"}</div>
-                <div class="row-actions split">
-                  <div class="row-actions-left">
-                    <button class="btn-icon vm" id="btnVm" ${p.contactAttempts >= 2 ? "disabled" : ""} aria-label="Left VM">
-                      <svg viewBox="0 0 233.12 234.63" aria-hidden="true">
-                        <path d="M52.97,218.37H12.19c-5.21,0-9.44-4.23-9.44-9.44v-108.68c0-5.21,4.23-9.44,9.44-9.44h38.63c6.97-.01,13.73-2.63,18.73-7.49C90.09,63.36,113.34,16.95,122.19,7.1c3.98-4.7,9.44-4.71,13.07-4.03.07.02.13.03.2.05,25.27,5.85,14.83,46.22,5.35,66.57h0c-3.97,7.7,1.62,16.88,10.28,16.88h54.46c17.1,0,29.06,16.89,23.39,33.02l-33.11,94.15c-3.82,10.87-14.09,18.14-25.61,18.14h-64.57c-11.22,0-22.34-2.03-32.83-6l-19.86-7.51v-126.87"/>
-                      </svg>
-                    </button>
-                    <button class="btn-icon reached" id="btnReached" aria-label="Reached">
-                      <svg viewBox="0 0 233.12 234.63" aria-hidden="true">
-                        <path d="M52.97,218.37H12.19c-5.21,0-9.44-4.23-9.44-9.44v-108.68c0-5.21,4.23-9.44,9.44-9.44h38.63c6.97-.01,13.73-2.63,18.73-7.49C90.09,63.36,113.34,16.95,122.19,7.1c3.98-4.7,9.44-4.71,13.07-4.03.07.02.13.03.2.05,25.27,5.85,14.83,46.22,5.35,66.57h0c-3.97,7.7,1.62,16.88,10.28,16.88h54.46c17.1,0,29.06,16.89,23.39,33.02l-33.11,94.15c-3.82,10.87-14.09,18.14-25.61,18.14h-64.57c-11.22,0-22.34-2.03-32.83-6l-19.86-7.51v-126.87"/>
-                      </svg>
-                    </button>
+                <div class="contact-meta-grid" style="grid-template-columns: repeat(${showCcm ? 3 : 2}, minmax(0,1fr));">
+                  <div class="contact-meta-col">
+                    <div class="contact-meta-label">Last Attempt</div>
+                    <div class="contact-meta-value">${p.lastContactAttemptAt ? formatDateTime(p.lastContactAttemptAt) : "—"}</div>
+                    <div class="contact-meta-actions">
+                      <button class="btn-icon vm" id="btnVm" ${p.contactAttempts >= 2 ? "disabled" : ""} aria-label="Left VM">
+                        <svg viewBox="0 0 233.12 234.63" aria-hidden="true">
+                          <path d="M52.97,218.37H12.19c-5.21,0-9.44-4.23-9.44-9.44v-108.68c0-5.21,4.23-9.44,9.44-9.44h38.63c6.97-.01,13.73-2.63,18.73-7.49C90.09,63.36,113.34,16.95,122.19,7.1c3.98-4.7,9.44-4.71,13.07-4.03.07.02.13.03.2.05,25.27,5.85,14.83,46.22,5.35,66.57h0c-3.97,7.7,1.62,16.88,10.28,16.88h54.46c17.1,0,29.06,16.89,23.39,33.02l-33.11,94.15c-3.82,10.87-14.09,18.14-25.61,18.14h-64.57c-11.22,0-22.34-2.03-32.83-6l-19.86-7.51v-126.87"/>
+                        </svg>
+                      </button>
+                      <button class="btn-icon reached" id="btnReached" aria-label="Reached">
+                        <svg viewBox="0 0 233.12 234.63" aria-hidden="true">
+                          <path d="M52.97,218.37H12.19c-5.21,0-9.44-4.23-9.44-9.44v-108.68c0-5.21,4.23-9.44,9.44-9.44h38.63c6.97-.01,13.73-2.63,18.73-7.49C90.09,63.36,113.34,16.95,122.19,7.1c3.98-4.7,9.44-4.71,13.07-4.03.07.02.13.03.2.05,25.27,5.85,14.83,46.22,5.35,66.57h0c-3.97,7.7,1.62,16.88,10.28,16.88h54.46c17.1,0,29.06,16.89,23.39,33.02l-33.11,94.15c-3.82,10.87-14.09,18.14-25.61,18.14h-64.57c-11.22,0-22.34-2.03-32.83-6l-19.86-7.51v-126.87"/>
+                        </svg>
+                      </button>
+                    </div>
                   </div>
-                  <div class="row-actions-right">
-                    <button class="btn-icon" id="btnContactOpen" aria-label="Open" title="Open">
-                      <svg viewBox="0 0 251.6 261.78" aria-hidden="true" style="transform: rotate(-90deg);">
-                        <path d="M168.79,110.02V12.56c0-5.42-4.39-9.81-9.81-9.81h-66.35c-5.42,0-9.81,4.39-9.81,9.81v97.45h-45.05c-5.55,0-8.32,6.7-4.4,10.63l88.43,91.63c2.21,2.21,5.81,2.21,8.02,0l88.43-91.63c3.92-3.92,1.14-10.63-4.4-10.63h-45.05Z"/>
-                        <path d="M2.75,202.34v41.97c0,8.13,6.59,14.72,14.72,14.72h216.66c8.13,0,14.72-6.59,14.72-14.72v-41.97"/>
-                      </svg>
-                    </button>
+                  ${showCcm ? `
+                  <div class="contact-meta-col">
+                    <div class="contact-meta-label">${ccmLabel}</div>
+                    <div class="contact-meta-actions">
+                      <button class="btn-icon reached" aria-label="${ccmLabel}" title="${ccmLabel}">
+                        <svg viewBox="0 0 233.12 234.63" aria-hidden="true">
+                          <path d="M52.97,218.37H12.19c-5.21,0-9.44-4.23-9.44-9.44v-108.68c0-5.21,4.23-9.44,9.44-9.44h38.63c6.97-.01,13.73-2.63,18.73-7.49C90.09,63.36,113.34,16.95,122.19,7.1c3.98-4.7,9.44-4.71,13.07-4.03.07.02.13.03.2.05,25.27,5.85,14.83,46.22,5.35,66.57h0c-3.97,7.7,1.62,16.88,10.28,16.88h54.46c17.1,0,29.06,16.89,23.39,33.02l-33.11,94.15c-3.82,10.87-14.09,18.14-25.61,18.14h-64.57c-11.22,0-22.34-2.03-32.83-6l-19.86-7.51v-126.87"/>
+                        </svg>
+                      </button>
+                      <button class="btn-icon danger" aria-label="${ccmLabel} Not Accepted" title="${ccmLabel} Not Accepted">
+                        <svg viewBox="0 0 233.12 234.63" aria-hidden="true">
+                          <path d="M52.97,218.37H12.19c-5.21,0-9.44-4.23-9.44-9.44v-108.68c0-5.21,4.23-9.44,9.44-9.44h38.63c6.97-.01,13.73-2.63,18.73-7.49C90.09,63.36,113.34,16.95,122.19,7.1c3.98-4.7,9.44-4.71,13.07-4.03.07.02.13.03.2.05,25.27,5.85,14.83,46.22,5.35,66.57h0c-3.97,7.7,1.62,16.88,10.28,16.88h54.46c17.1,0,29.06,16.89,23.39,33.02l-33.11,94.15c-3.82,10.87-14.09,18.14-25.61,18.14h-64.57c-11.22,0-22.34-2.03-32.83-6l-19.86-7.51v-126.87"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  ` : ""}
+                  <div class="contact-meta-col">
+                    <div class="contact-meta-label">Open</div>
+                    <div class="contact-meta-actions">
+                      <button class="btn-icon" id="btnContactOpen" aria-label="Open" title="Open">
+                        <svg viewBox="0 0 251.6 261.78" aria-hidden="true" style="transform: rotate(-90deg);">
+                          <path d="M168.79,110.02V12.56c0-5.42-4.39-9.81-9.81-9.81h-66.35c-5.42,0-9.81,4.39-9.81,9.81v97.45h-45.05c-5.55,0-8.32,6.7-4.4,10.63l88.43,91.63c2.21,2.21,5.81,2.21,8.02,0l88.43-91.63c3.92-3.92,1.14-10.63-4.4-10.63h-45.05Z"/>
+                          <path d="M2.75,202.34v41.97c0,8.13,6.59,14.72,14.72,14.72h216.66c8.13,0,14.72-6.59,14.72-14.72v-41.97"/>
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

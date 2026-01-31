@@ -1876,6 +1876,15 @@
         <option value="1">Yes</option>
       </select>
 
+      <div style="height:10px"></div>
+
+      <div class="label">CCM Flags</div>
+      <div class="pill">
+        <button class="tag" id="medrina_facility" type="button">Medrina Facility</button>
+        <button class="tag" id="medrina_ccm" type="button">Medrina CCM</button>
+        <button class="tag" id="evolv_ccm" type="button">Evolv CCM</button>
+      </div>
+
       <div style="height:14px"></div>
 
       <div class="label">Preferred Providers</div>
@@ -4705,6 +4714,9 @@
     $("notes").value = a.notes || "";
     $("notes2").value = a.notes2 || "";
     $("evolv_client").value = String(a.evolv_client ? 1 : 0);
+    setTagState("medrina_facility", !!a.medrina_facility);
+    setTagState("medrina_ccm", !!a.medrina_ccm);
+    setTagState("evolv_ccm", !!a.evolv_ccm);
 
     setMsg($("agencyEditMsg"), "", true);
 
@@ -4719,8 +4731,8 @@
       const token = getToken();
       if(!token){
         agenciesCache = [
-          { id: 1, agency_name: "Evolv Health - Scottsdale", agency_type: "SNF", evolv_client: 1, city: "Scottsdale", state: "AZ" },
-          { id: 2, agency_name: "Harbor View SNF", agency_type: "SNF", evolv_client: 0, city: "Tampa", state: "FL" }
+          { id: 1, agency_name: "Evolv Health - Scottsdale", agency_type: "SNF", evolv_client: 1, medrina_facility: 1, medrina_ccm: 0, evolv_ccm: 1, city: "Scottsdale", state: "AZ" },
+          { id: 2, agency_name: "Harbor View SNF", agency_type: "SNF", evolv_client: 0, medrina_facility: 0, medrina_ccm: 0, evolv_ccm: 0, city: "Tampa", state: "FL" }
         ];
         agenciesMaster = agenciesCache;
         renderAgenciesTable();
@@ -4747,6 +4759,18 @@
 
   $("agencyListSearch").addEventListener("input", renderAgenciesTable);
 
+  function setTagState(id, isOn){
+    const el = $(id);
+    if(el) el.classList.toggle("on", !!isOn);
+  }
+  function getTagState(id){
+    return !!($(id)?.classList.contains("on"));
+  }
+  ["medrina_facility","medrina_ccm","evolv_ccm"].forEach(id => {
+    const el = $(id);
+    if(el) el.onclick = () => el.classList.toggle("on");
+  });
+
   function startNewAgency(){
     selectedAgencyId = null;
     $("selAgencyId").textContent = "—";
@@ -4766,6 +4790,9 @@
     $("notes").value = "";
     $("notes2").value = "";
     $("evolv_client").value = "0";
+    setTagState("medrina_facility", false);
+    setTagState("medrina_ccm", false);
+    setTagState("evolv_ccm", false);
 
     selectedPreferredProviderIds = new Set();
     renderPreferredProvidersChecklist();
@@ -4799,6 +4826,9 @@
         notes: ($("notes").value || "").trim(),
         notes2: ($("notes2").value || "").trim(),
         evolv_client: $("evolv_client").value === "1",
+        medrina_facility: getTagState("medrina_facility"),
+        medrina_ccm: getTagState("medrina_ccm"),
+        evolv_ccm: getTagState("evolv_ccm"),
         preferred_provider_ids: Array.from(selectedPreferredProviderIds)
       };
 
@@ -5726,7 +5756,7 @@
       label: "Agencies",
       endpoint: "/api/sensys/admin/agencies/bulk",
       filename: "sensys_agencies_template.csv",
-      headers: ["id","agency_name","agency_type","aliases","facility_code","address","city","state","zip","phone1","phone2","email","fax","notes","notes2","evolv_client"]
+      headers: ["id","agency_name","agency_type","aliases","facility_code","address","city","state","zip","phone1","phone2","email","fax","notes","notes2","evolv_client","medrina_facility","medrina_ccm","evolv_ccm"]
     },
     patients: {
       label: "Patients",
