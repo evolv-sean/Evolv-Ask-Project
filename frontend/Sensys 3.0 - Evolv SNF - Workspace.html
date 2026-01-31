@@ -315,6 +315,9 @@
     .row-actions .btn{white-space:nowrap}
     .contact-meta-grid{display:grid;grid-template-columns: repeat(3, minmax(0,1fr));gap:12px;align-items:start}
     .contact-meta-col{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px}
+    .contact-meta-col.left{align-items:flex-start;text-align:left}
+    .contact-meta-col.center{align-items:center;text-align:center}
+    .contact-meta-col.right{align-items:flex-end;text-align:right}
     .contact-meta-label{font-size:11px;color:var(--muted);font-weight:800}
     .contact-meta-value{font-size:11px;color:var(--muted);font-weight:800}
     .contact-meta-actions{display:flex;gap:8px;align-items:center;justify-content:center}
@@ -443,6 +446,7 @@
     .btn-icon.vm{color:var(--neg);border-color: rgba(199,107,107,.45);}
     .btn-icon.vm svg{transform: scaleX(-1);}
     .btn-icon.danger{color:var(--neg);border-color: rgba(199,107,107,.45);}
+    .btn-icon.thumb-down svg{transform: scaleY(-1);}
     .btn-icon.info{color:var(--neg);border-color: rgba(199,107,107,.45);}
     .card-expand{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
 
@@ -1667,6 +1671,7 @@
         reached:"Reached",
         not_reachable_final:"Unreachable (final)"
       }[p.contactStatus] || "Unknown";
+      const contactMeta = `${contactLabel}${p.lastContactAttemptAt ? ` - ${formatDateTime(p.lastContactAttemptAt)}` : ""}`;
       const showCcm = Boolean(p.agencyCcm?.medrina || p.agencyCcm?.evolv);
       const ccmLabel = p.agencyCcm?.medrina ? "Medrina CCM" : "CCM Accepted";
 
@@ -1703,15 +1708,14 @@
             <div class="card-section">
               <div class="card-header">
                 <div class="card-title">Patient Contact</div>
-                <div class="card-meta">${contactLabel}</div>
+                <div class="card-meta">${contactMeta}</div>
               </div>
               <div class="card-body">
                 <div class="contact-meta-grid" style="grid-template-columns: repeat(${showCcm ? 3 : 2}, minmax(0,1fr));">
-                  <div class="contact-meta-col">
-                    <div class="contact-meta-label">Last Attempt</div>
-                    <div class="contact-meta-value">${p.lastContactAttemptAt ? formatDateTime(p.lastContactAttemptAt) : "—"}</div>
+                  <div class="contact-meta-col left">
+                    <div class="contact-meta-label">Call Result</div>
                     <div class="contact-meta-actions">
-                      <button class="btn-icon vm" id="btnVm" ${p.contactAttempts >= 2 ? "disabled" : ""} aria-label="Left VM">
+                      <button class="btn-icon vm thumb-down" id="btnVm" ${p.contactAttempts >= 2 ? "disabled" : ""} aria-label="Left VM">
                         <svg viewBox="0 0 233.12 234.63" aria-hidden="true">
                           <path d="M52.97,218.37H12.19c-5.21,0-9.44-4.23-9.44-9.44v-108.68c0-5.21,4.23-9.44,9.44-9.44h38.63c6.97-.01,13.73-2.63,18.73-7.49C90.09,63.36,113.34,16.95,122.19,7.1c3.98-4.7,9.44-4.71,13.07-4.03.07.02.13.03.2.05,25.27,5.85,14.83,46.22,5.35,66.57h0c-3.97,7.7,1.62,16.88,10.28,16.88h54.46c17.1,0,29.06,16.89,23.39,33.02l-33.11,94.15c-3.82,10.87-14.09,18.14-25.61,18.14h-64.57c-11.22,0-22.34-2.03-32.83-6l-19.86-7.51v-126.87"/>
                         </svg>
@@ -1724,7 +1728,7 @@
                     </div>
                   </div>
                   ${showCcm ? `
-                  <div class="contact-meta-col">
+                  <div class="contact-meta-col center">
                     <div class="contact-meta-label">${ccmLabel}</div>
                     <div class="contact-meta-actions">
                       <button class="btn-icon reached" aria-label="${ccmLabel}" title="${ccmLabel}">
@@ -1732,7 +1736,7 @@
                           <path d="M52.97,218.37H12.19c-5.21,0-9.44-4.23-9.44-9.44v-108.68c0-5.21,4.23-9.44,9.44-9.44h38.63c6.97-.01,13.73-2.63,18.73-7.49C90.09,63.36,113.34,16.95,122.19,7.1c3.98-4.7,9.44-4.71,13.07-4.03.07.02.13.03.2.05,25.27,5.85,14.83,46.22,5.35,66.57h0c-3.97,7.7,1.62,16.88,10.28,16.88h54.46c17.1,0,29.06,16.89,23.39,33.02l-33.11,94.15c-3.82,10.87-14.09,18.14-25.61,18.14h-64.57c-11.22,0-22.34-2.03-32.83-6l-19.86-7.51v-126.87"/>
                         </svg>
                       </button>
-                      <button class="btn-icon danger" aria-label="${ccmLabel} Not Accepted" title="${ccmLabel} Not Accepted">
+                      <button class="btn-icon danger thumb-down" aria-label="${ccmLabel} Not Accepted" title="${ccmLabel} Not Accepted">
                         <svg viewBox="0 0 233.12 234.63" aria-hidden="true">
                           <path d="M52.97,218.37H12.19c-5.21,0-9.44-4.23-9.44-9.44v-108.68c0-5.21,4.23-9.44,9.44-9.44h38.63c6.97-.01,13.73-2.63,18.73-7.49C90.09,63.36,113.34,16.95,122.19,7.1c3.98-4.7,9.44-4.71,13.07-4.03.07.02.13.03.2.05,25.27,5.85,14.83,46.22,5.35,66.57h0c-3.97,7.7,1.62,16.88,10.28,16.88h54.46c17.1,0,29.06,16.89,23.39,33.02l-33.11,94.15c-3.82,10.87-14.09,18.14-25.61,18.14h-64.57c-11.22,0-22.34-2.03-32.83-6l-19.86-7.51v-126.87"/>
                         </svg>
@@ -1740,7 +1744,7 @@
                     </div>
                   </div>
                   ` : ""}
-                  <div class="contact-meta-col">
+                  <div class="contact-meta-col right">
                     <div class="contact-meta-label">Open</div>
                     <div class="contact-meta-actions">
                       <button class="btn-icon" id="btnContactOpen" aria-label="Open" title="Open">
