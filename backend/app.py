@@ -3374,6 +3374,9 @@ def init_db():
             fax           TEXT DEFAULT '',
 
             evolv_client  INTEGER DEFAULT 0,
+            medrina_facility INTEGER DEFAULT 0,
+            medrina_ccm   INTEGER DEFAULT 0,
+            evolv_ccm     INTEGER DEFAULT 0,
 
             survey_recipient_emails TEXT DEFAULT '',
             survey_pin TEXT DEFAULT '',
@@ -3408,6 +3411,9 @@ def init_db():
         "ALTER TABLE sensys_agencies ADD COLUMN email TEXT DEFAULT ''",
         "ALTER TABLE sensys_agencies ADD COLUMN fax TEXT DEFAULT ''",
         "ALTER TABLE sensys_agencies ADD COLUMN evolv_client INTEGER DEFAULT 0",
+        "ALTER TABLE sensys_agencies ADD COLUMN medrina_facility INTEGER DEFAULT 0",
+        "ALTER TABLE sensys_agencies ADD COLUMN medrina_ccm INTEGER DEFAULT 0",
+        "ALTER TABLE sensys_agencies ADD COLUMN evolv_ccm INTEGER DEFAULT 0",
         "ALTER TABLE sensys_agencies ADD COLUMN survey_recipient_emails TEXT DEFAULT ''",
         "ALTER TABLE sensys_agencies ADD COLUMN survey_pin TEXT DEFAULT ''",
         "ALTER TABLE sensys_agencies ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))",
@@ -18847,6 +18853,9 @@ class SensysAgencyUpsert(BaseModel):
     fax: Optional[str] = ""
 
     evolv_client: Optional[bool] = False
+    medrina_facility: Optional[bool] = False
+    medrina_ccm: Optional[bool] = False
+    evolv_ccm: Optional[bool] = False
     survey_recipient_emails: Optional[str] = ""
     survey_pin: Optional[str] = ""
     # Preferred Providers (if omitted, do NOT change existing)
@@ -19928,6 +19937,9 @@ def sensys_admin_agencies(token: str):
             email,
             fax,
             evolv_client,
+            medrina_facility,
+            medrina_ccm,
+            evolv_ccm,
             COALESCE(survey_recipient_emails, '') AS survey_recipient_emails,
             COALESCE(survey_pin, '') AS survey_pin,
             created_at,
@@ -19979,6 +19991,9 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
         raise HTTPException(status_code=400, detail="agency_type is required")
 
     evolv_client = 1 if bool(payload.evolv_client) else 0
+    medrina_facility = 1 if bool(payload.medrina_facility) else 0
+    medrina_ccm = 1 if bool(payload.medrina_ccm) else 0
+    evolv_ccm = 1 if bool(payload.evolv_ccm) else 0
 
     if payload.id:
         conn.execute(
@@ -20000,6 +20015,9 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                    email            = ?,
                    fax              = ?,
                    evolv_client     = ?,
+                   medrina_facility = ?,
+                   medrina_ccm      = ?,
+                   evolv_ccm        = ?,
                    survey_recipient_emails = ?,
                    survey_pin       = ?,
                    -- âœ… PDW Prefs (only overwrite when payload sends them)
@@ -20028,6 +20046,9 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                 (payload.email or "").strip(),
                 (payload.fax or "").strip(),
                 evolv_client,
+                medrina_facility,
+                medrina_ccm,
+                evolv_ccm,
                 (payload.survey_recipient_emails or "").strip(),
                 (payload.survey_pin or "").strip(),
                 payload.pdw_attempts_expected,
@@ -20047,7 +20068,7 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                     notes, notes2,
                     address, city, state, zip,
                     phone1, phone2, email, fax,
-                    evolv_client,
+                    evolv_client, medrina_facility, medrina_ccm, evolv_ccm,
                     survey_recipient_emails, survey_pin,
 
                     -- âœ… PDW Prefs
@@ -20055,7 +20076,7 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                     pdw_enable_48h, pdw_enable_15d, pdw_enable_30d
                 )
             VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
@@ -20074,6 +20095,9 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                 (payload.email or "").strip(),
                 (payload.fax or "").strip(),
                 evolv_client,
+                medrina_facility,
+                medrina_ccm,
+                evolv_ccm,
                 (payload.survey_recipient_emails or "").strip(),
                 (payload.survey_pin or "").strip(),
                 int(payload.pdw_attempts_expected or 2),
@@ -22526,6 +22550,9 @@ async def sensys_admin_agencies_bulk(token: str, file: UploadFile = File(...)):
                 raise ValueError("agency_type is required")
 
             evolv_client = _to_bool_int(r.get("evolv_client"), 0)
+            medrina_facility = _to_bool_int(r.get("medrina_facility"), 0)
+            medrina_ccm = _to_bool_int(r.get("medrina_ccm"), 0)
+            evolv_ccm = _to_bool_int(r.get("evolv_ccm"), 0)
 
             vals = (
                 name,
@@ -22542,6 +22569,9 @@ async def sensys_admin_agencies_bulk(token: str, file: UploadFile = File(...)):
                 (r.get("email", "") or "").strip(),
                 (r.get("fax", "") or "").strip(),
                 int(evolv_client),
+                int(medrina_facility),
+                int(medrina_ccm),
+                int(evolv_ccm),
             )
 
             if agency_id:
@@ -22563,6 +22593,9 @@ async def sensys_admin_agencies_bulk(token: str, file: UploadFile = File(...)):
                            email         = ?,
                            fax           = ?,
                            evolv_client  = ?,
+                           medrina_facility = ?,
+                           medrina_ccm      = ?,
+                           evolv_ccm        = ?,
                            updated_at    = datetime('now')
                      WHERE id = ?
                     """,
@@ -22576,9 +22609,9 @@ async def sensys_admin_agencies_bulk(token: str, file: UploadFile = File(...)):
                     conn.execute(
                         """
                         INSERT INTO sensys_agencies
-                            (id, agency_name, agency_type, facility_code, notes, notes2, address, city, state, zip, phone1, phone2, email, fax, evolv_client)
+                            (id, agency_name, agency_type, facility_code, notes, notes2, address, city, state, zip, phone1, phone2, email, fax, evolv_client, medrina_facility, medrina_ccm, evolv_ccm)
                         VALUES
-                            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (int(agency_id),) + vals,
                     )
@@ -22587,9 +22620,9 @@ async def sensys_admin_agencies_bulk(token: str, file: UploadFile = File(...)):
                 conn.execute(
                     """
                     INSERT INTO sensys_agencies
-                        (agency_name, agency_type, facility_code, notes, notes2, address, city, state, zip, phone1, phone2, email, fax, evolv_client)
+                        (agency_name, agency_type, facility_code, notes, notes2, address, city, state, zip, phone1, phone2, email, fax, evolv_client, medrina_facility, medrina_ccm, evolv_ccm)
                     VALUES
-                        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     vals,
                 )
@@ -23168,6 +23201,8 @@ def sensys_my_admissions(request: Request, admitted_only: int = 0):
                 -- admission's main agency (still useful context)
                 a.agency_id,
                 ag.agency_name AS agency_name,
+                COALESCE(ag.medrina_ccm, 0) AS agency_medrina_ccm,
+                COALESCE(ag.evolv_ccm, 0) AS agency_evolv_ccm,
 
                 -- the agency that caused the HH user to see this admission
                 ar.agency_id AS referral_agency_id,
@@ -23288,6 +23323,8 @@ def sensys_my_admissions(request: Request, admitted_only: int = 0):
 
             a.agency_id,
             ag.agency_name AS agency_name,
+            COALESCE(ag.medrina_ccm, 0) AS agency_medrina_ccm,
+            COALESCE(ag.evolv_ccm, 0) AS agency_evolv_ccm,
 
             a.admit_date,
             a.dc_date,
