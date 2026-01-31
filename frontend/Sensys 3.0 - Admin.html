@@ -2869,22 +2869,23 @@
     </div>
 
     <div class="modal-body">
-      <!-- (keep your existing body contents exactly as-is) -->
       <div class="grid2">
         <div>
-          <label>Field Key</label>
-          <input id="noteFieldKey" placeholder="e.g., dc_barrier" />
+          <div class="label">Field Key</div>
+          <input class="input" id="noteFieldKey" placeholder="e.g., dc_barrier" />
         </div>
         <div>
-          <label>Field Label</label>
-          <input id="noteFieldLabel" placeholder="e.g., Biggest barrier to DC?" />
+          <div class="label">Field Label</div>
+          <input class="input" id="noteFieldLabel" placeholder="e.g., Biggest barrier to DC?" />
         </div>
       </div>
 
-      <div class="grid2" style="margin-top:10px;">
+      <div style="height:10px"></div>
+
+      <div class="grid2">
         <div>
-          <label>Type</label>
-          <select id="noteFieldType">
+          <div class="label">Type</div>
+          <select class="select" id="noteFieldType">
             <option value="text">text</option>
             <option value="textarea">textarea</option>
             <option value="number">number</option>
@@ -2894,22 +2895,24 @@
           </select>
         </div>
         <div>
-          <label>Sort Order</label>
-          <input id="noteFieldOrder" placeholder="0" />
+          <div class="label">Sort Order</div>
+          <input class="input" id="noteFieldOrder" placeholder="0" />
         </div>
       </div>
 
-      <div class="grid2" style="margin-top:10px;">
+      <div style="height:10px"></div>
+
+      <div class="grid2">
         <div>
-          <label>Required</label>
-          <select id="noteFieldRequired">
+          <div class="label">Required</div>
+          <select class="select" id="noteFieldRequired">
             <option value="0">No</option>
             <option value="1">Yes</option>
           </select>
         </div>
         <div>
-          <label>Options JSON (select only)</label>
-          <input id="noteFieldOptions" placeholder='["Yes","No","Maybe"]' />
+          <div class="label">Options JSON (select only)</div>
+          <textarea class="input" id="noteFieldOptions" rows="4" placeholder='["Yes","No","Maybe"]'></textarea>
         </div>
       </div>
 

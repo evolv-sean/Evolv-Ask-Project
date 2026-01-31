@@ -1164,6 +1164,9 @@
 
     const token = () => (localStorage.getItem("sensys_token") || "").trim();
     const authHeaders = () => ({ "Authorization": "Bearer " + token() });
+    const WORKSPACE_KEY = "evolv_snf";
+    const ATTEMPT_TEMPLATE_ID = 2;
+    const ATTEMPT_NOTE_NAME = "Log Call Attempts";
 
     const formatDateTime = (iso) => new Intl.DateTimeFormat("en-US", {
       month:"short", day:"numeric", hour:"numeric", minute:"2-digit"
@@ -1234,6 +1237,7 @@
         lockStatus: "not_ready",
         startOfCareDate: null,
         activityLog: [],
+        localActivityLog: [],
         hhServiceNames: hhServices,
         dmeServiceNames: dmeServices,
         agencyCcm: {
@@ -1253,11 +1257,39 @@
         if (!res.ok) throw new Error("Failed to load admissions");
         const data = await res.json();
         patients = (data.admissions || []).map(mapAdmissionRow);
+        await loadAdmissionNotes(patients.map(p => p.id));
         populateFacilityFilter();
         render();
       } catch (err) {
         console.warn("[Evolv SNF] admissions fetch failed:", err);
         render();
+      }
+    };
+
+    const loadAdmissionNotes = async (admissionIds) => {
+      if (!token() || !admissionIds?.length) return;
+      try {
+        const params = new URLSearchParams({
+          admission_ids: admissionIds.join(","),
+          workspace_key: WORKSPACE_KEY
+        });
+        const res = await fetch(`/api/sensys/admission-notes?${params.toString()}`, { headers: authHeaders() });
+        if (!res.ok) throw new Error("Failed to load notes");
+        const data = await res.json();
+        const notesByAdmission = {};
+        (data.notes || []).forEach(n => {
+          const id = String(n.admission_id || "");
+          if (!id) return;
+          if (!notesByAdmission[id]) notesByAdmission[id] = [];
+          notesByAdmission[id].push(n);
+        });
+        patients.forEach(p => {
+          p.admissionNotes = notesByAdmission[p.id] || [];
+          applyAttemptNotes(p);
+          p.activityLog = buildActivityLog(p);
+        });
+      } catch (err) {
+        console.warn("[Evolv SNF] notes fetch failed:", err);
       }
     };
 
@@ -1304,6 +1336,10 @@
       return faxFailed || referralRejected || referralStale || ordersStale || unreachableSoon || notReadySoon;
     };
 
+    const isContactComplete = (p) => {
+      return p.contactStatus === "reached" || p.contactStatus === "not_reachable_final" || p.contactAttempts >= 2;
+    };
+
     const hoursSince = (iso) => {
       if (!iso) return 0;
       return (Date.now() - new Date(iso).getTime()) / 3600000;
@@ -1311,7 +1347,7 @@
 
     const inQueue = (p, queueId) => {
       if (queueId === "intake") {
-        return p.contactStatus !== "reached" && p.contactAttempts < 2 && !isDischarged(p);
+        return !isContactComplete(p) && p.contactAttempts < 2 && !isDischarged(p);
       }
       if (queueId === "docs") {
         return p.docsStatus !== "complete" && !isDischarged(p);
@@ -1398,8 +1434,41 @@
     };
     toastCloseEl.addEventListener("click", () => toastEl.classList.remove("show"));
 
+    const getAttemptNotes = (p) => (p.admissionNotes || [])
+      .filter(n => Number(n.template_id) === ATTEMPT_TEMPLATE_ID && (n.workspace_key || "") === WORKSPACE_KEY);
+
+    const applyAttemptNotes = (p) => {
+      const attemptNotes = getAttemptNotes(p);
+      const sorted = attemptNotes
+        .filter(n => n.created_at)
+        .sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+      const attempts = attemptNotes.length;
+      p.contactAttempts = attempts;
+      p.lastContactAttemptAt = sorted[0]?.created_at || null;
+      if (p.contactStatus !== "reached") {
+        if (attempts >= 2) p.contactStatus = "not_reachable_final";
+        else if (attempts >= 1) p.contactStatus = "attempted_vm";
+        else p.contactStatus = "not_attempted";
+      }
+    };
+
+    const buildActivityLog = (p) => {
+      const entries = [...(p.localActivityLog || [])];
+      const attemptNotes = getAttemptNotes(p);
+      attemptNotes.forEach(n => {
+        const stamp = n.created_at ? formatStamp(new Date(n.created_at)) : formatStamp(new Date());
+        const detail = n.attempt_detail || "Left voicemail";
+        const comments = (n.attempt_comments || "").trim();
+        const suffix = comments ? ` — ${comments}` : "";
+        entries.unshift(`${stamp} - ${detail}${suffix}`);
+      });
+      return entries;
+    };
+
     const addActivity = (p, text) => {
-      p.activityLog.unshift(`${formatStamp(new Date())} - ${text}`);
+      p.localActivityLog = p.localActivityLog || [];
+      p.localActivityLog.unshift(`${formatStamp(new Date())} - ${text}`);
+      p.activityLog = buildActivityLog(p);
     };
 
     const renderQueues = () => {
@@ -1463,7 +1532,7 @@
 
     const taskChips = (p) => {
       const chips = [];
-      if (p.contactStatus !== "reached") chips.push(`Contact`);
+      if (!isContactComplete(p)) chips.push(`Contact`);
       if (p.docsStatus !== "complete") chips.push(`Docs`);
       if (p.servicesNeeded.homeHealth && p.referrals.homeHealth.referralStatus === "not_sent") chips.push(`Referral`);
       if (p.ordersStatus === "pending") chips.push(`Orders`);
@@ -1472,7 +1541,7 @@
     };
 
     const isTaskUrgent = (p, task) => {
-      if (task === "Contact" && computeAtRisk(p) && p.contactStatus !== "reached") return true;
+      if (task === "Contact" && computeAtRisk(p) && !isContactComplete(p)) return true;
       if (task === "Referral") {
         const failed = ["homeHealth","dme"].some(s => p.referrals[s] && p.referrals[s].faxStatus === "failed");
         const rejected = ["homeHealth","dme"].some(s => p.referrals[s] && p.referrals[s].referralStatus === "rejected");
@@ -1667,16 +1736,16 @@
       const dmeMethod = getDeliveryMethod(p, "dme");
       const contactLabel = {
         not_attempted:"Not attempted",
-        attempted_vm:`VM left (${p.contactAttempts}/2)`,
+        attempted_vm:`VM Left (${p.contactAttempts}/2)`,
         reached:"Reached",
-        not_reachable_final:"Unreachable (final)"
+        not_reachable_final:"VM Left (2/2)"
       }[p.contactStatus] || "Unknown";
       const contactMeta = `${contactLabel}${p.lastContactAttemptAt ? ` - ${formatDateTime(p.lastContactAttemptAt)}` : ""}`;
       const showCcm = Boolean(p.agencyCcm?.medrina || p.agencyCcm?.evolv);
       const ccmLabel = p.agencyCcm?.medrina ? "Medrina CCM" : "CCM Accepted";
 
       const statusPills = `
-        <div class="status-pill ${p.contactStatus === "reached" ? "done" : ""}">Intake</div>
+        <div class="status-pill ${isContactComplete(p) ? "done" : ""}">Contact</div>
         <div class="status-pill ${p.docsStatus === "complete" ? "done" : ""}">Docs</div>
         <div class="status-pill ${["accepted","not_required"].includes(p.referrals.homeHealth.referralStatus) && ["accepted","not_required"].includes(p.referrals.dme.referralStatus) ? "done" : ""}">Referrals</div>
         <div class="status-pill ${["signed","exception_off_portal","not_required"].includes(p.ordersStatus) ? "done" : p.ordersStatus === "pending" ? "block" : ""}">Orders</div>
@@ -1715,7 +1784,7 @@
                   <div class="contact-meta-col left">
                     <div class="contact-meta-label">Call Result</div>
                     <div class="contact-meta-actions">
-                      <button class="btn-icon vm thumb-down" id="btnVm" ${p.contactAttempts >= 2 ? "disabled" : ""} aria-label="Left VM">
+                      <button class="btn-icon vm thumb-down" id="btnVm" ${p.contactAttempts >= 2 ? "disabled" : ""} aria-label="Log Attempt" title="Log Attempt">
                         <svg viewBox="0 0 233.12 234.63" aria-hidden="true">
                           <path d="M52.97,218.37H12.19c-5.21,0-9.44-4.23-9.44-9.44v-108.68c0-5.21,4.23-9.44,9.44-9.44h38.63c6.97-.01,13.73-2.63,18.73-7.49C90.09,63.36,113.34,16.95,122.19,7.1c3.98-4.7,9.44-4.71,13.07-4.03.07.02.13.03.2.05,25.27,5.85,14.83,46.22,5.35,66.57h0c-3.97,7.7,1.62,16.88,10.28,16.88h54.46c17.1,0,29.06,16.89,23.39,33.02l-33.11,94.15c-3.82,10.87-14.09,18.14-25.61,18.14h-64.57c-11.22,0-22.34-2.03-32.83-6l-19.86-7.51v-126.87"/>
                         </svg>
@@ -1975,20 +2044,42 @@
 
     const docsMinimumComplete = (p) => p.docsChecklist.faceSheet && p.docsChecklist.orders;
 
-    const logVm = (p) => {
+    const logVm = async (p) => {
       if (p.contactAttempts >= 2) return;
-      p.contactAttempts += 1;
-      p.contactStatus = "attempted_vm";
-      p.lastContactAttemptAt = new Date().toISOString();
-      if (p.contactAttempts >= 2) {
-        p.contactStatus = "not_reachable_final";
+      const nowIso = new Date().toISOString();
+      if (!token()) {
+        p.contactAttempts += 1;
+        p.contactStatus = p.contactAttempts >= 2 ? "not_reachable_final" : "attempted_vm";
+        p.lastContactAttemptAt = nowIso;
         p.nextContactDueAt = null;
-      } else {
-        p.nextContactDueAt = new Date(Date.now() + 2 * 3600000).toISOString();
+        addActivity(p, `Left voicemail (Attempt ${p.contactAttempts})`);
+        showToast("VM logged", `Attempt ${p.contactAttempts} for ${p.name}`);
+        render();
+        return;
       }
-      addActivity(p, `Left VM (Attempt ${p.contactAttempts})`);
-      showToast("VM logged", `Attempt ${p.contactAttempts} for ${p.name}`);
-      render();
+
+      try {
+        const payload = {
+          admission_id: Number(p.id),
+          note_name: ATTEMPT_NOTE_NAME,
+          template_id: ATTEMPT_TEMPLATE_ID,
+          workspace_key: WORKSPACE_KEY,
+          attempt_detail: "Left voicemail",
+          attempt_comments: ""
+        };
+        const res = await fetch("/api/sensys/admission-notes/upsert", {
+          method: "POST",
+          headers: { ...authHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error("Failed to log attempt");
+        await loadAdmissionNotes([p.id]);
+        showToast("VM logged", `Attempt ${p.contactAttempts} for ${p.name}`);
+        render();
+      } catch (err) {
+        console.warn("[Evolv SNF] attempt log failed:", err);
+        showToast("Attempt failed", p.name);
+      }
     };
 
     const markReached = (p) => {
