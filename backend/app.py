@@ -26615,6 +26615,15 @@ class AdmissionNoteUpsert(BaseModel):
     attempt_comments: Optional[str] = ""
     answer_field_key: Optional[str] = ""
     answer_value_text: Optional[str] = ""
+    answers: Optional[List["AdmissionNoteAnswerIn"]] = None
+
+
+class AdmissionNoteAnswerIn(BaseModel):
+    field_key: str
+    value_text: Optional[str] = ""
+    value_num: Optional[float] = None
+    value_date: Optional[str] = ""
+    value_bool: Optional[int] = None
 
     # NEW fields
     note_title: Optional[str] = ""
@@ -26756,6 +26765,34 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
             ),
         )
 
+    if payload.answers and note_id:
+        for a in payload.answers:
+            if not (a.field_key or "").strip():
+                continue
+            conn.execute(
+                """
+                INSERT INTO sensys_admission_note_answers
+                    (note_id, field_key, value_text, value_num, value_date, value_bool, updated_at)
+                VALUES
+                    (?, ?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(note_id, field_key)
+                DO UPDATE SET
+                    value_text = excluded.value_text,
+                    value_num = excluded.value_num,
+                    value_date = excluded.value_date,
+                    value_bool = excluded.value_bool,
+                    updated_at = datetime('now')
+                """,
+                (
+                    int(note_id),
+                    (a.field_key or "").strip(),
+                    (a.value_text or "").strip() if a.value_text is not None else None,
+                    a.value_num if a.value_num is not None else None,
+                    (a.value_date or "").strip() if a.value_date is not None else None,
+                    int(a.value_bool) if a.value_bool is not None else None,
+                ),
+            )
+
     conn.commit()
     return {"ok": True, "id": int(note_id) if note_id else None}
 
@@ -26769,6 +26806,7 @@ def sensys_admission_notes_list(
     admission_id: int = 0,
     admission_ids: str = "",
     workspace_key: str = "",
+    include_answers: int = 0,
 ):
     u = _sensys_require_user(request)
     conn = get_db()
@@ -26844,7 +26882,25 @@ def sensys_admission_notes_list(
         params,
     ).fetchall()
 
-    return {"ok": True, "notes": [dict(r) for r in rows]}
+    notes = [dict(r) for r in rows]
+    if include_answers and notes:
+        note_ids = [int(n["id"]) for n in notes if n.get("id")]
+        ans_rows = conn.execute(
+            f"""
+            SELECT note_id, field_key, value_text, value_num, value_date, value_bool
+            FROM sensys_admission_note_answers
+            WHERE deleted_at IS NULL
+              AND note_id IN ({",".join(["?"] * len(note_ids))})
+            """,
+            tuple(note_ids),
+        ).fetchall()
+        by_note = {}
+        for r in ans_rows:
+            by_note.setdefault(int(r["note_id"]), []).append(dict(r))
+        for n in notes:
+            n["answers"] = by_note.get(int(n["id"]), [])
+
+    return {"ok": True, "notes": notes}
 
 
 # -----------------------------
