@@ -478,12 +478,12 @@
     }
     .fab-btn.n-icon svg{width:20px;height:20px;overflow:visible}
     .fab-btn.n-icon svg :where(path, line, polyline, polygon, rect, circle, ellipse){
-      stroke: currentColor !important; fill:none !important; stroke-width:6.5px;
+      stroke: currentColor !important; fill:none !important; stroke-width:15px;
       stroke-linecap:round; stroke-linejoin:round;
     }
     .fab-btn.asset-icon svg{width:22px;height:22px;overflow:visible}
     .fab-btn.asset-icon svg :where(path, line, polyline, polygon, rect, circle, ellipse){
-      stroke: currentColor !important; fill:none !important; stroke-width:5.5px;
+      stroke: currentColor !important; fill:none !important; stroke-width:3.6px;
       stroke-linecap:round; stroke-linejoin:round;
     }
     .fab-menu{
@@ -2021,13 +2021,15 @@
     };
 
     let fabUserOpen = false;
+    let fabAutoOpen = false;
     const updateFabState = () => {
       const anyOpen = drawerEl.classList.contains("open")
         || infoDrawerEl.classList.contains("open")
         || contactDrawerEl.classList.contains("open");
       document.body.classList.toggle("drawer-open", anyOpen);
       if (fabWrapEl) {
-        fabWrapEl.classList.toggle("open", anyOpen || fabUserOpen);
+        const shouldOpen = anyOpen ? (fabAutoOpen || fabUserOpen) : fabUserOpen;
+        fabWrapEl.classList.toggle("open", shouldOpen);
       }
     };
 
@@ -2036,6 +2038,7 @@
       drawerOverlayEl.classList.add("show");
       drawerEl.classList.add("open");
       renderDrawer(focus);
+      fabAutoOpen = true;
       updateFabState();
     };
     const closeDrawer = () => {
@@ -2044,6 +2047,7 @@
       drawerEl.classList.remove("open");
       infoDrawerEl.classList.remove("open");
       contactDrawerEl.classList.remove("open");
+      fabAutoOpen = false;
       updateFabState();
     };
     drawerOverlayEl.addEventListener("click", closeDrawer);
@@ -2845,10 +2849,12 @@
       drawerEl.classList.remove("open");
       infoDrawerEl.classList.add("open");
       drawerOverlayEl.classList.add("show");
+      fabAutoOpen = true;
       updateFabState();
       infoDrawerEl.querySelector("#btnInfoDone")?.addEventListener("click", () => {
         infoDrawerEl.classList.remove("open");
         if (selectedPatientId) drawerEl.classList.add("open");
+        fabAutoOpen = true;
         updateFabState();
       });
       infoDrawerEl.querySelector("#btnInfoEdit")?.addEventListener("click", (e) => {
@@ -2943,10 +2949,12 @@
       infoDrawerEl.classList.remove("open");
       contactDrawerEl.classList.add("open");
       drawerOverlayEl.classList.add("show");
+      fabAutoOpen = true;
       updateFabState();
       contactDrawerEl.querySelector("#btnContactDone")?.addEventListener("click", () => {
         contactDrawerEl.classList.remove("open");
         if (selectedPatientId) drawerEl.classList.add("open");
+        fabAutoOpen = true;
         updateFabState();
       });
       bindQuickNoteButton(
@@ -2974,6 +2982,17 @@
         || contactDrawerEl.classList.contains("open");
       if (anyOpen) return;
       fabUserOpen = !fabUserOpen;
+      updateFabState();
+    });
+    document.addEventListener("click", (event) => {
+      if (!fabWrapEl) return;
+      if (!fabUserOpen && !fabAutoOpen) return;
+      if (fabWrapEl.contains(event.target)) return;
+      if (drawerEl.contains(event.target)
+        || infoDrawerEl.contains(event.target)
+        || contactDrawerEl.contains(event.target)) return;
+      fabUserOpen = false;
+      fabAutoOpen = false;
       updateFabState();
     });
 
