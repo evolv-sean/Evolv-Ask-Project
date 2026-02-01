@@ -26617,14 +26617,6 @@ class AdmissionNoteUpsert(BaseModel):
     answer_value_text: Optional[str] = ""
     answers: Optional[List["AdmissionNoteAnswerIn"]] = None
 
-
-class AdmissionNoteAnswerIn(BaseModel):
-    field_key: str
-    value_text: Optional[str] = ""
-    value_num: Optional[float] = None
-    value_date: Optional[str] = ""
-    value_bool: Optional[int] = None
-
     # NEW fields
     note_title: Optional[str] = ""
     status: Optional[str] = "New"
@@ -26636,6 +26628,14 @@ class AdmissionNoteAnswerIn(BaseModel):
 
     # LEGACY (keep so older UI still works)
     note_comments: Optional[str] = ""
+
+
+class AdmissionNoteAnswerIn(BaseModel):
+    field_key: str
+    value_text: Optional[str] = ""
+    value_num: Optional[float] = None
+    value_date: Optional[str] = ""
+    value_bool: Optional[int] = None
 
 
 # -----------------------------
