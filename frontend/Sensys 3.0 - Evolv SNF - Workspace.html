@@ -363,6 +363,11 @@
       background:#fff;color:#334155;font-weight:900;font-size:11px;cursor:pointer;
       transition: border-color .15s ease, box-shadow .15s ease, background .15s ease, color .15s ease;
     }
+    .chip-toggle:hover{
+      border-color: rgba(168,230,207,.9);
+      background: rgba(168,230,207,.12);
+      box-shadow: 0 0 0 3px rgba(168,230,207,.18);
+    }
     .chip-toggle.is-active{
       border-color: rgba(168,230,207,.95);
       background: rgba(168,230,207,.22);
@@ -373,6 +378,30 @@
     .activity-item{
       padding:8px 10px;border-radius:12px;border:1px solid rgba(13,59,102,.10);
       background:rgba(13,59,102,.03);font-size:11px;color:#1f2937;font-weight:700;
+    }
+    .activity-item.note-row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      cursor:pointer;
+    }
+    .activity-item.note-row:hover{
+      background: rgba(168,230,207,.12);
+      border-color: rgba(168,230,207,.45);
+    }
+    .note-text{flex:1;min-width:0}
+    .icon-plain.trash{color:#9aa6b2;}
+    .icon-plain.trash:hover{color:#6b7280;}
+    .btn-icon.is-selected{
+      box-shadow: var(--ring2);
+      background: rgba(168,230,207,.22);
+      border-color: rgba(168,230,207,.95);
+    }
+    .btn-icon.danger.is-selected{
+      box-shadow: 0 0 0 3px rgba(199,107,107,.25);
+      background: rgba(199,107,107,.16);
+      border-color: rgba(199,107,107,.6);
     }
     .info-grid{display:grid;grid-template-columns: repeat(2, minmax(0,1fr));gap:12px}
     .info-section{display:flex;flex-direction:column;gap:10px}
@@ -443,6 +472,7 @@
       stroke: currentColor !important; fill:none !important; stroke-width: 6.5px;
     }
     .btn-icon[disabled]{opacity:.78; cursor:not-allowed; box-shadow:none; transform:none;}
+    .btn-icon.is-selected[disabled]{opacity:1; cursor:default;}
     .btn-icon.reached{color:#2f7a5a;border-color: rgba(47,122,90,.35);}
     .btn-icon.vm{color:var(--neg);border-color: rgba(199,107,107,.45);}
     .btn-icon.vm svg{transform: none;}
@@ -1312,6 +1342,12 @@
     const REACHED_NOTE_NAME = "Evolv SNF - Initial Call Default";
     const REACHED_FIELD_KEY = "patient_contact_default";
     const REACHED_ANSWER = "Spoke to patient and educated on next steps in discharge planning process.";
+    const CALL_VM_ANSWER = "Left VM";
+    const CCM_TEMPLATE_ID = 4;
+    const CCM_NOTE_NAME = "Evolv SNF - CCM Status";
+    const CCM_FIELD_KEY = "ccm_status_default";
+    const CCM_ACCEPTED_ANSWER = "CCM introduction completed with patient. Patient did not decline CCM services.";
+    const CCM_DECLINED_ANSWER = "Patient Declined CCM Services";
 
     const formatDateTime = (iso) => new Intl.DateTimeFormat("en-US", {
       month:"short", day:"numeric", hour:"numeric", minute:"2-digit"
@@ -1629,11 +1665,24 @@
       toastEl.classList.remove("show");
     });
 
-    const getAttemptNotes = (p) => (p.admissionNotes || [])
-      .filter(n => Number(n.template_id) === ATTEMPT_TEMPLATE_ID && (n.workspace_key || "") === WORKSPACE_KEY);
+    const getNoteAnswerValue = (n, fieldKey) => {
+      const direct = (n.response1 || "").trim();
+      if (direct) return direct;
+      const ans = (n.answers || []).find(a => a.field_key === fieldKey);
+      return (ans && ans.value_text) ? String(ans.value_text) : "";
+    };
 
-    const getReachedNotes = (p) => (p.admissionNotes || [])
+    const getCallResultNotes = (p) => (p.admissionNotes || [])
       .filter(n => Number(n.template_id) === REACHED_TEMPLATE_ID && (n.workspace_key || "") === WORKSPACE_KEY);
+
+    const getAttemptNotes = (p) => getCallResultNotes(p)
+      .filter(n => getNoteAnswerValue(n, REACHED_FIELD_KEY) === CALL_VM_ANSWER);
+
+    const getReachedNotes = (p) => getCallResultNotes(p)
+      .filter(n => getNoteAnswerValue(n, REACHED_FIELD_KEY) === REACHED_ANSWER);
+
+    const getCcmNotes = (p) => (p.admissionNotes || [])
+      .filter(n => Number(n.template_id) === CCM_TEMPLATE_ID && (n.workspace_key || "") === WORKSPACE_KEY);
 
     const applyAttemptNotes = (p) => {
       const attemptNotes = getAttemptNotes(p);
@@ -1655,22 +1704,40 @@
     };
 
     const buildActivityLog = (p) => {
-      const entries = [...(p.localActivityLog || [])];
+      const entries = (p.localActivityLog || []).map(item => (typeof item === "string" ? { text: item } : item));
       const attemptNotes = getAttemptNotes(p);
       const reachedNotes = getReachedNotes(p);
+      const ccmNotes = getCcmNotes(p);
       attemptNotes.forEach(n => {
         const stamp = n.created_at ? formatStamp(new Date(n.created_at)) : formatStamp(new Date());
-        const detail = n.attempt_detail || "Left voicemail";
-        const comments = (n.attempt_comments || "").trim();
-        const suffix = comments ? ` — ${comments}` : "";
-        entries.unshift(`${stamp} - ${detail}${suffix}`);
+        entries.unshift({
+          text: `${stamp} - Left voicemail`,
+          noteId: n.id,
+          templateId: REACHED_TEMPLATE_ID
+        });
       });
       reachedNotes.forEach(n => {
         const stamp = n.created_at ? formatStamp(new Date(n.created_at)) : formatStamp(new Date());
-        const detail = (n.response1 || REACHED_ANSWER || "Reached patient").trim();
+        const detail = (getNoteAnswerValue(n, REACHED_FIELD_KEY) || REACHED_ANSWER || "Reached patient").trim();
         const prefix = "Reached patient";
         const suffix = detail && detail !== prefix ? ` — ${detail}` : "";
-        entries.unshift(`${stamp} - ${prefix}${suffix}`);
+        entries.unshift({
+          text: `${stamp} - ${prefix}${suffix}`,
+          noteId: n.id,
+          templateId: REACHED_TEMPLATE_ID
+        });
+      });
+      ccmNotes.forEach(n => {
+        const stamp = n.created_at ? formatStamp(new Date(n.created_at)) : formatStamp(new Date());
+        const detail = (getNoteAnswerValue(n, CCM_FIELD_KEY) || n.response1 || "").trim();
+        const isDeclined = detail.toLowerCase().includes("declined");
+        const prefix = isDeclined ? "CCM Declined" : "CCM Accepted";
+        const suffix = detail ? ` — ${detail}` : "";
+        entries.unshift({
+          text: `${stamp} - ${prefix}${suffix}`,
+          noteId: n.id,
+          templateId: CCM_TEMPLATE_ID
+        });
       });
       return entries;
     };
@@ -1695,7 +1762,7 @@
     };
 
     let noteDetailsContext = null;
-    const openNoteDetailsModal = async (p, templateId) => {
+    const openNoteDetailsModal = async (p, templateId, defaultAnswer, noteOverride) => {
       if (!token()) return;
       try {
         const templates = await loadNoteTemplates();
@@ -1704,7 +1771,7 @@
           showToast("Note template missing", p.name);
           return;
         }
-        const note = getLatestWorkspaceNote(p, templateId);
+        const note = noteOverride || getLatestWorkspaceNote(p, templateId);
         const answers = (note && note.answers) ? note.answers : [];
         const answerMap = {};
         answers.forEach(a => {
@@ -1717,7 +1784,12 @@
         });
 
         if (templateId === REACHED_TEMPLATE_ID && !answerMap[REACHED_FIELD_KEY]) {
-          answerMap[REACHED_FIELD_KEY] = REACHED_ANSWER;
+          const fallback = (note && note.response1) || defaultAnswer || "";
+          if (fallback) answerMap[REACHED_FIELD_KEY] = fallback;
+        }
+        if (templateId === CCM_TEMPLATE_ID && !answerMap[CCM_FIELD_KEY]) {
+          const fallback = (note && note.response1) || defaultAnswer || "";
+          if (fallback) answerMap[CCM_FIELD_KEY] = fallback;
         }
 
         noteDetailsTitleEl.textContent = `${tpl.template_name || "Note"} — ${p.name}`;
@@ -1779,18 +1851,35 @@
           `;
         }).join("");
 
+        let noteName = REACHED_NOTE_NAME;
+        let noteResponse1 = note ? (note.response1 || "") : (templateId === REACHED_TEMPLATE_ID ? (defaultAnswer || REACHED_ANSWER) : "");
+        if (templateId === ATTEMPT_TEMPLATE_ID) {
+          noteName = ATTEMPT_NOTE_NAME;
+          noteResponse1 = note ? (note.response1 || "") : "";
+        }
+        if (templateId === CCM_TEMPLATE_ID) {
+          noteName = CCM_NOTE_NAME;
+          noteResponse1 = note ? (note.response1 || "") : (defaultAnswer || "");
+        }
         noteDetailsContext = {
           patientId: p.id,
           templateId: Number(templateId),
           noteId: note ? Number(note.id) : null,
-          noteName: templateId === ATTEMPT_TEMPLATE_ID ? ATTEMPT_NOTE_NAME : REACHED_NOTE_NAME,
-          noteResponse1: note ? (note.response1 || "") : (templateId === REACHED_TEMPLATE_ID ? REACHED_ANSWER : "")
+          noteName,
+          noteResponse1
         };
         openModal(noteDetailsModalEl);
       } catch (err) {
         console.warn("[Evolv SNF] note modal failed:", err);
         showToast("Note modal failed", p.name);
       }
+    };
+
+    const openNoteDetailsModalForNote = (p, noteId) => {
+      if (!token()) return;
+      const note = (p.admissionNotes || []).find(n => Number(n.id) === Number(noteId));
+      if (!note) return;
+      openNoteDetailsModal(p, Number(note.template_id), null, note);
     };
 
     const addActivity = (p, text) => {
@@ -2086,6 +2175,12 @@
       const contactMeta = `${contactLabel}${p.lastContactAttemptAt ? ` - ${formatDateTime(p.lastContactAttemptAt)}` : ""}`;
       const showCcm = Boolean(p.agencyCcm?.medrina || p.agencyCcm?.evolv);
       const ccmLabel = p.agencyCcm?.medrina ? "Medrina CCM" : "CCM Accepted";
+      const attemptCount = getAttemptNotes(p).length;
+      const hasReached = getReachedNotes(p).length > 0;
+      const vmSelected = !hasReached && attemptCount >= 2;
+      const reachedSelected = hasReached;
+      const vmDisabled = hasReached || attemptCount >= 2;
+      const reachedDisabled = !hasReached && attemptCount >= 2;
       const pcpStatus = p.pcpApptNeeded ? "Not set" : "Appt set";
       const pcpMeta = p.pcpApptNeeded ? "No appointment on file" : "Appointment scheduled";
 
@@ -2128,14 +2223,14 @@
               <div class="card-body">
                 <div class="contact-meta-grid" style="grid-template-columns: repeat(${showCcm ? 3 : 2}, minmax(0,1fr));">
                   <div class="contact-meta-col left">
-                    <div class="contact-meta-label">Call Result</div>
+                    <div class="contact-meta-label">Intro Call</div>
                     <div class="contact-meta-actions">
-                      <button class="btn-icon vm thumb-down" id="btnVm" ${p.contactAttempts >= 2 ? "disabled" : ""} aria-label="Log Attempt" title="Log Attempt">
+                      <button class="btn-icon vm thumb-down ${vmSelected ? "is-selected" : ""}" id="btnVm" ${vmDisabled ? "disabled" : ""} aria-label="Log Attempt" title="Log Attempt">
                         <svg viewBox="0 0 233.12 234.63" aria-hidden="true">
                           <path d="M52.97,218.37H12.19c-5.21,0-9.44-4.23-9.44-9.44v-108.68c0-5.21,4.23-9.44,9.44-9.44h38.63c6.97-.01,13.73-2.63,18.73-7.49C90.09,63.36,113.34,16.95,122.19,7.1c3.98-4.7,9.44-4.71,13.07-4.03.07.02.13.03.2.05,25.27,5.85,14.83,46.22,5.35,66.57h0c-3.97,7.7,1.62,16.88,10.28,16.88h54.46c17.1,0,29.06,16.89,23.39,33.02l-33.11,94.15c-3.82,10.87-14.09,18.14-25.61,18.14h-64.57c-11.22,0-22.34-2.03-32.83-6l-19.86-7.51v-126.87"/>
                         </svg>
                       </button>
-                      <button class="btn-icon reached" id="btnReached" aria-label="Reached">
+                      <button class="btn-icon reached ${reachedSelected ? "is-selected" : ""}" id="btnReached" ${reachedDisabled ? "disabled" : ""} aria-label="Reached">
                         <svg viewBox="0 0 233.12 234.63" aria-hidden="true">
                           <path d="M52.97,218.37H12.19c-5.21,0-9.44-4.23-9.44-9.44v-108.68c0-5.21,4.23-9.44,9.44-9.44h38.63c6.97-.01,13.73-2.63,18.73-7.49C90.09,63.36,113.34,16.95,122.19,7.1c3.98-4.7,9.44-4.71,13.07-4.03.07.02.13.03.2.05,25.27,5.85,14.83,46.22,5.35,66.57h0c-3.97,7.7,1.62,16.88,10.28,16.88h54.46c17.1,0,29.06,16.89,23.39,33.02l-33.11,94.15c-3.82,10.87-14.09,18.14-25.61,18.14h-64.57c-11.22,0-22.34-2.03-32.83-6l-19.86-7.51v-126.87"/>
                         </svg>
@@ -2146,12 +2241,12 @@
                   <div class="contact-meta-col center">
                     <div class="contact-meta-label">${ccmLabel}</div>
                     <div class="contact-meta-actions">
-                      <button class="btn-icon reached" aria-label="${ccmLabel}" title="${ccmLabel}">
+                      <button class="btn-icon reached" id="btnCcmYes" aria-label="${ccmLabel}" title="${ccmLabel}">
                         <svg viewBox="0 0 233.12 234.63" aria-hidden="true">
                           <path d="M52.97,218.37H12.19c-5.21,0-9.44-4.23-9.44-9.44v-108.68c0-5.21,4.23-9.44,9.44-9.44h38.63c6.97-.01,13.73-2.63,18.73-7.49C90.09,63.36,113.34,16.95,122.19,7.1c3.98-4.7,9.44-4.71,13.07-4.03.07.02.13.03.2.05,25.27,5.85,14.83,46.22,5.35,66.57h0c-3.97,7.7,1.62,16.88,10.28,16.88h54.46c17.1,0,29.06,16.89,23.39,33.02l-33.11,94.15c-3.82,10.87-14.09,18.14-25.61,18.14h-64.57c-11.22,0-22.34-2.03-32.83-6l-19.86-7.51v-126.87"/>
                         </svg>
                       </button>
-                      <button class="btn-icon danger thumb-down" aria-label="${ccmLabel} Not Accepted" title="${ccmLabel} Not Accepted">
+                      <button class="btn-icon danger thumb-down" id="btnCcmNo" aria-label="${ccmLabel} Not Accepted" title="${ccmLabel} Not Accepted">
                         <svg viewBox="0 0 233.12 234.63" aria-hidden="true">
                           <path d="M52.97,218.37H12.19c-5.21,0-9.44-4.23-9.44-9.44v-108.68c0-5.21,4.23-9.44,9.44-9.44h38.63c6.97-.01,13.73-2.63,18.73-7.49C90.09,63.36,113.34,16.95,122.19,7.1c3.98-4.7,9.44-4.71,13.07-4.03.07.02.13.03.2.05,25.27,5.85,14.83,46.22,5.35,66.57h0c-3.97,7.7,1.62,16.88,10.28,16.88h54.46c17.1,0,29.06,16.89,23.39,33.02l-33.11,94.15c-3.82,10.87-14.09,18.14-25.61,18.14h-64.57c-11.22,0-22.34-2.03-32.83-6l-19.86-7.51v-126.87"/>
                         </svg>
@@ -2349,7 +2444,11 @@
               </div>
               <div class="card-body">
                 <div class="activity-log">
-                  ${p.activityLog.slice(0,4).map(item => `<div class="activity-item">${item}</div>`).join("")}
+                  ${p.activityLog.slice(0,4).map(item => `
+                    <div class="activity-item ${item.noteId ? "note-row" : ""}" ${item.noteId ? `data-note-id="${item.noteId}" data-template-id="${item.templateId}"` : ""}>
+                      <span class="note-text">${item.text || item}</span>
+                    </div>
+                  `).join("")}
                 </div>
               </div>
             </div>
@@ -2367,6 +2466,16 @@
         () => markReached(p),
         () => markReached(p, { openDetails: true, showToastAction: false })
       );
+      bindQuickNoteButton(
+        drawerEl.querySelector("#btnCcmYes"),
+        () => logCcmStatus(p, true),
+        () => logCcmStatus(p, true, { openDetails: true, showToastAction: false })
+      );
+      bindQuickNoteButton(
+        drawerEl.querySelector("#btnCcmNo"),
+        () => logCcmStatus(p, false),
+        () => logCcmStatus(p, false, { openDetails: true, showToastAction: false })
+      );
       drawerEl.querySelectorAll('[data-doc]').forEach(el => {
         el.addEventListener("click", (e) => toggleDoc(p, e.target.dataset.doc));
       });
@@ -2382,6 +2491,13 @@
       drawerEl.querySelector("#btnSigned")?.addEventListener("click", () => markOrdersSigned(p));
       drawerEl.querySelector("#btnInfo")?.addEventListener("click", () => openInfoDrawer(p));
       drawerEl.querySelector("#btnContactOpen")?.addEventListener("click", () => openContactDrawer(p));
+      drawerEl.querySelector(".activity-log")?.addEventListener("click", (event) => {
+        const row = event.target.closest(".activity-item.note-row");
+        if (!row) return;
+        const noteId = row.dataset.noteId;
+        if (!noteId) return;
+        openNoteDetailsModalForNote(p, noteId);
+      });
 
       const downloadBtnHtml = `
         <button class="btn-icon" aria-label="Open" title="Open" data-download="true">
@@ -2420,7 +2536,7 @@
 
     const logVm = async (p, opts = {}) => {
       const { openDetails = false, showToastAction = true } = opts;
-      if (p.contactAttempts >= 2) return;
+      if (p.contactAttempts >= 2 || p.contactStatus === "reached") return;
       const nowIso = new Date().toISOString();
       if (!token()) {
         p.contactAttempts += 1;
@@ -2436,11 +2552,12 @@
       try {
         const payload = {
           admission_id: Number(p.id),
-          note_name: ATTEMPT_NOTE_NAME,
-          template_id: ATTEMPT_TEMPLATE_ID,
+          note_name: REACHED_NOTE_NAME,
+          template_id: REACHED_TEMPLATE_ID,
           workspace_key: WORKSPACE_KEY,
-          attempt_detail: "Left voicemail",
-          attempt_comments: ""
+          response1: CALL_VM_ANSWER,
+          answer_field_key: REACHED_FIELD_KEY,
+          answer_value_text: CALL_VM_ANSWER
         };
         const res = await fetch("/api/sensys/admission-notes/upsert", {
           method: "POST",
@@ -2450,11 +2567,11 @@
         if (!res.ok) throw new Error("Failed to log attempt");
         await loadAdmissionNotes([p.id]);
         if (openDetails) {
-          openNoteDetailsModal(p, ATTEMPT_TEMPLATE_ID);
+          openNoteDetailsModal(p, REACHED_TEMPLATE_ID, CALL_VM_ANSWER);
         } else if (showToastAction) {
           showToast("VM logged", `Attempt ${p.contactAttempts} for ${p.name}`, {
             label: "Complete details",
-            onClick: () => openNoteDetailsModal(p, ATTEMPT_TEMPLATE_ID)
+            onClick: () => openNoteDetailsModal(p, REACHED_TEMPLATE_ID, CALL_VM_ANSWER)
           });
         } else {
           showToast("VM logged", `Attempt ${p.contactAttempts} for ${p.name}`);
@@ -2469,6 +2586,7 @@
     const markReached = async (p, opts = {}) => {
       const { openDetails = false, showToastAction = true } = opts;
       const nowIso = new Date().toISOString();
+      if (p.contactStatus === "reached") return;
       if (!token()) {
         p.contactStatus = "reached";
         p.lastContactAttemptAt = nowIso;
@@ -2497,11 +2615,11 @@
         if (!res.ok) throw new Error("Failed to log reached note");
         await loadAdmissionNotes([p.id]);
         if (openDetails) {
-          openNoteDetailsModal(p, REACHED_TEMPLATE_ID);
+          openNoteDetailsModal(p, REACHED_TEMPLATE_ID, REACHED_ANSWER);
         } else if (showToastAction) {
           showToast("Patient reached", p.name, {
             label: "Complete details",
-            onClick: () => openNoteDetailsModal(p, REACHED_TEMPLATE_ID)
+            onClick: () => openNoteDetailsModal(p, REACHED_TEMPLATE_ID, REACHED_ANSWER)
           });
         } else {
           showToast("Patient reached", p.name);
@@ -2510,6 +2628,74 @@
       } catch (err) {
         console.warn("[Evolv SNF] reached log failed:", err);
         showToast("Reached log failed", p.name);
+      }
+    };
+
+    const logCcmStatus = async (p, accepted, opts = {}) => {
+      const { openDetails = false, showToastAction = true } = opts;
+      const answer = accepted ? CCM_ACCEPTED_ANSWER : CCM_DECLINED_ANSWER;
+      if (!token()) {
+        addActivity(p, `CCM ${accepted ? "accepted" : "declined"} — ${answer}`);
+        showToast(`CCM ${accepted ? "accepted" : "declined"}`, p.name);
+        render();
+        return;
+      }
+
+      try {
+        const payload = {
+          admission_id: Number(p.id),
+          note_name: CCM_NOTE_NAME,
+          template_id: CCM_TEMPLATE_ID,
+          workspace_key: WORKSPACE_KEY,
+          response1: answer,
+          answer_field_key: CCM_FIELD_KEY,
+          answer_value_text: answer
+        };
+        const res = await fetch("/api/sensys/admission-notes/upsert", {
+          method: "POST",
+          headers: { ...authHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error("Failed to log CCM status");
+        await loadAdmissionNotes([p.id]);
+        if (openDetails) {
+          openNoteDetailsModal(p, CCM_TEMPLATE_ID, answer);
+        } else if (showToastAction) {
+          showToast(`CCM ${accepted ? "accepted" : "declined"}`, p.name, {
+            label: "Complete details",
+            onClick: () => openNoteDetailsModal(p, CCM_TEMPLATE_ID, answer)
+          });
+        } else {
+          showToast(`CCM ${accepted ? "accepted" : "declined"}`, p.name);
+        }
+        render();
+      } catch (err) {
+        console.warn("[Evolv SNF] CCM log failed:", err);
+        showToast("CCM log failed", p.name);
+      }
+    };
+
+    const deleteAdmissionNote = async (p, noteId) => {
+      if (!noteId) return;
+      if (!token()) {
+        p.admissionNotes = (p.admissionNotes || []).filter(n => Number(n.id) !== Number(noteId));
+        applyAttemptNotes(p);
+        p.activityLog = buildActivityLog(p);
+        render();
+        return;
+      }
+      try {
+        const res = await fetch("/api/sensys/admission-notes/delete", {
+          method: "POST",
+          headers: { ...authHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify({ id: Number(noteId) })
+        });
+        if (!res.ok) throw new Error("Failed to delete note");
+        await loadAdmissionNotes([p.id]);
+        render();
+      } catch (err) {
+        console.warn("[Evolv SNF] note delete failed:", err);
+        showToast("Note delete failed", p.name);
       }
     };
 
@@ -2892,18 +3078,41 @@
         [address.city, address.state].filter(Boolean).join(", "),
         address.zip
       ].filter(Boolean);
+      const attemptCount = getAttemptNotes(p).length;
+      const hasReached = getReachedNotes(p).length > 0;
+      const vmSelected = !hasReached && attemptCount >= 2;
+      const reachedSelected = hasReached;
+      const vmDisabled = hasReached || attemptCount >= 2;
+      const reachedDisabled = !hasReached && attemptCount >= 2;
       const contactNotes = [
         ...getAttemptNotes(p).map(n => ({
           created_at: n.created_at,
-          text: `Left voicemail${(n.attempt_comments || "").trim() ? ` — ${(n.attempt_comments || "").trim()}` : ""}`
+          text: "Left voicemail",
+          noteId: n.id,
+          templateId: REACHED_TEMPLATE_ID
         })),
         ...getReachedNotes(p).map(n => ({
           created_at: n.created_at,
-          text: `Reached patient${(n.response1 || REACHED_ANSWER || "").trim() ? ` — ${(n.response1 || REACHED_ANSWER || "").trim()}` : ""}`
-        }))
+          text: `Reached patient${(getNoteAnswerValue(n, REACHED_FIELD_KEY) || REACHED_ANSWER || "").trim() ? ` — ${(getNoteAnswerValue(n, REACHED_FIELD_KEY) || REACHED_ANSWER || "").trim()}` : ""}`,
+          noteId: n.id,
+          templateId: REACHED_TEMPLATE_ID
+        })),
+        ...getCcmNotes(p).map(n => {
+          const detail = (getNoteAnswerValue(n, CCM_FIELD_KEY) || n.response1 || "").trim();
+          const isDeclined = detail.toLowerCase().includes("declined");
+          return {
+            created_at: n.created_at,
+            text: `${isDeclined ? "CCM Declined" : "CCM Accepted"}${detail ? ` — ${detail}` : ""}`,
+            noteId: n.id,
+            templateId: CCM_TEMPLATE_ID
+          };
+        })
       ].filter(n => n.created_at)
         .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
-        .map(n => `${formatStamp(new Date(n.created_at))} - ${n.text}`);
+        .map(n => ({
+          ...n,
+          display: `${formatStamp(new Date(n.created_at))} - ${n.text}`
+        }));
 
       const contactBody = `
         <div class="info-section">
@@ -2937,12 +3146,12 @@
               <div class="info-label">Contact Notes & Attempts (${p.contactAttempts}/2)</div>
             </div>
             <div class="row-actions-right">
-              <button class="btn-icon down" id="btnContactAttempt" aria-label="Left VM" title="Left VM">
+              <button class="btn-icon down ${vmSelected ? "is-selected" : ""}" id="btnContactAttempt" ${vmDisabled ? "disabled" : ""} aria-label="Left VM" title="Left VM">
                 <svg viewBox="0 0 233.12 234.63" aria-hidden="true">
                   <path d="M52.97,218.37H12.19c-5.21,0-9.44-4.23-9.44-9.44v-108.68c0-5.21,4.23-9.44,9.44-9.44h38.63c6.97-.01,13.73-2.63,18.73-7.49C90.09,63.36,113.34,16.95,122.19,7.1c3.98-4.7,9.44-4.71,13.07-4.03.07.02.13.03.2.05,25.27,5.85,14.83,46.22,5.35,66.57h0c-3.97,7.7,1.62,16.88,10.28,16.88h54.46c17.1,0,29.06,16.89,23.39,33.02l-33.11,94.15c-3.82,10.87-14.09,18.14-25.61,18.14h-64.57c-11.22,0-22.34-2.03-32.83-6l-19.86-7.51v-126.87"/>
                 </svg>
               </button>
-              <button class="btn-icon reached" id="btnContactReached" aria-label="Reached" title="Reached">
+              <button class="btn-icon reached ${reachedSelected ? "is-selected" : ""}" id="btnContactReached" ${reachedDisabled ? "disabled" : ""} aria-label="Reached" title="Reached">
                 <svg viewBox="0 0 233.12 234.63" aria-hidden="true">
                   <path d="M52.97,218.37H12.19c-5.21,0-9.44-4.23-9.44-9.44v-108.68c0-5.21,4.23-9.44,9.44-9.44h38.63c6.97-.01,13.73-2.63,18.73-7.49C90.09,63.36,113.34,16.95,122.19,7.1c3.98-4.7,9.44-4.71,13.07-4.03.07.02.13.03.2.05,25.27,5.85,14.83,46.22,5.35,66.57h0c-3.97,7.7,1.62,16.88,10.28,16.88h54.46c17.1,0,29.06,16.89,23.39,33.02l-33.11,94.15c-3.82,10.87-14.09,18.14-25.61,18.14h-64.57c-11.22,0-22.34-2.03-32.83-6l-19.86-7.51v-126.87"/>
                 </svg>
@@ -2950,7 +3159,22 @@
             </div>
           </div>
           <div class="activity-log" style="max-height:none">
-            ${(contactNotes.length ? contactNotes : ["No contact notes yet."]).map(item => `<div class="activity-item">${item}</div>`).join("")}
+            ${(contactNotes.length ? contactNotes : [{ text:"No contact notes yet." }]).map(item => `
+              <div class="activity-item ${item.noteId ? "note-row" : ""}" ${item.noteId ? `data-note-id="${item.noteId}" data-template-id="${item.templateId}"` : ""}>
+                <span class="note-text">${item.display || item.text}</span>
+                ${item.noteId ? `
+                  <button class="icon-plain trash" data-note-delete="${item.noteId}" title="Delete" aria-label="Delete">
+                    <svg viewBox="0 0 224.65 262.72" aria-hidden="true">
+                      <path d="M205.74,105.45v128.84c0,14.18-11.49,25.67-25.67,25.67H43.59c-14.18,0-25.67-11.49-25.67-25.67V105.45"/>
+                      <path d="M24.99,41.02h174.66c12.28,0,22.24,9.97,22.24,22.24v13.37c0,5.42-4.4,9.81-9.81,9.81H12.56c-5.42,0-9.81-4.4-9.81-9.81v-13.37c0-12.28,9.97-22.24,22.24-22.24Z"/>
+                      <path d="M63.83,39.75v-23.26c0-7.58,6.15-13.73,13.73-13.73h68.53c7.58,0,13.73,6.15,13.73,13.73v23.26"/>
+                      <line x1="80.17" y1="125.24" x2="80.17" y2="217.29"/>
+                      <line x1="144.48" y1="125.24" x2="144.48" y2="217.29"/>
+                    </svg>
+                  </button>
+                ` : ""}
+              </div>
+            `).join("")}
           </div>
         </div>
       `;
@@ -2987,6 +3211,29 @@
         () => markReached(p),
         () => markReached(p, { openDetails: true, showToastAction: false })
       );
+      bindQuickNoteButton(
+        contactDrawerEl.querySelector("#btnCcmYes"),
+        () => logCcmStatus(p, true),
+        () => logCcmStatus(p, true, { openDetails: true, showToastAction: false })
+      );
+      bindQuickNoteButton(
+        contactDrawerEl.querySelector("#btnCcmNo"),
+        () => logCcmStatus(p, false),
+        () => logCcmStatus(p, false, { openDetails: true, showToastAction: false })
+      );
+      contactDrawerEl.querySelector(".activity-log")?.addEventListener("click", (event) => {
+        const deleteBtn = event.target.closest("[data-note-delete]");
+        if (deleteBtn) {
+          event.stopPropagation();
+          deleteAdmissionNote(p, deleteBtn.dataset.noteDelete);
+          return;
+        }
+        const row = event.target.closest(".activity-item.note-row");
+        if (!row) return;
+        const noteId = row.dataset.noteId;
+        if (!noteId) return;
+        openNoteDetailsModalForNote(p, noteId);
+      });
       contactDrawerEl.querySelector("#btnDcDetails")?.addEventListener("click", () => openDcDetailsModal(p));
     };
 
@@ -3057,13 +3304,22 @@
       });
 
       try {
+        let response1 = noteDetailsContext.noteResponse1 || "";
+        if (noteDetailsContext.templateId === REACHED_TEMPLATE_ID) {
+          const ans = answers.find(a => a.field_key === REACHED_FIELD_KEY);
+          if (ans && ans.value_text) response1 = ans.value_text;
+        }
+        if (noteDetailsContext.templateId === CCM_TEMPLATE_ID) {
+          const ans = answers.find(a => a.field_key === CCM_FIELD_KEY);
+          if (ans && ans.value_text) response1 = ans.value_text;
+        }
         const payload = {
           id: noteDetailsContext.noteId || null,
           admission_id: Number(p.id),
           note_name: noteDetailsContext.noteName,
           template_id: noteDetailsContext.templateId,
           workspace_key: WORKSPACE_KEY,
-          response1: noteDetailsContext.noteResponse1 || "",
+          response1,
           answers
         };
         const res = await fetch("/api/sensys/admission-notes/upsert", {
