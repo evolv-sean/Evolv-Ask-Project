@@ -452,7 +452,7 @@
 
     .fab-wrap{
       position:fixed;
-      top:18px;
+      top:64px;
       right:18px;
       display:flex;
       flex-direction:column;
@@ -586,19 +586,6 @@
   </div>
 
   <div class="fab-wrap" id="fabWrap">
-    <button class="fab-btn n-icon" id="fabToggle" aria-label="Open quick actions" title="Open quick actions">
-      <svg viewBox="0 0 258.44 261.61" aria-hidden="true">
-        <rect x="2.75" y="2.75" width="61.81" height="61.81" rx="10.11" ry="10.11"/>
-        <rect x="98.32" y="2.75" width="61.81" height="61.81" rx="10.11" ry="10.11"/>
-        <rect x="2.75" y="99.9" width="61.81" height="61.81" rx="10.11" ry="10.11"/>
-        <rect x="98.32" y="99.9" width="61.81" height="61.81" rx="10.11" ry="10.11"/>
-        <rect x="2.75" y="197.04" width="61.81" height="61.81" rx="10.11" ry="10.11"/>
-        <rect x="193.88" y="2.75" width="61.81" height="61.81" rx="10.11" ry="10.11" transform="translate(449.57 67.31) rotate(180)"/>
-        <rect x="193.88" y="99.9" width="61.81" height="61.81" rx="10.11" ry="10.11" transform="translate(449.57 261.61) rotate(180)"/>
-        <rect x="193.88" y="197.04" width="61.81" height="61.81" rx="10.11" ry="10.11" transform="translate(449.57 455.9) rotate(180)"/>
-        <rect x="98.32" y="197.04" width="61.81" height="61.81" rx="10.11" ry="10.11"/>
-      </svg>
-    </button>
     <div class="fab-menu" id="fabMenu">
       <button class="fab-btn asset-icon" title="Add Note" aria-label="Add Note">
         <svg viewBox="0 0 83.92 75.06" aria-hidden="true">
@@ -1288,7 +1275,6 @@
     const drawerEl = document.getElementById("patientDrawer");
     const drawerOverlayEl = document.getElementById("drawerOverlay");
     const fabWrapEl = document.getElementById("fabWrap");
-    const fabToggleEl = document.getElementById("fabToggle");
 
     const warningModalEl = document.getElementById("warningModal");
     const warningContinueEl = document.getElementById("warningContinue");
@@ -2020,7 +2006,6 @@
       }
     };
 
-    let fabUserOpen = false;
     let fabAutoOpen = false;
     const updateFabState = () => {
       const anyOpen = drawerEl.classList.contains("open")
@@ -2028,8 +2013,7 @@
         || contactDrawerEl.classList.contains("open");
       document.body.classList.toggle("drawer-open", anyOpen);
       if (fabWrapEl) {
-        const shouldOpen = anyOpen ? (fabAutoOpen || fabUserOpen) : fabUserOpen;
-        fabWrapEl.classList.toggle("open", shouldOpen);
+        fabWrapEl.classList.toggle("open", anyOpen && fabAutoOpen);
       }
     };
 
@@ -2976,25 +2960,6 @@
       btn.addEventListener("click", () => closeModal(document.getElementById(btn.dataset.close)));
     });
     openFiltersEl.addEventListener("click", () => openModal(filtersModalEl));
-    fabToggleEl?.addEventListener("click", () => {
-      const anyOpen = drawerEl.classList.contains("open")
-        || infoDrawerEl.classList.contains("open")
-        || contactDrawerEl.classList.contains("open");
-      if (anyOpen) return;
-      fabUserOpen = !fabUserOpen;
-      updateFabState();
-    });
-    document.addEventListener("click", (event) => {
-      if (!fabWrapEl) return;
-      if (!fabUserOpen && !fabAutoOpen) return;
-      if (fabWrapEl.contains(event.target)) return;
-      if (drawerEl.contains(event.target)
-        || infoDrawerEl.contains(event.target)
-        || contactDrawerEl.contains(event.target)) return;
-      fabUserOpen = false;
-      fabAutoOpen = false;
-      updateFabState();
-    });
 
     const bindQuickNoteButton = (el, onClick, onHold) => {
       if (!el) return;
