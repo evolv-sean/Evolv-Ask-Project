@@ -4435,6 +4435,7 @@ def init_db():
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       agency_id INTEGER NULL,                 -- NULL = global, else client-specific by agency
       template_name TEXT NOT NULL,
+      default_note TEXT,
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
@@ -4534,6 +4535,12 @@ def init_db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_note_fields_template ON sensys_note_template_fields(template_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_user_note_tpl_user ON sensys_user_note_templates(user_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_note_answers_note ON sensys_admission_note_answers(note_id)")
+
+    # Safe migration: add default_note column if missing
+    try:
+        conn.execute("ALTER TABLE sensys_note_templates ADD COLUMN default_note TEXT")
+    except sqlite3.Error:
+        pass
 
 
     # ------------------------------------------------------------
@@ -21963,6 +21970,7 @@ async def sensys_admin_care_team_bulk(token: str, file: UploadFile = File(...)):
 class SensysNoteTemplateUpsert(BaseModel):
     id: Optional[int] = None
     template_name: str
+    default_note: Optional[str] = ""
     active: int = 1
 
     # âœ… targeting (blank/empty = global)
@@ -22115,7 +22123,7 @@ def sensys_admin_note_templates(token: str):
     templates = conn.execute(
         """
         SELECT
-            t.id, t.agency_id, t.template_name, t.active, t.created_at, t.updated_at
+            t.id, t.agency_id, t.template_name, t.default_note, t.active, t.created_at, t.updated_at
         FROM sensys_note_templates t
         WHERE t.deleted_at IS NULL
         ORDER BY
@@ -22232,19 +22240,20 @@ def sensys_admin_note_templates_upsert(payload: SensysNoteTemplateUpsert, token:
             UPDATE sensys_note_templates
                SET agency_id = NULL,
                    template_name = ?,
+                   default_note = ?,
                    active = ?,
                    updated_at = datetime('now')
              WHERE id = ?
             """,
-            (name, active, tpl_id),
+            (name, (payload.default_note or "").strip(), active, tpl_id),
         )
     else:
         cur = conn.execute(
             """
-            INSERT INTO sensys_note_templates (agency_id, template_name, active)
-            VALUES (NULL, ?, ?)
+            INSERT INTO sensys_note_templates (agency_id, template_name, default_note, active)
+            VALUES (NULL, ?, ?, ?)
             """,
-            (name, active),
+            (name, (payload.default_note or "").strip(), active),
         )
         tpl_id = int(cur.lastrowid)
 
@@ -26604,6 +26613,8 @@ class AdmissionNoteUpsert(BaseModel):
     workspace_key: Optional[str] = ""
     attempt_detail: Optional[str] = ""
     attempt_comments: Optional[str] = ""
+    answer_field_key: Optional[str] = ""
+    answer_value_text: Optional[str] = ""
 
     # NEW fields
     note_title: Optional[str] = ""
@@ -26726,6 +26737,24 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
                 ctx={"patient": patient_name, "note": note_title},
                 payload_json="",
             )
+
+    # Optional: store an answer for a specific field (single answer shortcut)
+    if (payload.answer_field_key or "").strip() and note_id:
+        conn.execute(
+            """
+            INSERT INTO sensys_admission_note_answers
+                (note_id, field_key, value_text, updated_at)
+            VALUES
+                (?, ?, ?, datetime('now'))
+            ON CONFLICT(note_id, field_key)
+            DO UPDATE SET value_text = excluded.value_text, updated_at = datetime('now')
+            """,
+            (
+                int(note_id),
+                (payload.answer_field_key or "").strip(),
+                (payload.answer_value_text or "").strip(),
+            ),
+        )
 
     conn.commit()
     return {"ok": True, "id": int(note_id) if note_id else None}
