@@ -184,6 +184,7 @@
     .dl-toast-dot{width:8px;height:8px;border-radius:999px;background: rgba(168,230,207,95);}
     .dl-toast-close{border:none;background:transparent;cursor:pointer;padding:6px;border-radius:10px;}
     .dl-toast-close:hover{background: rgba(13,59,102,.06)}
+    .dl-toast-actions{margin-top:10px;display:none;gap:8px;justify-content:flex-end;}
 
     /* Layout */
     .layout{display:flex;min-height:100vh}
@@ -737,6 +738,19 @@
     </div>
   </div>
 
+  <div class="dl-modal-overlay" id="noteDetailsModal">
+    <div class="dl-modal">
+      <div class="dl-modal-bar">
+        <span id="noteDetailsTitle">Complete Note</span>
+        <button class="btn btn-ghost btn-small" data-close="noteDetailsModal">Close</button>
+      </div>
+      <div class="dl-modal-body" id="noteDetailsBody"></div>
+      <div class="dl-modal-actions">
+        <button class="btn btn-ghost" data-close="noteDetailsModal">Cancel</button>
+        <button class="btn btn-primary" id="noteDetailsSave">Save</button>
+      </div>
+    </div>
+  </div>
 
   <div class="dl-toast" id="toast">
     <div class="dl-toast-top">
@@ -745,6 +759,9 @@
         <div class="dl-toast-sub" id="toastSub">Details</div>
       </div>
       <button class="dl-toast-close" id="toastClose">✕</button>
+    </div>
+    <div class="dl-toast-actions" id="toastActions">
+      <button class="btn btn-small" id="toastActionBtn">Complete details</button>
     </div>
   </div>
   <script>
@@ -1161,6 +1178,12 @@
     const toastTitleEl = document.getElementById("toastTitle");
     const toastSubEl = document.getElementById("toastSub");
     const toastCloseEl = document.getElementById("toastClose");
+    const toastActionsEl = document.getElementById("toastActions");
+    const toastActionBtnEl = document.getElementById("toastActionBtn");
+    const noteDetailsModalEl = document.getElementById("noteDetailsModal");
+    const noteDetailsTitleEl = document.getElementById("noteDetailsTitle");
+    const noteDetailsBodyEl = document.getElementById("noteDetailsBody");
+    const noteDetailsSaveEl = document.getElementById("noteDetailsSave");
 
     const token = () => (localStorage.getItem("sensys_token") || "").trim();
     const authHeaders = () => ({ "Authorization": "Bearer " + token() });
@@ -1275,7 +1298,8 @@
       try {
         const params = new URLSearchParams({
           admission_ids: admissionIds.join(","),
-          workspace_key: WORKSPACE_KEY
+          workspace_key: WORKSPACE_KEY,
+          include_answers: "1"
         });
         const res = await fetch(`/api/sensys/admission-notes?${params.toString()}`, { headers: authHeaders() });
         if (!res.ok) throw new Error("Failed to load notes");
@@ -1287,7 +1311,9 @@
           if (!notesByAdmission[id]) notesByAdmission[id] = [];
           notesByAdmission[id].push(n);
         });
+        const idSet = new Set(admissionIds.map(id => String(id)));
         patients.forEach(p => {
+          if (!idSet.has(String(p.id))) return;
           p.admissionNotes = notesByAdmission[p.id] || [];
           applyAttemptNotes(p);
           p.activityLog = buildActivityLog(p);
@@ -1429,14 +1455,28 @@
       });
     };
 
-    const showToast = (title, sub) => {
+    let toastActionHandler = null;
+    const showToast = (title, sub, action) => {
       toastTitleEl.textContent = title;
       toastSubEl.textContent = sub;
+      if (action && action.label && typeof action.onClick === "function") {
+        toastActionsEl.style.display = "flex";
+        toastActionBtnEl.textContent = action.label;
+        toastActionHandler = action.onClick;
+      } else {
+        toastActionsEl.style.display = "none";
+        toastActionHandler = null;
+      }
       toastEl.classList.add("show");
       clearTimeout(window.toastTimer);
-      window.toastTimer = setTimeout(() => toastEl.classList.remove("show"), 2600);
+      const duration = action ? 6000 : 2600;
+      window.toastTimer = setTimeout(() => toastEl.classList.remove("show"), duration);
     };
     toastCloseEl.addEventListener("click", () => toastEl.classList.remove("show"));
+    toastActionBtnEl.addEventListener("click", () => {
+      if (toastActionHandler) toastActionHandler();
+      toastEl.classList.remove("show");
+    });
 
     const getAttemptNotes = (p) => (p.admissionNotes || [])
       .filter(n => Number(n.template_id) === ATTEMPT_TEMPLATE_ID && (n.workspace_key || "") === WORKSPACE_KEY);
@@ -1482,6 +1522,124 @@
         entries.unshift(`${stamp} - ${prefix}${suffix}`);
       });
       return entries;
+    };
+
+    let noteTemplatesCache = null;
+    const loadNoteTemplates = async () => {
+      if (noteTemplatesCache) return noteTemplatesCache;
+      if (!token()) return [];
+      const res = await fetch("/api/sensys/note-templates", { headers: authHeaders() });
+      if (!res.ok) throw new Error("Failed to load note templates");
+      const data = await res.json();
+      noteTemplatesCache = data.templates || [];
+      return noteTemplatesCache;
+    };
+
+    const getLatestWorkspaceNote = (p, templateId) => {
+      const notes = (p.admissionNotes || [])
+        .filter(n => (n.workspace_key || "") === WORKSPACE_KEY && Number(n.template_id) === Number(templateId) && n.created_at);
+      if (!notes.length) return null;
+      notes.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+      return notes[0];
+    };
+
+    let noteDetailsContext = null;
+    const openNoteDetailsModal = async (p, templateId) => {
+      if (!token()) return;
+      try {
+        const templates = await loadNoteTemplates();
+        const tpl = templates.find(t => Number(t.id) === Number(templateId));
+        if (!tpl) {
+          showToast("Note template missing", p.name);
+          return;
+        }
+        const note = getLatestWorkspaceNote(p, templateId);
+        const answers = (note && note.answers) ? note.answers : [];
+        const answerMap = {};
+        answers.forEach(a => {
+          const key = a.field_key;
+          if (!key) return;
+          if (a.value_text != null && a.value_text !== "") answerMap[key] = a.value_text;
+          else if (a.value_num != null) answerMap[key] = String(a.value_num);
+          else if (a.value_date) answerMap[key] = a.value_date;
+          else if (a.value_bool != null) answerMap[key] = String(a.value_bool);
+        });
+
+        if (templateId === REACHED_TEMPLATE_ID && !answerMap[REACHED_FIELD_KEY]) {
+          answerMap[REACHED_FIELD_KEY] = REACHED_ANSWER;
+        }
+
+        noteDetailsTitleEl.textContent = `${tpl.template_name || "Note"} — ${p.name}`;
+        noteDetailsBodyEl.innerHTML = (tpl.fields || []).map(f => {
+          const key = f.field_key || "";
+          const label = f.field_label || key;
+          const type = (f.field_type || "text").toLowerCase();
+          const required = String(f.required || 0) === "1";
+          const value = answerMap[key] || "";
+          const base = `data-field-key="${key}" data-field-type="${type}"`;
+
+          if (type === "textarea") {
+            return `
+              <div style="margin-bottom:12px;">
+                <label>${label}${required ? " *" : ""}</label>
+                <textarea class="ipt" rows="3" ${base}>${value}</textarea>
+              </div>
+            `;
+          }
+          if (type === "boolean") {
+            return `
+              <div style="margin-bottom:12px;">
+                <label>${label}${required ? " *" : ""}</label>
+                <select class="ipt" ${base}>
+                  <option value="">Select</option>
+                  <option value="1" ${value === "1" ? "selected" : ""}>Yes</option>
+                  <option value="0" ${value === "0" ? "selected" : ""}>No</option>
+                </select>
+              </div>
+            `;
+          }
+          if (type === "select") {
+            let opts = [];
+            try {
+              const parsed = JSON.parse(f.options_json || "[]");
+              opts = Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+              opts = String(f.options_json || "")
+                .split(/[\\n,]/)
+                .map(s => s.trim())
+                .filter(Boolean);
+            }
+            return `
+              <div style="margin-bottom:12px;">
+                <label>${label}${required ? " *" : ""}</label>
+                <select class="ipt" ${base}>
+                  <option value="">Select</option>
+                  ${opts.map(opt => `<option value="${String(opt)}" ${String(opt) === value ? "selected" : ""}>${String(opt)}</option>`).join("")}
+                </select>
+              </div>
+            `;
+          }
+          const inputType = type === "number" ? "number" : type === "date" ? "date" : "text";
+          return `
+            <div style="margin-bottom:12px;">
+              <label>${label}${required ? " *" : ""}</label>
+              <input class="ipt" type="${inputType}" value="${value}" ${base} />
+            </div>
+          `;
+        }).join("");
+
+        noteDetailsContext = {
+          patientId: p.id,
+          templateId: Number(templateId),
+          noteId: note ? Number(note.id) : null,
+          noteName: templateId === ATTEMPT_TEMPLATE_ID ? ATTEMPT_NOTE_NAME : REACHED_NOTE_NAME,
+          noteResponse1: note ? (note.response1 || "") : (templateId === REACHED_TEMPLATE_ID ? REACHED_ANSWER : "")
+        };
+        openModal(noteDetailsModalEl);
+      } catch (err) {
+        console.warn("[Evolv SNF] note modal failed:", err);
+        showToast("Note modal failed", p.name);
+      }
     };
 
     const addActivity = (p, text) => {
@@ -2010,8 +2168,16 @@
         </div>
       `;
 
-      drawerEl.querySelector("#btnVm")?.addEventListener("click", () => logVm(p));
-      drawerEl.querySelector("#btnReached")?.addEventListener("click", () => markReached(p));
+      bindQuickNoteButton(
+        drawerEl.querySelector("#btnVm"),
+        () => logVm(p),
+        () => logVm(p, { openDetails: true, showToastAction: false })
+      );
+      bindQuickNoteButton(
+        drawerEl.querySelector("#btnReached"),
+        () => markReached(p),
+        () => markReached(p, { openDetails: true, showToastAction: false })
+      );
       drawerEl.querySelectorAll('[data-doc]').forEach(el => {
         el.addEventListener("click", (e) => toggleDoc(p, e.target.dataset.doc));
       });
@@ -2063,7 +2229,8 @@
 
     const docsMinimumComplete = (p) => p.docsChecklist.faceSheet && p.docsChecklist.orders;
 
-    const logVm = async (p) => {
+    const logVm = async (p, opts = {}) => {
+      const { openDetails = false, showToastAction = true } = opts;
       if (p.contactAttempts >= 2) return;
       const nowIso = new Date().toISOString();
       if (!token()) {
@@ -2093,7 +2260,16 @@
         });
         if (!res.ok) throw new Error("Failed to log attempt");
         await loadAdmissionNotes([p.id]);
-        showToast("VM logged", `Attempt ${p.contactAttempts} for ${p.name}`);
+        if (openDetails) {
+          openNoteDetailsModal(p, ATTEMPT_TEMPLATE_ID);
+        } else if (showToastAction) {
+          showToast("VM logged", `Attempt ${p.contactAttempts} for ${p.name}`, {
+            label: "Complete details",
+            onClick: () => openNoteDetailsModal(p, ATTEMPT_TEMPLATE_ID)
+          });
+        } else {
+          showToast("VM logged", `Attempt ${p.contactAttempts} for ${p.name}`);
+        }
         render();
       } catch (err) {
         console.warn("[Evolv SNF] attempt log failed:", err);
@@ -2101,7 +2277,8 @@
       }
     };
 
-    const markReached = async (p) => {
+    const markReached = async (p, opts = {}) => {
+      const { openDetails = false, showToastAction = true } = opts;
       const nowIso = new Date().toISOString();
       if (!token()) {
         p.contactStatus = "reached";
@@ -2130,7 +2307,16 @@
         });
         if (!res.ok) throw new Error("Failed to log reached note");
         await loadAdmissionNotes([p.id]);
-        showToast("Patient reached", p.name);
+        if (openDetails) {
+          openNoteDetailsModal(p, REACHED_TEMPLATE_ID);
+        } else if (showToastAction) {
+          showToast("Patient reached", p.name, {
+            label: "Complete details",
+            onClick: () => openNoteDetailsModal(p, REACHED_TEMPLATE_ID)
+          });
+        } else {
+          showToast("Patient reached", p.name);
+        }
         render();
       } catch (err) {
         console.warn("[Evolv SNF] reached log failed:", err);
@@ -2594,8 +2780,16 @@
         contactDrawerEl.classList.remove("open");
         if (selectedPatientId) drawerEl.classList.add("open");
       });
-      contactDrawerEl.querySelector("#btnContactAttempt")?.addEventListener("click", () => logVm(p));
-      contactDrawerEl.querySelector("#btnContactReached")?.addEventListener("click", () => markReached(p));
+      bindQuickNoteButton(
+        contactDrawerEl.querySelector("#btnContactAttempt"),
+        () => logVm(p),
+        () => logVm(p, { openDetails: true, showToastAction: false })
+      );
+      bindQuickNoteButton(
+        contactDrawerEl.querySelector("#btnContactReached"),
+        () => markReached(p),
+        () => markReached(p, { openDetails: true, showToastAction: false })
+      );
       contactDrawerEl.querySelector("#btnDcDetails")?.addEventListener("click", () => openDcDetailsModal(p));
     };
 
@@ -2605,6 +2799,91 @@
       btn.addEventListener("click", () => closeModal(document.getElementById(btn.dataset.close)));
     });
     openFiltersEl.addEventListener("click", () => openModal(filtersModalEl));
+
+    const bindQuickNoteButton = (el, onClick, onHold) => {
+      if (!el) return;
+      let holdTimer = null;
+      let held = false;
+
+      const clearHold = () => {
+        if (holdTimer) clearTimeout(holdTimer);
+        holdTimer = null;
+      };
+
+      el.addEventListener("pointerdown", (e) => {
+        if (e.pointerType !== "mouse") return;
+        held = false;
+        clearHold();
+        holdTimer = setTimeout(() => {
+          held = true;
+          onHold && onHold();
+        }, 450);
+      });
+      el.addEventListener("pointerup", () => clearHold());
+      el.addEventListener("pointerleave", () => clearHold());
+      el.addEventListener("click", (e) => {
+        if (held) {
+          held = false;
+          e.preventDefault();
+          return;
+        }
+        onClick && onClick();
+      });
+    };
+
+    noteDetailsSaveEl.addEventListener("click", async () => {
+      if (!noteDetailsContext || !token()) return;
+      const p = patients.find(pt => String(pt.id) === String(noteDetailsContext.patientId));
+      if (!p) return;
+
+      const answers = [];
+      noteDetailsBodyEl.querySelectorAll("[data-field-key]").forEach(el => {
+        const key = el.dataset.fieldKey || "";
+        const type = (el.dataset.fieldType || "text").toLowerCase();
+        if (!key) return;
+        const raw = (el.value || "").trim();
+        if (raw === "") return;
+        if (type === "number") {
+          const num = Number(raw);
+          if (!Number.isNaN(num)) answers.push({ field_key: key, value_num: num });
+          return;
+        }
+        if (type === "date") {
+          answers.push({ field_key: key, value_date: raw });
+          return;
+        }
+        if (type === "boolean") {
+          if (raw === "1" || raw === "0") answers.push({ field_key: key, value_bool: Number(raw) });
+          return;
+        }
+        answers.push({ field_key: key, value_text: raw });
+      });
+
+      try {
+        const payload = {
+          id: noteDetailsContext.noteId || null,
+          admission_id: Number(p.id),
+          note_name: noteDetailsContext.noteName,
+          template_id: noteDetailsContext.templateId,
+          workspace_key: WORKSPACE_KEY,
+          response1: noteDetailsContext.noteResponse1 || "",
+          answers
+        };
+        const res = await fetch("/api/sensys/admission-notes/upsert", {
+          method: "POST",
+          headers: { ...authHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error("Failed to save note details");
+        await loadAdmissionNotes([p.id]);
+        closeModal(noteDetailsModalEl);
+        showToast("Note updated", p.name);
+        render();
+      } catch (err) {
+        console.warn("[Evolv SNF] note save failed:", err);
+        showToast("Note save failed", p.name);
+      }
+    });
 
     contactDrawerEl.addEventListener("click", (event) => {
       const btn = event.target.closest("#btnContactEdit");
