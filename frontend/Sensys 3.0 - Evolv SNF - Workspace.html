@@ -1167,6 +1167,10 @@
     const WORKSPACE_KEY = "evolv_snf";
     const ATTEMPT_TEMPLATE_ID = 2;
     const ATTEMPT_NOTE_NAME = "Log Call Attempts";
+    const REACHED_TEMPLATE_ID = 3;
+    const REACHED_NOTE_NAME = "Evolv SNF - Initial Call Default";
+    const REACHED_FIELD_KEY = "patient_contact_default";
+    const REACHED_ANSWER = "Spoke to patient and educated on next steps in discharge planning process.";
 
     const formatDateTime = (iso) => new Intl.DateTimeFormat("en-US", {
       month:"short", day:"numeric", hour:"numeric", minute:"2-digit"
@@ -1437,30 +1441,45 @@
     const getAttemptNotes = (p) => (p.admissionNotes || [])
       .filter(n => Number(n.template_id) === ATTEMPT_TEMPLATE_ID && (n.workspace_key || "") === WORKSPACE_KEY);
 
+    const getReachedNotes = (p) => (p.admissionNotes || [])
+      .filter(n => Number(n.template_id) === REACHED_TEMPLATE_ID && (n.workspace_key || "") === WORKSPACE_KEY);
+
     const applyAttemptNotes = (p) => {
       const attemptNotes = getAttemptNotes(p);
-      const sorted = attemptNotes
-        .filter(n => n.created_at)
-        .sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+      const reachedNotes = getReachedNotes(p);
+      const allContactNotes = [...attemptNotes, ...reachedNotes].filter(n => n.created_at);
+      const sorted = allContactNotes.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
       const attempts = attemptNotes.length;
       p.contactAttempts = attempts;
       p.lastContactAttemptAt = sorted[0]?.created_at || null;
-      if (p.contactStatus !== "reached") {
-        if (attempts >= 2) p.contactStatus = "not_reachable_final";
-        else if (attempts >= 1) p.contactStatus = "attempted_vm";
-        else p.contactStatus = "not_attempted";
+      if (reachedNotes.length) {
+        p.contactStatus = "reached";
+      } else if (attempts >= 2) {
+        p.contactStatus = "not_reachable_final";
+      } else if (attempts >= 1) {
+        p.contactStatus = "attempted_vm";
+      } else {
+        p.contactStatus = "not_attempted";
       }
     };
 
     const buildActivityLog = (p) => {
       const entries = [...(p.localActivityLog || [])];
       const attemptNotes = getAttemptNotes(p);
+      const reachedNotes = getReachedNotes(p);
       attemptNotes.forEach(n => {
         const stamp = n.created_at ? formatStamp(new Date(n.created_at)) : formatStamp(new Date());
         const detail = n.attempt_detail || "Left voicemail";
         const comments = (n.attempt_comments || "").trim();
         const suffix = comments ? ` — ${comments}` : "";
         entries.unshift(`${stamp} - ${detail}${suffix}`);
+      });
+      reachedNotes.forEach(n => {
+        const stamp = n.created_at ? formatStamp(new Date(n.created_at)) : formatStamp(new Date());
+        const detail = (n.response1 || REACHED_ANSWER || "Reached patient").trim();
+        const prefix = "Reached patient";
+        const suffix = detail && detail !== prefix ? ` — ${detail}` : "";
+        entries.unshift(`${stamp} - ${prefix}${suffix}`);
       });
       return entries;
     };
@@ -2082,13 +2101,41 @@
       }
     };
 
-    const markReached = (p) => {
-      p.contactStatus = "reached";
-      p.lastContactAttemptAt = new Date().toISOString();
-      p.nextContactDueAt = null;
-      addActivity(p, "Reached patient");
-      showToast("Patient reached", p.name);
-      render();
+    const markReached = async (p) => {
+      const nowIso = new Date().toISOString();
+      if (!token()) {
+        p.contactStatus = "reached";
+        p.lastContactAttemptAt = nowIso;
+        p.nextContactDueAt = null;
+        addActivity(p, `Reached patient — ${REACHED_ANSWER}`);
+        showToast("Patient reached", p.name);
+        render();
+        return;
+      }
+
+      try {
+        const payload = {
+          admission_id: Number(p.id),
+          note_name: REACHED_NOTE_NAME,
+          template_id: REACHED_TEMPLATE_ID,
+          workspace_key: WORKSPACE_KEY,
+          response1: REACHED_ANSWER,
+          answer_field_key: REACHED_FIELD_KEY,
+          answer_value_text: REACHED_ANSWER
+        };
+        const res = await fetch("/api/sensys/admission-notes/upsert", {
+          method: "POST",
+          headers: { ...authHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error("Failed to log reached note");
+        await loadAdmissionNotes([p.id]);
+        showToast("Patient reached", p.name);
+        render();
+      } catch (err) {
+        console.warn("[Evolv SNF] reached log failed:", err);
+        showToast("Reached log failed", p.name);
+      }
     };
 
     const resetContact = (p) => {
@@ -2466,10 +2513,18 @@
         [address.city, address.state].filter(Boolean).join(", "),
         address.zip
       ].filter(Boolean);
-      const contactLog = (p.activityLog || []).filter(item => {
-        const lower = item.toLowerCase();
-        return lower.includes("vm") || lower.includes("reached") || lower.includes("contact") || lower.includes("call");
-      });
+      const contactNotes = [
+        ...getAttemptNotes(p).map(n => ({
+          created_at: n.created_at,
+          text: `Left voicemail${(n.attempt_comments || "").trim() ? ` — ${(n.attempt_comments || "").trim()}` : ""}`
+        })),
+        ...getReachedNotes(p).map(n => ({
+          created_at: n.created_at,
+          text: `Reached patient${(n.response1 || REACHED_ANSWER || "").trim() ? ` — ${(n.response1 || REACHED_ANSWER || "").trim()}` : ""}`
+        }))
+      ].filter(n => n.created_at)
+        .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+        .map(n => `${formatStamp(new Date(n.created_at))} - ${n.text}`);
 
       const contactBody = `
         <div class="info-section">
@@ -2516,7 +2571,7 @@
             </div>
           </div>
           <div class="activity-log" style="max-height:none">
-            ${(contactLog.length ? contactLog : ["No contact notes yet."]).map(item => `<div class="activity-item">${item}</div>`).join("")}
+            ${(contactNotes.length ? contactNotes : ["No contact notes yet."]).map(item => `<div class="activity-item">${item}</div>`).join("")}
           </div>
         </div>
       `;

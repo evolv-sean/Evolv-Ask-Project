@@ -1440,6 +1440,7 @@
                           <tr>
                             <th>Template</th>
                             <th>Agency</th>
+                            <th>Default Note</th>
                             <th>Active</th>
                             <th style="text-align:right;">Actions</th>
                           </tr>
@@ -2815,6 +2816,11 @@
             <div class="muted" style="margin-top:6px;">Leave blank = Global (all agencies)</div>
           </div>
         </div>
+      </div>
+
+      <div style="margin-top:10px;">
+        <label>Default Note (automation usage)</label>
+        <textarea id="noteTplDefault" class="input" rows="3" placeholder="e.g., Evolv SNF Workspace • Call Result (Reached)"></textarea>
       </div>
 
       <div style="margin-top:10px;">
@@ -6419,7 +6425,7 @@
 
     const q = ($("notesListSearch").value || "").trim().toLowerCase();
     const items = (noteTemplatesAdminCache || []).filter(t => {
-      const hay = `${t.template_name||""} ${t.agency_id||""}`.toLowerCase();
+      const hay = `${t.template_name||""} ${t.agency_id||""} ${t.default_note||""}`.toLowerCase();
       return !q || hay.includes(q);
     });
 
@@ -6431,6 +6437,7 @@
       tr.innerHTML = `
         <td><b>${escapeHtml(t.template_name||"")}</b></td>
         <td>${t.agency_id ? escapeHtml(String(t.agency_id)) : "Global"}</td>
+        <td>${escapeHtml(t.default_note || "")}</td>
         <td>${(String(t.active||0)==="1") ? "Yes" : "No"}</td>
         <td style="text-align:right;">
           <button class="mini" onclick='event.stopPropagation(); openNoteTemplateModal(${JSON.stringify(t)})'>Edit</button>
@@ -6733,6 +6740,7 @@
     setMsg($("noteTplMsg"), "", true);
 
     $("noteTplName").value = (t && t.template_name) ? t.template_name : "";
+    $("noteTplDefault").value = (t && t.default_note) ? t.default_note : "";
     $("noteTplActive").value = (t && String(t.active||0)) ? String(t.active||0) : "1";
 
     // ✅ initialize multi-selects from backend arrays
@@ -6771,6 +6779,7 @@
       const payload = {
         id: editingNoteTemplate ? Number(editingNoteTemplate.id) : null,
         template_name: ($("noteTplName").value || "").trim(),
+        default_note: ($("noteTplDefault").value || "").trim(),
         active: Number($("noteTplActive").value || "1"),
 
         // ✅ new targeting
