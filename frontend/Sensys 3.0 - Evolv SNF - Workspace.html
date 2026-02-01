@@ -365,7 +365,6 @@
     }
     .chip-toggle.is-active{
       border-color: rgba(168,230,207,.95);
-      box-shadow: 0 0 0 3px rgba(168,230,207,.35);
       background: rgba(168,230,207,.22);
       color: var(--navy);
     }
@@ -452,7 +451,7 @@
 
     .fab-wrap{
       position:fixed;
-      top:64px;
+      top:18px;
       right:18px;
       display:flex;
       flex-direction:column;
@@ -463,18 +462,22 @@
     }
     .drawer-open .fab-wrap{right:540px;}
     .fab-btn{
-      width:44px;height:44px;border-radius:12px;
-      border:1px solid rgba(124,109,138,.45);
-      background:#fff;
-      color:#5b4b69;
+      width:44px;height:44px;border-radius:50%;
+      border:1px solid rgba(168,230,207,.9);
+      background: #fff;
+      color: var(--navy);
       display:inline-flex;align-items:center;justify-content:center;
       cursor:pointer;
-      transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, opacity .18s ease;
+      transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease, opacity .18s ease;
+      transform-origin: center;
+      --fab-translate: 0px;
+      transform: translateY(var(--fab-translate));
     }
     .fab-btn:hover{
-      border-color:rgba(124,109,138,.8);
-      box-shadow:0 10px 18px rgba(124,109,138,.16);
-      transform: translateY(-1px);
+      border-color: rgba(168,230,207,.95);
+      box-shadow: var(--ring2);
+      background: #fff;
+      transform: translateY(-1px) !important;
     }
     .fab-btn.n-icon svg{width:20px;height:20px;overflow:visible}
     .fab-btn.n-icon svg :where(path, line, polyline, polygon, rect, circle, ellipse){
@@ -500,8 +503,8 @@
       pointer-events:auto;
       transform: translateY(0);
     }
-    .fab-menu .fab-btn{transform: translateY(-6px); opacity:0;}
-    .fab-wrap.open .fab-menu .fab-btn{transform: translateY(0); opacity:1;}
+    .fab-menu .fab-btn{--fab-translate: -6px; opacity:0;}
+    .fab-wrap.open .fab-menu .fab-btn{--fab-translate: 0px; opacity:1;}
     .fab-wrap.open .fab-menu .fab-btn:nth-child(1){transition-delay:.02s;}
     .fab-wrap.open .fab-menu .fab-btn:nth-child(2){transition-delay:.05s;}
     .fab-wrap.open .fab-menu .fab-btn:nth-child(3){transition-delay:.08s;}
@@ -1391,6 +1394,39 @@
 
     const loadAdmissions = async () => {
       if (!token()) {
+        const demoPatient = withInfo({
+          id:"DEMO-001",
+          mrn:"DEMO-44721",
+          name:"Maya Collins",
+          age:74,
+          facilityName:"Demo SNF",
+          dischargeDateTime: hoursFromNow(18),
+          servicesNeeded:{homeHealth:true, dme:true},
+          portalEligibility:{homeHealthOnPortal:false, dmeOnPortal:false, physicianOnEsign:false},
+          contactStatus:"not_attempted",
+          contactAttempts:0,
+          lastContactAttemptAt:null,
+          nextContactDueAt:null,
+          docsStatus:"in_progress",
+          docsChecklist:{faceSheet:true, orders:false, clinicals:false},
+          packetGenerated:false,
+          referrals:{
+            homeHealth:{referralStatus:"not_sent", lastSentAt:null, faxStatus:"n/a"},
+            dme:{referralStatus:"not_sent", lastSentAt:null, faxStatus:"n/a"}
+          },
+          pcpApptNeeded:true,
+          ordersStatus:"pending",
+          ordersLastNudgeAt: hoursFromNow(-6),
+          ordersNudgeCount:1,
+          lockStatus:"not_ready",
+          startOfCareDate:null,
+          activityLog:["01/29 9:10am - Intake created"],
+          hhServiceNames:["RN","PT"],
+          dmeServiceNames:["RW","O2"],
+          agencyCcm:{ medrina:false, evolv:true }
+        });
+        patients = [demoPatient];
+        populateFacilityFilter();
         render();
         return;
       }
