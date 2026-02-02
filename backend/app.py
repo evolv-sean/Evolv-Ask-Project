@@ -25532,7 +25532,9 @@ def sensys_admission_fax_send(payload: SensysAdmissionFaxSend, request: Request)
         if (status or "").strip().lower() not in ok_statuses:
             raise HTTPException(status_code=500, detail=f"Fax not accepted by provider (status={status})")
 
-    return {"ok": True, "id": int(cur.lastrowid), "fax_id": rc_id, "provider_status": status}
+        return {"ok": True, "id": int(cur.lastrowid), "fax_id": rc_id, "provider_status": status}
+    finally:
+        conn.close()
 
 
 @app.post("/api/sensys/admission-fax/send-merged")
@@ -25659,7 +25661,6 @@ def sensys_admission_fax_send_merged(payload: SensysAdmissionFaxSendMerged, requ
                 os.unlink(tmp_path)
         except Exception:
             pass
-    finally:
         conn.close()
 
 
