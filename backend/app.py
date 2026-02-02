@@ -4621,6 +4621,7 @@ def init_db():
             appt_datetime TEXT,
             care_team_id  INTEGER,
             appt_status   TEXT NOT NULL DEFAULT 'New',  -- New, Attended, Missed, Rescheduled
+            appt_comments TEXT,
 
             created_at    TEXT DEFAULT (datetime('now')),
             updated_at    TEXT DEFAULT (datetime('now')),
@@ -4634,6 +4635,7 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_appt_adm ON sensys_admission_appointments(admission_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_appt_status ON sensys_admission_appointments(appt_status)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_appt_deleted ON sensys_admission_appointments(deleted_at)")
+    ensure_column(conn, "sensys_admission_appointments", "appt_comments", "appt_comments TEXT")
 
 
     # âœ… Clean up any duplicate pairs BEFORE adding the unique index
@@ -19520,12 +19522,13 @@ def sensys_admission_referrals_update_soc(payload: AdmissionReferralSocUpdate, r
     conn.commit()
     return {"ok": True}
 
-class AdmissionAppointmentUpsert(BaseModel):
-    id: Optional[int] = None
-    admission_id: int
-    appt_datetime: Optional[str] = ""   # store as ISO string from UI
-    care_team_id: Optional[int] = None
-    appt_status: str = "New"            # New, Attended, Missed, Rescheduled
+    class AdmissionAppointmentUpsert(BaseModel):
+        id: Optional[int] = None
+        admission_id: int
+        appt_datetime: Optional[str] = ""   # store as ISO string from UI
+        care_team_id: Optional[int] = None
+        appt_status: str = "New"            # New, Attended, Missed, Rescheduled
+        appt_comments: Optional[str] = ""
 
 
 # -----------------------------
@@ -19548,6 +19551,7 @@ def sensys_admission_appointments_upsert(payload: AdmissionAppointmentUpsert, re
                SET appt_datetime = ?,
                    care_team_id = ?,
                    appt_status = ?,
+                   appt_comments = ?,
                    updated_at = datetime('now')
              WHERE id = ?
             """,
@@ -19555,20 +19559,22 @@ def sensys_admission_appointments_upsert(payload: AdmissionAppointmentUpsert, re
                 (payload.appt_datetime or "").strip(),
                 int(payload.care_team_id) if payload.care_team_id else None,
                 st,
+                (payload.appt_comments or "").strip(),
                 int(payload.id),
             ),
         )
     else:
         conn.execute(
             """
-            INSERT INTO sensys_admission_appointments (admission_id, appt_datetime, care_team_id, appt_status)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO sensys_admission_appointments (admission_id, appt_datetime, care_team_id, appt_status, appt_comments)
+            VALUES (?, ?, ?, ?, ?)
             """,
             (
                 int(payload.admission_id),
                 (payload.appt_datetime or "").strip(),
                 int(payload.care_team_id) if payload.care_team_id else None,
                 st,
+                (payload.appt_comments or "").strip(),
             ),
         )
 
@@ -24779,6 +24785,36 @@ class SensysAdmissionFaxSend(BaseModel):
     from_fax: Optional[str] = None  # optional override (rare)
     fax_resolution: Optional[str] = "High"  # RingCentral supports "High"/"Low"
 
+
+class SensysAdmissionFaxSendMerged(BaseModel):
+    admission_id: int
+    to_fax: str
+    pdf_ids: List[int]
+    cover_text: Optional[str] = None
+    from_fax: Optional[str] = None
+    fax_resolution: Optional[str] = "High"
+
+
+def _sensys_merge_pdfs(pdf_paths: list[str]) -> str:
+    if not pdf_paths:
+        raise Exception("No PDFs to merge")
+    try:
+        import fitz  # PyMuPDF
+    except Exception as e:
+        raise Exception("PDF merge requires PyMuPDF (fitz)") from e
+
+    out_doc = fitz.open()
+    for p in pdf_paths:
+        src = fitz.open(p)
+        out_doc.insert_pdf(src)
+        src.close()
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    tmp.close()
+    out_doc.save(tmp.name)
+    out_doc.close()
+    return tmp.name
+
 def _sensys_user_wants_dashboard_notif(conn, user_id: int, notif_key: str) -> bool:
     r = conn.execute(
         """
@@ -25496,7 +25532,133 @@ def sensys_admission_fax_send(payload: SensysAdmissionFaxSend, request: Request)
         if (status or "").strip().lower() not in ok_statuses:
             raise HTTPException(status_code=500, detail=f"Fax not accepted by provider (status={status})")
 
+    return {"ok": True, "id": int(cur.lastrowid), "fax_id": rc_id, "provider_status": status}
+
+
+@app.post("/api/sensys/admission-fax/send-merged")
+def sensys_admission_fax_send_merged(payload: SensysAdmissionFaxSendMerged, request: Request):
+    u = _sensys_require_user(request)
+
+    admission_id = int(payload.admission_id)
+    to_fax = (payload.to_fax or "").strip()
+    pdf_ids = [int(x) for x in (payload.pdf_ids or []) if int(x) > 0]
+    cover_text = (payload.cover_text or "").strip()
+    from_fax = (payload.from_fax or "").strip() or RC_FROM_NUMBER
+    fax_resolution = (payload.fax_resolution or "High").strip()
+
+    if not admission_id:
+        raise HTTPException(status_code=400, detail="admission_id is required")
+    if not to_fax:
+        raise HTTPException(status_code=400, detail="to_fax is required")
+    if not pdf_ids:
+        raise HTTPException(status_code=400, detail="pdf_ids are required")
+    if not from_fax:
+        raise HTTPException(status_code=400, detail="RC_FROM_NUMBER is not configured")
+
+    conn = get_db()
+    tmp_path = ""
+    try:
+        _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+        _sensys_pdf_cleanup_expired(conn)
+
+        qmarks = ",".join(["?"] * len(pdf_ids))
+        rows = conn.execute(
+            f"""
+            SELECT id, admission_id, doc_type, stored_filename, original_filename, content_type
+            FROM sensys_pdf_files
+            WHERE id IN ({qmarks})
+              AND admission_id = ?
+              AND deleted_at IS NULL
+            """,
+            (*pdf_ids, int(admission_id)),
+        ).fetchall()
+        if not rows or len(rows) != len(pdf_ids):
+            raise HTTPException(status_code=404, detail="One or more PDFs not found for this admission")
+
+        row_map = {int(r["id"]): dict(r) for r in rows}
+        # Facesheet always first, then keep caller order
+        ordered = []
+        for pid in pdf_ids:
+            r = row_map.get(int(pid))
+            if r:
+                ordered.append(r)
+        ordered.sort(key=lambda r: (str(r.get("doc_type") or "").lower() != "facesheet", pdf_ids.index(int(r["id"]))))
+
+        pdf_paths = []
+        for r in ordered:
+            stored = r["stored_filename"]
+            pdf_path = PDF_STORAGE_DIR / stored
+            if not pdf_path.exists():
+                raise HTTPException(status_code=404, detail="PDF file missing on disk")
+            pdf_paths.append(str(pdf_path))
+
+        tmp_path = _sensys_merge_pdfs(pdf_paths)
+
+        logger.info(
+            "[SENSYS][FAX][MERGE_SEND_START] user_id=%s admission_id=%s to=%s pdf_ids=%s",
+            int(u["user_id"]),
+            admission_id,
+            to_fax,
+            pdf_ids,
+        )
+
+        rc_resp = None
+        rc_json = ""
+        try:
+            rc_resp = send_fax_rc(
+                to_number=to_fax,
+                pdf_path=str(tmp_path),
+                cover_text=cover_text,
+                from_number=from_fax,
+                fax_resolution=fax_resolution,
+            )
+            rc_id = (rc_resp.get("id") or "")
+            status = (rc_resp.get("messageStatus") or rc_resp.get("status") or "queued") or "queued"
+            error = ""
+            try:
+                rc_json = json.dumps(rc_resp)[:8000]
+            except Exception:
+                rc_json = ""
+        except Exception as e:
+            logger.exception("[SENSYS][FAX][MERGE_SEND_FAILED] admission_id=%s to=%s", admission_id, to_fax)
+            rc_id = ""
+            status = "error"
+            error = str(e)
+            try:
+                rc_json = json.dumps({"error": str(e)})[:8000]
+            except Exception:
+                rc_json = ""
+
+        first_pdf_id = int(ordered[0]["id"]) if ordered else int(pdf_ids[0])
+        cur = conn.execute(
+            """
+            INSERT INTO sensys_fax_log
+              (created_by_user_id, admission_id, direction, to_fax, from_fax, cover_text, pdf_id, rc_fax_id, status, error, rc_response_json)
+            VALUES
+              (?, ?, 'outbound', ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(u["user_id"]),
+                admission_id,
+                to_fax,
+                from_fax,
+                cover_text or "Merged PDF fax",
+                first_pdf_id,
+                rc_id,
+                status,
+                error,
+                rc_json,
+            ),
+        )
+
+        conn.commit()
         return {"ok": True, "id": int(cur.lastrowid), "fax_id": rc_id, "provider_status": status}
+    finally:
+        try:
+            if tmp_path:
+                os.unlink(tmp_path)
+        except Exception:
+            pass
     finally:
         conn.close()
 
@@ -26286,7 +26448,7 @@ def sensys_admission_details(admission_id: int, request: Request):
         SELECT
             act.id AS link_id,
             ct.id AS care_team_id,
-            ct.name, ct.type, ct.phone1, ct.phone2, ct.email1, ct.email2
+            ct.name, ct.type, ct.phone1, ct.phone2, ct.email1, ct.email2, ct.fax
         FROM sensys_admission_care_team act
         JOIN sensys_care_team ct ON ct.id = act.care_team_id
         WHERE act.admission_id = ?
@@ -26345,6 +26507,7 @@ def sensys_admission_details(admission_id: int, request: Request):
             ct.name AS care_team_name,
             ct.type AS care_team_type,
             aa.appt_status,
+            aa.appt_comments,
             aa.created_at,
             aa.updated_at
         FROM sensys_admission_appointments aa
@@ -26365,6 +26528,7 @@ def sensys_admission_details(admission_id: int, request: Request):
             ct.name AS care_team_name,
             ct.type AS care_team_type,
             aa.appt_status,
+            aa.appt_comments,
             aa.created_at,
             aa.updated_at
         FROM sensys_admission_appointments aa
