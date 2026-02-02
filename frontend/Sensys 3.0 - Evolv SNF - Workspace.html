@@ -219,6 +219,14 @@
     .fax-status.error{border-color: rgba(199,107,107,.6); color:#9b3d3d; background:rgba(199,107,107,.08);}
     .fax-status.queued{border-color: rgba(77,168,218,.35); color:#254b63; background:rgba(77,168,218,.08);}
     .fax-status.sent{border-color: rgba(47,122,90,.35); color:#2f7a5a; background:rgba(168,230,207,.16);}
+    .link-inline{
+      color:#2563eb;
+      font-weight:800;
+      text-decoration:none;
+      cursor:pointer;
+    }
+    .link-inline:hover{text-decoration:underline;}
+    .note-list-table td .icon-plain{margin-left:10px;}
 
     .dl-toast{
       position:fixed;
@@ -972,8 +980,9 @@
             <thead>
               <tr>
                 <th>Sent</th>
+                <th>Source</th>
                 <th>To</th>
-                <th>PDF</th>
+                <th>Details</th>
                 <th>Status</th>
                 <th style="text-align:right;">Action</th>
               </tr>
@@ -984,6 +993,130 @@
       </div>
       <div class="dl-modal-actions">
         <button class="btn" data-close="faxLogModal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="dl-modal-overlay" id="activityLogModal">
+    <div class="dl-modal" style="width:min(920px, 96vw)">
+      <div class="dl-modal-bar">
+        <span>Notes / Activity Log</span>
+        <button class="btn btn-ghost btn-small" data-close="activityLogModal">Close</button>
+      </div>
+      <div class="dl-modal-body">
+        <div class="fax-modal-table note-list-table">
+          <table>
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Activity</th>
+                <th>Status</th>
+                <th style="text-align:right;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="activityLogTbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="dl-modal-actions">
+        <button class="btn" data-close="activityLogModal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="dl-modal-overlay" id="careTeamEditModal">
+    <div class="dl-modal" style="width:min(920px, 96vw)">
+      <div class="dl-modal-bar">
+        <span>Edit Care Team</span>
+        <button class="btn btn-ghost btn-small" data-close="careTeamEditModal">Close</button>
+      </div>
+      <div class="dl-modal-body">
+        <input type="hidden" id="ctEditId" />
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:240px;">
+            <label>Name</label>
+            <input class="ipt" id="ctEditName" />
+          </div>
+          <div style="width:220px;">
+            <label>Type</label>
+            <input class="ipt" id="ctEditType" />
+          </div>
+          <div style="width:180px;">
+            <label>NPI</label>
+            <input class="ipt" id="ctEditNpi" />
+          </div>
+          <div style="width:160px;">
+            <label>Active</label>
+            <select class="ipt" id="ctEditActive">
+              <option value="1">Yes</option>
+              <option value="0">No</option>
+            </select>
+          </div>
+        </div>
+        <div style="height:10px"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:220px;">
+            <label>Aliases</label>
+            <input class="ipt" id="ctEditAliases" />
+          </div>
+          <div style="flex:1;min-width:220px;">
+            <label>Practice Name</label>
+            <input class="ipt" id="ctEditPractice" />
+          </div>
+        </div>
+        <div style="height:10px"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:220px;">
+            <label>Address 1</label>
+            <input class="ipt" id="ctEditAddress1" />
+          </div>
+          <div style="flex:1;min-width:220px;">
+            <label>Address 2</label>
+            <input class="ipt" id="ctEditAddress2" />
+          </div>
+        </div>
+        <div style="height:10px"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <div style="width:180px;">
+            <label>City</label>
+            <input class="ipt" id="ctEditCity" />
+          </div>
+          <div style="width:120px;">
+            <label>State</label>
+            <input class="ipt" id="ctEditState" />
+          </div>
+          <div style="width:140px;">
+            <label>Zip</label>
+            <input class="ipt" id="ctEditZip" />
+          </div>
+        </div>
+        <div style="height:10px"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <div style="width:180px;">
+            <label>Phone 1</label>
+            <input class="ipt" id="ctEditPhone1" />
+          </div>
+          <div style="width:180px;">
+            <label>Phone 2</label>
+            <input class="ipt" id="ctEditPhone2" />
+          </div>
+          <div style="width:200px;">
+            <label>Email 1</label>
+            <input class="ipt" id="ctEditEmail1" />
+          </div>
+          <div style="width:200px;">
+            <label>Email 2</label>
+            <input class="ipt" id="ctEditEmail2" />
+          </div>
+          <div style="width:160px;">
+            <label>Fax</label>
+            <input class="ipt" id="ctEditFax" />
+          </div>
+        </div>
+      </div>
+      <div class="dl-modal-actions">
+        <button class="btn btn-ghost" data-close="careTeamEditModal">Cancel</button>
+        <button class="btn btn-primary" id="ctEditSave">Save Care Team</button>
       </div>
     </div>
   </div>
@@ -1442,6 +1575,10 @@
     const pcpApptSaveEl = document.getElementById("pcpApptSave");
     const faxLogModalEl = document.getElementById("faxLogModal");
     const faxLogTbodyEl = document.getElementById("faxLogTbody");
+    const activityLogModalEl = document.getElementById("activityLogModal");
+    const activityLogTbodyEl = document.getElementById("activityLogTbody");
+    const careTeamEditModalEl = document.getElementById("careTeamEditModal");
+    const ctEditSaveEl = document.getElementById("ctEditSave");
 
     const drawerEl = document.getElementById("patientDrawer");
     const drawerOverlayEl = document.getElementById("drawerOverlay");
@@ -1896,14 +2033,14 @@
       }
     };
 
-    const buildActivityLog = (p) => {
-      const entries = (p.localActivityLog || []).map(item => {
-        if (typeof item === "string") return { text: item };
-        return item;
-      });
-      const attemptNotes = getAttemptNotes(p);
-      const reachedNotes = getReachedNotes(p);
-      const ccmNotes = getCcmNotes(p);
+      const buildActivityLog = (p) => {
+        const entries = (p.localActivityLog || []).map(item => {
+          if (typeof item === "string") return { text: item };
+          return item;
+        });
+        const attemptNotes = getAttemptNotes(p);
+        const reachedNotes = getReachedNotes(p);
+        const ccmNotes = getCcmNotes(p);
       attemptNotes.forEach(n => {
         const stamp = n.created_at ? formatStamp(new Date(n.created_at)) : formatStamp(new Date());
         const detail = getNoteAnswerValue(n, REACHED_FIELD_KEY) || CALL_VM_ANSWER;
@@ -1952,11 +2089,14 @@
             createdAt: pcpAppt.created_at || pcpAppt.appt_datetime || ""
           });
         }
-        const pcpFaxLogs = (p.faxLogs || []).filter(log => isPcpFaxLog(log, pcpCareTeam && pcpCareTeam.fax));
-        pcpFaxLogs.forEach(log => {
+        const allFaxLogs = (p.faxLogs || []).slice();
+        allFaxLogs.forEach(log => {
           const stamp = log.created_at ? formatStamp(new Date(log.created_at)) : formatStamp(new Date());
+          const status = (log.status || "unknown").toString();
+          const toFax = formatPhoneDisplay(log.to_fax || "");
+          const source = isPcpFaxLog(log, pcpCareTeam && pcpCareTeam.fax) ? "PCP" : "Fax";
           entries.unshift({
-            text: `${stamp} - Faxed records to PCP`,
+            text: `${stamp} - ${source} Fax ${status} — ${toFax}`,
             createdAt: log.created_at || ""
           });
         });
@@ -2274,6 +2414,76 @@
       }, 80);
     };
 
+    const openCareTeamEditModal = (p) => {
+      const ct = getPcpCareTeam(p);
+      if (!ct) {
+        showToast("No Sensys PCP", p.name);
+        return;
+      }
+      const $ = (id) => document.getElementById(id);
+      $("ctEditId").value = ct.care_team_id || ct.id || "";
+      $("ctEditName").value = ct.name || "";
+      $("ctEditType").value = ct.type || "";
+      $("ctEditNpi").value = ct.npi || "";
+      $("ctEditActive").value = (ct.active === 0 || ct.active === "0") ? "0" : "1";
+      $("ctEditAliases").value = ct.aliases || "";
+      $("ctEditPractice").value = ct.practice_name || "";
+      $("ctEditAddress1").value = ct.address1 || "";
+      $("ctEditAddress2").value = ct.address2 || "";
+      $("ctEditCity").value = ct.city || "";
+      $("ctEditState").value = ct.state || "";
+      $("ctEditZip").value = ct.zip || "";
+      $("ctEditPhone1").value = ct.phone1 || "";
+      $("ctEditPhone2").value = ct.phone2 || "";
+      $("ctEditEmail1").value = ct.email1 || "";
+      $("ctEditEmail2").value = ct.email2 || "";
+      $("ctEditFax").value = ct.fax || "";
+      openModal(careTeamEditModalEl);
+    };
+
+    const saveCareTeamEdit = async () => {
+      if (!token()) return;
+      const ctId = document.getElementById("ctEditId").value;
+      if (!ctId) return;
+      const p = patients.find(pt => String(pt.id) === String(selectedPatientId));
+      if (!p) return;
+      const payload = {
+        admission_id: Number(p.id),
+        care_team_id: Number(ctId),
+        name: document.getElementById("ctEditName").value.trim(),
+        type: document.getElementById("ctEditType").value.trim(),
+        npi: document.getElementById("ctEditNpi").value.trim(),
+        active: Number(document.getElementById("ctEditActive").value || 1),
+        aliases: document.getElementById("ctEditAliases").value.trim(),
+        practice_name: document.getElementById("ctEditPractice").value.trim(),
+        address1: document.getElementById("ctEditAddress1").value.trim(),
+        address2: document.getElementById("ctEditAddress2").value.trim(),
+        city: document.getElementById("ctEditCity").value.trim(),
+        state: document.getElementById("ctEditState").value.trim(),
+        zip: document.getElementById("ctEditZip").value.trim(),
+        phone1: document.getElementById("ctEditPhone1").value.trim(),
+        phone2: document.getElementById("ctEditPhone2").value.trim(),
+        email1: document.getElementById("ctEditEmail1").value.trim(),
+        email2: document.getElementById("ctEditEmail2").value.trim(),
+        fax: document.getElementById("ctEditFax").value.trim()
+      };
+      try {
+        const res = await fetch("/api/sensys/care-team/update", {
+          method: "POST",
+          headers: { ...authHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error("Care team update failed");
+        await loadAdmissionDetails(p);
+        renderDrawer();
+        refreshOpenDrawers(p);
+        closeModal(careTeamEditModalEl);
+        showToast("Care team updated", p.name);
+      } catch (err) {
+        showToast("Care team update failed", p.name);
+      }
+    };
+
     const savePcpAppt = async () => {
       if (!pcpApptContext || !token()) return;
       const p = patients.find(pt => String(pt.id) === String(pcpApptContext.patientId));
@@ -2372,7 +2582,7 @@
       const rows = (p.faxLogs || []).slice();
       if (!faxLogTbodyEl) return;
       if (!rows.length) {
-        faxLogTbodyEl.innerHTML = `<tr><td colspan="5" style="padding:12px;color:#667085;">No faxes found.</td></tr>`;
+        faxLogTbodyEl.innerHTML = `<tr><td colspan="6" style="padding:12px;color:#667085;">No faxes found.</td></tr>`;
         return;
       }
       const statusClass = (s) => {
@@ -2384,17 +2594,28 @@
       };
       const fmtFax = (v) => formatPhoneDisplay(v || "");
       const fmtDate = (v) => v ? formatStamp(new Date(v)) : "—";
-      faxLogTbodyEl.innerHTML = rows.map(r => `
+      const pcp = getPcpCareTeam(p);
+      const pcpName = pcp ? (pcp.name || "") : "";
+      const pcpFax = pcp ? formatPhoneDisplay(pcp.fax || "") : "";
+      faxLogTbodyEl.innerHTML = rows.map(r => {
+        const isPcp = isPcpFaxLog(r, pcp && pcp.fax);
+        const source = isPcp ? "PCP" : "Other";
+        const detail = isPcp
+          ? `<div>${pcpName || "PCP"}</div><div style="color:#667085;font-size:12px;">${pcpFax || formatPhoneDisplay(r.to_fax || "")}</div>`
+          : `<div>${(r.cover_text || "—")}</div><div style="color:#667085;font-size:12px;">${formatPhoneDisplay(r.to_fax || "")}</div>`;
+        return `
         <tr>
           <td>${fmtDate(r.created_at)}</td>
+          <td>${source}</td>
           <td>${fmtFax(r.to_fax)}</td>
-          <td>${r.pdf_id || "—"}</td>
+          <td>${detail}</td>
           <td><span class="fax-status ${statusClass(r.status)}">${(r.status || "unknown")}</span></td>
           <td style="text-align:right;">
             <button class="btn btn-small" data-fax-resend="${r.id}" ${["error","failed"].includes(String(r.status || "").toLowerCase()) ? "" : "disabled"}>Resend</button>
           </td>
         </tr>
-      `).join("");
+      `;
+      }).join("");
     };
 
     const openFaxLogModal = async (p) => {
@@ -2448,6 +2669,80 @@
       } catch (err) {
         showToast("Fax log failed", p.name);
       }
+    };
+
+    const renderActivityDrawer = (p) => {
+      if (!activityLogTbodyEl) return;
+      const activity = (p.activityLog || []).map(item => ({
+        text: item.text || item,
+        createdAt: item && item.createdAt ? item.createdAt : null,
+        noteId: item && item.noteId ? item.noteId : null,
+        templateId: item && item.templateId ? item.templateId : null,
+        status: item && item.status ? item.status : ""
+      }));
+      const docItems = (p.pdfs || [])
+        .filter(r => r && r.doc_type && Object.values(DOC_LABELS).includes(r.doc_type))
+        .map(r => {
+          const stamp = r.created_at ? formatStamp(new Date(r.created_at)) : formatStamp(new Date());
+          const name = r.original_filename || r.filename || "Document";
+          return {
+            text: `${stamp} - ${r.doc_type} — ${name}`,
+            createdAt: r.created_at || null,
+            noteId: null,
+            templateId: null,
+            status: ""
+          };
+        });
+      const items = activity.concat(docItems);
+      items.sort((a, b) => {
+        const aTs = a && a.createdAt ? Date.parse(a.createdAt) : NaN;
+        const bTs = b && b.createdAt ? Date.parse(b.createdAt) : NaN;
+        if (!Number.isNaN(aTs) && !Number.isNaN(bTs)) return bTs - aTs;
+        return 0;
+      });
+      activityLogTbodyEl.innerHTML = items.map(item => `
+        <tr data-note-row="${item.noteId || ""}">
+          <td>${item.createdAt ? formatStamp(new Date(item.createdAt)) : "—"}</td>
+          <td>${item.text || ""}</td>
+          <td>${item.status || ""}</td>
+          <td style="text-align:right;">
+            ${item.noteId ? `<button class="icon-plain trash" data-note-delete="${item.noteId}" title="Delete" aria-label="Delete">
+              <svg viewBox="0 0 224.65 262.72" aria-hidden="true">
+                <path d="M205.74,105.45v128.84c0,14.18-11.49,25.67-25.67,25.67H43.59c-14.18,0-25.67-11.49-25.67-25.67V105.45"/>
+                <path d="M24.99,41.02h174.66c12.28,0,22.24,9.97,22.24,22.24v13.37c0,5.42-4.4,9.81-9.81,9.81H12.56c-5.42,0-9.81-4.4-9.81-9.81v-13.37c0-12.28,9.97-22.24,22.24-22.24Z"/>
+                <path d="M63.83,39.75v-23.26c0-7.58,6.15-13.73,13.73-13.73h68.53c7.58,0,13.73,6.15,13.73,13.73v23.26"/>
+                <line x1="80.17" y1="125.24" x2="80.17" y2="217.29"/>
+                <line x1="144.48" y1="125.24" x2="144.48" y2="217.29"/>
+              </svg>
+            </button>` : ""}
+          </td>
+        </tr>
+      `).join("") || `<tr><td colspan="4" style="padding:12px;color:#667085;">No activity yet.</td></tr>`;
+    };
+
+    const openActivityDrawer = async (p) => {
+      if (!token()) {
+        showToast("Login required", p.name);
+        return;
+      }
+      await loadAdmissionNotes([p.id]);
+      await loadAdmissionFaxLogs(p);
+      renderActivityDrawer(p);
+      openModal(activityLogModalEl);
+      activityLogModalEl.querySelectorAll("[data-note-delete]").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          deleteAdmissionNote(p, btn.dataset.noteDelete);
+          renderActivityDrawer(p);
+        });
+      });
+      activityLogModalEl.querySelectorAll("[data-note-row]").forEach(row => {
+        row.addEventListener("click", (e) => {
+          const noteId = row.dataset.noteRow;
+          if (!noteId) return;
+          openNoteDetailsModalForNote(p, noteId);
+        });
+      });
     };
 
     const renderQueues = () => {
@@ -2775,8 +3070,9 @@
         const faxRaw = (pcpCareTeam.fax || "").trim();
         const phone = phoneRaw ? formatPhoneDisplay(phoneRaw) : "—";
         const fax = faxRaw ? formatPhoneDisplay(faxRaw) : "";
-        if (!faxRaw) return `${pcpCareTeam.name} - P:${phone}  F: Missing Fax number`;
-        return `${pcpCareTeam.name} - P:${phone}  F:${fax}`;
+        const phoneHtml = phoneRaw ? phone : `<a class="link-inline pcp-edit-link" data-ct-edit="phone">[Add #]</a>`;
+        const faxHtml = faxRaw ? fax : `<a class="link-inline pcp-edit-link" data-ct-edit="fax">[Add #]</a>`;
+        return `${pcpCareTeam.name} - P:${phoneHtml}  F:${faxHtml}`;
       })();
       const pcpHasCareTeam = Boolean(pcpCareTeam);
       const pcpHasFax = Boolean(pcpCareTeam && (pcpCareTeam.fax || "").trim());
@@ -3053,7 +3349,7 @@
                     .length;
                   return (p.activityLog || []).length + docItems;
                 })()})</span></div>
-                <button class="btn-icon" aria-label="Open" title="Open" data-download="true">
+                <button class="btn-icon" id="btnActivityOpen" aria-label="Open" title="Open" data-download="true">
                   <svg viewBox="0 0 251.6 261.78" aria-hidden="true" style="transform: rotate(-90deg);">
                     <path d="M168.79,110.02V12.56c0-5.42-4.39-9.81-9.81-9.81h-66.35c-5.42,0-9.81,4.39-9.81,9.81v97.45h-45.05c-5.55,0-8.32,6.7-4.4,10.63l88.43,91.63c2.21,2.21,5.81,2.21,8.02,0l88.43-91.63c3.92-3.92,1.14-10.63-4.4-10.63h-45.05Z"/>
                     <path d="M2.75,202.34v41.97c0,8.13,6.59,14.72,14.72,14.72h216.66c8.13,0,14.72-6.59,14.72-14.72v-41.97"/>
@@ -3131,6 +3427,7 @@
       });
         drawerEl.querySelector("#btnDocsComplete")?.addEventListener("click", () => markDocsComplete(p));
         drawerEl.querySelector("#btnDocsOpen")?.addEventListener("click", () => openDocsDrawer(p));
+        drawerEl.querySelector("#btnActivityOpen")?.addEventListener("click", () => openActivityDrawer(p));
         drawerEl.querySelector("#btnPcpAppt")?.addEventListener("click", () => openPcpApptModal(p));
         drawerEl.querySelector("#btnPcpFax")?.addEventListener("click", () => faxPcpRecords(p));
         drawerEl.querySelector("#btnSendHH")?.addEventListener("click", () => requestSendReferral(p.id, "homeHealth"));
@@ -3143,13 +3440,19 @@
       drawerEl.querySelector("#btnSigned")?.addEventListener("click", () => markOrdersSigned(p));
       drawerEl.querySelector("#btnInfo")?.addEventListener("click", () => openInfoDrawer(p));
       drawerEl.querySelector("#btnContactOpen")?.addEventListener("click", () => openContactDrawer(p));
-      drawerEl.querySelector(".activity-log")?.addEventListener("click", (event) => {
-        const row = event.target.closest(".activity-item.note-row");
-        if (!row) return;
-        const noteId = row.dataset.noteId;
-        if (!noteId) return;
-        openNoteDetailsModalForNote(p, noteId);
-      });
+        drawerEl.querySelector(".activity-log")?.addEventListener("click", (event) => {
+          const row = event.target.closest(".activity-item.note-row");
+          if (!row) return;
+          const noteId = row.dataset.noteId;
+          if (!noteId) return;
+          openNoteDetailsModalForNote(p, noteId);
+        });
+        drawerEl.querySelectorAll(".pcp-edit-link").forEach(link => {
+          link.addEventListener("click", (e) => {
+            e.preventDefault();
+            openCareTeamEditModal(p);
+          });
+        });
 
       const downloadBtnHtml = `
         <button class="btn-icon" aria-label="Open" title="Open" data-download="true">
@@ -4055,6 +4358,7 @@
     });
     openFiltersEl.addEventListener("click", () => openModal(filtersModalEl));
     pcpApptSaveEl?.addEventListener("click", savePcpAppt);
+    ctEditSaveEl?.addEventListener("click", saveCareTeamEdit);
     document.getElementById("btnFaxLog")?.addEventListener("click", () => {
       const p = patients.find(pt => pt.id === selectedPatientId);
       if (p) openFaxLogModal(p);
