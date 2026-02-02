@@ -1343,6 +1343,8 @@
     const REACHED_FIELD_KEY = "patient_contact_default";
     const REACHED_ANSWER = "Spoke to patient and educated on next steps in discharge planning process.";
     const CALL_VM_ANSWER = "Left VM";
+    const CALL_NO_VM_ANSWER = "Unable to leave VM";
+    const ATTEMPT_ANSWERS = new Set([CALL_VM_ANSWER, CALL_NO_VM_ANSWER]);
     const CCM_TEMPLATE_ID = 4;
     const CCM_NOTE_NAME = "Evolv SNF - CCM Status";
     const CCM_FIELD_KEY = "ccm_status_default";
@@ -1676,7 +1678,7 @@
       .filter(n => Number(n.template_id) === REACHED_TEMPLATE_ID && (n.workspace_key || "") === WORKSPACE_KEY);
 
     const getAttemptNotes = (p) => getCallResultNotes(p)
-      .filter(n => getNoteAnswerValue(n, REACHED_FIELD_KEY) === CALL_VM_ANSWER);
+      .filter(n => ATTEMPT_ANSWERS.has(getNoteAnswerValue(n, REACHED_FIELD_KEY)));
 
     const getReachedNotes = (p) => getCallResultNotes(p)
       .filter(n => getNoteAnswerValue(n, REACHED_FIELD_KEY) === REACHED_ANSWER);
@@ -1710,8 +1712,9 @@
       const ccmNotes = getCcmNotes(p);
       attemptNotes.forEach(n => {
         const stamp = n.created_at ? formatStamp(new Date(n.created_at)) : formatStamp(new Date());
+        const detail = getNoteAnswerValue(n, REACHED_FIELD_KEY) || CALL_VM_ANSWER;
         entries.unshift({
-          text: `${stamp} - Left voicemail`,
+          text: `${stamp} - ${detail}`,
           noteId: n.id,
           templateId: REACHED_TEMPLATE_ID
         });
@@ -2681,6 +2684,7 @@
         p.admissionNotes = (p.admissionNotes || []).filter(n => Number(n.id) !== Number(noteId));
         applyAttemptNotes(p);
         p.activityLog = buildActivityLog(p);
+        showToast("Note removed", p.name);
         render();
         return;
       }
@@ -2692,6 +2696,7 @@
         });
         if (!res.ok) throw new Error("Failed to delete note");
         await loadAdmissionNotes([p.id]);
+        showToast("Note removed", p.name);
         render();
       } catch (err) {
         console.warn("[Evolv SNF] note delete failed:", err);
@@ -3087,7 +3092,7 @@
       const contactNotes = [
         ...getAttemptNotes(p).map(n => ({
           created_at: n.created_at,
-          text: "Left voicemail",
+          text: getNoteAnswerValue(n, REACHED_FIELD_KEY) || CALL_VM_ANSWER,
           noteId: n.id,
           templateId: REACHED_TEMPLATE_ID
         })),
