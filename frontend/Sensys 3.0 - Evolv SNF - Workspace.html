@@ -225,8 +225,128 @@
       text-decoration:none;
       cursor:pointer;
     }
-    .link-inline:hover{text-decoration:underline;}
+.link-inline:hover{text-decoration:underline;}
     .note-list-table td .icon-plain{margin-left:10px;}
+
+    .doc-input{
+      box-sizing:border-box;
+      padding:10px;
+      border:1px solid #d0d5dd;
+      border-radius:12px;
+      font-size:13px;
+      outline:none;
+      background:#fff;
+    }
+    .doc-input.error{
+      border-color: rgba(199,107,107,.8);
+      box-shadow:0 0 0 2px rgba(199,107,107,.15);
+    }
+    .doc-iconbtn{
+      width:40px;
+      height:40px;
+      border-radius:12px;
+      border:1px solid #d0d5dd;
+      background:#fff;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight:900;
+      color:#0d3b66;
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .doc-iconbtn:hover{
+      border-color: rgba(168,230,207,.9);
+      box-shadow:0 10px 18px rgba(13,59,102,.10);
+      transform: translateY(-1px);
+    }
+    .doc-iconbtn svg{
+      width:18px;
+      height:18px;
+    }
+    .doc-iconbtn .cls-1{
+      stroke:currentColor;
+      fill:none;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      stroke-width:5px;
+    }
+    .doc-msg{
+      display:none;
+      margin-top:10px;
+      padding:10px;
+      border-radius:12px;
+      background:rgba(239,68,68,.08);
+      border:1px solid rgba(239,68,68,.25);
+      color:#991b1b;
+      font-size:12px;
+    }
+    .appt-modal-row{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .appt-section{
+      margin-top:12px;
+      padding:12px;
+      border:1px solid #eef0f4;
+      border-radius:14px;
+      background:#f9fafb;
+    }
+    .appt-section-title{
+      font-size:12px;
+      font-weight:800;
+      color:#475467;
+      margin-bottom:8px;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+    }
+    .appt-edit-meta{
+      margin-top:8px;
+      font-size:12px;
+      color:#475467;
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .appt-edit-meta button{
+      background:none;
+      border:0;
+      padding:0;
+      color:#0d3b66;
+      font-weight:800;
+      cursor:pointer;
+    }
+    .appt-modal-table{
+      margin-top:12px;
+      border:1px solid #eef0f4;
+      border-radius:14px;
+      overflow:hidden;
+    }
+    .appt-modal-table table{
+      width:100%;
+      border-collapse:collapse;
+    }
+    .appt-modal-table thead tr{
+      background:#f8fafc;
+    }
+    .appt-modal-table th{
+      text-align:left;
+      padding:10px;
+      font-size:12px;
+      color:#475467;
+    }
+    .appt-modal-table td{
+      padding:10px;
+      font-size:13px;
+      color:#111827;
+      border-bottom:1px solid #eef0f5;
+    }
+    .appt-modal-table tbody tr:last-child td{
+      border-bottom:0;
+    }
 
     .dl-toast{
       position:fixed;
@@ -766,6 +886,7 @@
   <aside class="drawer" id="infoDrawer"></aside>
   <aside class="drawer" id="contactDrawer"></aside>
   <aside class="drawer" id="docsDrawer"></aside>
+  <aside class="drawer" id="activityDrawer"></aside>
   <input id="docsUploadInput" type="file" accept="application/pdf" style="display:none;" />
 
   <div class="dl-modal-overlay" id="warningModal">
@@ -993,33 +1114,6 @@
       </div>
       <div class="dl-modal-actions">
         <button class="btn" data-close="faxLogModal">Close</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="dl-modal-overlay" id="activityLogModal">
-    <div class="dl-modal" style="width:min(920px, 96vw)">
-      <div class="dl-modal-bar">
-        <span>Notes / Activity Log</span>
-        <button class="btn btn-ghost btn-small" data-close="activityLogModal">Close</button>
-      </div>
-      <div class="dl-modal-body">
-        <div class="fax-modal-table note-list-table">
-          <table>
-            <thead>
-              <tr>
-                <th>When</th>
-                <th>Activity</th>
-                <th>Status</th>
-                <th style="text-align:right;">Action</th>
-              </tr>
-            </thead>
-            <tbody id="activityLogTbody"></tbody>
-          </table>
-        </div>
-      </div>
-      <div class="dl-modal-actions">
-        <button class="btn" data-close="activityLogModal">Close</button>
       </div>
     </div>
   </div>
@@ -1575,14 +1669,20 @@
     const pcpApptSaveEl = document.getElementById("pcpApptSave");
     const faxLogModalEl = document.getElementById("faxLogModal");
     const faxLogTbodyEl = document.getElementById("faxLogTbody");
-    const activityLogModalEl = document.getElementById("activityLogModal");
-    const activityLogTbodyEl = document.getElementById("activityLogTbody");
     const careTeamEditModalEl = document.getElementById("careTeamEditModal");
     const ctEditSaveEl = document.getElementById("ctEditSave");
+    const ctEditPhone1El = document.getElementById("ctEditPhone1");
+    const ctEditPhone2El = document.getElementById("ctEditPhone2");
+    const ctEditFaxEl = document.getElementById("ctEditFax");
+
+    applyPhoneMask(ctEditPhone1El);
+    applyPhoneMask(ctEditPhone2El);
+    applyPhoneMask(ctEditFaxEl);
 
     const drawerEl = document.getElementById("patientDrawer");
     const drawerOverlayEl = document.getElementById("drawerOverlay");
     const fabWrapEl = document.getElementById("fabWrap");
+    const activityDrawerEl = document.getElementById("activityDrawer");
 
     const warningModalEl = document.getElementById("warningModal");
     const warningContinueEl = document.getElementById("warningContinue");
@@ -1634,6 +1734,7 @@
     };
     let pendingDocUpload = null;
     let pcpApptContext = null;
+    let activityApptEditId = null;
 
     const formatDateTime = (iso) => new Intl.DateTimeFormat("en-US", {
       month:"short", day:"numeric", hour:"numeric", minute:"2-digit"
@@ -1663,6 +1764,25 @@
       const ten = (digits.length === 11 && digits.startsWith("1")) ? digits.slice(1) : digits;
       if (ten.length !== 10) return raw;
       return `(${ten.slice(0,3)}) ${ten.slice(3,6)}-${ten.slice(6)}`;
+    };
+    const formatPhoneInput = (value) => {
+      const raw = (value || "").toString();
+      const digitsRaw = raw.replace(/\D/g, "");
+      const digits = (digitsRaw.length === 11 && digitsRaw.startsWith("1")) ? digitsRaw.slice(1) : digitsRaw.slice(0, 10);
+      if (!digits) return "";
+      if (digits.length < 4) return `(${digits}`;
+      if (digits.length < 7) return `(${digits.slice(0,3)}) ${digits.slice(3)}`;
+      return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+    };
+    const applyPhoneMask = (el) => {
+      if (!el) return;
+      const handle = () => {
+        const next = formatPhoneInput(el.value);
+        if (el.value !== next) el.value = next;
+      };
+      el.addEventListener("input", handle);
+      el.addEventListener("blur", handle);
+      handle();
     };
     const toLocalInputValue = (iso) => {
       if (!iso) return "";
@@ -2671,8 +2791,7 @@
       }
     };
 
-    const renderActivityDrawer = (p) => {
-      if (!activityLogTbodyEl) return;
+    const buildActivityItems = (p) => {
       const activity = (p.activityLog || []).map(item => ({
         text: item.text || item,
         createdAt: item && item.createdAt ? item.createdAt : null,
@@ -2700,24 +2819,7 @@
         if (!Number.isNaN(aTs) && !Number.isNaN(bTs)) return bTs - aTs;
         return 0;
       });
-      activityLogTbodyEl.innerHTML = items.map(item => `
-        <tr data-note-row="${item.noteId || ""}">
-          <td>${item.createdAt ? formatStamp(new Date(item.createdAt)) : "—"}</td>
-          <td>${item.text || ""}</td>
-          <td>${item.status || ""}</td>
-          <td style="text-align:right;">
-            ${item.noteId ? `<button class="icon-plain trash" data-note-delete="${item.noteId}" title="Delete" aria-label="Delete">
-              <svg viewBox="0 0 224.65 262.72" aria-hidden="true">
-                <path d="M205.74,105.45v128.84c0,14.18-11.49,25.67-25.67,25.67H43.59c-14.18,0-25.67-11.49-25.67-25.67V105.45"/>
-                <path d="M24.99,41.02h174.66c12.28,0,22.24,9.97,22.24,22.24v13.37c0,5.42-4.4,9.81-9.81,9.81H12.56c-5.42,0-9.81-4.4-9.81-9.81v-13.37c0-12.28,9.97-22.24,22.24-22.24Z"/>
-                <path d="M63.83,39.75v-23.26c0-7.58,6.15-13.73,13.73-13.73h68.53c7.58,0,13.73,6.15,13.73,13.73v23.26"/>
-                <line x1="80.17" y1="125.24" x2="80.17" y2="217.29"/>
-                <line x1="144.48" y1="125.24" x2="144.48" y2="217.29"/>
-              </svg>
-            </button>` : ""}
-          </td>
-        </tr>
-      `).join("") || `<tr><td colspan="4" style="padding:12px;color:#667085;">No activity yet.</td></tr>`;
+      return items;
     };
 
     const openActivityDrawer = async (p) => {
@@ -2725,19 +2827,288 @@
         showToast("Login required", p.name);
         return;
       }
-      await loadAdmissionNotes([p.id]);
-      await loadAdmissionFaxLogs(p);
-      renderActivityDrawer(p);
-      openModal(activityLogModalEl);
-      activityLogModalEl.querySelectorAll("[data-note-delete]").forEach(btn => {
+      await Promise.all([
+        loadAdmissionNotes([p.id]),
+        loadAdmissionFaxLogs(p),
+        loadAdmissionDetails(p)
+      ]);
+
+      activityApptEditId = null;
+      const items = buildActivityItems(p);
+      const careTeam = (p.careTeam || []);
+      const appointments = (p.appointments || []).slice();
+      const careOptions = ['<option value="">Select care team…</option>']
+        .concat(careTeam.map(c => {
+          const label = `${c.name || ""}${c.type ? " — " + c.type : ""}`;
+          const id = c.care_team_id || c.id;
+          return `<option value="${id}">${label}</option>`;
+        }));
+
+      const activityBody = `
+        <div class="info-section">
+          <div class="info-label">Appointments</div>
+          <div class="appt-modal-row">
+            <input id="activityApptsSearch" class="doc-input" placeholder="Search appointments..." style="flex:1 1 260px;min-width:220px;max-width:360px;" />
+          </div>
+          <div class="appt-section">
+            <div class="appt-section-title">Add Appointment</div>
+            <div class="appt-modal-row">
+              <select id="activityApptsCareTeamSelect" class="doc-input" style="flex:1 1 240px;min-width:200px;">
+                ${careOptions.join("")}
+              </select>
+              <input id="activityApptsDatetime" type="datetime-local" class="doc-input" style="width:220px;min-width:200px;" />
+              <select id="activityApptsStatus" class="doc-input" style="width:180px;">
+                <option>New</option>
+                <option>Attended</option>
+                <option>Missed</option>
+                <option>Rescheduled</option>
+              </select>
+              <button id="activityApptsAddBtn" class="doc-iconbtn" title="Add appointment">
+                <svg viewBox="0 0 218.13 218.13" aria-hidden="true">
+                  <g>
+                    <line class="cls-1" x1="109.07" y1="2.75" x2="109.07" y2="215.38"/>
+                    <line class="cls-1" x1="215.38" y1="109.07" x2="2.75" y2="109.07"/>
+                  </g>
+                </svg>
+              </button>
+            </div>
+            <div id="activityApptsEditMeta" class="appt-edit-meta" style="display:none;">
+              <span>Editing appointment</span>
+              <button type="button" id="activityApptsCancel">Cancel edit</button>
+            </div>
+            <div id="activityApptsMsg" class="doc-msg"></div>
+          </div>
+          <div class="appt-modal-table">
+            <div style="max-height:360px;overflow:auto;">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width:28%;">Date/Time</th>
+                    <th>Care Team</th>
+                    <th style="width:18%;">Status</th>
+                    <th style="width:120px;text-align:right;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="activityApptsTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="info-section" style="margin-top:12px;">
+          <div class="info-label">Notes / Activity Log</div>
+          <div class="appt-modal-table note-list-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Activity</th>
+                  <th>Status</th>
+                  <th style="text-align:right;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="activityDrawerTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      `;
+
+      activityDrawerEl.innerHTML = `
+        <div class="drawer-header">
+          <div>
+            <div class="drawer-title">Notes / Activity Log</div>
+            <div class="drawer-sub">${p.name} • ${p.facilityName}</div>
+          </div>
+          <button class="btn btn-primary btn-small" id="btnActivityDone">Done</button>
+        </div>
+        <div class="drawer-body">${activityBody}</div>
+      `;
+
+      drawerEl.classList.remove("open");
+      infoDrawerEl.classList.remove("open");
+      contactDrawerEl.classList.remove("open");
+      docsDrawerEl.classList.remove("open");
+      activityDrawerEl.classList.add("open");
+      drawerOverlayEl.classList.add("show");
+      fabAutoOpen = true;
+      updateFabState();
+
+      const apptsMsg = activityDrawerEl.querySelector("#activityApptsMsg");
+      const apptsSearch = activityDrawerEl.querySelector("#activityApptsSearch");
+      const apptsCareTeamSelect = activityDrawerEl.querySelector("#activityApptsCareTeamSelect");
+      const apptsDatetime = activityDrawerEl.querySelector("#activityApptsDatetime");
+      const apptsStatus = activityDrawerEl.querySelector("#activityApptsStatus");
+      const apptsAddBtn = activityDrawerEl.querySelector("#activityApptsAddBtn");
+      const apptsTbody = activityDrawerEl.querySelector("#activityApptsTbody");
+      const apptsEditMeta = activityDrawerEl.querySelector("#activityApptsEditMeta");
+      const apptsCancel = activityDrawerEl.querySelector("#activityApptsCancel");
+      const activityTbody = activityDrawerEl.querySelector("#activityDrawerTbody");
+
+      const showApptMsg = (text) => {
+        if (!apptsMsg) return;
+        if (!text) {
+          apptsMsg.style.display = "none";
+          apptsMsg.textContent = "";
+          return;
+        }
+        apptsMsg.style.display = "block";
+        apptsMsg.textContent = text;
+      };
+
+      const getCareTeamLabel = (appt) => {
+        const id = String(appt.care_team_id || "");
+        const match = careTeam.find(ct => String(ct.care_team_id || ct.id || "") === id);
+        if (match) return `${match.name || ""}${match.type ? " — " + match.type : ""}`.trim();
+        return appt.care_team_name || appt.care_team_type || "";
+      };
+
+      const renderApptRows = () => {
+        if (!apptsTbody) return;
+        const q = (apptsSearch && apptsSearch.value ? apptsSearch.value.trim().toLowerCase() : "");
+        const rows = appointments.filter(r => {
+          if (!q) return true;
+          const dt = String(r.appt_datetime || "").toLowerCase();
+          const status = String(r.appt_status || "").toLowerCase();
+          const ct = String(getCareTeamLabel(r) || "").toLowerCase();
+          return dt.includes(q) || status.includes(q) || ct.includes(q);
+        });
+        if (!rows.length) {
+          apptsTbody.innerHTML = `<tr><td colspan="4" style="padding:12px;font-size:12px;color:#667085;">No appointments found.</td></tr>`;
+          return;
+        }
+        apptsTbody.innerHTML = rows.map(r => {
+          return `
+            <tr>
+              <td>${r.appt_datetime ? formatDateTime(r.appt_datetime) : "—"}</td>
+              <td>${getCareTeamLabel(r) || "—"}</td>
+              <td>${r.appt_status || ""}</td>
+              <td style="text-align:right;">
+                <button class="icon-plain" data-appt-edit="${r.id}" title="Edit appointment" aria-label="Edit appointment">
+                  <svg viewBox="0 0 237.85 237.86" aria-hidden="true">
+                    <line x1="34.25" y1="178.82" x2="57.97" y2="202.54"/>
+                    <path d="M68.74,219.9c-3.65,3.65-8.34,6.09-13.43,6.97l-47.25,8.18c-3.09.53-5.78-2.15-5.24-5.24l8.17-47.25c.88-5.09,3.31-9.78,6.97-13.44L173.79,13.27c14.02-14.02,36.76-14.03,50.78,0h0c14.02,14.02,14.03,36.76,0,50.79L68.74,219.9Z"/>
+                  </svg>
+                </button>
+                <button class="icon-plain trash" data-appt-del="${r.id}" title="Delete appointment" aria-label="Delete appointment">
+                  <svg viewBox="0 0 224.65 262.72" aria-hidden="true">
+                    <path d="M205.74,105.45v128.84c0,14.18-11.49,25.67-25.67,25.67H43.59c-14.18,0-25.67-11.49-25.67-25.67V105.45"/>
+                    <path d="M24.99,41.02h174.66c12.28,0,22.24,9.97,22.24,22.24v13.37c0,5.42-4.4,9.81-9.81,9.81H12.56c-5.42,0-9.81-4.4-9.81-9.81v-13.37c0-12.28,9.97-22.24,22.24-22.24Z"/>
+                    <path d="M63.83,39.75v-23.26c0-7.58,6.15-13.73,13.73-13.73h68.53c7.58,0,13.73,6.15,13.73,13.73v23.26"/>
+                    <line x1="80.17" y1="125.24" x2="80.17" y2="217.29"/>
+                    <line x1="144.48" y1="125.24" x2="144.48" y2="217.29"/>
+                  </svg>
+                </button>
+              </td>
+            </tr>
+          `;
+        }).join("");
+      };
+
+      const clearEdit = () => {
+        activityApptEditId = null;
+        if (apptsCareTeamSelect) apptsCareTeamSelect.value = "";
+        if (apptsDatetime) apptsDatetime.value = "";
+        if (apptsStatus) apptsStatus.value = "New";
+        if (apptsEditMeta) apptsEditMeta.style.display = "none";
+      };
+
+      const beginEdit = (appt) => {
+        activityApptEditId = appt.id;
+        if (apptsCareTeamSelect) apptsCareTeamSelect.value = String(appt.care_team_id || "");
+        if (apptsDatetime) apptsDatetime.value = toLocalInputValue(appt.appt_datetime || "");
+        if (apptsStatus) apptsStatus.value = appt.appt_status || "New";
+        if (apptsEditMeta) apptsEditMeta.style.display = "flex";
+      };
+
+      if (activityTbody) {
+        activityTbody.innerHTML = items.map(item => `
+          <tr data-note-row="${item.noteId || ""}">
+            <td>${item.createdAt ? formatStamp(new Date(item.createdAt)) : "—"}</td>
+            <td>${item.text || ""}</td>
+            <td>${item.status || ""}</td>
+            <td style="text-align:right;">
+              ${item.noteId ? `<button class="icon-plain trash" data-note-delete="${item.noteId}" title="Delete" aria-label="Delete">
+                <svg viewBox="0 0 224.65 262.72" aria-hidden="true">
+                  <path d="M205.74,105.45v128.84c0,14.18-11.49,25.67-25.67,25.67H43.59c-14.18,0-25.67-11.49-25.67-25.67V105.45"/>
+                  <path d="M24.99,41.02h174.66c12.28,0,22.24,9.97,22.24,22.24v13.37c0,5.42-4.4,9.81-9.81,9.81H12.56c-5.42,0-9.81-4.4-9.81-9.81v-13.37c0-12.28,9.97-22.24,22.24-22.24Z"/>
+                  <path d="M63.83,39.75v-23.26c0-7.58,6.15-13.73,13.73-13.73h68.53c7.58,0,13.73,6.15,13.73,13.73v23.26"/>
+                  <line x1="80.17" y1="125.24" x2="80.17" y2="217.29"/>
+                  <line x1="144.48" y1="125.24" x2="144.48" y2="217.29"/>
+                </svg>
+              </button>` : ""}
+            </td>
+          </tr>
+        `).join("") || `<tr><td colspan="4" style="padding:12px;color:#667085;">No activity yet.</td></tr>`;
+      }
+
+      renderApptRows();
+      activityDrawerEl.querySelector("#btnActivityDone")?.addEventListener("click", () => {
+        activityDrawerEl.classList.remove("open");
+        if (selectedPatientId) drawerEl.classList.add("open");
+        updateFabState();
+      });
+      apptsSearch?.addEventListener("input", renderApptRows);
+      apptsCancel?.addEventListener("click", () => {
+        clearEdit();
+      });
+      apptsAddBtn?.addEventListener("click", async () => {
+        try {
+          showApptMsg("");
+          const apptLocal = apptsDatetime && apptsDatetime.value ? apptsDatetime.value.trim() : "";
+          if (!apptLocal) throw new Error("Select a date/time.");
+          const apptIso = new Date(apptLocal).toISOString();
+          const payload = {
+            id: activityApptEditId,
+            admission_id: Number(p.id),
+            care_team_id: Number(apptsCareTeamSelect && apptsCareTeamSelect.value || 0) || null,
+            appt_datetime: apptIso,
+            appt_status: (apptsStatus && apptsStatus.value || "New").trim() || "New"
+          };
+          const res = await fetch("/api/sensys/admission-appointments/upsert", {
+            method: "POST",
+            headers: { "Content-Type":"application/json", ...authHeaders() },
+            body: JSON.stringify(payload)
+          });
+          if (!res.ok) throw new Error("Appointment not saved.");
+          await loadAdmissionDetails(p);
+          clearEdit();
+          openActivityDrawer(p);
+        } catch (err) {
+          showApptMsg(err.message || "Appointment not saved.");
+        }
+      });
+      apptsTbody?.querySelectorAll("[data-appt-edit]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const id = Number(btn.getAttribute("data-appt-edit"));
+          const appt = appointments.find(a => Number(a.id) === id);
+          if (appt) beginEdit(appt);
+        });
+      });
+      apptsTbody?.querySelectorAll("[data-appt-del]").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const id = Number(btn.getAttribute("data-appt-del"));
+          try {
+            showApptMsg("");
+            await fetch("/api/sensys/admission-appointments/delete", {
+              method:"POST",
+              headers: { "Content-Type":"application/json", ...authHeaders() },
+              body: JSON.stringify({ id })
+            });
+            await loadAdmissionDetails(p);
+            openActivityDrawer(p);
+          } catch (err) {
+            showApptMsg(err.message || "Delete failed.");
+          }
+        });
+      });
+      activityDrawerEl.querySelectorAll("[data-note-delete]").forEach(btn => {
         btn.addEventListener("click", (e) => {
           e.stopPropagation();
           deleteAdmissionNote(p, btn.dataset.noteDelete);
-          renderActivityDrawer(p);
+          openActivityDrawer(p);
         });
       });
-      activityLogModalEl.querySelectorAll("[data-note-row]").forEach(row => {
-        row.addEventListener("click", (e) => {
+      activityDrawerEl.querySelectorAll("[data-note-row]").forEach(row => {
+        row.addEventListener("click", () => {
           const noteId = row.dataset.noteRow;
           if (!noteId) return;
           openNoteDetailsModalForNote(p, noteId);
@@ -2745,7 +3116,7 @@
       });
     };
 
-    const renderQueues = () => {
+    const renderQueues = () => {    const renderQueues = () => {
       queueListEl.innerHTML = "";
       queues.forEach(queue => {
         if (queue.id === "urgent") {
@@ -2993,7 +3364,8 @@
       const anyOpen = drawerEl.classList.contains("open")
         || infoDrawerEl.classList.contains("open")
         || contactDrawerEl.classList.contains("open")
-        || docsDrawerEl.classList.contains("open");
+        || docsDrawerEl.classList.contains("open")
+        || activityDrawerEl.classList.contains("open");
       document.body.classList.toggle("drawer-open", anyOpen);
       if (fabWrapEl) {
         fabWrapEl.classList.toggle("open", anyOpen && fabAutoOpen);
@@ -3015,6 +3387,7 @@
       infoDrawerEl.classList.remove("open");
       contactDrawerEl.classList.remove("open");
       docsDrawerEl.classList.remove("open");
+      activityDrawerEl.classList.remove("open");
       fabAutoOpen = false;
       updateFabState();
     };
@@ -3306,7 +3679,14 @@
                       </svg>
                     </button>
                   </div>
-                  <div class="card-expand"></div>
+                  <div class="card-expand">
+                    <button class="btn-icon" id="btnPcpApptOpen" aria-label="Open" title="Open" data-download="true">
+                      <svg viewBox="0 0 251.6 261.78" aria-hidden="true" style="transform: rotate(-90deg);">
+                        <path d="M168.79,110.02V12.56c0-5.42-4.39-9.81-9.81-9.81h-66.35c-5.42,0-9.81,4.39-9.81,9.81v97.45h-45.05c-5.55,0-8.32,6.7-4.4,10.63l88.43,91.63c2.21,2.21,5.81,2.21,8.02,0l88.43-91.63c3.92-3.92,1.14-10.63-4.4-10.63h-45.05Z"/>
+                        <path d="M2.75,202.34v41.97c0,8.13,6.59,14.72,14.72,14.72h216.66c8.13,0,14.72-6.59,14.72-14.72v-41.97"/>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -3428,6 +3808,7 @@
         drawerEl.querySelector("#btnDocsComplete")?.addEventListener("click", () => markDocsComplete(p));
         drawerEl.querySelector("#btnDocsOpen")?.addEventListener("click", () => openDocsDrawer(p));
         drawerEl.querySelector("#btnActivityOpen")?.addEventListener("click", () => openActivityDrawer(p));
+        drawerEl.querySelector("#btnPcpApptOpen")?.addEventListener("click", () => openActivityDrawer(p));
         drawerEl.querySelector("#btnPcpAppt")?.addEventListener("click", () => openPcpApptModal(p));
         drawerEl.querySelector("#btnPcpFax")?.addEventListener("click", () => faxPcpRecords(p));
         drawerEl.querySelector("#btnSendHH")?.addEventListener("click", () => requestSendReferral(p.id, "homeHealth"));
@@ -4299,6 +4680,7 @@
       drawerEl.classList.remove("open");
       infoDrawerEl.classList.remove("open");
       contactDrawerEl.classList.remove("open");
+      activityDrawerEl.classList.remove("open");
       docsDrawerEl.classList.add("open");
       drawerOverlayEl.classList.add("show");
       fabAutoOpen = true;
@@ -4348,6 +4730,9 @@
       }
       if (docsDrawerEl.classList.contains("open")) {
         openDocsDrawer(p);
+      }
+      if (activityDrawerEl.classList.contains("open")) {
+        openActivityDrawer(p);
       }
     };
 

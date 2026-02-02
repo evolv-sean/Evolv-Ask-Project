@@ -3167,6 +3167,32 @@
 <script>
   const $ = (id) => document.getElementById(id);
 
+  const formatPhoneInput = (value) => {
+    const raw = (value || "").toString();
+    const digitsRaw = raw.replace(/\D/g, "");
+    const digits = (digitsRaw.length === 11 && digitsRaw.startsWith("1")) ? digitsRaw.slice(1) : digitsRaw.slice(0, 10);
+    if (!digits) return "";
+    if (digits.length < 4) return `(${digits}`;
+    if (digits.length < 7) return `(${digits.slice(0,3)}) ${digits.slice(3)}`;
+    return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+  };
+  const applyPhoneMask = (el) => {
+    if (!el) return;
+    const handle = () => {
+      const next = formatPhoneInput(el.value);
+      if (el.value !== next) el.value = next;
+    };
+    el.addEventListener("input", handle);
+    el.addEventListener("blur", handle);
+    handle();
+  };
+  const applyPhoneMasks = () => {
+    ["cell_phone","phone1","phone2","fax","p_phone1","p_phone2","ct_phone1","ct_phone2","ct_fax"].forEach((id) => {
+      applyPhoneMask($(id));
+    });
+  };
+  applyPhoneMasks();
+
   // ✅ Prevent browser from trying to open/save the file when dragged over the page
   document.addEventListener("dragover", (e) => e.preventDefault());
   document.addEventListener("drop", (e) => e.preventDefault());
