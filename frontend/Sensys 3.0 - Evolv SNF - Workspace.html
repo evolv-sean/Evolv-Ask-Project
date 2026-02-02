@@ -1675,10 +1675,6 @@
     const ctEditPhone2El = document.getElementById("ctEditPhone2");
     const ctEditFaxEl = document.getElementById("ctEditFax");
 
-    applyPhoneMask(ctEditPhone1El);
-    applyPhoneMask(ctEditPhone2El);
-    applyPhoneMask(ctEditFaxEl);
-
     const drawerEl = document.getElementById("patientDrawer");
     const drawerOverlayEl = document.getElementById("drawerOverlay");
     const fabWrapEl = document.getElementById("fabWrap");
@@ -1784,6 +1780,9 @@
       el.addEventListener("blur", handle);
       handle();
     };
+    applyPhoneMask(ctEditPhone1El);
+    applyPhoneMask(ctEditPhone2El);
+    applyPhoneMask(ctEditFaxEl);
     const toLocalInputValue = (iso) => {
       if (!iso) return "";
       const d = new Date(iso);
@@ -3116,7 +3115,7 @@
       });
     };
 
-    const renderQueues = () => {    const renderQueues = () => {
+    const renderQueues = () => {
       queueListEl.innerHTML = "";
       queues.forEach(queue => {
         if (queue.id === "urgent") {
@@ -4389,8 +4388,8 @@
                 </svg>
               </button>
               <div class="info-label">Patient</div>
-              <div class="info-value">${p.name}${p.dob ? ` (${formatDob(p.dob)})` : ""}</div>
-              ${addressParts.length ? `<div class="info-note" style="margin-top:4px">${addressParts.join(" • ")}</div>` : ""}
+              <div class="info-value">${p.name}${p.dob ? " (" + formatDob(p.dob) + ")" : ""}</div>
+              ${addressParts.length ? "<div class=\"info-note\" style=\"margin-top:4px\">" + addressParts.join(" • ") + "</div>" : ""}
             </div>
           </div>
           <div class="info-row" style="margin-top:8px">
@@ -4509,8 +4508,8 @@
           <div class="info-row">
             <div class="info-block patient-card" style="flex:1;min-width:220px">
               <div class="info-label">Patient</div>
-              <div class="info-value">${p.name}${p.dob ? ` (${formatDob(p.dob)})` : ""}</div>
-              ${addressParts.length ? `<div class="info-note" style="margin-top:4px">${addressParts.join(" • ")}</div>` : ""}
+              <div class="info-value">${p.name}${p.dob ? " (" + formatDob(p.dob) + ")" : ""}</div>
+              ${addressParts.length ? "<div class=\"info-note\" style=\"margin-top:4px\">" + addressParts.join(" • ") + "</div>" : ""}
               <div class="info-row" style="margin-top:6px">
                 ${phones.mobile ? `<span class="service-pill">M: ${phones.mobile}</span>` : ""}
                 ${phones.home ? `<span class="service-pill">H: ${phones.home}</span>` : ""}
