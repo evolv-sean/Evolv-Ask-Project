@@ -2305,6 +2305,9 @@
         });
         if (!res.ok) throw new Error("Appointment save failed");
         await loadAdmissionDetails(p);
+        const appt = getPcpAppointment(p, getPcpCareTeam(p));
+        const apptWhen = appt && appt.appt_datetime ? formatDateTime(appt.appt_datetime) : "—";
+        addActivity(p, `PCP Appt created — Appt ${apptWhen}`);
         p.activityLog = buildActivityLog(p);
         renderDrawer();
         refreshOpenDrawers(p);
