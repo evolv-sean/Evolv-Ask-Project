@@ -1510,6 +1510,23 @@
     const formatDateShort = (iso) => new Intl.DateTimeFormat("en-US", {
       month:"2-digit", day:"2-digit", year:"2-digit"
     }).format(new Date(iso));
+    const normalizeE164 = (num) => {
+      const raw = (num || "").toString().trim();
+      if (!raw) return "";
+      if (raw.startsWith("+")) return raw;
+      const digits = raw.replace(/\D/g, "");
+      if (digits.length === 10) return `+1${digits}`;
+      if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+      return raw;
+    };
+    const formatPhoneDisplay = (num) => {
+      const raw = (num || "").toString().trim();
+      if (!raw) return "";
+      const digits = raw.replace(/\D/g, "");
+      const ten = (digits.length === 11 && digits.startsWith("1")) ? digits.slice(1) : digits;
+      if (ten.length !== 10) return raw;
+      return `(${ten.slice(0,3)}) ${ten.slice(3,6)}-${ten.slice(6)}`;
+    };
     const toLocalInputValue = (iso) => {
       if (!iso) return "";
       const d = new Date(iso);
@@ -2305,7 +2322,7 @@
         return;
       }
       const pcpCareTeam = getPcpCareTeam(p);
-      const fax = (pcpCareTeam && pcpCareTeam.fax) ? String(pcpCareTeam.fax).trim() : "";
+      const fax = (pcpCareTeam && pcpCareTeam.fax) ? normalizeE164(String(pcpCareTeam.fax).trim()) : "";
       if (!pcpCareTeam) {
         showToast("No Sensys PCP", p.name);
         return;
@@ -2362,7 +2379,7 @@
         if (v.includes("sent") || v.includes("delivered")) return "sent";
         return "";
       };
-      const fmtFax = (v) => (v || "").toString();
+      const fmtFax = (v) => formatPhoneDisplay(v || "");
       const fmtDate = (v) => v ? formatStamp(new Date(v)) : "—";
       faxLogTbodyEl.innerHTML = rows.map(r => `
         <tr>
@@ -2751,9 +2768,11 @@
         : "No appt or fax";
       const pcpMeta = (() => {
         if (!pcpCareTeam) return "No Sensys PCP";
-        const phone = (pcpCareTeam.phone1 || "—").trim() || "—";
-        const fax = (pcpCareTeam.fax || "").trim();
-        if (!fax) return `${pcpCareTeam.name} - P:${phone}  F: Missing Fax number`;
+        const phoneRaw = (pcpCareTeam.phone1 || "").trim();
+        const faxRaw = (pcpCareTeam.fax || "").trim();
+        const phone = phoneRaw ? formatPhoneDisplay(phoneRaw) : "—";
+        const fax = faxRaw ? formatPhoneDisplay(faxRaw) : "";
+        if (!faxRaw) return `${pcpCareTeam.name} - P:${phone}  F: Missing Fax number`;
         return `${pcpCareTeam.name} - P:${phone}  F:${fax}`;
       })();
       const pcpHasCareTeam = Boolean(pcpCareTeam);

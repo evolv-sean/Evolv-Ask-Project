@@ -1253,6 +1253,25 @@
     sel.innerHTML = opts.join('');
   }
 
+  function normalizeE164(num){
+    const raw = String(num || '').trim();
+    if(!raw) return '';
+    if(raw.startsWith('+')) return raw;
+    const digits = raw.replace(/\D/g, '');
+    if(digits.length === 10) return '+1' + digits;
+    if(digits.length === 11 && digits.startsWith('1')) return '+' + digits;
+    return raw;
+  }
+
+  function formatPhoneDisplay(num){
+    const raw = String(num || '').trim();
+    if(!raw) return '';
+    const digits = raw.replace(/\D/g, '');
+    const ten = (digits.length === 11 && digits.startsWith('1')) ? digits.slice(1) : digits;
+    if(ten.length !== 10) return raw;
+    return `(${ten.slice(0,3)}) ${ten.slice(3,6)}-${ten.slice(6)}`;
+  }
+
   function renderFax(){
     const tb = document.getElementById('faxTbody');
     if(!tb) return;
@@ -1260,7 +1279,7 @@
     const rows = (FAX_LOG || []);
     tb.innerHTML = rows.map(r => `
       <tr style="border-bottom:1px solid #eef0f5;">
-        <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.to_fax || '')}</td>
+        <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(formatPhoneDisplay(r.to_fax || ''))}</td>
         <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(String(r.pdf_id || ''))}</td>
         <td style="padding:10px;font-size:13px;color:#111827;">${escapeHtml(r.created_at || '')}</td>
         <td style="padding:10px;font-size:13px;color:#111827;">
@@ -1983,7 +2002,7 @@
       showMsg('');
       if(!ADMISSION_ID) throw new Error("Fax not sent: missing ADMISSION_ID.");
 
-      const to_fax = document.getElementById('faxToNumber').value.trim();
+        const to_fax = normalizeE164(document.getElementById('faxToNumber').value.trim());
       const sel = document.getElementById('faxPdfSelect');
       const selectedIds = Array.from(sel?.selectedOptions || []).map(opt => Number(opt.value)).filter(Boolean);
       const cover_text = document.getElementById('faxCoverText').value.trim();
