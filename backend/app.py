@@ -19526,10 +19526,10 @@ class AdmissionAppointmentUpsert(BaseModel):
     model_config = ConfigDict(extra="allow")
     id: Optional[int] = None
     admission_id: int
-        appt_datetime: Optional[str] = ""   # store as ISO string from UI
-        care_team_id: Optional[int] = None
-        appt_status: str = "New"            # New, Attended, Missed, Rescheduled
-        appt_comments: Optional[str] = ""
+    appt_datetime: Optional[str] = ""   # store as ISO string from UI
+    care_team_id: Optional[int] = None
+    appt_status: str = "New"            # New, Attended, Missed, Rescheduled
+    appt_comments: Optional[str] = ""
 
 
 # -----------------------------
