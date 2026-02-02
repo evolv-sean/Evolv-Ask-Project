@@ -804,7 +804,7 @@ def sensys_pdf_download(pdf_id: int, request: Request):
 
         row = conn.execute(
             """
-            SELECT id, admission_id, original_filename, stored_filename, content_type, expires_at
+            SELECT id, admission_id, original_filename, stored_filename, content_type, expires_at, deleted_at
             FROM sensys_pdf_files
             WHERE id = ?
             """,
@@ -812,6 +812,8 @@ def sensys_pdf_download(pdf_id: int, request: Request):
         ).fetchone()
 
         if not row:
+            raise HTTPException(status_code=404, detail="PDF not found")
+        if row["deleted_at"]:
             raise HTTPException(status_code=404, detail="PDF not found")
 
         admission_id = row["admission_id"]
@@ -3185,6 +3187,7 @@ def init_db():
             size_bytes         INTEGER DEFAULT 0,
             content_type       TEXT DEFAULT 'application/pdf',
             created_at         TEXT DEFAULT (datetime('now')),
+            deleted_at         TEXT,
 
             -- âœ… NEW: optional retention window (48h, etc.)
             expires_at         TEXT
@@ -3198,6 +3201,8 @@ def init_db():
         existing_cols = {r[1] for r in cur.fetchall()}
         if "expires_at" not in existing_cols:
             cur.execute("ALTER TABLE sensys_pdf_files ADD COLUMN expires_at TEXT")
+        if "deleted_at" not in existing_cols:
+            cur.execute("ALTER TABLE sensys_pdf_files ADD COLUMN deleted_at TEXT")
     except sqlite3.Error:
         # Never block startup for a best-effort migration
         pass
@@ -3848,6 +3853,12 @@ def init_db():
     # Keep snapshot fields in sensys_admissions (latest DC submission)
     ensure_column(conn, "sensys_admissions", "dc_confirmed", "dc_confirmed INTEGER DEFAULT 0")
     ensure_column(conn, "sensys_admissions", "latest_dc_submission_id", "latest_dc_submission_id INTEGER")
+    ensure_column(conn, "sensys_admissions", "docs_facesheet", "docs_facesheet INTEGER DEFAULT 0")
+    ensure_column(conn, "sensys_admissions", "docs_dc_summary", "docs_dc_summary INTEGER DEFAULT 0")
+    ensure_column(conn, "sensys_admissions", "docs_physicians_added", "docs_physicians_added INTEGER DEFAULT 0")
+    ensure_column(conn, "sensys_admissions", "docs_status", "docs_status TEXT DEFAULT 'not_started'")
+    ensure_column(conn, "sensys_admissions", "docs_packet_generated", "docs_packet_generated INTEGER DEFAULT 0")
+    ensure_column(conn, "sensys_admissions", "docs_completed_at", "docs_completed_at TEXT")
 
     # -------------------------------------------------------------------
     # PDW v1 â€” Post-Discharge Workspace (Option B: Work Items + Attempts Log)
@@ -23239,6 +23250,12 @@ def sensys_my_admissions(request: Request, admitted_only: int = 0):
                 a.latest_pcp,
                 a.active,
                 a.updated_at,
+                a.docs_facesheet,
+                a.docs_dc_summary,
+                a.docs_physicians_added,
+                a.docs_status,
+                a.docs_packet_generated,
+                a.docs_completed_at,
 
                 -- latest dc submission (if any)
                 dcs.id AS dc_sub_id,
@@ -23357,6 +23374,12 @@ def sensys_my_admissions(request: Request, admitted_only: int = 0):
             a.latest_pcp,
             a.active,
             a.updated_at,
+            a.docs_facesheet,
+            a.docs_dc_summary,
+            a.docs_physicians_added,
+            a.docs_status,
+            a.docs_packet_generated,
+            a.docs_completed_at,
 
             -- latest dc submission (if any)
             dcs.id AS dc_sub_id,
@@ -25154,15 +25177,48 @@ def sensys_admission_pdfs_list(admission_id: int, request: Request):
             SELECT
                 id, admission_id, doc_type, original_filename,
                 stored_filename, sha256, size_bytes, content_type,
-                created_at, expires_at
+                created_at, expires_at, deleted_at
             FROM sensys_pdf_files
             WHERE admission_id = ?
+              AND deleted_at IS NULL
             ORDER BY datetime(created_at) DESC, id DESC
             """,
             (int(admission_id),),
         ).fetchall()
 
         return {"ok": True, "pdfs": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+@app.post("/api/sensys/pdfs/{pdf_id}/delete")
+def sensys_pdf_delete(pdf_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    try:
+        row = conn.execute(
+            """
+            SELECT id, admission_id, deleted_at
+            FROM sensys_pdf_files
+            WHERE id = ?
+            """,
+            (int(pdf_id),),
+        ).fetchone()
+        if not row or row["deleted_at"]:
+            raise HTTPException(status_code=404, detail="PDF not found")
+        admission_id = row["admission_id"]
+        if not admission_id:
+            raise HTTPException(status_code=404, detail="PDF not linked to an admission")
+        _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+        conn.execute(
+            """
+            UPDATE sensys_pdf_files
+               SET deleted_at = datetime('now')
+             WHERE id = ?
+            """,
+            (int(pdf_id),),
+        )
+        conn.commit()
+        return {"ok": True}
     finally:
         conn.close()
 
@@ -26918,6 +26974,92 @@ def sensys_admission_notes_delete(payload: IdOnly, request: Request):
          WHERE id = ?
         """,
         (int(payload.id),),
+    )
+    conn.commit()
+    return {"ok": True}
+
+
+class AdmissionDocsUpdate(BaseModel):
+    admission_id: int
+    docs_facesheet: Optional[int] = None
+    docs_dc_summary: Optional[int] = None
+    docs_physicians_added: Optional[int] = None
+    docs_status: Optional[str] = None
+    docs_packet_generated: Optional[int] = None
+    docs_completed_at: Optional[str] = None
+
+
+@app.post("/api/sensys/admission-docs/update")
+def sensys_admission_docs_update(payload: AdmissionDocsUpdate, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    user_id = int(u["user_id"])
+    role_keys = u.get("role_keys") or []
+    admission_id = int(payload.admission_id)
+
+    if "home_health" in role_keys:
+        allowed = conn.execute(
+            """
+            SELECT 1
+            FROM sensys_admission_referrals ar
+            JOIN sensys_user_agencies ua ON ua.agency_id = ar.agency_id
+            WHERE ar.admission_id = ?
+              AND ua.user_id = ?
+              AND ar.deleted_at IS NULL
+            LIMIT 1
+            """,
+            (admission_id, user_id),
+        ).fetchone()
+    else:
+        allowed = conn.execute(
+            """
+            SELECT 1
+            FROM sensys_admissions a
+            JOIN sensys_user_agencies ua ON ua.agency_id = a.agency_id
+            WHERE a.id = ?
+              AND ua.user_id = ?
+            LIMIT 1
+            """,
+            (admission_id, user_id),
+        ).fetchone()
+
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Not authorized for this admission")
+
+    fields = {
+        "docs_facesheet": payload.docs_facesheet,
+        "docs_dc_summary": payload.docs_dc_summary,
+        "docs_physicians_added": payload.docs_physicians_added,
+        "docs_status": (payload.docs_status or "").strip() if payload.docs_status is not None else None,
+        "docs_packet_generated": payload.docs_packet_generated,
+        "docs_completed_at": payload.docs_completed_at,
+    }
+    set_clauses = []
+    params = []
+    for key, value in fields.items():
+        if value is None:
+            continue
+        set_clauses.append(f"{key} = ?")
+        params.append(value)
+
+    if payload.docs_status and (payload.docs_completed_at is None) and payload.docs_status.strip() == "complete":
+        set_clauses.append("docs_completed_at = datetime('now')")
+
+    if not set_clauses:
+        return {"ok": True}
+
+    set_clauses.append("updated_at = datetime('now')")
+    set_clauses.append("updated_by_user_id = ?")
+    params.append(user_id)
+    params.append(admission_id)
+
+    conn.execute(
+        f"""
+        UPDATE sensys_admissions
+           SET {", ".join(set_clauses)}
+         WHERE id = ?
+        """,
+        tuple(params),
     )
     conn.commit()
     return {"ok": True}
