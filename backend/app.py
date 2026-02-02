@@ -70,7 +70,7 @@ import io
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -19522,9 +19522,10 @@ def sensys_admission_referrals_update_soc(payload: AdmissionReferralSocUpdate, r
     conn.commit()
     return {"ok": True}
 
-    class AdmissionAppointmentUpsert(BaseModel):
-        id: Optional[int] = None
-        admission_id: int
+class AdmissionAppointmentUpsert(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    id: Optional[int] = None
+    admission_id: int
         appt_datetime: Optional[str] = ""   # store as ISO string from UI
         care_team_id: Optional[int] = None
         appt_status: str = "New"            # New, Attended, Missed, Rescheduled
