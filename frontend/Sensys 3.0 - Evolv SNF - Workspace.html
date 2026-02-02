@@ -2580,6 +2580,7 @@
           showToast("VM logged", `Attempt ${p.contactAttempts} for ${p.name}`);
         }
         render();
+        refreshOpenDrawers(p);
       } catch (err) {
         console.warn("[Evolv SNF] attempt log failed:", err);
         showToast("Attempt failed", p.name);
@@ -2628,6 +2629,7 @@
           showToast("Patient reached", p.name);
         }
         render();
+        refreshOpenDrawers(p);
       } catch (err) {
         console.warn("[Evolv SNF] reached log failed:", err);
         showToast("Reached log failed", p.name);
@@ -2672,6 +2674,7 @@
           showToast(`CCM ${accepted ? "accepted" : "declined"}`, p.name);
         }
         render();
+        refreshOpenDrawers(p);
       } catch (err) {
         console.warn("[Evolv SNF] CCM log failed:", err);
         showToast("CCM log failed", p.name);
@@ -2686,6 +2689,7 @@
         p.activityLog = buildActivityLog(p);
         showToast("Note removed", p.name);
         render();
+        refreshOpenDrawers(p);
         return;
       }
       try {
@@ -2698,6 +2702,7 @@
         await loadAdmissionNotes([p.id]);
         showToast("Note removed", p.name);
         render();
+        refreshOpenDrawers(p);
       } catch (err) {
         console.warn("[Evolv SNF] note delete failed:", err);
         showToast("Note delete failed", p.name);
@@ -3242,6 +3247,13 @@
       contactDrawerEl.querySelector("#btnDcDetails")?.addEventListener("click", () => openDcDetailsModal(p));
     };
 
+    const refreshOpenDrawers = (p) => {
+      if (!p) return;
+      if (contactDrawerEl.classList.contains("open")) {
+        openContactDrawer(p);
+      }
+    };
+
     const openModal = (el) => { el.style.display = "flex"; };
     const closeModal = (el) => { el.style.display = "none"; };
     document.querySelectorAll("[data-close]").forEach(btn => {
@@ -3337,6 +3349,7 @@
         closeModal(noteDetailsModalEl);
         showToast("Note updated", p.name);
         render();
+        refreshOpenDrawers(p);
       } catch (err) {
         console.warn("[Evolv SNF] note save failed:", err);
         showToast("Note save failed", p.name);
