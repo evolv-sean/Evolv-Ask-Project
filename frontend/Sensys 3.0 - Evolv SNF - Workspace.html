@@ -1919,21 +1919,6 @@
       p.activityLog = buildActivityLog(p);
     };
 
-    const renderDocsActivity = (p) => {
-      const pdfs = (p.pdfs || []).filter(r => r && r.doc_type);
-      if (!pdfs.length) return `<div class="activity-item">No documents uploaded yet.</div>`;
-      const items = pdfs
-        .filter(r => Object.values(DOC_LABELS).includes(r.doc_type))
-        .slice()
-        .sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
-        .map(r => {
-          const stamp = r.created_at ? formatStamp(new Date(r.created_at)) : formatStamp(new Date());
-          const name = r.original_filename || r.filename || "Document";
-          return `<div class="activity-item">${stamp} - ${r.doc_type} — ${name}</div>`;
-        });
-      return items.length ? items.join("") : `<div class="activity-item">No documents uploaded yet.</div>`;
-    };
-
     const loadAdmissionPdfs = async (p) => {
       if (!token()) {
         p.pdfs = p.pdfs || [];
@@ -2397,7 +2382,7 @@
                 <div class="card-title">Documents & Chart Review</div>
                 <div class="card-meta">${p.docsStatus.replace("_"," ")}</div>
               </div>
-                <div class="card-body">
+              <div class="card-body">
                 <div class="chip-row">
                   ${Object.keys(p.docsChecklist).map(key => {
                     const labelMap = DOC_LABELS;
@@ -2407,9 +2392,6 @@
                     </button>
                   `;
                   }).join("")}
-                </div>
-                <div class="activity-log" style="max-height:140px">
-                  ${renderDocsActivity(p)}
                 </div>
                 <div class="row-actions split">
                   <div class="row-actions-left">
@@ -2552,7 +2534,12 @@
           <div class="card">
             <div class="card-section">
               <div class="card-header">
-                <div class="card-title">Notes / Activity Log <span style="font-size:11px;color:var(--muted);font-weight:800">(${p.activityLog.length})</span></div>
+                <div class="card-title">Notes / Activity Log <span style="font-size:11px;color:var(--muted);font-weight:800">(${(() => {
+                  const docItems = (p.pdfs || [])
+                    .filter(r => r && r.doc_type && Object.values(DOC_LABELS).includes(r.doc_type))
+                    .length;
+                  return (p.activityLog || []).length + docItems;
+                })()})</span></div>
                 <button class="btn-icon" aria-label="Open" title="Open" data-download="true">
                   <svg viewBox="0 0 251.6 261.78" aria-hidden="true" style="transform: rotate(-90deg);">
                     <path d="M168.79,110.02V12.56c0-5.42-4.39-9.81-9.81-9.81h-66.35c-5.42,0-9.81,4.39-9.81,9.81v97.45h-45.05c-5.55,0-8.32,6.7-4.4,10.63l88.43,91.63c2.21,2.21,5.81,2.21,8.02,0l88.43-91.63c3.92-3.92,1.14-10.63-4.4-10.63h-45.05Z"/>
@@ -2563,16 +2550,36 @@
               <div class="card-body">
                 <div class="activity-log">
                   ${(() => {
-                    const items = (p.activityLog || []).slice();
+                    const activity = (p.activityLog || []).map(item => ({
+                      text: item.text || item,
+                      createdAt: item && item.createdAt ? item.createdAt : null,
+                      noteId: item && item.noteId ? item.noteId : null,
+                      templateId: item && item.templateId ? item.templateId : null
+                    }));
+                    const docItems = (p.pdfs || [])
+                      .filter(r => r && r.doc_type && Object.values(DOC_LABELS).includes(r.doc_type))
+                      .map(r => {
+                        const stamp = r.created_at ? formatStamp(new Date(r.created_at)) : formatStamp(new Date());
+                        const name = r.original_filename || r.filename || "Document";
+                        return {
+                          text: `${stamp} - ${r.doc_type} — ${name}`,
+                          createdAt: r.created_at || null,
+                          noteId: null,
+                          templateId: null
+                        };
+                      });
+                    const items = activity.concat(docItems);
                     items.sort((a, b) => {
                       const aTs = a && a.createdAt ? Date.parse(a.createdAt) : NaN;
                       const bTs = b && b.createdAt ? Date.parse(b.createdAt) : NaN;
                       if (!Number.isNaN(aTs) && !Number.isNaN(bTs)) return bTs - aTs;
+                      if (!Number.isNaN(aTs) && Number.isNaN(bTs)) return -1;
+                      if (Number.isNaN(aTs) && !Number.isNaN(bTs)) return 1;
                       return 0;
                     });
                     return items.slice(0,4).map(item => `
                     <div class="activity-item ${item.noteId ? "note-row" : ""}" ${item.noteId ? `data-note-id="${item.noteId}" data-template-id="${item.templateId}"` : ""}>
-                      <span class="note-text">${item.text || item}</span>
+                      <span class="note-text">${item.text || ""}</span>
                     </div>
                   `).join("");
                   })()}
