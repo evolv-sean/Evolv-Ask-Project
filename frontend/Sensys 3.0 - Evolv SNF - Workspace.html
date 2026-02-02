@@ -678,6 +678,8 @@
   <aside class="drawer" id="patientDrawer"></aside>
   <aside class="drawer" id="infoDrawer"></aside>
   <aside class="drawer" id="contactDrawer"></aside>
+  <aside class="drawer" id="docsDrawer"></aside>
+  <input id="docsUploadInput" type="file" accept="application/pdf" style="display:none;" />
 
   <div class="dl-modal-overlay" id="warningModal">
     <div class="dl-modal">
@@ -1332,6 +1334,8 @@
     const noteDetailsTitleEl = document.getElementById("noteDetailsTitle");
     const noteDetailsBodyEl = document.getElementById("noteDetailsBody");
     const noteDetailsSaveEl = document.getElementById("noteDetailsSave");
+    const docsDrawerEl = document.getElementById("docsDrawer");
+    const docsUploadInputEl = document.getElementById("docsUploadInput");
 
     const token = () => (localStorage.getItem("sensys_token") || "").trim();
     const authHeaders = () => ({ "Authorization": "Bearer " + token() });
@@ -1350,6 +1354,12 @@
     const CCM_FIELD_KEY = "ccm_status_default";
     const CCM_ACCEPTED_ANSWER = "CCM introduction completed with patient. Patient did not decline CCM services.";
     const CCM_DECLINED_ANSWER = "Patient Declined CCM Services";
+    const DOC_LABELS = {
+      faceSheet: "Facesheet",
+      orders: "DC Summary",
+      clinicals: "Physicians Added"
+    };
+    let pendingDocUpload = null;
 
     const formatDateTime = (iso) => new Intl.DateTimeFormat("en-US", {
       month:"short", day:"numeric", hour:"numeric", minute:"2-digit"
@@ -1396,6 +1406,13 @@
     const mapAdmissionRow = (row) => {
       const hhServices = splitNames(row.dc_sub_hh_service_names);
       const dmeServices = splitNames(row.dc_sub_dme_service_names);
+      const docsChecklist = {
+        faceSheet: Boolean(row.docs_facesheet),
+        orders: Boolean(row.docs_dc_summary),
+        clinicals: Boolean(row.docs_physicians_added)
+      };
+      const docsAny = Object.values(docsChecklist).some(Boolean);
+      const docsStatus = (row.docs_status || (docsAny ? "in_progress" : "not_started")).toLowerCase();
       return withInfo({
         id: String(row.id),
         mrn: row.patient_mrn || "",
@@ -1409,9 +1426,9 @@
         contactAttempts: 0,
         lastContactAttemptAt: null,
         nextContactDueAt: null,
-        docsStatus: "not_started",
-        docsChecklist: { faceSheet:false, orders:false, clinicals:false },
-        packetGenerated: false,
+        docsStatus,
+        docsChecklist,
+        packetGenerated: Boolean(row.docs_packet_generated),
         referrals: { homeHealth:{referralStatus:"not_sent", lastSentAt:null, faxStatus:"n/a"}, dme:{referralStatus:"not_sent", lastSentAt:null, faxStatus:"n/a"} },
         pcpApptNeeded: false,
         ordersStatus: "not_required",
@@ -1421,6 +1438,8 @@
         startOfCareDate: null,
         activityLog: [],
         localActivityLog: [],
+        pdfs: [],
+        pdfsLoaded: false,
         hhServiceNames: hhServices,
         dmeServiceNames: dmeServices,
         agencyCcm: {
@@ -1706,7 +1725,10 @@
     };
 
     const buildActivityLog = (p) => {
-      const entries = (p.localActivityLog || []).map(item => (typeof item === "string" ? { text: item } : item));
+      const entries = (p.localActivityLog || []).map(item => {
+        if (typeof item === "string") return { text: item };
+        return item;
+      });
       const attemptNotes = getAttemptNotes(p);
       const reachedNotes = getReachedNotes(p);
       const ccmNotes = getCcmNotes(p);
@@ -1716,7 +1738,8 @@
         entries.unshift({
           text: `${stamp} - ${detail}`,
           noteId: n.id,
-          templateId: REACHED_TEMPLATE_ID
+          templateId: REACHED_TEMPLATE_ID,
+          createdAt: n.created_at || ""
         });
       });
       reachedNotes.forEach(n => {
@@ -1727,7 +1750,8 @@
         entries.unshift({
           text: `${stamp} - ${prefix}${suffix}`,
           noteId: n.id,
-          templateId: REACHED_TEMPLATE_ID
+          templateId: REACHED_TEMPLATE_ID,
+          createdAt: n.created_at || ""
         });
       });
       ccmNotes.forEach(n => {
@@ -1739,7 +1763,8 @@
         entries.unshift({
           text: `${stamp} - ${prefix}${suffix}`,
           noteId: n.id,
-          templateId: CCM_TEMPLATE_ID
+          templateId: CCM_TEMPLATE_ID,
+          createdAt: n.created_at || ""
         });
       });
       return entries;
@@ -1887,8 +1912,93 @@
 
     const addActivity = (p, text) => {
       p.localActivityLog = p.localActivityLog || [];
-      p.localActivityLog.unshift(`${formatStamp(new Date())} - ${text}`);
+      p.localActivityLog.unshift({
+        text: `${formatStamp(new Date())} - ${text}`,
+        createdAt: new Date().toISOString()
+      });
       p.activityLog = buildActivityLog(p);
+    };
+
+    const renderDocsActivity = (p) => {
+      const pdfs = (p.pdfs || []).filter(r => r && r.doc_type);
+      if (!pdfs.length) return `<div class="activity-item">No documents uploaded yet.</div>`;
+      const items = pdfs
+        .filter(r => Object.values(DOC_LABELS).includes(r.doc_type))
+        .slice()
+        .sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+        .map(r => {
+          const stamp = r.created_at ? formatStamp(new Date(r.created_at)) : formatStamp(new Date());
+          const name = r.original_filename || r.filename || "Document";
+          return `<div class="activity-item">${stamp} - ${r.doc_type} — ${name}</div>`;
+        });
+      return items.length ? items.join("") : `<div class="activity-item">No documents uploaded yet.</div>`;
+    };
+
+    const loadAdmissionPdfs = async (p) => {
+      if (!token()) {
+        p.pdfs = p.pdfs || [];
+        return p.pdfs;
+      }
+      const res = await fetch(`/api/sensys/admissions/${p.id}/pdfs`, { headers: authHeaders() });
+      if (!res.ok) throw new Error("Failed to load documents");
+      const data = await res.json();
+      p.pdfs = data.pdfs || [];
+      return p.pdfs;
+    };
+
+    const triggerDocUpload = (p, docKey, docTypeOverride) => {
+      if (!docsUploadInputEl) return;
+      pendingDocUpload = {
+        patientId: p.id,
+        docKey,
+        docType: docTypeOverride || DOC_LABELS[docKey] || docKey
+      };
+      docsUploadInputEl.value = "";
+      docsUploadInputEl.click();
+    };
+
+    const uploadDocForAdmission = async (p, docKey, docType, file) => {
+      if (!file) return;
+      if (!token()) {
+        showToast("Upload requires login", p.name);
+        return;
+      }
+      const fd = new FormData();
+      fd.append("doc_type", docType);
+      fd.append("file", file);
+      const res = await fetch(`/api/sensys/admissions/${p.id}/pdfs/upload`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: fd
+      });
+      if (!res.ok) {
+        showToast("Upload failed", p.name);
+        return;
+      }
+      let effectiveKey = docKey;
+      if (!effectiveKey) {
+        effectiveKey = Object.keys(DOC_LABELS).find(k => DOC_LABELS[k] === docType) || null;
+      }
+      if (effectiveKey) {
+        p.docsChecklist[effectiveKey] = true;
+        if (p.docsStatus !== "complete") p.docsStatus = "in_progress";
+        const keyMap = {
+          faceSheet: "docs_facesheet",
+          orders: "docs_dc_summary",
+          clinicals: "docs_physicians_added"
+        };
+        try {
+          await saveDocsUpdate(p, {
+            [keyMap[effectiveKey]]: 1,
+            docs_status: p.docsStatus
+          });
+        } catch (err) {
+          console.warn("[Evolv SNF] docs update failed:", err);
+        }
+      }
+      await loadAdmissionPdfs(p);
+      renderDrawer();
+      refreshOpenDrawers(p);
     };
 
     const renderQueues = () => {
@@ -2138,7 +2248,8 @@
     const updateFabState = () => {
       const anyOpen = drawerEl.classList.contains("open")
         || infoDrawerEl.classList.contains("open")
-        || contactDrawerEl.classList.contains("open");
+        || contactDrawerEl.classList.contains("open")
+        || docsDrawerEl.classList.contains("open");
       document.body.classList.toggle("drawer-open", anyOpen);
       if (fabWrapEl) {
         fabWrapEl.classList.toggle("open", anyOpen && fabAutoOpen);
@@ -2159,6 +2270,7 @@
       drawerEl.classList.remove("open");
       infoDrawerEl.classList.remove("open");
       contactDrawerEl.classList.remove("open");
+      docsDrawerEl.classList.remove("open");
       fabAutoOpen = false;
       updateFabState();
     };
@@ -2167,6 +2279,12 @@
     const renderDrawer = (focus) => {
       const p = patients.find(pt => pt.id === selectedPatientId);
       if (!p) return;
+      if (token() && !p.pdfsLoaded) {
+        p.pdfsLoaded = true;
+        loadAdmissionPdfs(p).then(() => {
+          renderDrawer(focus);
+        }).catch(() => {});
+      }
       const hhMethod = getDeliveryMethod(p, "homeHealth");
       const dmeMethod = getDeliveryMethod(p, "dme");
       const contactLabel = {
@@ -2282,7 +2400,7 @@
                 <div class="card-body">
                 <div class="chip-row">
                   ${Object.keys(p.docsChecklist).map(key => {
-                    const labelMap = { faceSheet:"Facesheet", orders:"DC Summary", clinicals:"Physicians Added" };
+                    const labelMap = DOC_LABELS;
                     return `
                     <button class="chip-toggle ${p.docsChecklist[key] ? "is-active" : ""}" type="button" data-doc="${key}">
                       ${labelMap[key] || key.replace(/([A-Z])/g, " $1")}
@@ -2290,14 +2408,11 @@
                   `;
                   }).join("")}
                 </div>
+                <div class="activity-log" style="max-height:140px">
+                  ${renderDocsActivity(p)}
+                </div>
                 <div class="row-actions split">
                   <div class="row-actions-left">
-                    <button class="btn-icon" id="btnPacket" ${docsMinimumComplete(p) ? "" : "disabled"} aria-label="Upload" title="Upload">
-                      <svg viewBox="0 0 251.6 261.78" aria-hidden="true">
-                        <path d="M82.81,106.67v97.45c0,5.42,4.39,9.81,9.81,9.81h66.35c5.42,0,9.81-4.39,9.81-9.81v-97.45h45.05c5.55,0,8.32-6.7,4.4-10.63L129.81,4.41c-2.21-2.21-5.81-2.21-8.02,0L33.36,96.05c-3.92,3.92-1.14,10.63,4.4,10.63h45.05Z"/>
-                        <path d="M2.75,202.34v41.97c0,8.13,6.59,14.72,14.72,14.72h216.66c8.13,0,14.72-6.59,14.72-14.72v-41.97"/>
-                      </svg>
-                    </button>
                     <button class="btn-icon reached" id="btnDocsComplete" aria-label="Mark Complete" title="Mark Complete">
                       <svg viewBox="0 0 233.12 234.63" aria-hidden="true">
                         <path d="M52.97,218.37H12.19c-5.21,0-9.44-4.23-9.44-9.44v-108.68c0-5.21,4.23-9.44,9.44-9.44h38.63c6.97-.01,13.73-2.63,18.73-7.49C90.09,63.36,113.34,16.95,122.19,7.1c3.98-4.7,9.44-4.71,13.07-4.03.07.02.13.03.2.05,25.27,5.85,14.83,46.22,5.35,66.57h0c-3.97,7.7,1.62,16.88,10.28,16.88h54.46c17.1,0,29.06,16.89,23.39,33.02l-33.11,94.15c-3.82,10.87-14.09,18.14-25.61,18.14h-64.57c-11.22,0-22.34-2.03-32.83-6l-19.86-7.51v-126.87"/>
@@ -2305,7 +2420,7 @@
                     </button>
                   </div>
                   <div class="row-actions-right">
-                    <button class="btn-icon" aria-label="Open" title="Open" data-download="true">
+                    <button class="btn-icon" id="btnDocsOpen" aria-label="Open" title="Open">
                       <svg viewBox="0 0 251.6 261.78" aria-hidden="true" style="transform: rotate(-90deg);">
                         <path d="M168.79,110.02V12.56c0-5.42-4.39-9.81-9.81-9.81h-66.35c-5.42,0-9.81,4.39-9.81,9.81v97.45h-45.05c-5.55,0-8.32,6.7-4.4,10.63l88.43,91.63c2.21,2.21,5.81,2.21,8.02,0l88.43-91.63c3.92-3.92,1.14-10.63-4.4-10.63h-45.05Z"/>
                         <path d="M2.75,202.34v41.97c0,8.13,6.59,14.72,14.72,14.72h216.66c8.13,0,14.72-6.59,14.72-14.72v-41.97"/>
@@ -2447,11 +2562,20 @@
               </div>
               <div class="card-body">
                 <div class="activity-log">
-                  ${p.activityLog.slice(0,4).map(item => `
+                  ${(() => {
+                    const items = (p.activityLog || []).slice();
+                    items.sort((a, b) => {
+                      const aTs = a && a.createdAt ? Date.parse(a.createdAt) : NaN;
+                      const bTs = b && b.createdAt ? Date.parse(b.createdAt) : NaN;
+                      if (!Number.isNaN(aTs) && !Number.isNaN(bTs)) return bTs - aTs;
+                      return 0;
+                    });
+                    return items.slice(0,4).map(item => `
                     <div class="activity-item ${item.noteId ? "note-row" : ""}" ${item.noteId ? `data-note-id="${item.noteId}" data-template-id="${item.templateId}"` : ""}>
                       <span class="note-text">${item.text || item}</span>
                     </div>
-                  `).join("")}
+                  `).join("");
+                  })()}
                 </div>
               </div>
             </div>
@@ -2480,10 +2604,13 @@
         () => logCcmStatus(p, false, { openDetails: true, showToastAction: false })
       );
       drawerEl.querySelectorAll('[data-doc]').forEach(el => {
-        el.addEventListener("click", (e) => toggleDoc(p, e.target.dataset.doc));
+        el.addEventListener("click", (e) => {
+          const key = e.currentTarget.dataset.doc;
+          triggerDocUpload(p, key);
+        });
       });
-      drawerEl.querySelector("#btnPacket")?.addEventListener("click", () => generatePacket(p));
       drawerEl.querySelector("#btnDocsComplete")?.addEventListener("click", () => markDocsComplete(p));
+      drawerEl.querySelector("#btnDocsOpen")?.addEventListener("click", () => openDocsDrawer(p));
       drawerEl.querySelector("#btnSendHH")?.addEventListener("click", () => requestSendReferral(p.id, "homeHealth"));
       drawerEl.querySelector("#btnSendDME")?.addEventListener("click", () => requestSendReferral(p.id, "dme"));
       drawerEl.querySelector("#btnAcceptHH")?.addEventListener("click", () => markReferral(p, "homeHealth", "accepted"));
@@ -2719,9 +2846,45 @@
       render();
     };
 
-    const toggleDoc = (p, docKey) => {
+    const saveDocsUpdate = async (p, patch) => {
+      if (!token()) return;
+      const payload = { admission_id: Number(p.id), ...patch };
+      const res = await fetch("/api/sensys/admission-docs/update", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error("Failed to update docs");
+    };
+
+    const computeDocsStatus = (p) => {
+      const anyChecked = Object.values(p.docsChecklist || {}).some(Boolean);
+      if (p.docsStatus === "complete" && !anyChecked) return "not_started";
+      if (p.docsStatus === "complete" && anyChecked) return "in_progress";
+      return anyChecked ? "in_progress" : "not_started";
+    };
+
+    const toggleDoc = async (p, docKey) => {
       p.docsChecklist[docKey] = !p.docsChecklist[docKey];
-      addActivity(p, `Docs updated: ${docKey}`);
+      if (p.docsStatus === "complete") p.docsStatus = "in_progress";
+      else p.docsStatus = computeDocsStatus(p);
+      const keyMap = {
+        faceSheet: "docs_facesheet",
+        orders: "docs_dc_summary",
+        clinicals: "docs_physicians_added"
+      };
+      try {
+        if (token()) {
+          await saveDocsUpdate(p, {
+            [keyMap[docKey]]: p.docsChecklist[docKey] ? 1 : 0,
+            docs_status: p.docsStatus
+          });
+        }
+        addActivity(p, `Docs updated: ${docKey}`);
+      } catch (err) {
+        console.warn("[Evolv SNF] docs update failed:", err);
+        showToast("Docs update failed", p.name);
+      }
       renderDrawer();
     };
 
@@ -2733,7 +2896,7 @@
       render();
     };
 
-    const markDocsComplete = (p) => {
+    const markDocsComplete = async (p) => {
       const missing = Object.keys(p.docsChecklist).filter(key => !p.docsChecklist[key]);
       if (missing.length) {
         docsModalBodyEl.innerHTML = `
@@ -2747,8 +2910,19 @@
       }
       p.docsStatus = "complete";
       p.packetGenerated = true;
-      addActivity(p, "Docs marked complete");
-      showToast("Docs marked complete", p.name);
+      try {
+        if (token()) {
+          await saveDocsUpdate(p, {
+            docs_status: "complete",
+            docs_packet_generated: 1
+          });
+        }
+        addActivity(p, "Docs marked complete");
+        showToast("Docs marked complete", p.name);
+      } catch (err) {
+        console.warn("[Evolv SNF] docs complete failed:", err);
+        showToast("Docs complete failed", p.name);
+      }
       render();
     };
 
@@ -3247,10 +3421,108 @@
       contactDrawerEl.querySelector("#btnDcDetails")?.addEventListener("click", () => openDcDetailsModal(p));
     };
 
+    const openDocsDrawer = async (p) => {
+      await loadAdmissionPdfs(p);
+      const rows = (p.pdfs || []);
+      const docsBody = `
+        <div class="info-section">
+          <div class="info-row" style="align-items:flex-end; gap:12px;">
+            <div style="flex:1;min-width:180px;">
+              <div class="info-label">Document Type</div>
+              <input class="ipt" id="docsDrawerType" placeholder="e.g., Facesheet" />
+            </div>
+            <div>
+              <button class="btn" id="docsDrawerUploadBtn">Upload</button>
+            </div>
+          </div>
+        </div>
+        <div class="info-section">
+          <div class="info-label" style="margin-bottom:6px;">Uploaded Documents</div>
+          <div class="activity-log" style="max-height:none">
+            ${rows.length ? rows.map(r => {
+              const stamp = r.created_at ? formatStamp(new Date(r.created_at)) : "—";
+              const name = r.original_filename || r.filename || "Document";
+              return `
+                <div class="activity-item note-row" data-doc-id="${r.id}">
+                  <span class="note-text">${stamp} - ${r.doc_type || "Document"} — ${name}</span>
+                  <button class="icon-plain trash" data-doc-delete="${r.id}" title="Delete" aria-label="Delete">
+                    <svg viewBox="0 0 224.65 262.72" aria-hidden="true">
+                      <path d="M205.74,105.45v128.84c0,14.18-11.49,25.67-25.67,25.67H43.59c-14.18,0-25.67-11.49-25.67-25.67V105.45"/>
+                      <path d="M24.99,41.02h174.66c12.28,0,22.24,9.97,22.24,22.24v13.37c0,5.42-4.4,9.81-9.81,9.81H12.56c-5.42,0-9.81-4.4-9.81-9.81v-13.37c0-12.28,9.97-22.24,22.24-22.24Z"/>
+                      <path d="M63.83,39.75v-23.26c0-7.58,6.15-13.73,13.73-13.73h68.53c7.58,0,13.73,6.15,13.73,13.73v23.26"/>
+                      <line x1="80.17" y1="125.24" x2="80.17" y2="217.29"/>
+                      <line x1="144.48" y1="125.24" x2="144.48" y2="217.29"/>
+                    </svg>
+                  </button>
+                </div>
+              `;
+            }).join("") : `<div class="activity-item">No documents uploaded yet.</div>`}
+          </div>
+        </div>
+      `;
+
+      docsDrawerEl.innerHTML = `
+        <div class="drawer-header">
+          <div>
+            <div class="drawer-title">Documents</div>
+            <div class="drawer-sub">${p.name} • ${p.facilityName}</div>
+          </div>
+          <button class="btn btn-primary btn-small" id="btnDocsDone">Done</button>
+        </div>
+        <div class="drawer-body">${docsBody}</div>
+      `;
+      drawerEl.classList.remove("open");
+      infoDrawerEl.classList.remove("open");
+      contactDrawerEl.classList.remove("open");
+      docsDrawerEl.classList.add("open");
+      drawerOverlayEl.classList.add("show");
+      fabAutoOpen = true;
+      updateFabState();
+
+      docsDrawerEl.querySelector("#btnDocsDone")?.addEventListener("click", () => {
+        docsDrawerEl.classList.remove("open");
+        if (selectedPatientId) drawerEl.classList.add("open");
+        updateFabState();
+      });
+      docsDrawerEl.querySelector("#docsDrawerUploadBtn")?.addEventListener("click", () => {
+        const input = docsDrawerEl.querySelector("#docsDrawerType");
+        const docType = (input && input.value || "").trim();
+        if (!docType) {
+          showToast("Add document type", p.name);
+          return;
+        }
+        pendingDocUpload = { patientId: p.id, docKey: null, docType };
+        docsUploadInputEl.value = "";
+        docsUploadInputEl.click();
+      });
+      docsDrawerEl.querySelectorAll("[data-doc-delete]").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.docDelete;
+          if (!id) return;
+          if (!token()) return;
+          try {
+            const res = await fetch(`/api/sensys/pdfs/${id}/delete`, {
+              method: "POST",
+              headers: { ...authHeaders(), "Content-Type": "application/json" }
+            });
+            if (!res.ok) throw new Error("Delete failed");
+            await loadAdmissionPdfs(p);
+            openDocsDrawer(p);
+          } catch (err) {
+            showToast("Delete failed", p.name);
+          }
+        });
+      });
+    };
+
     const refreshOpenDrawers = (p) => {
       if (!p) return;
       if (contactDrawerEl.classList.contains("open")) {
         openContactDrawer(p);
+      }
+      if (docsDrawerEl.classList.contains("open")) {
+        openDocsDrawer(p);
       }
     };
 
@@ -3260,6 +3532,14 @@
       btn.addEventListener("click", () => closeModal(document.getElementById(btn.dataset.close)));
     });
     openFiltersEl.addEventListener("click", () => openModal(filtersModalEl));
+    docsUploadInputEl?.addEventListener("change", async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file || !pendingDocUpload) return;
+      const p = patients.find(pt => String(pt.id) === String(pendingDocUpload.patientId));
+      if (!p) return;
+      await uploadDocForAdmission(p, pendingDocUpload.docKey, pendingDocUpload.docType, file);
+      pendingDocUpload = null;
+    });
 
     const bindQuickNoteButton = (el, onClick, onHold) => {
       if (!el) return;
