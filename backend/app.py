@@ -24796,6 +24796,27 @@ class SensysAdmissionFaxSendMerged(BaseModel):
     fax_resolution: Optional[str] = "High"
 
 
+class SensysCareTeamUpdate(BaseModel):
+    admission_id: int
+    care_team_id: int
+    name: Optional[str] = None
+    type: Optional[str] = None
+    npi: Optional[str] = None
+    active: Optional[int] = None
+    aliases: Optional[str] = None
+    practice_name: Optional[str] = None
+    address1: Optional[str] = None
+    address2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip: Optional[str] = None
+    phone1: Optional[str] = None
+    phone2: Optional[str] = None
+    email1: Optional[str] = None
+    email2: Optional[str] = None
+    fax: Optional[str] = None
+
+
 def _sensys_merge_pdfs(pdf_paths: list[str]) -> str:
     if not pdf_paths:
         raise Exception("No PDFs to merge")
@@ -25662,6 +25683,73 @@ def sensys_admission_fax_send_merged(payload: SensysAdmissionFaxSendMerged, requ
                 os.unlink(tmp_path)
         except Exception:
             pass
+        conn.close()
+
+
+@app.post("/api/sensys/care-team/update")
+def sensys_care_team_update(payload: SensysCareTeamUpdate, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    try:
+        admission_id = int(payload.admission_id)
+        care_team_id = int(payload.care_team_id)
+        _sensys_assert_admission_access(conn, int(u["user_id"]), admission_id)
+
+        link = conn.execute(
+            """
+            SELECT 1
+            FROM sensys_admission_care_team act
+            WHERE act.admission_id = ?
+              AND act.care_team_id = ?
+              AND act.deleted_at IS NULL
+            LIMIT 1
+            """,
+            (admission_id, care_team_id),
+        ).fetchone()
+        if not link:
+            raise HTTPException(status_code=403, detail="Care team not linked to admission")
+
+        fields = {
+            "name": payload.name,
+            "type": payload.type,
+            "npi": payload.npi,
+            "active": payload.active,
+            "aliases": payload.aliases,
+            "practice_name": payload.practice_name,
+            "address1": payload.address1,
+            "address2": payload.address2,
+            "city": payload.city,
+            "state": payload.state,
+            "zip": payload.zip,
+            "phone1": payload.phone1,
+            "phone2": payload.phone2,
+            "email1": payload.email1,
+            "email2": payload.email2,
+            "fax": payload.fax,
+        }
+        set_parts = []
+        params = []
+        for k, v in fields.items():
+            if v is None:
+                continue
+            set_parts.append(f"{k} = ?")
+            params.append((v or "").strip() if isinstance(v, str) else v)
+        if not set_parts:
+            return {"ok": True}
+
+        set_parts.append("updated_at = datetime('now')")
+        params.append(care_team_id)
+        conn.execute(
+            f"""
+            UPDATE sensys_care_team
+               SET {", ".join(set_parts)}
+             WHERE id = ?
+            """,
+            tuple(params),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
         conn.close()
 
 
