@@ -2796,6 +2796,7 @@
       <div>
         <h3 class="modal-title" id="noteTplModalTitle">Note Template</h3>
         <div class="modal-sub">Create/edit a note type.</div>
+        <div class="modal-sub">note_id: <b id="noteTplId">—</b></div>
       </div>
       <button class="xbtn" id="closeNoteTplModal" aria-label="Close">✕</button>
     </div>
@@ -2870,6 +2871,7 @@
       <div>
         <h3 class="modal-title" id="noteFieldModalTitle">Question / Field</h3>
         <div class="modal-sub">Create/edit a question for the selected template.</div>
+        <div class="modal-sub">field_id: <b id="noteFieldId">—</b></div>
       </div>
       <button class="xbtn" id="closeNoteFieldModal" aria-label="Close">✕</button>
     </div>
@@ -6739,6 +6741,7 @@
     editingNoteTemplate = t || null;
     setMsg($("noteTplMsg"), "", true);
 
+    $("noteTplId").textContent = (t && t.id) ? String(t.id) : "—";
     $("noteTplName").value = (t && t.template_name) ? t.template_name : "";
     $("noteTplDefault").value = (t && t.default_note) ? t.default_note : "";
     $("noteTplActive").value = (t && String(t.active||0)) ? String(t.active||0) : "1";
@@ -6820,6 +6823,7 @@
     editingNoteField = f || null;
     setMsg($("noteFieldMsg"), "", true);
 
+    $("noteFieldId").textContent = (f && f.id) ? String(f.id) : "—";
     $("noteFieldKey").value = (f && f.field_key) ? f.field_key : "";
     $("noteFieldLabel").value = (f && f.field_label) ? f.field_label : "";
     $("noteFieldType").value = (f && f.field_type) ? String(f.field_type) : "text";
