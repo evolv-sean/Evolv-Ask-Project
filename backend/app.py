@@ -26549,6 +26549,25 @@ def sensys_admission_details(admission_id: int, request: Request):
         (int(admission_id),),
     ).fetchall()
 
+    esign_link_counts = {}
+    try:
+        ct_ids = [int(r["care_team_id"]) for r in care_team_links]
+        if ct_ids:
+            qmarks = ",".join(["?"] * len(ct_ids))
+            rows = conn.execute(
+                f"""
+                SELECT care_team_id, COUNT(1) AS link_count
+                FROM sensys_user_esign_links
+                WHERE care_team_id IN ({qmarks})
+                GROUP BY care_team_id
+                """,
+                tuple(ct_ids),
+            ).fetchall()
+            for r in rows:
+                esign_link_counts[int(r["care_team_id"])] = int(r["link_count"] or 0)
+    except Exception:
+        esign_link_counts = {}
+
     snf_physician_name = ""
     try:
         row = conn.execute(
@@ -26714,7 +26733,13 @@ def sensys_admission_details(admission_id: int, request: Request):
         "notes": [dict(r) for r in notes],
         "dc_submissions": dc_out,
         "esigns": esign_out,
-        "care_team": [dict(r) for r in care_team_links],
+        "care_team": [
+            {
+                **dict(r),
+                "esign_link_count": int(esign_link_counts.get(int(r["care_team_id"]), 0)),
+            }
+            for r in care_team_links
+        ],
         "snf_physician_name": snf_physician_name,
         "preferred_provider_ids": preferred_provider_ids,
         "frequent": frequent,
