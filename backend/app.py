@@ -28008,10 +28008,17 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
 class AdmissionEsignUpsert(BaseModel):
     id: Optional[int] = None
     admission_id: int
-    care_team_id: int
+    care_team_id: Optional[int] = None
     service_type_id: int
     comments: Optional[str] = ""
     status: Optional[str] = "Pending"
+
+def _sensys_esign_status_key(status: Optional[str]) -> str:
+    return (status or "").strip().lower()
+
+def _sensys_esign_is_signed(status: Optional[str], signed_at: Optional[str]) -> bool:
+    key = _sensys_esign_status_key(status)
+    return key in ("signed", "emr signed") or bool(signed_at)
 
 # -----------------------------
 # Discharge Submissions â€” upsert (ANCHOR: DC_SUBMISSIONS_UPSERT)
@@ -28023,58 +28030,112 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
     conn = get_db()
     _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
 
+    status_val = (payload.status or "Pending").strip() or "Pending"
+    status_key = _sensys_esign_status_key(status_val)
+    mark_signed = status_key in ("signed", "emr signed")
+
     if payload.id:
         # âœ… NEW: once signed, it cannot be edited
         existing = conn.execute(
-            "SELECT status, signed_at FROM sensys_admission_esigns WHERE id = ?",
+            "SELECT status, signed_at, declined_at FROM sensys_admission_esigns WHERE id = ?",
             (int(payload.id),),
         ).fetchone()
         if not existing:
             raise HTTPException(status_code=404, detail="E-Sign not found")
-        if (existing["status"] or "").strip().lower() == "signed" or existing["signed_at"]:
+        if _sensys_esign_is_signed(existing["status"], existing["signed_at"]):
             raise HTTPException(status_code=400, detail="This E-Sign is already signed and cannot be edited.")
+        if (existing["declined_at"] or "") and mark_signed:
+            raise HTTPException(status_code=400, detail="This E-Sign is already declined and cannot be signed.")
 
-        conn.execute(
-            """
-            UPDATE sensys_admission_esigns
-            SET care_team_id = ?,
-                service_type_id = ?,
-                comments = ?,
-                status = COALESCE(?, status),
-                updated_by_user_id = ?,
-                updated_at = datetime('now'),
-                deleted_at = NULL
-            WHERE id = ?
-            """,
-            (
-                int(payload.care_team_id),
-                int(payload.service_type_id),
-                (payload.comments or "").strip(),
-                (payload.status or "Pending"),
-                int(u["user_id"]),
-                int(payload.id),
-            ),
-        )
+        care_team_id = int(payload.care_team_id) if payload.care_team_id else None
+        if mark_signed:
+            conn.execute(
+                """
+                UPDATE sensys_admission_esigns
+                SET care_team_id = ?,
+                    service_type_id = ?,
+                    comments = ?,
+                    status = ?,
+                    signed_by = COALESCE(signed_by, ?),
+                    signed_at = COALESCE(signed_at, datetime('now')),
+                    updated_by_user_id = ?,
+                    updated_at = datetime('now'),
+                    deleted_at = NULL
+                WHERE id = ?
+                """,
+                (
+                    care_team_id,
+                    int(payload.service_type_id),
+                    (payload.comments or "").strip(),
+                    status_val,
+                    int(u["user_id"]),
+                    int(u["user_id"]),
+                    int(payload.id),
+                ),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE sensys_admission_esigns
+                SET care_team_id = ?,
+                    service_type_id = ?,
+                    comments = ?,
+                    status = COALESCE(?, status),
+                    updated_by_user_id = ?,
+                    updated_at = datetime('now'),
+                    deleted_at = NULL
+                WHERE id = ?
+                """,
+                (
+                    care_team_id,
+                    int(payload.service_type_id),
+                    (payload.comments or "").strip(),
+                    status_val,
+                    int(u["user_id"]),
+                    int(payload.id),
+                ),
+            )
         esign_id = int(payload.id)
 
     else:
-        cur = conn.execute(
-            """
-            INSERT INTO sensys_admission_esigns
-              (admission_id, care_team_id, service_type_id, comments, status, created_by_user_id, updated_by_user_id, deleted_at, updated_at)
-            VALUES
-              (?, ?, ?, ?, ?, ?, ?, NULL, datetime('now'))
-            """,
-            (
-                int(payload.admission_id),
-                int(payload.care_team_id),
-                int(payload.service_type_id),
-                (payload.comments or "").strip(),
-                (payload.status or "Pending"),
-                int(u["user_id"]),
-                int(u["user_id"]),
-            ),
-        )
+        care_team_id = int(payload.care_team_id) if payload.care_team_id else None
+        if mark_signed:
+            cur = conn.execute(
+                """
+                INSERT INTO sensys_admission_esigns
+                  (admission_id, care_team_id, service_type_id, comments, status, created_by_user_id, updated_by_user_id, signed_by, signed_at, deleted_at, updated_at)
+                VALUES
+                  (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), NULL, datetime('now'))
+                """,
+                (
+                    int(payload.admission_id),
+                    care_team_id,
+                    int(payload.service_type_id),
+                    (payload.comments or "").strip(),
+                    status_val,
+                    int(u["user_id"]),
+                    int(u["user_id"]),
+                    int(u["user_id"]),
+                ),
+            )
+        else:
+            cur = conn.execute(
+                """
+                INSERT INTO sensys_admission_esigns
+                  (admission_id, care_team_id, service_type_id, comments, status, created_by_user_id, updated_by_user_id, deleted_at, updated_at)
+                VALUES
+                  (?, ?, ?, ?, ?, ?, ?, NULL, datetime('now'))
+                """,
+                (
+                    int(payload.admission_id),
+                    care_team_id,
+                    int(payload.service_type_id),
+                    (payload.comments or "").strip(),
+                    status_val,
+                    int(u["user_id"]),
+                    int(u["user_id"]),
+                ),
+            )
         esign_id = int(cur.lastrowid)
 
         # ðŸ”” NEW E-SIGN ORDER notification (providers linked to this care team)
@@ -28082,11 +28143,13 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
 
         patient_name = _sensys_patient_name_for_admission(conn, int(payload.admission_id))
 
-        ct = conn.execute(
-            "SELECT name FROM sensys_care_team WHERE id = ?",
-            (int(payload.care_team_id),),
-        ).fetchone()
-        care_team_name = ((ct["name"] if ct else "") or "").strip()
+        care_team_name = ""
+        if care_team_id:
+            ct = conn.execute(
+                "SELECT name FROM sensys_care_team WHERE id = ?",
+                (int(care_team_id),),
+            ).fetchone()
+            care_team_name = ((ct["name"] if ct else "") or "").strip()
 
         st = conn.execute(
             "SELECT name, code FROM sensys_service_type WHERE id = ?",
@@ -28111,20 +28174,20 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
             body_bits.append(f"Service Type: {service_label}")
         body = " â€¢ ".join(body_bits) if body_bits else "A new e-sign order was created."
 
-        user_ids = _sensys_user_ids_linked_to_care_team(conn, int(payload.care_team_id))
-
-        _sensys_fire_notification(
-            conn,
-            notif_key=notif_key,
-            user_ids=user_ids,
-            admission_id=int(payload.admission_id),
-            related_table="sensys_admission_esigns",
-            related_id=int(esign_id),
-            title=title,
-            body=body,
-            ctx={"patient": patient_name},
-            payload_json="",
-        )
+        if care_team_id:
+            user_ids = _sensys_user_ids_linked_to_care_team(conn, int(care_team_id))
+            _sensys_fire_notification(
+                conn,
+                notif_key=notif_key,
+                user_ids=user_ids,
+                admission_id=int(payload.admission_id),
+                related_table="sensys_admission_esigns",
+                related_id=int(esign_id),
+                title=title,
+                body=body,
+                ctx={"patient": patient_name},
+                payload_json="",
+            )
 
     conn.commit()
     return {"ok": True, "id": esign_id}
@@ -28352,7 +28415,7 @@ def sensys_provider_esigns_update(payload: ProviderEsignUpdate, request: Request
     if int(row["care_team_id"]) not in linked_ids:
         raise HTTPException(status_code=403, detail="Not linked to this E-Sign")
 
-    if (row["signed_at"] or "") or (row["status"] or "").strip().lower() == "signed":
+    if _sensys_esign_is_signed(row["status"], row["signed_at"]):
         raise HTTPException(status_code=400, detail="Already signed")
 
     conn.execute(
@@ -28394,12 +28457,10 @@ def sensys_provider_esigns_sign(payload: ProviderEsignAction, request: Request):
     if int(row["care_team_id"]) not in linked_ids:
         raise HTTPException(status_code=403, detail="Not linked to this E-Sign")
 
-    if (row["signed_at"] or ""):
+    if _sensys_esign_is_signed(row["status"], row["signed_at"]):
         raise HTTPException(status_code=400, detail="Already signed")
     if (row["declined_at"] or ""):
         raise HTTPException(status_code=400, detail="Already declined")
-    if (row["status"] or "").strip().lower() == "signed":
-        raise HTTPException(status_code=400, detail="Already signed")
 
     conn.execute(
         """
@@ -28441,7 +28502,7 @@ def sensys_provider_esigns_decline(payload: ProviderEsignAction, request: Reques
     if int(row["care_team_id"]) not in linked_ids:
         raise HTTPException(status_code=403, detail="Not linked to this E-Sign")
 
-    if (row["signed_at"] or "") or (row["status"] or "").strip().lower() == "signed":
+    if _sensys_esign_is_signed(row["status"], row["signed_at"]):
         raise HTTPException(status_code=400, detail="Already signed (cannot decline)")
 
     if (row["declined_at"] or ""):
@@ -28471,6 +28532,15 @@ def sensys_admission_dc_submissions_delete(payload: IdOnly, request: Request):
     conn.commit()
     return {"ok": True}
 
+def _sensys_service_type_group_key(name: Optional[str], code: Optional[str]) -> str:
+    st_name = (name or "").strip().lower()
+    st_code = (code or "").strip().lower()
+    if st_code in ("hh", "home health", "homehealth") or st_name in ("hh", "homehealth") or "home health" in st_name:
+        return "home_health"
+    if st_code in ("dme", "durable medical equipment", "durable medical") or st_name == "dme" or "durable medical" in st_name:
+        return "dme"
+    return ""
+
 class DcSubmissionServicesSet(BaseModel):
     admission_dc_submission_id: int
     services_ids: List[int] = []
@@ -28488,6 +28558,12 @@ def sensys_dc_submission_services_set(payload: DcSubmissionServicesSet, request:
         raise HTTPException(status_code=404, detail="DC submission not found")
 
     _sensys_assert_admission_access(conn, int(u["user_id"]), int(row["admission_id"]))
+
+    prev_count_row = conn.execute(
+        "SELECT COUNT(1) AS c FROM sensys_dc_submission_services WHERE admission_dc_submission_id = ?",
+        (int(payload.admission_dc_submission_id),),
+    ).fetchone()
+    prev_count = int(prev_count_row["c"] or 0) if prev_count_row else 0
 
     conn.execute(
         "DELETE FROM sensys_dc_submission_services WHERE admission_dc_submission_id = ?",
@@ -28526,6 +28602,122 @@ def sensys_dc_submission_services_set(payload: DcSubmissionServicesSet, request:
                 _sensys_freq_inc(conn, admission_agency_id, "hh_service", int(r["id"]))
             elif st_code in ("dme", "durable medical equipment"):
                 _sensys_freq_inc(conn, admission_agency_id, "dme_service", int(r["id"]))
+
+    # Auto-create E-Sign orders once, when DC submission services are first added
+    if prev_count == 0 and service_ids:
+        qmarks = ",".join(["?"] * len(service_ids))
+        svc_rows = conn.execute(
+            f"""
+            SELECT
+                s.id AS service_id,
+                s.service_type_id,
+                st.name AS service_type_name,
+                st.code AS service_type_code
+            FROM sensys_services s
+            LEFT JOIN sensys_service_type st ON st.id = s.service_type_id AND st.deleted_at IS NULL
+            WHERE s.id IN ({qmarks})
+            """,
+            tuple(service_ids),
+        ).fetchall()
+
+        grouped: dict[int, dict] = {}
+        for r in svc_rows:
+            st_id = int(r["service_type_id"] or 0)
+            if st_id <= 0:
+                continue
+            group_key = _sensys_service_type_group_key(r["service_type_name"], r["service_type_code"])
+            if not group_key:
+                continue
+            grouped.setdefault(st_id, {"service_type_id": st_id, "service_ids": []})
+            grouped[st_id]["service_ids"].append(int(r["service_id"]))
+
+        if grouped:
+            admission_id = int(row["admission_id"])
+            ct_row = conn.execute(
+                """
+                SELECT ct.id AS care_team_id
+                FROM sensys_admission_care_team act
+                JOIN sensys_care_team ct ON ct.id = act.care_team_id
+                WHERE act.admission_id = ?
+                  AND act.deleted_at IS NULL
+                  AND ct.deleted_at IS NULL
+                  AND LOWER(ct.type) = LOWER('SNF Physician')
+                ORDER BY act.id DESC
+                LIMIT 1
+                """,
+                (admission_id,),
+            ).fetchone()
+            care_team_id = int(ct_row["care_team_id"]) if ct_row and ct_row["care_team_id"] else None
+            patient_name = _sensys_patient_name_for_admission(conn, admission_id)
+
+            for g in grouped.values():
+                cur = conn.execute(
+                    """
+                    INSERT INTO sensys_admission_esigns
+                      (admission_id, care_team_id, service_type_id, comments, status, created_by_user_id, updated_by_user_id, deleted_at, updated_at)
+                    VALUES
+                      (?, ?, ?, ?, ?, ?, ?, NULL, datetime('now'))
+                    """,
+                    (
+                        admission_id,
+                        care_team_id,
+                        int(g["service_type_id"]),
+                        "",
+                        "Pending",
+                        int(u["user_id"]),
+                        int(u["user_id"]),
+                    ),
+                )
+                esign_id = int(cur.lastrowid)
+                for sid in g["service_ids"]:
+                    conn.execute(
+                        "INSERT INTO sensys_esign_services (esign_id, services_id) VALUES (?, ?)",
+                        (esign_id, int(sid)),
+                    )
+
+                if care_team_id:
+                    ct = conn.execute(
+                        "SELECT name FROM sensys_care_team WHERE id = ?",
+                        (int(care_team_id),),
+                    ).fetchone()
+                    care_team_name = ((ct["name"] if ct else "") or "").strip()
+
+                    st = conn.execute(
+                        "SELECT name, code FROM sensys_service_type WHERE id = ?",
+                        (int(g["service_type_id"]),),
+                    ).fetchone()
+                    service_label = ""
+                    if st:
+                        nm = ((st["name"] if "name" in st.keys() else "") or "").strip()
+                        cd = ((st["code"] if "code" in st.keys() else "") or "").strip()
+                        service_label = (nm or "")
+                        if cd:
+                            service_label = f"{service_label} ({cd})" if service_label else cd
+
+                    title = "New E-Sign Order"
+                    if patient_name:
+                        title = f"{title} - {patient_name}"
+
+                    body_bits = []
+                    if care_team_name:
+                        body_bits.append(f"Provider: {care_team_name}")
+                    if service_label:
+                        body_bits.append(f"Service Type: {service_label}")
+                    body = " - ".join(body_bits) if body_bits else "A new e-sign order was created."
+
+                    user_ids = _sensys_user_ids_linked_to_care_team(conn, int(care_team_id))
+                    _sensys_fire_notification(
+                        conn,
+                        notif_key="new_esign_orders",
+                        user_ids=user_ids,
+                        admission_id=admission_id,
+                        related_table="sensys_admission_esigns",
+                        related_id=int(esign_id),
+                        title=title,
+                        body=body,
+                        ctx={"patient": patient_name},
+                        payload_json="",
+                    )
 
     conn.commit()
     return {"ok": True}
