@@ -290,6 +290,7 @@
 
   function pill(status){
     const st = (status||'').toLowerCase();
+    if(st==='emr signed') return `<span class="pill signed">EMR Signed</span>`;
     if(st==='signed') return `<span class="pill signed">Signed</span>`;
     if(st==='declined') return `<span class="pill declined">Declined</span>`;
     return `<span class="pill pending">Pending</span>`;
@@ -358,7 +359,7 @@
 
     const e = SELECTED;
     const patient = `${e.patient_last_name||''}, ${e.patient_first_name||''}`.trim();
-    const locked = (String((e.status||'')).toLowerCase()==='signed') || !!e.signed_at;
+    const locked = (['signed','emr signed'].includes(String((e.status||'')).toLowerCase())) || !!e.signed_at;
 
     const rows = [
       ['Patient', patient || '—'],
