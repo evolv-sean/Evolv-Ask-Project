@@ -33,7 +33,7 @@ except Exception:
     pdfplumber = None
     HAVE_PDFPLUMBER = False
 
-# ✅ Prefer PyMuPDF (fitz) when available: faster + usually lower RAM than pdfplumber
+# âœ… Prefer PyMuPDF (fitz) when available: faster + usually lower RAM than pdfplumber
 try:
     import fitz  # PyMuPDF
     HAVE_PYMUPDF = True
@@ -93,7 +93,7 @@ load_dotenv()
 #  SENSYS FEATURES (API):
 #    - Admin: Users / Roles / Agencies / Care Team / Notifications templates & prefs
 #    - Admissions / Discharge / Referrals / Documents / PDFs
-#    - PDW (Post-Discharge Workspace) — CCC Lead / CCC Staff
+#    - PDW (Post-Discharge Workspace) â€” CCC Lead / CCC Staff
 #
 #  UI ROUTES (HTML):
 #    - /sensys/*, /admin*, /ask*
@@ -116,7 +116,7 @@ STATIC_DIR = BASE_DIR / "static"
 SNF_DEFAULT_PIN = (os.getenv("SNF_DEFAULT_PIN") or "").strip()
 
 # -----------------------------
-# SNF PDF render throttling (prevents CPU/RAM spikes when sending 10–20 at once)
+# SNF PDF render throttling (prevents CPU/RAM spikes when sending 10â€“20 at once)
 # -----------------------------
 SNF_PDF_RENDER_CONCURRENCY = max(1, int(os.getenv("SNF_PDF_RENDER_CONCURRENCY", "1")))
 SNF_PDF_RENDER_DELAY_SEC = float(os.getenv("SNF_PDF_RENDER_DELAY_SEC", "0.2"))
@@ -324,7 +324,7 @@ def normalize_date_to_iso(value: Any) -> Optional[str]:
         return f"{yyyy:04d}-{mm:02d}-{dd:02d}"
 
 
-    # If it’s some other format we don’t recognize, don’t destroy it
+    # If itâ€™s some other format we donâ€™t recognize, donâ€™t destroy it
     return s
 
 def sync_discharge_dc_date_to_snf(cur, visit_id: str | None, dc_date: str | None):
@@ -337,7 +337,7 @@ def sync_discharge_dc_date_to_snf(cur, visit_id: str | None, dc_date: str | None
     if not dc_norm:
         return
 
-    # ✅ STRICT: only allow YYYY-MM-DD into snf_admissions.dc_date
+    # âœ… STRICT: only allow YYYY-MM-DD into snf_admissions.dc_date
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(dc_norm)):
         return
 
@@ -425,7 +425,7 @@ def log_pad_request_debug(request: Request, raw_text: str, payload: dict):
 
 
 # ---------------------------------------------------------------------------
-# DB PATH – Render-only (no local fallback) (ANCHOR: DB_PATH_SECTION)
+# DB PATH â€“ Render-only (no local fallback) (ANCHOR: DB_PATH_SECTION)
 # ---------------------------------------------------------------------------
 
 RENDER_DEFAULT_DB = "/opt/render/project/data/evolv.db"
@@ -528,7 +528,7 @@ CENSUS_UPLOAD_TMP = Path(
 CENSUS_UPLOAD_TMP.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------------
-# PDF STORAGE (persistent) — store files on Render disk, store metadata in SQLite
+# PDF STORAGE (persistent) â€” store files on Render disk, store metadata in SQLite
 # ---------------------------------------------------------------------------
 PDF_STORAGE_DIR = Path(
     os.getenv("PDF_STORAGE_DIR", "/opt/render/project/data/pdfs")
@@ -585,7 +585,7 @@ app = FastAPI(title="Evolv Copilot (Fresh Backend)")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # internal app; okay to be open
-    allow_credentials=False,  # ✅ IMPORTANT: prevents browser CORS "NetworkError"/"Failed to fetch" with wildcard origin
+    allow_credentials=False,  # âœ… IMPORTANT: prevents browser CORS "NetworkError"/"Failed to fetch" with wildcard origin
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -609,7 +609,7 @@ async def log_requests(request: Request, call_next):
     response = await call_next(request)
     ms = int((time.time() - start) * 1000)
 
-    # ✅ reduce log spam: do not log the high-frequency polling endpoint
+    # âœ… reduce log spam: do not log the high-frequency polling endpoint
     if request.url.path == "/admin/census/upload-status":
         return response
 
@@ -629,7 +629,7 @@ async def log_requests(request: Request, call_next):
 
 from fastapi.responses import JSONResponse
 
-# ✅ Force JSON for unexpected server errors (prevents frontend JSON.parse crashes)
+# âœ… Force JSON for unexpected server errors (prevents frontend JSON.parse crashes)
 @app.exception_handler(Exception)
 async def _unhandled_exception_handler(request: Request, exc: Exception):
     logger.exception("Unhandled error path=%s", request.url.path)
@@ -686,7 +686,7 @@ def _rc_get_access_token():
         raise
 
     if not resp.ok:
-        # Keep this short — enough to debug, not a huge payload
+        # Keep this short â€” enough to debug, not a huge payload
         body_snip = (resp.text or "")[:500]
         logger.error("[RC][TOKEN][HTTP_ERROR] status=%s body=%s", resp.status_code, body_snip)
         resp.raise_for_status()
@@ -799,7 +799,7 @@ def sensys_pdf_download(pdf_id: int, request: Request):
 
     conn = get_db()
     try:
-        # ✅ cleanup expired files to conserve disk
+        # âœ… cleanup expired files to conserve disk
         _sensys_pdf_cleanup_expired(conn)
 
         row = conn.execute(
@@ -1041,7 +1041,7 @@ def _split_name(full: str) -> tuple[str, str]:
     # Drop common noise like preferred names in parentheses: "SMITH, JOHN (JACK)"
     full = re.sub(r"\([^)]*\)", " ", full)
 
-    # ✅ Remove "Name Alert" noise that sometimes leaks into names
+    # âœ… Remove "Name Alert" noise that sometimes leaks into names
     full = re.sub(r"\bNAME\s+ALERT\b", " ", full, flags=re.IGNORECASE)
 
     full = re.sub(r"\s+", " ", full).strip()
@@ -1071,7 +1071,7 @@ def _split_name(full: str) -> tuple[str, str]:
         last_tokens = [t for t in re.split(r"\s+", last_raw) if t]
 
         mi_from_last = ""
-        # ✅ If last side ends with a middle initial, move it to the first name side
+        # âœ… If last side ends with a middle initial, move it to the first name side
         if len(last_tokens) >= 2 and _is_middle_initial(last_tokens[-1]):
             mi_from_last = last_tokens[-1].strip(".")
             last_tokens = last_tokens[:-1]
@@ -1098,7 +1098,7 @@ def _split_name(full: str) -> tuple[str, str]:
         first = _clean_name(" ".join(first_parts))
         return (first, last)
 
-    # Case 2: no comma — assume "First ... Last", but preserve particles like "de la", "van", "st"
+    # Case 2: no comma â€” assume "First ... Last", but preserve particles like "de la", "van", "st"
     parts = [p for p in full.split() if p]
     if len(parts) == 1:
         return ("", _clean_name(parts[0]))
@@ -1108,7 +1108,7 @@ def _split_name(full: str) -> tuple[str, str]:
         "VAN", "VON", "LA", "LE", "DU", "ST", "ST."
     }
 
-    # ✅ If second token is a middle initial, keep it with the first name (e.g., "JOHN C SMITH")
+    # âœ… If second token is a middle initial, keep it with the first name (e.g., "JOHN C SMITH")
     first_end = 1
     first_parts = [parts[0]]
     if len(parts) >= 3 and _is_middle_initial(parts[1]):
@@ -1132,7 +1132,7 @@ class ScannedPdfError(Exception):
     """Raised when a PDF has no extractable text (likely scanned/image-only)."""
     pass
 
-# ✅ NEW: parse directly from a PDF file path (avoids loading PDF bytes into RAM)
+# âœ… NEW: parse directly from a PDF file path (avoids loading PDF bytes into RAM)
 class PdfTooLargeError(Exception):
     """Raised when extracted PDF text is too large (prevents OOM)."""
     pass
@@ -1490,7 +1490,7 @@ def parse_pcc_admission_records_from_pdf_path(pdf_path: str) -> list[dict]:
     return out
 
 
-# ✅ Shared parser core after text extraction (used by BOTH path + bytes)
+# âœ… Shared parser core after text extraction (used by BOTH path + bytes)
 def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str], float]:
     warnings: list[str] = []
     confidence = 0.0
@@ -1526,7 +1526,7 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
     # Real date pattern (MM/DD/YYYY) used throughout this function
     date_pat = r"\b(0[1-9]|1[0-2])/(0[1-9]|[12][0-9]|3[01])/(19|20)\d{2}\b"
 
-    # ✅ NEW: Arcadia split-text fix:
+    # âœ… NEW: Arcadia split-text fix:
     # If the table row is split across lines (e.g. "Cart 4" on its own line),
     # the resident name is consistently the non-empty line immediately ABOVE the first real date.
     resident_line = ""
@@ -1585,7 +1585,7 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
         if re.fullmatch(r"[A-Za-z0-9]{4,}", last_tok):
             resident_num = last_tok
 
-    # ✅ NEW: Arcadia split-text fallback
+    # âœ… NEW: Arcadia split-text fallback
     # When text extraction splits columns into separate lines, the resident # can appear later.
     if not resident_num and cand_lines:
         for l in cand_lines[:60]:
@@ -1644,11 +1644,11 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
     m_last = re.search(r"^[^,]+", resident_line)
     last_raw = (m_last.group(0) if m_last else "").strip()
 
-    # ✅ Strip leading location prefixes that sometimes leak into the "last name" area
+    # âœ… Strip leading location prefixes that sometimes leak into the "last name" area
     # Examples: "Unit 2 SMITH" -> "SMITH", "Wing 1 DAMIAN VARGAS" -> "DAMIAN VARGAS"
     last_raw = re.sub(r"^(?:Wing|Unit)\s*\d+\s+", "", last_raw, flags=re.IGNORECASE)
 
-    # ✅ Also strip leading room tokens if they appear before the name
+    # âœ… Also strip leading room tokens if they appear before the name
     # Example: "319-B SMITH" -> "SMITH"
     last_raw = re.sub(r"^\d{1,4}[A-Z]?(?:-[A-Za-z0-9]{1,6})\s+", "", last_raw, flags=re.IGNORECASE)
 
@@ -1728,7 +1728,7 @@ def _extract_pcc_resident_info(chunk: str) -> tuple[str, str, str, str, list[str
             toks = pre.rstrip().split()
             if toks:
                 room_bed = toks[-1].strip()
-                if room_bed in {"-", "—"} and len(toks) >= 2:
+                if room_bed in {"-", "â€”"} and len(toks) >= 2:
                     room_bed = toks[-2].strip()
 
     if room_bed:
@@ -2541,7 +2541,7 @@ def extract_facility_name_from_filename(filename: str) -> str:
 def sha256_hex(s: str) -> str:
     return hashlib.sha256((s or "").encode("utf-8")).hexdigest()
 
-# ✅ NEW: hash a file without loading it all into memory
+# âœ… NEW: hash a file without loading it all into memory
 def sha256_file(path: str, chunk_size: int = 1024 * 1024) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -3009,7 +3009,7 @@ def init_db():
         """
     )
 
-    # Dictionary (key → canonical term, plus kind/notes/match_mode)
+    # Dictionary (key â†’ canonical term, plus kind/notes/match_mode)
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS dictionary (
@@ -3074,7 +3074,7 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now')),
             created_by_user_id INTEGER,
 
-            -- ✅ NEW: link SMS to an admission
+            -- âœ… NEW: link SMS to an admission
             admission_id INTEGER,
 
             -- optional but helpful for later (inbound SMS, etc.)
@@ -3093,7 +3093,7 @@ def init_db():
         """
     )
 
-    # ✅ SAFE MIGRATIONS for sensys_sms_log (older DBs)
+    # âœ… SAFE MIGRATIONS for sensys_sms_log (older DBs)
     for ddl in [
         "ALTER TABLE sensys_sms_log ADD COLUMN admission_id INTEGER",
         "ALTER TABLE sensys_sms_log ADD COLUMN direction TEXT DEFAULT 'outbound'",
@@ -3114,7 +3114,7 @@ def init_db():
     try:
         cur.execute("ALTER TABLE user_qa_log ADD COLUMN debug_sql TEXT")
     except sqlite3.Error:
-        # Will fail with 'duplicate column name' once it already exists – that's fine.
+        # Will fail with 'duplicate column name' once it already exists â€“ that's fine.
         pass
 
     cur.execute(
@@ -3146,7 +3146,7 @@ def init_db():
         """
     )
 
-    # ✅ SAFE MIGRATIONS for sensys_fax_log (older DBs / future proof)
+    # âœ… SAFE MIGRATIONS for sensys_fax_log (older DBs / future proof)
     for ddl in [
         "ALTER TABLE sensys_fax_log ADD COLUMN admission_id INTEGER",
         "ALTER TABLE sensys_fax_log ADD COLUMN direction TEXT DEFAULT 'outbound'",
@@ -3174,7 +3174,7 @@ def init_db():
     )
     
     # -------------------------------------------------------------------
-    # Stored PDFs (metadata only — actual PDF is saved to PDF_STORAGE_DIR)
+    # Stored PDFs (metadata only â€” actual PDF is saved to PDF_STORAGE_DIR)
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS sensys_pdf_files (
@@ -3189,7 +3189,7 @@ def init_db():
             created_at         TEXT DEFAULT (datetime('now')),
             deleted_at         TEXT,
 
-            -- ✅ NEW: optional retention window (48h, etc.)
+            -- âœ… NEW: optional retention window (48h, etc.)
             expires_at         TEXT
         )
         """
@@ -3225,7 +3225,7 @@ def init_db():
             display_name    TEXT,
             is_active       INTEGER DEFAULT 1,
 
-            -- NEW (Admin → Users tab)
+            -- NEW (Admin â†’ Users tab)
             password        TEXT DEFAULT '',
             cell_phone      TEXT DEFAULT '',
             account_locked  INTEGER DEFAULT 0,
@@ -3242,15 +3242,15 @@ def init_db():
         "ALTER TABLE sensys_users ADD COLUMN cell_phone TEXT DEFAULT ''",
         "ALTER TABLE sensys_users ADD COLUMN account_locked INTEGER DEFAULT 0",
 
-        # ✅ Provider E-sign
+        # âœ… Provider E-sign
         "ALTER TABLE sensys_users ADD COLUMN npi TEXT DEFAULT ''",
     ]:
         try:
             cur.execute(ddl)
         except sqlite3.Error:
-            # duplicate column name → already migrated
+            # duplicate column name â†’ already migrated
             pass
-    # ✅ Users migration: CCC capacity + last login
+    # âœ… Users migration: CCC capacity + last login
     u_cols = [r["name"] for r in conn.execute("PRAGMA table_info(sensys_users)").fetchall()]
     if "calls_per_hour" not in u_cols:
         conn.execute("ALTER TABLE sensys_users ADD COLUMN calls_per_hour REAL DEFAULT 0;")
@@ -3292,7 +3292,7 @@ def init_db():
       deleted_at TEXT NULL
     )
     """)
-    # ✅ NEW: DC note template targeting (many-to-many)
+    # âœ… NEW: DC note template targeting (many-to-many)
     conn.execute("""
     CREATE TABLE IF NOT EXISTS sensys_dc_note_template_agencies (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3432,11 +3432,11 @@ def init_db():
         try:
             cur.execute(ddl)
         except sqlite3.Error:
-            # duplicate column name → already exists
+            # duplicate column name â†’ already exists
             pass
 
     # -----------------------------
-    # PDW v2 — CCC Staff schedules / capacity
+    # PDW v2 â€” CCC Staff schedules / capacity
     # -----------------------------
     conn.execute(
         """
@@ -3463,7 +3463,7 @@ def init_db():
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS sensys_provider_library_hha (
-            ccn           TEXT PRIMARY KEY,              -- ✅ key we use everywhere
+            ccn           TEXT PRIMARY KEY,              -- âœ… key we use everywhere
             provider_name TEXT DEFAULT '',
             dba           TEXT DEFAULT '',
             address       TEXT DEFAULT '',
@@ -3612,7 +3612,7 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_user_pages_page ON sensys_user_pages(page_key)")
 
     # -------------------------------------------------------------------
-    # NEW: Notifications — templates + user delivery preferences
+    # NEW: Notifications â€” templates + user delivery preferences
     # -------------------------------------------------------------------
     cur.execute(
         """
@@ -3790,7 +3790,7 @@ def init_db():
             firstname_initial   TEXT,
             lastname_three      TEXT,
 
-            -- ✅ Needed for linking/dedupe logic (safe, optional)
+            -- âœ… Needed for linking/dedupe logic (safe, optional)
             patient_key         TEXT,     -- app-generated stable key (e.g., lastname|firstname|dob)
             external_patient_id TEXT,     -- if you later ingest from an EMR
             mrn                 TEXT      -- optional
@@ -3833,7 +3833,7 @@ def init_db():
             created_at          TEXT DEFAULT (datetime('now')),
             updated_at          TEXT DEFAULT (datetime('now')),
 
-            -- ✅ audit fields are still useful even without "assigned user"
+            -- âœ… audit fields are still useful even without "assigned user"
             created_by_user_id  INTEGER,
             updated_by_user_id  INTEGER,
 
@@ -3861,7 +3861,7 @@ def init_db():
     ensure_column(conn, "sensys_admissions", "docs_completed_at", "docs_completed_at TEXT")
 
     # -------------------------------------------------------------------
-    # PDW v1 — Post-Discharge Workspace (Option B: Work Items + Attempts Log)
+    # PDW v1 â€” Post-Discharge Workspace (Option B: Work Items + Attempts Log)
     # -------------------------------------------------------------------
     cur.execute(
         """
@@ -3882,7 +3882,7 @@ def init_db():
             assigned_to_user_id  INTEGER,
             assigned_at          TEXT,
 
-            -- ✅ NEW (who assigned it + notes for staff)
+            -- âœ… NEW (who assigned it + notes for staff)
             assigned_by_user_id  INTEGER,
             assignment_notes     TEXT,
 
@@ -3922,7 +3922,7 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_postdc_work_items_due ON sensys_postdc_work_items(due_at)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_postdc_work_items_status ON sensys_postdc_work_items(status)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_postdc_work_items_assigned ON sensys_postdc_work_items(assigned_to_user_id)")
-    # ✅ PDW migration: add assignment notes + assigned_by
+    # âœ… PDW migration: add assignment notes + assigned_by
     wi_cols = [r["name"] for r in conn.execute("PRAGMA table_info(sensys_postdc_work_items)").fetchall()]
     if "assigned_by_user_id" not in wi_cols:
         conn.execute("ALTER TABLE sensys_postdc_work_items ADD COLUMN assigned_by_user_id INTEGER;")
@@ -4151,7 +4151,7 @@ def init_db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_sensys_admission_esigns_service_type ON sensys_admission_esigns(service_type_id)")
 
     # -------------------------------------------------------------------
-    # Sensys 3.0: Admission-connected “detail” tables
+    # Sensys 3.0: Admission-connected â€œdetailâ€ tables
     # -------------------------------------------------------------------
 
     # Services (ADMIN TAB)
@@ -4407,7 +4407,7 @@ def init_db():
     if "attempt_comments" not in existing_cols:
         cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN attempt_comments TEXT")
 
-    # ✅ NEW: optional Share With user (for “note shared” notifications)
+    # âœ… NEW: optional Share With user (for â€œnote sharedâ€ notifications)
     if "share_with_user_id" not in existing_cols:
         cur.execute("ALTER TABLE sensys_admission_notes ADD COLUMN share_with_user_id INTEGER")
 
@@ -4419,7 +4419,7 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_tpl ON sensys_admission_notes(template_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_adm_notes_workspace ON sensys_admission_notes(workspace_key)")
 
-    # Join table: admission ↔ care team
+    # Join table: admission â†” care team
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS sensys_admission_care_team (
@@ -4453,7 +4453,7 @@ def init_db():
       deleted_at TEXT
     )
     """)
-    # ✅ NEW: Note template targeting (many-to-many)
+    # âœ… NEW: Note template targeting (many-to-many)
     conn.execute("""
     CREATE TABLE IF NOT EXISTS sensys_note_template_agencies (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4638,7 +4638,7 @@ def init_db():
     ensure_column(conn, "sensys_admission_appointments", "appt_comments", "appt_comments TEXT")
 
 
-    # ✅ Clean up any duplicate pairs BEFORE adding the unique index
+    # âœ… Clean up any duplicate pairs BEFORE adding the unique index
     # Keep the "best" row per (admission_id, care_team_id):
     #   - prefer deleted_at IS NULL (active link)
     #   - otherwise keep the lowest id
@@ -4660,7 +4660,7 @@ def init_db():
         """
     )
 
-    # ✅ Now it’s safe to add the unique index
+    # âœ… Now itâ€™s safe to add the unique index
     cur.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_sensys_adm_ct_pair ON sensys_admission_care_team(admission_id, care_team_id)"
     )
@@ -4875,7 +4875,7 @@ def init_db():
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_rows_job ON sensys_census_job_rows(job_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sensys_rows_kind ON sensys_census_job_rows(job_id, kind)")
-    # ✅ Expand sensys_census_job_rows to support full Missing Admissions exports (safe no-op if already exists)
+    # âœ… Expand sensys_census_job_rows to support full Missing Admissions exports (safe no-op if already exists)
     for stmt in [
         "ALTER TABLE sensys_census_job_rows ADD COLUMN home_phone TEXT",
         "ALTER TABLE sensys_census_job_rows ADD COLUMN address TEXT",
@@ -4895,7 +4895,7 @@ def init_db():
         except sqlite3.Error:
             pass
 
-    # ✅ Ensure new columns exist on older census_run_patients tables (safe no-op if already exists)
+    # âœ… Ensure new columns exist on older census_run_patients tables (safe no-op if already exists)
     for stmt in [
         "ALTER TABLE census_run_patients ADD COLUMN first_name TEXT",
         "ALTER TABLE census_run_patients ADD COLUMN last_name TEXT",
@@ -4922,7 +4922,7 @@ def init_db():
         except sqlite3.Error:
             pass
 
-        # ✅ Also ensure newer columns exist on older census_runs tables (optional but recommended)
+        # âœ… Also ensure newer columns exist on older census_runs tables (optional but recommended)
         for stmt in [
             "ALTER TABLE census_runs ADD COLUMN facility_code TEXT",
             "ALTER TABLE census_runs ADD COLUMN report_dt TEXT",
@@ -5170,7 +5170,7 @@ def init_db():
 
 
     # -------------------------------------------------------------------
-    # Hospital extraction profiles (per hospital + document type) ✅ NEW
+    # Hospital extraction profiles (per hospital + document type) âœ… NEW
     # -------------------------------------------------------------------
     cur.execute(
         """
@@ -5191,7 +5191,7 @@ def init_db():
 
 
     # -------------------------------------------------------------------
-    # Hospital Documents (Raw + Sectioned)  ✅ NEW
+    # Hospital Documents (Raw + Sectioned)  âœ… NEW
     # -------------------------------------------------------------------
     cur.execute(
         """
@@ -5392,7 +5392,7 @@ def init_db():
     )
 
     # -------------------------------------------------------------------
-    # Hospital Discharges hub table (one row per visit_id) ✅ NEW
+    # Hospital Discharges hub table (one row per visit_id) âœ… NEW
     # -------------------------------------------------------------------
     cur.execute(
         """
@@ -6086,16 +6086,16 @@ def init_db():
     # NEW: Medrina SNF flag (0/1)
     ensure_column(conn, "snf_admission_facilities", "medrina_snf", "medrina_snf INTEGER DEFAULT 0")
     
-    # ✅ ensure new columns exist (safe migration)
+    # âœ… ensure new columns exist (safe migration)
     ensure_column(conn, "sensys_agencies", "aliases", "aliases TEXT")
 
-    # ✅ ensure new columns exist (safe migration)
+    # âœ… ensure new columns exist (safe migration)
     ensure_column(conn, "sensys_admission_referrals", "acceptance_status", "acceptance_status TEXT DEFAULT 'New'")
     ensure_column(conn, "sensys_admission_referrals", "acceptance_decline_reason", "acceptance_decline_reason TEXT")
     ensure_column(conn, "sensys_admission_referrals", "acceptance_decline_other", "acceptance_decline_other TEXT")
     ensure_column(conn, "sensys_admission_referrals", "soc_date", "soc_date TEXT")
     
-    # ✅ ensure new columns exist (safe migration)
+    # âœ… ensure new columns exist (safe migration)
     ensure_column(conn, "sensys_admissions", "mrn", "mrn TEXT")
     ensure_column(conn, "sensys_admissions", "visit_id", "visit_id TEXT")
     ensure_column(conn, "sensys_admissions", "facility_code", "facility_code TEXT")
@@ -6200,7 +6200,7 @@ def init_db():
                     COALESCE(f.state, '') ||
                     CASE
                         WHEN f.corporate_group IS NOT NULL AND f.corporate_group <> ''
-                            THEN ' – ' || f.corporate_group
+                            THEN ' â€“ ' || f.corporate_group
                         ELSE ''
                     END
                 ) AS details
@@ -6296,7 +6296,7 @@ def init_db():
                     CASE
                         WHEN (fp.ins_only IS NOT NULL AND fp.ins_only <> '')
                              AND (fp.insurance IS NOT NULL AND fp.insurance <> '')
-                            THEN ' – '
+                            THEN ' â€“ '
                         ELSE ''
                     END ||
                     COALESCE(fp.insurance, '')
@@ -6536,7 +6536,7 @@ class AskResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# PAD → CM notes ingest endpoint
+# PAD â†’ CM notes ingest endpoint
 # ---------------------------------------------------------------------------
 
 @app.post("/api/pad/cm-notes/bulk")
@@ -6638,7 +6638,7 @@ async def pad_cm_notes_bulk(
                 errors.append({"index": idx, "error": "row is not an object"})
                 continue
 
-            # Normalize incoming fields from PAD – they might be numbers, etc.
+            # Normalize incoming fields from PAD â€“ they might be numbers, etc.
             raw_patient_mrn = row.get("patient_mrn")
             raw_note_datetime = row.get("note_datetime")
             raw_visit_id = row.get("visit_id")
@@ -6936,11 +6936,11 @@ def build_recent_hospital_context(cur: sqlite3.Cursor, visit_id: str, limit: int
 
 
 # ---------------------------------------------------------------------------
-# Hospital Document ingest (raw text -> document + sections) ✅ NEW
+# Hospital Document ingest (raw text -> document + sections) âœ… NEW
 # ---------------------------------------------------------------------------
 
 
-# PAD → Hospital documents bulk ingest endpoint  ✅ NEW
+# PAD â†’ Hospital documents bulk ingest endpoint  âœ… NEW
 @app.post("/api/pad/hospital-documents/bulk")
 async def pad_hospital_documents_bulk(request: Request):
     """
@@ -7121,7 +7121,7 @@ async def pad_hospital_documents_bulk(request: Request):
                 doc_hash=(doc_hash[:12] if doc_hash else None),
             )
 
-            # Upsert hub row (hospital_discharges = your “hospital discharge/admission hub” keyed by visit_id)
+            # Upsert hub row (hospital_discharges = your â€œhospital discharge/admission hubâ€ keyed by visit_id)
             if doc_payload["visit_id"]:
                 # Check if hub row already exists so we can log "created vs updated"
                 cur.execute("SELECT 1 FROM hospital_discharges WHERE visit_id = ? LIMIT 1", (doc_payload["visit_id"],))
@@ -7172,7 +7172,7 @@ async def pad_hospital_documents_bulk(request: Request):
                 )
 
 
-                # ✅ UPDATED: derive disposition + dc_agency, but only let the "latest doc" win
+                # âœ… UPDATED: derive disposition + dc_agency, but only let the "latest doc" win
                 dispo = analyze_discharge_disposition_with_llm(doc_payload["source_text"])
                 new_dispo = (dispo.get("disposition") if dispo else None)
                 new_agency = (dispo.get("dc_agency") if dispo else None)
@@ -7220,7 +7220,7 @@ async def pad_hospital_documents_bulk(request: Request):
 
                 curr_source_dt = normalize_sortable_dt(curr_source_dt)
 
-                # Treat these as "no disposition mentioned" → do NOT overwrite an existing good value
+                # Treat these as "no disposition mentioned" â†’ do NOT overwrite an existing good value
                 NO_DISPO_VALUES = {None, "", "unknown", "n/a", "na"}
 
                 has_meaningful_dispo = (new_dispo is not None and str(new_dispo).strip().lower() not in NO_DISPO_VALUES)
@@ -7243,7 +7243,7 @@ async def pad_hospital_documents_bulk(request: Request):
                 # - If we DON'T have a meaningful new dispo, keep existing
                 # - If we DO have a meaningful new dispo, only apply if this doc is newer
                 if has_meaningful_dispo and is_newer:
-                    # ✅ Do not let a newer doc erase a good agency when disposition is facility-based
+                    # âœ… Do not let a newer doc erase a good agency when disposition is facility-based
                     FACILITY_BASED = {"SNF", "IRF", "Rehab", "LTACH", "Hospice"}
                     if new_dispo in FACILITY_BASED:
                         if (new_agency is None) or (str(new_agency).strip() == ""):
@@ -7287,7 +7287,7 @@ async def pad_hospital_documents_bulk(request: Request):
 
             inserted += 1
 
-            # ✅ Commit per document so we don't hold the write lock for the entire batch
+            # âœ… Commit per document so we don't hold the write lock for the entire batch
             commit_with_retry(conn)
 
         # (no final conn.commit() here anymore)
@@ -7328,7 +7328,7 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
     insurance = (payload.get("insurance") or "").strip() or None
 
 
-    # ✅ NEW: admit/discharge dates (optional; PAD/API can send later)
+    # âœ… NEW: admit/discharge dates (optional; PAD/API can send later)
     admit_date_raw = (payload.get("admit_date") or "").strip() or None
     dc_date_raw = (payload.get("dc_date") or "").strip() or None
 
@@ -7357,7 +7357,7 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
         cur.execute("SELECT id FROM hospital_documents WHERE document_hash = ? LIMIT 1", (doc_hash,))
         existing = cur.fetchone()
         if existing:
-            # Duplicate document already ingested — skip everything downstream
+            # Duplicate document already ingested â€” skip everything downstream
             existing_id = existing["id"] if isinstance(existing, sqlite3.Row) else existing[0]
             return {"ok": True, "skipped": True, "message": "Duplicate document (same hash) already exists.", "document_id": existing_id}
 
@@ -7396,7 +7396,7 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
         document_id = cur.lastrowid
 
         
-        # ✅ NEW: upsert the discharge "hub" row by visit_id (if provided)
+        # âœ… NEW: upsert the discharge "hub" row by visit_id (if provided)
         if visit_id:
             cur.execute(
                 """
@@ -7424,7 +7424,7 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
 
             sync_discharge_dc_date_to_snf(cur, visit_id, dc_date)
 
-            # ✅ UPDATED: derive disposition + dc_agency using the most recent 5 hospital documents for this visit_id
+            # âœ… UPDATED: derive disposition + dc_agency using the most recent 5 hospital documents for this visit_id
             llm_source_text = build_recent_hospital_context(cur, visit_id, limit=5) or source_text
 
             dispo = analyze_discharge_disposition_with_llm(llm_source_text)
@@ -7477,7 +7477,7 @@ async def hospital_documents_ingest(payload: Dict[str, Any] = Body(...)):
 
             curr_source_dt = normalize_sortable_dt(curr_source_dt)
 
-            # Treat these as "no disposition mentioned" → do NOT overwrite an existing good value
+            # Treat these as "no disposition mentioned" â†’ do NOT overwrite an existing good value
             NO_DISPO_VALUES = {None, "", "unknown", "n/a", "na"}
 
             has_meaningful_dispo = (
@@ -8469,7 +8469,7 @@ async def admin_census_upload(
     for f in files:
         out_path = job_dir / (f.filename or f"upload_{uuid.uuid4().hex}.pdf")
 
-        # ✅ stream to disk (avoid reading entire PDF into RAM)
+        # âœ… stream to disk (avoid reading entire PDF into RAM)
         # Add a hard cap + yield occasionally so large PDFs don't monopolize CPU
         MAX_UPLOAD_BYTES = 75 * 1024 * 1024   # 75MB cap (tune if needed)
         CHUNK_SIZE = 256 * 1024               # 256KB chunks
@@ -8494,7 +8494,7 @@ async def admin_census_upload(
                 if total % (4 * 1024 * 1024) < CHUNK_SIZE:
                     await asyncio.sleep(0)
 
-        # ✅ make sure the temp upload file handle is released ASAP
+        # âœ… make sure the temp upload file handle is released ASAP
         try:
             await f.close()
         except Exception:
@@ -8545,7 +8545,7 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
 
     processed = 0
     try:
-        _job_set(conn, job_id, "running", processed=0, message="Starting…")
+        _job_set(conn, job_id, "running", processed=0, message="Startingâ€¦")
         conn.commit()
 
         # Enable tracemalloc only when PERF_LOG=1 (keeps overhead off by default)
@@ -8715,7 +8715,7 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                     """,
                     (job_id, filename, "Inserted", run_id, rows_inserted),
                 )
-                # ✅ Release cyclic refs (safe)
+                # âœ… Release cyclic refs (safe)
                 gc.collect()
 
                 processed += 1
@@ -8723,7 +8723,7 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                 conn.commit()
 
             except ScannedPdfError as e:
-                # ✅ Treat scanned/image PDFs as "skipped" (not an error)
+                # âœ… Treat scanned/image PDFs as "skipped" (not an error)
                 cur.execute(
                     """
                     INSERT INTO census_upload_job_files (job_id, filename, status, detail, run_id, rows_inserted)
@@ -8748,7 +8748,7 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
                 _job_set(conn, job_id, "running", processed=processed, message=f"Error: {filename}")
                 conn.commit()
             finally:
-                # ✅ ALWAYS delete the temp file for this specific 'p'
+                # âœ… ALWAYS delete the temp file for this specific 'p'
                 try:
                     Path(p).unlink(missing_ok=True)
                 except Exception:
@@ -8756,7 +8756,7 @@ def _process_census_upload_job(job_id: str, file_paths: list[str], facility_name
 
         _job_set(conn, job_id, "done", processed=processed, message="Complete")
         conn.commit()
-        # ✅ cleanup the per-job tmp directory if it's empty
+        # âœ… cleanup the per-job tmp directory if it's empty
         try:
             job_dir = CENSUS_UPLOAD_TMP / job_id
             if job_dir.exists():
@@ -8793,7 +8793,7 @@ def admin_census_upload_status(job_id: str, lite: int = 0, admin=Depends(require
         if not job:
             raise HTTPException(status_code=404, detail="job not found")
 
-        # ✅ during polling, skip the per-file rows to reduce DB + JSON churn
+        # âœ… during polling, skip the per-file rows to reduce DB + JSON churn
         if int(lite or 0) == 1:
             return {"ok": True, "job": dict(job), "files": []}
 
@@ -9163,7 +9163,7 @@ async def admin_census_sensys_process(
         if not run_ids:
             raise HTTPException(status_code=404, detail="No latest run ids found")
 
-        # ✅ define a "latest" id for the response payload (prevents NameError)
+        # âœ… define a "latest" id for the response payload (prevents NameError)
         # Since this endpoint unions the latest run for *each* facility, we use the newest run id overall.
         latest_id = max(run_ids)
 
@@ -9715,7 +9715,7 @@ def run_analytics_query(
             # Misconfigured rule; fall back to built-ins
             pass
         else:
-            # Simple placeholder: {{facility_id}} → ?
+            # Simple placeholder: {{facility_id}} â†’ ?
             params: List[Any] = []
             if "{{facility_id}}" in sql:
                 if not facility_id:
@@ -9829,7 +9829,7 @@ def run_analytics_query(
                 if loc:
                     pieces.append(f"({loc})")
                 if corp:
-                    pieces.append(f"– {corp}")
+                    pieces.append(f"â€“ {corp}")
                 if fid:
                     pieces.append(f"[id: {fid}]")
 
@@ -10027,7 +10027,7 @@ def get_listables_lexicon(conn: sqlite3.Connection) -> Dict[str, List[str]]:
         pass
 
     try:
-        # Additional services – where things like "wound care", "respiratory therapy"
+        # Additional services â€“ where things like "wound care", "respiratory therapy"
         # live today
         cur.execute(
             """
@@ -10314,7 +10314,7 @@ def try_llm_listables_query(
     col_names = [d[0] for d in cur.description] if cur.description else []
     src = "DB:listables"
 
-    # Aggregate-style: 1 row, 1 column → just say "The result is X."
+    # Aggregate-style: 1 row, 1 column â†’ just say "The result is X."
     if len(rows) == 1 and len(col_names) == 1:
         val = rows[0][0]
         return (f"The result is {val}.", [src], sql)
@@ -10491,7 +10491,7 @@ def analyze_patient_notes_with_llm(
       - is the patient going to a SNF?
       - which SNF name?
       - expected transfer date?
-      - confidence (0–1)
+      - confidence (0â€“1)
     Returns a dict or None on failure.
     """
     if not notes:
@@ -10552,23 +10552,23 @@ def analyze_patient_notes_with_llm(
         "  set is_snf_candidate = TRUE but set snf_name = null and use lower confidence.\n"
         "\n"
         "- Facility selection signals (these ARE enough to set snf_name, even if auth is pending):\n"
-        "  • Lines like 'DCP: SNF - <facility>', 'D/C to <facility>', 'Dispo: SNF - <facility>', 'Discharge to <facility>'\n"
+        "  â€¢ Lines like 'DCP: SNF - <facility>', 'D/C to <facility>', 'Dispo: SNF - <facility>', 'Discharge to <facility>'\n"
         "    should be treated as the CURRENT selected plan unless a later note clearly changes it.\n"
         "\n"
         "- If multiple SNFs are mentioned over time, choose ONLY the facility that the latest notes indicate is the CURRENT selected/active plan.\n"
         "- IMPORTANT: Do NOT treat the word 'declined' as a facility rejection unless it clearly means the FACILITY or REFERRAL was declined.\n"
-        "  • Count as facility-negative: 'facility declined', 'SNF declined', 'referral declined', 'no bed', 'out of network', 'denied by facility', 'unable to accept'.\n"
-        "  • Do NOT count as facility-negative: 'patient declined list', 'declined to choose', 'declined options', 'declined to sign', etc.\n"
+        "  â€¢ Count as facility-negative: 'facility declined', 'SNF declined', 'referral declined', 'no bed', 'out of network', 'denied by facility', 'unable to accept'.\n"
+        "  â€¢ Do NOT count as facility-negative: 'patient declined list', 'declined to choose', 'declined options', 'declined to sign', etc.\n"
         "- If the patient/family declined SNF placement entirely and plan changes to home/home health/other LOC, set is_snf_candidate = FALSE.\n"
         "\n"
         "- IMPORTANT: Insurance authorization language must be interpreted carefully:\n"
-        "  • If notes say SNF authorization is PENDING / UNDER REVIEW / REQUEST SUBMITTED / REF# present / awaiting decision,\n"
+        "  â€¢ If notes say SNF authorization is PENDING / UNDER REVIEW / REQUEST SUBMITTED / REF# present / awaiting decision,\n"
         "    then is_snf_candidate should generally be TRUE (but confidence can be lower).\n"
-        "  • If notes say SNF auth was DENIED but there is an APPEAL in progress OR a PEER-TO-PEER (P2P) is being offered/attempted\n"
+        "  â€¢ If notes say SNF auth was DENIED but there is an APPEAL in progress OR a PEER-TO-PEER (P2P) is being offered/attempted\n"
         "    OR the denial is being contested (deadline, physician to call, expedited appeal), then keep is_snf_candidate = TRUE\n"
         "    until there is a clear FINAL outcome.\n"
-        "  • If notes say the appeal was OVERTURNED / APPROVED / WON, treat SNF as continuing (is_snf_candidate = TRUE).\n"
-        "  • If notes say the appeal was UPHELD / LOST / denial stands AND the plan changes to home / home health / other level of care,\n"
+        "  â€¢ If notes say the appeal was OVERTURNED / APPROVED / WON, treat SNF as continuing (is_snf_candidate = TRUE).\n"
+        "  â€¢ If notes say the appeal was UPHELD / LOST / denial stands AND the plan changes to home / home health / other level of care,\n"
         "    then set is_snf_candidate = FALSE.\n"
         "\n"
         "- Only set is_snf_candidate = FALSE when the latest notes clearly indicate SNF is no longer the discharge plan\n"
@@ -10854,7 +10854,7 @@ def map_dc_agency_using_snf_admission_facilities(
     return candidate_clean or None
 
 # ---------------------------------------------------------------------------
-# Question → Answer pipeline
+# Question â†’ Answer pipeline
 # ---------------------------------------------------------------------------
 
 def run_answer_pipeline(
@@ -10921,7 +10921,7 @@ def run_answer_pipeline(
 
 
         # -------------------------------------------------
-        # 2) Hybrid LLM → SQL on v_facility_listables
+        # 2) Hybrid LLM â†’ SQL on v_facility_listables
         # -------------------------------------------------
         listables_result = try_llm_listables_query(conn, normalized_q, fac_id, fac_label)
         if listables_result is not None:
@@ -11015,7 +11015,7 @@ def run_answer_pipeline(
             )
 
         user_message += (
-            "- Begin with a concise, 1–3 sentence answer. Then, if useful, follow "
+            "- Begin with a concise, 1â€“3 sentence answer. Then, if useful, follow "
             "with bullet points for steps/nuances.\n"
         )
 
@@ -11232,7 +11232,7 @@ async def pad_flow_log_start(request: Request):
 
         conn.commit()
 
-        # 🔔 NEW: Email notification (never breaks the endpoint)
+        # ðŸ”” NEW: Email notification (never breaks the endpoint)
         try:
             cur.execute("SELECT * FROM pad_flow_runs WHERE run_id = ?", (run_id,))
             rr = cur.fetchone()
@@ -11296,7 +11296,7 @@ async def pad_flow_log_stop(request: Request):
 
         conn.commit()
 
-        # 🔔 NEW: Email notification (never breaks the endpoint)
+        # ðŸ”” NEW: Email notification (never breaks the endpoint)
         try:
             cur.execute("SELECT * FROM pad_flow_runs WHERE run_id = ?", (run_id,))
             rr = cur.fetchone()
@@ -11381,7 +11381,7 @@ async def pad_flow_log_error(request: Request):
 
         conn.commit()
 
-        # 🔔 NEW: Email notification (never breaks the endpoint)
+        # ðŸ”” NEW: Email notification (never breaks the endpoint)
         try:
             cur.execute("SELECT * FROM pad_flow_runs WHERE run_id = ?", (run_id,))
             rr = cur.fetchone()
@@ -11396,7 +11396,7 @@ async def pad_flow_log_error(request: Request):
         conn.close()
 
 
-# ✅ NEW: PAD can ask what the last run was for a given flow_key (for resume logic)
+# âœ… NEW: PAD can ask what the last run was for a given flow_key (for resume logic)
 @app.get("/api/pad/flow-log/last")
 async def pad_flow_log_last(
     request: Request,
@@ -11809,7 +11809,7 @@ def snf_upsert_from_notes_for_visit(conn: sqlite3.Connection, visit_id: str) -> 
     facility_id = None
     facility_label = None
 
-    # Map facility name → SNF Admission Facility (snf_admission_facilities only)
+    # Map facility name â†’ SNF Admission Facility (snf_admission_facilities only)
     try:
         facility_id, facility_label = map_snf_name_to_facility_id(conn, snf_name_raw)
     except Exception:
@@ -12010,7 +12010,7 @@ def snf_run_extraction(days_back: int = 3) -> Dict[str, Any]:
             expected_date = result.get("expected_transfer_date")
             conf = result.get("confidence", 0.0)
 
-            # ✅ NEW: prefer explicit facility mentions from the CM notes text (more specific than "the Luxe")
+            # âœ… NEW: prefer explicit facility mentions from the CM notes text (more specific than "the Luxe")
             note_texts = [(r["note_text"] or "") for r in notes]  # notes = cur.fetchall() above
             infer_id, infer_label, infer_score = infer_snf_facility_from_notes(conn, note_texts)
 
@@ -12642,7 +12642,7 @@ def snf_recompute_for_admission(visit_id: str = "", patient_mrn: str = "", retur
             }
 
         if not result or not result.get("is_snf_candidate", False):
-            # same “no longer candidate” treatment
+            # same â€œno longer candidateâ€ treatment
             if visit_id_db:
                 cur.execute(
                     """
@@ -12692,7 +12692,7 @@ def snf_recompute_for_admission(visit_id: str = "", patient_mrn: str = "", retur
                 SET raw_note_id = ?,
                     note_datetime = ?,
 
-                    -- ✅ NEW: backfill dc_date from latest_note when present (but don't wipe existing)
+                    -- âœ… NEW: backfill dc_date from latest_note when present (but don't wipe existing)
                     dc_date = COALESCE(?, dc_date),
 
                     ai_is_snf_candidate = 1,
@@ -14281,7 +14281,7 @@ def build_client_survey_secure_list_html(
     header_img = "/static/images/Asset 1.png"
     logo_img = "/static/images/Evolv-Health-hor-color.png"
     summary_text = esc((master_summary or "").strip() or "Summary not available.")
-    avg_txt = f"{avg_score:.1f}" if avg_score is not None else "—"
+    avg_txt = f"{avg_score:.1f}" if avg_score is not None else "â€”"
     avg_stars = _client_survey_star_img(avg_score) if avg_score is not None else ""
     avg_stars_html = f'<img src="{avg_stars}" alt="Overall average" />' if avg_stars else ""
 
@@ -14601,7 +14601,7 @@ async def admin_snf_ai_summary_run(request: Request, payload: Dict[str, Any] = B
             # Reasons/Evidence comes directly from the MAIN prompt output (rationale)
             "reasons": [rationale] if rationale else [],
             "competing_plan": "",
-            # “Agency names” should align with the Facility(AI) logic — for SNF, show the SNF name
+            # â€œAgency namesâ€ should align with the Facility(AI) logic â€” for SNF, show the SNF name
             "agency_names": [snf_name] if snf_name else [],
             "snf_facilities_mentioned": [snf_name] if snf_name else [],
             "next_steps": [],
@@ -14938,10 +14938,10 @@ async def admin_snf_list(
                     "ai_confidence": r["ai_confidence"],
                     "status": r["status"],
 
-                    # ✅ ADD THIS LINE (so the list can show DC Date)
+                    # âœ… ADD THIS LINE (so the list can show DC Date)
                     "dc_date": r["dc_date"],
 
-                    # ✅ NEW: so Facility(AI) column can show "Disposition | Phone"
+                    # âœ… NEW: so Facility(AI) column can show "Disposition | Phone"
                     "disposition": r["disposition"],
 
                     "final_snf_facility_id": r["final_snf_facility_id"],
@@ -15347,7 +15347,7 @@ async def admin_snf_update(
             conn.close()
             raise HTTPException(status_code=404, detail="SNF admission not found")
 
-        # DC Date (manual) — prefer dc_date, fallback to legacy final_expected_transfer_date
+        # DC Date (manual) â€” prefer dc_date, fallback to legacy final_expected_transfer_date
         dc_date = None
         if "dc_date" in payload:
             dc_date = (payload.get("dc_date") or None)
@@ -16480,7 +16480,7 @@ def _build_snf_admission_summary_email_html(data: dict) -> str:
           <tr>
             <td style="padding:16px 20px;border-bottom:1px solid #eef2f7;">
               <div style="font-size:18px;font-weight:900;">SNF Admission Summary</div>
-              <div style="font-size:12px;color:#6b7280;margin-top:4px;">Filtered by SNF DC Date (fallback to Last Seen Active Date): <strong>{dc_from}</strong> ? <strong>{dc_to}</strong> � Ignore Unknown Facilities: <strong>{ignore_unknown}</strong></div>
+              <div style="font-size:12px;color:#6b7280;margin-top:4px;">Filtered by SNF DC Date (fallback to Last Seen Active Date): <strong>{dc_from}</strong> ? <strong>{dc_to}</strong> • Ignore Unknown Facilities: <strong>{ignore_unknown}</strong></div>
               <div style="font-size:12px;color:#6b7280;margin-top:4px;">SNF Volume is calculated based on total hospital visits documented going to that location. Emails Opened is calculated based on total number of daily emails sent to that SNF. Multiple emails are sent on groups of patients and one visit is typically on multiple daily emails leading up to their hospital discharge.</div>
             </td>
           </tr>
@@ -16919,7 +16919,7 @@ def build_snf_pdf_html(
       padding-bottom: 16px;
     }}
 
-    /* ✅ Key fix: make the left side expand to full available width */
+    /* âœ… Key fix: make the left side expand to full available width */
     .header-main {{
       flex: 1;
       min-width: 0;
@@ -16929,7 +16929,7 @@ def build_snf_pdf_html(
       gap: 4px;
     }}
 
-    /* ✅ Ensure the “top sections” actually render full-width */
+    /* âœ… Ensure the â€œtop sectionsâ€ actually render full-width */
     .facility-line,
     .header-description,
     .provider-callout {{
@@ -17474,7 +17474,7 @@ async def snf_secure_link_get(token: str, request: Request):
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="topbar">First Docs • Secure List</div>
+      <div class="topbar">First Docs â€¢ Secure List</div>
       <div class="mintbar" aria-hidden="true"></div>
       <div class="content">
         <h1>{fac_name}</h1>
@@ -17783,7 +17783,7 @@ async def snf_secure_link_post(token: str, request: Request, pin: Optional[str] 
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="topbar">First Docs • Secure List</div>
+      <div class="topbar">First Docs â€¢ Secure List</div>
       <div class="mintbar" aria-hidden="true"></div>
       <div class="content">
         <h1>{html.escape(fac_name)}</h1>
@@ -17969,7 +17969,7 @@ async def snf_secure_link_list(token: str, request: Request):
             LIMIT 1
             ) AS view_note_type,
 
-            -- Whether the row should show the �- button at all
+            -- Whether the row should show the â†- button at all
             CASE WHEN EXISTS (
             SELECT 1
             FROM cm_notes_raw n2
@@ -18146,7 +18146,7 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Hospital Note • Print View</title>
+  <title>Hospital Note â€¢ Print View</title>
     <style>
       :root{{
         --navy:#0D3B66; --grey:#F5F7FA; --text:#0f172a; --muted:#55657f;
@@ -18353,7 +18353,7 @@ async def snf_secure_note_viewer(token: str, admission_id: int, request: Request
           <span>{esc(note_hosp)}</span>.
           <span class="muted">For official records or certified exports, please contact the originating facility or health system.</span>
           <div style="margin-top:8px;" class="muted">
-            Link expires at: <b>{esc(expires_at_txt)}</b> • <a href="/snf/secure/{esc(token)}/list">Back to List</a>
+            Link expires at: <b>{esc(expires_at_txt)}</b> â€¢ <a href="/snf/secure/{esc(token)}/list">Back to List</a>
           </div>
         </div>
       </div>
@@ -18396,7 +18396,7 @@ async def admin_snf_email_pdf(
     Send a single SNF email with a nicely formatted PDF attachment
     for the CURRENT filtered list of admissions for one SNF facility.
 
-    Uses HTML → PDF via WeasyPrint so the design exactly matches
+    Uses HTML â†’ PDF via WeasyPrint so the design exactly matches
     Example PDF Export v2.1.html.
     """
 
@@ -18409,7 +18409,7 @@ async def admin_snf_email_pdf(
     test_only = bool(payload.get("test_only"))
     test_email_to = (payload.get("test_email_to") or "").strip()
 
-    # ✅ NEW: stable run_id for this request (lets you grep a single send end-to-end)
+    # âœ… NEW: stable run_id for this request (lets you grep a single send end-to-end)
     run_id = secrets.token_hex(6)
     logger.info(
         "[SNF-EMAIL-PDF][REQ] run_id=%s facility_id=%s admissions=%s ids=%s for_date=%s test_only=%s",
@@ -18470,7 +18470,7 @@ async def admin_snf_email_pdf(
                 detail="No facility_emails configured for this SNF Admission Facility."
             )
 
-        # ✅ Determine recipient list we will send to (and store in DB)
+        # âœ… Determine recipient list we will send to (and store in DB)
         to_addr = test_email_to if test_only else facility_emails
 
         # ------------------------
@@ -18524,7 +18524,7 @@ async def admin_snf_email_pdf(
             .isoformat() + "Z"
         )
 
-        # ✅ email_run_id generated BEFORE insert
+        # âœ… email_run_id generated BEFORE insert
         email_run_id = secrets.token_hex(8)
 
         with _SnfStage(run_id, "db_insert_secure_link", email_run_id=email_run_id):
@@ -18850,10 +18850,10 @@ class SensysUserUpsert(BaseModel):
     cell_phone: Optional[str] = ""
     account_locked: Optional[bool] = False
 
-    # ✅ Provider E-sign
+    # âœ… Provider E-sign
     npi: Optional[str] = ""
     
-    # 🔔 Notifications (optional; if provided, we persist it on save)
+    # ðŸ”” Notifications (optional; if provided, we persist it on save)
     notification_prefs: list[SensysUserNotificationPrefItem] = []
 
 
@@ -18895,7 +18895,7 @@ class SensysAgencyUpsert(BaseModel):
     # Preferred Providers (if omitted, do NOT change existing)
     preferred_provider_ids: Optional[List[int]] = None
 
-    # ✅ PDW Prefs (if omitted, do NOT change existing)
+    # âœ… PDW Prefs (if omitted, do NOT change existing)
     pdw_attempts_expected: Optional[int] = None
     pdw_pref_details: Optional[str] = None
     pdw_enable_48h: Optional[int] = None
@@ -18949,7 +18949,7 @@ class SensysAdmissionUpsert(BaseModel):
     patient_id: int
     agency_id: int
 
-    # ✅ NEW: admission identifiers
+    # âœ… NEW: admission identifiers
     mrn: Optional[str] = ""
     visit_id: Optional[str] = ""
     facility_code: Optional[str] = ""
@@ -18990,7 +18990,7 @@ def _sensys_seed_roles(conn: sqlite3.Connection):
         ("snf_user", "SNF User"),
         ("evolv_snf", "Evolv-SNF"),
 
-        # ✅ CCC Post-Discharge Workspace (CCC-PDW v1)
+        # âœ… CCC Post-Discharge Workspace (CCC-PDW v1)
         ("ccc_lead", "CCC Lead"),
         ("ccc_staff", "CCC Staff"),
     ]
@@ -19098,7 +19098,7 @@ def sensys_admin_users(token: str):
         agency_ids_by_user.setdefault(uid, []).append(int(r["agency_id"]))
         agency_names_by_user.setdefault(uid, []).append(r["agency_name"])
 
-    # ✅ Provider e-sign links per user (care_team_id list)
+    # âœ… Provider e-sign links per user (care_team_id list)
     link_rows = conn.execute(
         """
         SELECT user_id, care_team_id
@@ -19111,7 +19111,7 @@ def sensys_admin_users(token: str):
     for r in link_rows:
         esign_link_ids_by_user.setdefault(r["user_id"], []).append(int(r["care_team_id"]))
 
-    # 🔔 Notification prefs per user
+    # ðŸ”” Notification prefs per user
     pref_rows = conn.execute(
         """
         SELECT
@@ -19146,10 +19146,10 @@ def sensys_admin_users(token: str):
         d["agency_ids"] = sorted(agency_ids_by_user.get(u["user_id"], []))
         d["agency_names"] = sorted(agency_names_by_user.get(u["user_id"], []), key=lambda x: (x or "").lower())
 
-        # ✅ Provider E-sign
+        # âœ… Provider E-sign
         d["esign_link_ids"] = sorted(esign_link_ids_by_user.get(u["user_id"], []))
 
-        # 🔔 Notifications
+        # ðŸ”” Notifications
         d["notification_prefs"] = prefs_by_user.get(u["user_id"], [])
 
         out.append(d)
@@ -19376,7 +19376,7 @@ def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request:
         )
         raise
         
-    # ---- 🔔 AUTOMATED NOTIFICATION TRIGGER: New Referral (insert only) ----
+    # ---- ðŸ”” AUTOMATED NOTIFICATION TRIGGER: New Referral (insert only) ----
     if op == "insert":
         adm = conn.execute(
             """
@@ -19395,7 +19395,7 @@ def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request:
 
         title = "New Referral"
         if patient_name:
-            title = f"New Referral — {patient_name}"
+            title = f"New Referral â€” {patient_name}"
 
         body = "A new referral was created."
 
@@ -19533,7 +19533,7 @@ class AdmissionAppointmentUpsert(BaseModel):
 
 
 # -----------------------------
-# Admission Details — Appointments: upsert (ANCHOR: ADMISSION_APPOINTMENTS_UPSERT)
+# Admission Details â€” Appointments: upsert (ANCHOR: ADMISSION_APPOINTMENTS_UPSERT)
 # -----------------------------
 @app.post("/api/sensys/admission-appointments/upsert")
 def sensys_admission_appointments_upsert(payload: AdmissionAppointmentUpsert, request: Request):
@@ -19587,7 +19587,7 @@ def sensys_admission_appointments_upsert(payload: AdmissionAppointmentUpsert, re
     return {"ok": True, "id": int(new_id)}
 
 # -----------------------------
-# Admission Details — Appointments: delete (ANCHOR: ADMISSION_APPOINTMENTS_DELETE)
+# Admission Details â€” Appointments: delete (ANCHOR: ADMISSION_APPOINTMENTS_DELETE)
 # -----------------------------
 @app.post("/api/sensys/admission-appointments/delete")
 def sensys_admission_appointments_delete(payload: IdOnly, request: Request):
@@ -19700,7 +19700,7 @@ def sensys_admin_users_upsert(payload: SensysUserUpsert, token: str):
 
     user_id = int(payload.user_id) if payload.user_id else int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
 
-    # 🔔 ALSO persist notification prefs when saving the user (clean replace)
+    # ðŸ”” ALSO persist notification prefs when saving the user (clean replace)
     # If the UI sends notification_prefs, they will now stick when reopening the modal.
     try:
         conn.execute("DELETE FROM sensys_user_notification_prefs WHERE user_id = ?", (user_id,))
@@ -19917,7 +19917,7 @@ def sensys_admin_users_set_notification_prefs(payload: SensysUserNotificationPre
     # wipe existing prefs (clean replace)
     conn.execute("DELETE FROM sensys_user_notification_prefs WHERE user_id = ?", (user_id,))
 
-    # ✅ accept either key
+    # âœ… accept either key
     items = (payload.prefs or []) or (payload.notification_prefs or [])
     rows = []
     for it in items:
@@ -20059,7 +20059,7 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                    evolv_ccm        = ?,
                    survey_recipient_emails = ?,
                    survey_pin       = ?,
-                   -- ✅ PDW Prefs (only overwrite when payload sends them)
+                   -- âœ… PDW Prefs (only overwrite when payload sends them)
                    pdw_attempts_expected = COALESCE(?, pdw_attempts_expected),
                    pdw_pref_details      = COALESCE(?, pdw_pref_details),
                    pdw_enable_48h        = COALESCE(?, pdw_enable_48h),
@@ -20110,7 +20110,7 @@ def sensys_admin_agencies_upsert(payload: SensysAgencyUpsert, token: str):
                     evolv_client, medrina_facility, medrina_ccm, evolv_ccm,
                     survey_recipient_emails, survey_pin,
 
-                    -- ✅ PDW Prefs
+                    -- âœ… PDW Prefs
                     pdw_attempts_expected, pdw_pref_details,
                     pdw_enable_48h, pdw_enable_15d, pdw_enable_30d
                 )
@@ -20588,7 +20588,7 @@ def sensys_admin_patients_upsert(payload: SensysPatientUpsert, token: str):
 
 
 # -----------------------------
-# Admin — Admissions: list (ANCHOR: ADMIN_ADMISSIONS_LIST)
+# Admin â€” Admissions: list (ANCHOR: ADMIN_ADMISSIONS_LIST)
 # -----------------------------
 
 @app.get("/api/sensys/admin/admissions")
@@ -20611,7 +20611,7 @@ def sensys_admin_admissions(token: str):
             a.agency_id,
             ag.agency_name AS agency_name,
 
-            -- ✅ NEW
+            -- âœ… NEW
             a.mrn,
             a.visit_id,
             a.facility_code,
@@ -20645,7 +20645,7 @@ def sensys_admin_admissions(token: str):
 
 
 # -----------------------------
-# Admin — Admissions: upsert (ANCHOR: ADMIN_ADMISSIONS_UPSERT)
+# Admin â€” Admissions: upsert (ANCHOR: ADMIN_ADMISSIONS_UPSERT)
 # -----------------------------
 
 @app.post("/api/sensys/admin/admissions/upsert")
@@ -20660,7 +20660,7 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
                SET patient_id = ?,
                    agency_id = ?,
 
-                   -- ✅ NEW
+                   -- âœ… NEW
                    mrn = ?,
                    visit_id = ?,
                    facility_code = ?,
@@ -20702,7 +20702,7 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
             ),
         )
 
-        # ✅ PDW SYNC — keep existing 48h task aligned to dc_date edits
+        # âœ… PDW SYNC â€” keep existing 48h task aligned to dc_date edits
         dc_date_clean = (payload.dc_date or "").strip()
         if dc_date_clean:
             conn.execute(
@@ -20739,7 +20739,7 @@ def sensys_admin_admissions_upsert(payload: SensysAdmissionUpsert, token: str):
                 int(payload.patient_id),
                 int(payload.agency_id),
 
-                # ✅ NEW
+                # âœ… NEW
                 (payload.mrn or "").strip(),
                 (payload.visit_id or "").strip(),
                 (payload.facility_code or "").strip(),
@@ -21510,7 +21510,7 @@ def sensys_admin_service_types_upsert(payload: SensysServiceTypeUpsert, token: s
     code = (payload.code or "").strip().lower() or None
     active = 1 if int(payload.active or 0) == 1 else 0
 
-    # ✅ prevent 500: enforce unique code with a friendly message
+    # âœ… prevent 500: enforce unique code with a friendly message
     if code:
         existing = conn.execute(
             """
@@ -21991,11 +21991,11 @@ class SensysNoteTemplateUpsert(BaseModel):
     default_note: Optional[str] = ""
     active: int = 1
 
-    # ✅ targeting (blank/empty = global)
+    # âœ… targeting (blank/empty = global)
     agency_ids: List[int] = []
     role_keys: List[str] = []
 
-    # ✅ NEW: “Share With” roles (controls who appears in the note’s Share With dropdown)
+    # âœ… NEW: â€œShare Withâ€ roles (controls who appears in the noteâ€™s Share With dropdown)
     share_with_role_keys: List[str] = []
 
 
@@ -22008,7 +22008,7 @@ class DcNoteTemplateUpsert(BaseModel):
     active: int = 1
     template_body: str
 
-    # ✅ NEW targeting (blank/empty = global)
+    # âœ… NEW targeting (blank/empty = global)
     agency_ids: List[int] = []
 
     
@@ -22064,7 +22064,7 @@ def sensys_admin_dc_note_templates_upsert(
     if not (payload.template_body or "").strip():
         raise HTTPException(status_code=400, detail="template_body is required")
 
-    # ✅ normalize arrays (empty = global)
+    # âœ… normalize arrays (empty = global)
     agency_ids = sorted({int(x) for x in (payload.agency_ids or []) if str(x).strip()})
 
     if payload.id:
@@ -22101,7 +22101,7 @@ def sensys_admin_dc_note_templates_upsert(
         )
         tpl_id = int(cur.lastrowid)
 
-    # ✅ replace agency links
+    # âœ… replace agency links
     conn.execute("DELETE FROM sensys_dc_note_template_agencies WHERE template_id = ?", (tpl_id,))
     for aid in agency_ids:
         conn.execute(
@@ -22156,7 +22156,7 @@ def sensys_admin_note_templates(token: str):
 
     tpl_ids = [int(t["id"]) for t in tpl_list]
 
-    # ✅ NEW: load agency_ids + role_keys for each template
+    # âœ… NEW: load agency_ids + role_keys for each template
     ag_rows = conn.execute(
         f"""
         SELECT template_id, agency_id
@@ -22177,7 +22177,7 @@ def sensys_admin_note_templates(token: str):
         tuple(tpl_ids),
     ).fetchall()
 
-    # ✅ NEW: Share With Roles
+    # âœ… NEW: Share With Roles
     sw_rows = conn.execute(
         f"""
         SELECT template_id, role_key
@@ -22196,7 +22196,7 @@ def sensys_admin_note_templates(token: str):
     for r in rl_rows:
         by_tpl_rl.setdefault(int(r["template_id"]), []).append(str(r["role_key"]))
 
-    # ✅ NEW: Share With Roles mapping
+    # âœ… NEW: Share With Roles mapping
     by_tpl_sw = {}
     for r in sw_rows:
         by_tpl_sw.setdefault(int(r["template_id"]), []).append(str(r["role_key"]))
@@ -22208,7 +22208,7 @@ def sensys_admin_note_templates(token: str):
         t["share_with_role_keys"] = by_tpl_sw.get(tid, [])
 
 
-    # ✅ existing: load fields for templates
+    # âœ… existing: load fields for templates
     fields = conn.execute(
         f"""
         SELECT
@@ -22248,7 +22248,7 @@ def sensys_admin_note_templates_upsert(payload: SensysNoteTemplateUpsert, token:
     agency_ids = sorted({int(x) for x in (payload.agency_ids or []) if str(x).strip()})
     role_keys = sorted({str(x).strip() for x in (payload.role_keys or []) if str(x).strip()})
 
-    # ✅ NEW: Share With roles
+    # âœ… NEW: Share With roles
     share_with_role_keys = sorted({str(x).strip() for x in (payload.share_with_role_keys or []) if str(x).strip()})
 
     if payload.id:
@@ -22275,7 +22275,7 @@ def sensys_admin_note_templates_upsert(payload: SensysNoteTemplateUpsert, token:
         )
         tpl_id = int(cur.lastrowid)
 
-    # ✅ replace role links
+    # âœ… replace role links
     conn.execute("DELETE FROM sensys_note_template_roles WHERE template_id = ?", (tpl_id,))
     for rk in role_keys:
         conn.execute(
@@ -22283,7 +22283,7 @@ def sensys_admin_note_templates_upsert(payload: SensysNoteTemplateUpsert, token:
             (tpl_id, rk),
         )
 
-    # ✅ NEW: replace Share With role links
+    # âœ… NEW: replace Share With role links
     conn.execute("DELETE FROM sensys_note_template_share_roles WHERE template_id = ?", (tpl_id,))
     for rk in share_with_role_keys:
         conn.execute(
@@ -22406,7 +22406,7 @@ def sensys_admin_note_template_fields_delete(payload: SensysNoteTemplateFieldDel
     return {"ok": True}
 
 # =========================================================
-# Sensys Admin: BULK UPLOAD (CSV) — users/agencies/patients/admissions
+# Sensys Admin: BULK UPLOAD (CSV) â€” users/agencies/patients/admissions
 # =========================================================
 
 def _csv_to_rows(file_bytes: bytes) -> list[dict]:
@@ -22616,7 +22616,7 @@ async def sensys_admin_agencies_bulk(token: str, file: UploadFile = File(...)):
             )
 
             if agency_id:
-                # ✅ If ID provided, UPDATE if it exists; otherwise INSERT (so CSVs with new IDs work)
+                # âœ… If ID provided, UPDATE if it exists; otherwise INSERT (so CSVs with new IDs work)
                 cur = conn.execute(
                     """
                     UPDATE sensys_agencies
@@ -22827,7 +22827,7 @@ async def sensys_admin_admissions_bulk(token: str, file: UploadFile = File(...))
                 int(patient_id),
                 int(agency_id),
 
-                # ✅ NEW
+                # âœ… NEW
                 (r.get("mrn", "") or "").strip(),
                 (r.get("visit_id", "") or "").strip(),
                 (r.get("facility_code", "") or "").strip(),
@@ -22852,7 +22852,7 @@ async def sensys_admin_admissions_bulk(token: str, file: UploadFile = File(...))
                         SET patient_id = ?,
                             agency_id = ?,
 
-                            -- ✅ NEW
+                            -- âœ… NEW
                             mrn = ?,
                             visit_id = ?,
                             facility_code = ?,
@@ -23117,7 +23117,7 @@ def sensys_login(payload: SensysLoginIn, request: Request):
     # (first page requested: SNF SW)
     redirect_url = "/sensys/login"
 
-    # ✅ CCC Post-Discharge Workspace (CCC-PDW v1)
+    # âœ… CCC Post-Discharge Workspace (CCC-PDW v1)
     if "ccc_lead" in role_keys:
         redirect_url = "/sensys/post-discharge"
     elif "ccc_staff" in role_keys:
@@ -23136,7 +23136,7 @@ def sensys_login(payload: SensysLoginIn, request: Request):
     elif "admin" in role_keys:
         redirect_url = "/admin/sensys"
 
-    # ✅ Track last login (PDW)
+    # âœ… Track last login (PDW)
     try:
         conn.execute(
             "UPDATE sensys_users SET last_login_at = datetime('now') WHERE id = ?",
@@ -23203,7 +23203,7 @@ def sensys_my_admissions(request: Request, admitted_only: int = 0):
                OR date(a.dc_date) >= date('now'))
         """
 
-    # ✅ Home Health: show admissions where THIS user's agencies appear as a referral agency
+    # âœ… Home Health: show admissions where THIS user's agencies appear as a referral agency
     if "home_health" in role_keys:
         rows = conn.execute(
             """
@@ -23525,7 +23525,7 @@ def sensys_my_dc_submissions(request: Request, days: int = 10):
     return {"ok": True, "range_days": days, "items": [dict(r) for r in rows]}
 
 # =========================================================
-# CCC-PDW v1 — Post-Discharge Workspace (postdc) (ANCHOR: PDW_SECTION)
+# CCC-PDW v1 â€” Post-Discharge Workspace (postdc) (ANCHOR: PDW_SECTION)
 #   - CCC Lead assigns tasks
 #   - CCC Staff completes tasks
 #   - Agency linking enforced via sensys_user_agencies
@@ -23621,7 +23621,7 @@ def _pdw_seed_next_items_for_user(conn, user_id: int):
         (int(user_id),),
     )
 
-    # 30d (enabled) — after 15d completed (when 15d enabled)
+    # 30d (enabled) â€” after 15d completed (when 15d enabled)
     conn.execute(
         """
         INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status, max_attempts)
@@ -23646,7 +23646,7 @@ def _pdw_seed_next_items_for_user(conn, user_id: int):
         (int(user_id),),
     )
 
-    # 30d (enabled) — after 48h completed (when 15d disabled)
+    # 30d (enabled) â€” after 48h completed (when 15d disabled)
     conn.execute(
         """
         INSERT OR IGNORE INTO sensys_postdc_work_items (admission_id, task_type, due_at, status, max_attempts)
@@ -23818,7 +23818,7 @@ def sensys_postdc_staff_overview(day_offset: int = 0, request: Request = None):
                     window_start = st
                 window_end = en
 
-        # ✅ NEW: Only include staff who are actually scheduled this day
+        # âœ… NEW: Only include staff who are actually scheduled this day
         # (If no valid schedule blocks exist for the selected day, do not show them.)
         if total_minutes <= 0 or window_start is None or window_end is None:
             continue
@@ -24128,7 +24128,7 @@ def sensys_postdc_assign(payload: PdwAssignIn, request: Request):
                assigned_to_user_id = ?,
                assigned_at = datetime('now'),
 
-               -- ✅ NEW
+               -- âœ… NEW
                assigned_by_user_id = ?,
                assignment_notes = ?,
 
@@ -24399,7 +24399,7 @@ def sensys_ccc_staff_work_items(
         where.append("wi.status = 'completed'")
     elif bucket == "incomplete":
         where.append("wi.status IN ('assigned','incomplete') AND (wi.completed_at IS NULL OR TRIM(wi.completed_at)='')")
-        # but assigned_to filter makes it truly “mine”
+        # but assigned_to filter makes it truly â€œmineâ€
     else:
         # due
         where.append("wi.status IN ('assigned','incomplete') AND (wi.completed_at IS NULL OR TRIM(wi.completed_at)='')")
@@ -24653,7 +24653,7 @@ def sensys_ccc_staff_summary(token_user: dict = Depends(_sensys_require_user)):
     return {"ok": True, "total_due": int(total_due), "completed_today": int(completed_today)}
 
 # -----------------------------------------------------------------------------
-# Home Health — Referrals List (ANCHOR: HOME_HEALTH_REFERRALS)
+# Home Health â€” Referrals List (ANCHOR: HOME_HEALTH_REFERRALS)
 # -----------------------------------------------------------------------------
 @app.get("/api/sensys/my-referrals")
 def sensys_my_referrals(request: Request):
@@ -24733,9 +24733,9 @@ from typing import Optional, List
 def _sensys_assert_admission_access(conn, user_id: int, admission_id: int):
     """
     Access is allowed if:
-      A) admission is linked by admission.agency_id ∈ user's agencies
+      A) admission is linked by admission.agency_id âˆˆ user's agencies
       OR
-      B) admission has a referral row where referral.agency_id ∈ user's agencies (Home Health use-case)
+      B) admission has a referral row where referral.agency_id âˆˆ user's agencies (Home Health use-case)
     """
     ok = conn.execute(
         """
@@ -25216,7 +25216,7 @@ def sensys_notifications_mark_read(payload: SensysNotificationMarkRead, request:
     conn.commit()
 
 # -----------------------------------------------------------------------------
-# PDFs — Upload / List / Download (ANCHOR: PDF_FEATURE)
+# PDFs â€” Upload / List / Download (ANCHOR: PDF_FEATURE)
 # -----------------------------------------------------------------------------
     return {"ok": True}
 
@@ -25227,7 +25227,7 @@ def sensys_admission_pdfs_list(admission_id: int, request: Request):
     try:
         _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
 
-        # ✅ cleanup expired files to conserve disk
+        # âœ… cleanup expired files to conserve disk
         _sensys_pdf_cleanup_expired(conn)
 
         rows = conn.execute(
@@ -25305,7 +25305,7 @@ async def sensys_admission_pdf_upload(
     try:
         _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
 
-        # ✅ cleanup expired files to conserve disk
+        # âœ… cleanup expired files to conserve disk
         _sensys_pdf_cleanup_expired(conn)
 
         stored_name = f"{uuid.uuid4().hex}.pdf"
@@ -25395,7 +25395,7 @@ async def sensys_admission_pdf_upload(
         conn.close()
 
 # -----------------------------------------------------------------------------
-# Communications — SMS / Fax (RingCentral) (ANCHOR: COMM_SMS_FAX)
+# Communications â€” SMS / Fax (RingCentral) (ANCHOR: COMM_SMS_FAX)
 # -----------------------------------------------------------------------------
 @app.get("/api/sensys/admission-sms/{admission_id}")
 def sensys_admission_sms_list(admission_id: int, request: Request):
@@ -25422,7 +25422,7 @@ def sensys_admission_sms_list(admission_id: int, request: Request):
         conn.close()
 
 # -----------------------------
-# Communications — Fax: list by admission (ANCHOR: COMM_FAX_LIST)
+# Communications â€” Fax: list by admission (ANCHOR: COMM_FAX_LIST)
 # -----------------------------
 @app.get("/api/sensys/admission-fax/{admission_id}")
 def sensys_admission_fax_list(admission_id: int, request: Request):
@@ -25450,7 +25450,7 @@ def sensys_admission_fax_list(admission_id: int, request: Request):
         conn.close()
 
 # -----------------------------
-# Communications — Fax: send (ANCHOR: COMM_FAX_SEND)
+# Communications â€” Fax: send (ANCHOR: COMM_FAX_SEND)
 # -----------------------------
 @app.post("/api/sensys/admission-fax/send")
 def sensys_admission_fax_send(payload: SensysAdmissionFaxSend, request: Request):
@@ -25806,7 +25806,7 @@ def sensys_admission_fax_refresh_status(fax_log_id: int, request: Request):
 
 
 # -----------------------------
-# ✅ NEW: light “refresh recent fax statuses” endpoint
+# âœ… NEW: light â€œrefresh recent fax statusesâ€ endpoint
 # -----------------------------
 class SensysFaxRefreshRecent(BaseModel):
     max_age_minutes: int = 240   # faxes can take longer; default 4h
@@ -25833,9 +25833,9 @@ def sensys_admission_fax_refresh_recent(admission_id: int, payload: SensysFaxRef
         if max_rows > 25:
             max_rows = 25  # cap
 
-        # “final” statuses: don’t keep polling these
+        # â€œfinalâ€ statuses: donâ€™t keep polling these
         final_statuses = {"delivered", "failed", "undelivered", "canceled", "cancelled", "error"}
-        # “in-flight” statuses we *will* poll
+        # â€œin-flightâ€ statuses we *will* poll
         inflight_statuses = {"queued", "sending", "sent"}
 
         rows = conn.execute(
@@ -25909,7 +25909,7 @@ def sensys_admission_fax_refresh_recent(admission_id: int, payload: SensysFaxRef
         conn.close()
 
 # -----------------------------
-# Communications — SMS: send (ANCHOR: COMM_SMS_SEND)
+# Communications â€” SMS: send (ANCHOR: COMM_SMS_SEND)
 # -----------------------------
 @app.post("/api/sensys/admission-sms/send")
 def sensys_admission_sms_send(payload: SensysAdmissionSmsSend, request: Request):
@@ -26020,7 +26020,7 @@ def sensys_admission_sms_send(payload: SensysAdmissionSmsSend, request: Request)
         conn.close()
 
 # -----------------------------
-# Communications — SMS: refresh one status (ANCHOR: COMM_SMS_REFRESH_ONE)
+# Communications â€” SMS: refresh one status (ANCHOR: COMM_SMS_REFRESH_ONE)
 # -----------------------------
 @app.post("/api/sensys/admission-sms/refresh-status/{sms_log_id}")
 def sensys_admission_sms_refresh_status(sms_log_id: int, request: Request):
@@ -26083,7 +26083,7 @@ def sensys_admission_sms_refresh_status(sms_log_id: int, request: Request):
 
 
 # -----------------------------
-# Communications — SMS: refresh recent statuses (ANCHOR: COMM_SMS_REFRESH_RECENT)
+# Communications â€” SMS: refresh recent statuses (ANCHOR: COMM_SMS_REFRESH_RECENT)
 # -----------------------------
 class SensysSmsRefreshRecent(BaseModel):
     max_age_minutes: int = 120   # only look at recent rows
@@ -26110,10 +26110,10 @@ def sensys_admission_sms_refresh_recent(admission_id: int, payload: SensysSmsRef
         if max_rows > 25:
             max_rows = 25  # cap
 
-        # “final” statuses: don’t keep polling these
+        # â€œfinalâ€ statuses: donâ€™t keep polling these
         # (keep this simple; adjust as you learn RC behaviors)
         final_statuses = {"delivered", "failed", "undelivered", "received", "canceled", "cancelled", "error"}
-        # “in-flight” statuses we *will* poll
+        # â€œin-flightâ€ statuses we *will* poll
         inflight_statuses = {"queued", "sending", "sent"}
 
         rows = conn.execute(
@@ -26255,7 +26255,7 @@ def sensys_services(request: Request):
 
     return {"ok": True, "services": [dict(r) for r in rows]}
 
-# ✅ Sensys (User): Note templates + fields (needed by Admission Details page)
+# âœ… Sensys (User): Note templates + fields (needed by Admission Details page)
 @app.get("/api/sensys/note-templates")
 def sensys_note_templates(request: Request):
     u = _sensys_require_user(request)
@@ -26801,7 +26801,7 @@ def sensys_debug_db_state(request: Request):
     }
 
 # -----------------------------
-# Admission Details — Tasks: upsert (ANCHOR: ADMISSION_TASKS_UPSERT)
+# Admission Details â€” Tasks: upsert (ANCHOR: ADMISSION_TASKS_UPSERT)
 # -----------------------------
 @app.post("/api/sensys/admission-tasks/upsert")
 def sensys_admission_tasks_upsert(payload: AdmissionTaskUpsert, request: Request):
@@ -26843,7 +26843,7 @@ def sensys_admission_tasks_upsert(payload: AdmissionTaskUpsert, request: Request
         )
         task_id = int(payload.id)
 
-        # 🔔 notify only if assignment changed to someone (or was newly assigned)
+        # ðŸ”” notify only if assignment changed to someone (or was newly assigned)
         new_assigned = int(payload.assigned_user_id) if payload.assigned_user_id else None
         should_notify = (new_assigned is not None) and (prev_assigned is None or int(prev_assigned) != int(new_assigned))
 
@@ -26853,7 +26853,7 @@ def sensys_admission_tasks_upsert(payload: AdmissionTaskUpsert, request: Request
 
             title = "New Task"
             if patient_name:
-                title = f"{title} — {patient_name}"
+                title = f"{title} â€” {patient_name}"
 
             body = f"Task: {task_name}" if task_name else "A task was assigned to you."
 
@@ -26888,14 +26888,14 @@ def sensys_admission_tasks_upsert(payload: AdmissionTaskUpsert, request: Request
         )
         task_id = int(cur.lastrowid)
 
-        # 🔔 notify assigned user (if any) on create
+        # ðŸ”” notify assigned user (if any) on create
         if payload.assigned_user_id:
             patient_name = _sensys_patient_name_for_admission(conn, int(payload.admission_id))
             task_name = (payload.task_name or "").strip()
 
             title = "New Task"
             if patient_name:
-                title = f"{title} — {patient_name}"
+                title = f"{title} â€” {patient_name}"
 
             body = f"Task: {task_name}" if task_name else "A task was assigned to you."
 
@@ -26920,7 +26920,7 @@ class IdOnly(BaseModel):
     id: int
 
 # -----------------------------
-# Admission Details — Tasks: delete (ANCHOR: ADMISSION_TASKS_DELETE)
+# Admission Details â€” Tasks: delete (ANCHOR: ADMISSION_TASKS_DELETE)
 # -----------------------------
 @app.post("/api/sensys/admission-tasks/delete")
 def sensys_admission_tasks_delete(payload: IdOnly, request: Request):
@@ -26958,7 +26958,7 @@ class AdmissionNoteUpsert(BaseModel):
     response1: Optional[str] = ""
     response2: Optional[str] = ""
 
-    # ✅ NEW: Share With user
+    # âœ… NEW: Share With user
     share_with_user_id: Optional[int] = None
 
     # LEGACY (keep so older UI still works)
@@ -26974,7 +26974,7 @@ class AdmissionNoteAnswerIn(BaseModel):
 
 
 # -----------------------------
-# Admission Details — Notes: upsert (ANCHOR: ADMISSION_NOTES_UPSERT)
+# Admission Details â€” Notes: upsert (ANCHOR: ADMISSION_NOTES_UPSERT)
 # -----------------------------
 @app.post("/api/sensys/admission-notes/upsert")
 def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request):
@@ -27052,7 +27052,7 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
         )
         note_id = int(cur.lastrowid)
 
-    # ✅ NEW: fire "note_shared" notification if Share With was selected
+    # âœ… NEW: fire "note_shared" notification if Share With was selected
     share_uid = int(payload.share_with_user_id) if payload.share_with_user_id else None
     if share_uid:
         # Only allow if the target user is linked to this admission (your existing linking logic)
@@ -27062,7 +27062,7 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
 
             title = "Note Shared"
             if patient_name:
-                title = f"{title} — {patient_name}"
+                title = f"{title} â€” {patient_name}"
 
             body = "A note was shared with you."
             note_title = (payload.note_title or "").strip()
@@ -27133,7 +27133,7 @@ def sensys_admission_notes_upsert(payload: AdmissionNoteUpsert, request: Request
 
 
 # -----------------------------
-# Admission Details — Notes: list (ANCHOR: ADMISSION_NOTES_LIST)
+# Admission Details â€” Notes: list (ANCHOR: ADMISSION_NOTES_LIST)
 # -----------------------------
 @app.get("/api/sensys/admission-notes")
 def sensys_admission_notes_list(
@@ -27239,7 +27239,7 @@ def sensys_admission_notes_list(
 
 
 # -----------------------------
-# Admission Details — Notes: delete (ANCHOR: ADMISSION_NOTES_DELETE)
+# Admission Details â€” Notes: delete (ANCHOR: ADMISSION_NOTES_DELETE)
 # -----------------------------
 @app.post("/api/sensys/admission-notes/delete")
 def sensys_admission_notes_delete(payload: IdOnly, request: Request):
@@ -27712,7 +27712,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
         )
         
         
-        # ---- 🔔 AUTOMATED NOTIFICATION TRIGGER: Updated Discharge (update path) ----
+        # ---- ðŸ”” AUTOMATED NOTIFICATION TRIGGER: Updated Discharge (update path) ----
         adm = conn.execute(
             """
             SELECT
@@ -27732,7 +27732,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
         dc_time = (payload.dc_time or "").strip()
         dest = (payload.dc_destination or "").strip()
 
-        # ✅ PDW: if confirmed, push dc_date into sensys_admissions.dc_date
+        # âœ… PDW: if confirmed, push dc_date into sensys_admissions.dc_date
         if int(payload.dc_confirmed or 0) == 1:
             # IMPORTANT: normalize to ISO so SQLite datetime() works (MM/DD/YYYY -> YYYY-MM-DD)
             dc_date_clean = normalize_date_to_iso(payload.dc_date)
@@ -27786,7 +27786,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
 
         title = "Updated Discharge"
         if patient_name:
-            title = f"Updated Discharge — {patient_name}"
+            title = f"Updated Discharge â€” {patient_name}"
 
         body_parts = []
         if dc_date:
@@ -27795,7 +27795,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
             body_parts.append(f"Time: {dc_time}")
         if dest:
             body_parts.append(f"Destination: {dest}")
-        body = " • ".join(body_parts) if body_parts else "A discharge submission was updated."
+        body = " â€¢ ".join(body_parts) if body_parts else "A discharge submission was updated."
 
         user_ids = _sensys_user_ids_linked_to_admission(conn, int(payload.admission_id))
 
@@ -27900,7 +27900,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
     )
 
     dc_submission_id = int(cur.lastrowid)
-    # ✅ PDW: if confirmed, push dc_date into sensys_admissions.dc_date
+    # âœ… PDW: if confirmed, push dc_date into sensys_admissions.dc_date
     if int(payload.dc_confirmed or 0) == 1:
         dc_date_clean = normalize_date_to_iso(payload.dc_date)
         if dc_date_clean:
@@ -27917,7 +27917,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
     _sensys_update_admission_from_latest_dc(conn, int(payload.admission_id))
             
             
-    # ---- 🔔 AUTOMATED NOTIFICATION TRIGGER: New Discharge vs Updated Discharge ----
+    # ---- ðŸ”” AUTOMATED NOTIFICATION TRIGGER: New Discharge vs Updated Discharge ----
 
     dc_count = conn.execute(
         """
@@ -27953,7 +27953,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
 
     title = "New Discharge" if notif_key == "new_discharge" else "Updated Discharge"
     if patient_name:
-        title = f"{title} — {patient_name}"
+        title = f"{title} â€” {patient_name}"
 
     body_parts = []
     if dc_date:
@@ -27962,7 +27962,7 @@ def sensys_admission_dc_submissions_upsert(payload: DcSubmissionUpsert, request:
         body_parts.append(f"Time: {dc_time}")
     if dest:
         body_parts.append(f"Destination: {dest}")
-    body = " • ".join(body_parts) if body_parts else "A discharge submission was entered."
+    body = " â€¢ ".join(body_parts) if body_parts else "A discharge submission was entered."
 
     # recipients = all users linked to this admission (agency OR referral-agency)
     user_ids = _sensys_user_ids_linked_to_admission(conn, int(payload.admission_id))
@@ -28021,7 +28021,7 @@ def _sensys_esign_is_signed(status: Optional[str], signed_at: Optional[str]) -> 
     return key in ("signed", "emr signed") or bool(signed_at)
 
 # -----------------------------
-# Discharge Submissions — upsert (ANCHOR: DC_SUBMISSIONS_UPSERT)
+# Discharge Submissions â€” upsert (ANCHOR: DC_SUBMISSIONS_UPSERT)
 # -----------------------------
 
 @app.post("/api/sensys/admission-esigns/upsert")
@@ -28035,7 +28035,7 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
     mark_signed = status_key in ("signed", "emr signed")
 
     if payload.id:
-        # ✅ NEW: once signed, it cannot be edited
+        # âœ… NEW: once signed, it cannot be edited
         existing = conn.execute(
             "SELECT status, signed_at, declined_at FROM sensys_admission_esigns WHERE id = ?",
             (int(payload.id),),
@@ -28138,7 +28138,7 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
             )
         esign_id = int(cur.lastrowid)
 
-        # 🔔 NEW E-SIGN ORDER notification (providers linked to this care team)
+        # ðŸ”” NEW E-SIGN ORDER notification (providers linked to this care team)
         notif_key = "new_esign_orders"
 
         patient_name = _sensys_patient_name_for_admission(conn, int(payload.admission_id))
@@ -28165,14 +28165,14 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
 
         title = "New E-Sign Order"
         if patient_name:
-            title = f"{title} — {patient_name}"
+            title = f"{title} â€” {patient_name}"
 
         body_bits = []
         if care_team_name:
             body_bits.append(f"Provider: {care_team_name}")
         if service_label:
             body_bits.append(f"Service Type: {service_label}")
-        body = " • ".join(body_bits) if body_bits else "A new e-sign order was created."
+        body = " â€¢ ".join(body_bits) if body_bits else "A new e-sign order was created."
 
         if care_team_id:
             user_ids = _sensys_user_ids_linked_to_care_team(conn, int(care_team_id))
@@ -28194,7 +28194,7 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
 
 
 # -----------------------------
-# Discharge Submissions — delete (ANCHOR: DC_SUBMISSIONS_DELETE)
+# Discharge Submissions â€” delete (ANCHOR: DC_SUBMISSIONS_DELETE)
 # -----------------------------
 
 @app.post("/api/sensys/admission-esigns/delete")
@@ -28222,7 +28222,7 @@ class EsignServicesSet(BaseModel):
 
 
 # -----------------------------
-# Discharge Submissions — set services (ANCHOR: DC_SUBMISSION_SERVICES_SET)
+# Discharge Submissions â€” set services (ANCHOR: DC_SUBMISSION_SERVICES_SET)
 # -----------------------------
 
 @app.post("/api/sensys/esign-services/set")
@@ -28253,7 +28253,7 @@ def sensys_esign_services_set(payload: EsignServicesSet, request: Request):
     return {"ok": True}
 
 # -------------------------------------------------------------------
-# ✅ NEW: Provider E-Sign list + sign/decline endpoints
+# âœ… NEW: Provider E-Sign list + sign/decline endpoints
 # -------------------------------------------------------------------
 def _sensys_assert_provider_role(u: dict):
     role_keys = u.get("role_keys") or []
@@ -28828,7 +28828,7 @@ def sensys_admission_care_team_link(payload: AdmissionCareTeamLink, request: Req
     )
     conn.commit()
 
-    # ✅ Verify it actually exists (prevents "UI looks linked but DB isn't" confusion)
+    # âœ… Verify it actually exists (prevents "UI looks linked but DB isn't" confusion)
     row = conn.execute(
         """
         SELECT id
@@ -29011,7 +29011,7 @@ def _provider_meta_set(conn, *, last_sync_at: str, last_row_count: int, last_err
     conn.commit()
 
 def _provider_library_should_sync(meta: dict) -> bool:
-    # monthly-ish (27 days) so you won’t miss it
+    # monthly-ish (27 days) so you wonâ€™t miss it
     last = (meta.get("last_sync_at") or "").strip()
     if not last:
         return True
@@ -29056,7 +29056,7 @@ def _provider_library_sync_now() -> dict:
         offset = 0
         total_upserted = 0
 
-        # ✅ Diagnostics
+        # âœ… Diagnostics
         total_fetched = 0
         skipped_no_ccn = 0
         first_page_debug = None
@@ -29083,7 +29083,7 @@ def _provider_library_sync_now() -> dict:
 
             data = _cms_datastore_query_with_fallback(url, payload, timeout=60)
 
-            # ✅ Capture response shape once (helps confirm CMS is actually returning results)
+            # âœ… Capture response shape once (helps confirm CMS is actually returning results)
             if first_page_debug is None:
                 try:
                     first_page_debug = {
@@ -29109,7 +29109,7 @@ def _provider_library_sync_now() -> dict:
             if not rows:
                 break
 
-            # ✅ If schema lookup failed, recover column names from actual row keys (page 1)
+            # âœ… If schema lookup failed, recover column names from actual row keys (page 1)
             if offset == 0 and rows:
                 try:
                     row_keys = list((rows[0] or {}).keys())
@@ -29206,7 +29206,7 @@ def _provider_library_sync_now() -> dict:
 
         now_iso = dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
-        # ✅ If we fetched rows but upserted 0, keep a “why” message in meta
+        # âœ… If we fetched rows but upserted 0, keep a â€œwhyâ€ message in meta
         if total_fetched > 0 and total_upserted == 0:
             _provider_meta_set(
                 conn,
@@ -29347,7 +29347,7 @@ def sensys_care_compare_hha_search(
     limit: int = Query(25, ge=1, le=100),
 ):
     """
-    ✅ NOW: queries our local Provider Library table (sensys_provider_library_hha),
+    âœ… NOW: queries our local Provider Library table (sensys_provider_library_hha),
     instead of hitting CMS live each time.
     """
     _ = _sensys_require_user(request)
@@ -29511,7 +29511,7 @@ async def sensys_admin_ui():
 async def sensys_login_ui():
     return HTMLResponse(content=read_html(SENSYS_LOGIN_HTML))
 
-# ✅ NEW: Admin "Login As" helper page
+# âœ… NEW: Admin "Login As" helper page
 # Opens in a new tab, stores the session token into localStorage, then redirects to the user's landing page.
 @app.get("/sensys/impersonate", response_class=HTMLResponse)
 async def sensys_impersonate_ui(st: str = "", r: str = "/sensys/login"):
@@ -29524,10 +29524,10 @@ async def sensys_impersonate_ui(st: str = "", r: str = "/sensys/login"):
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Logging in…</title>
+  <title>Logging inâ€¦</title>
 </head>
 <body style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; padding: 18px;">
-  <div>Logging in…</div>
+  <div>Logging inâ€¦</div>
   <script>
     try {{
       var st = {repr(safe_st)};
@@ -29585,7 +29585,7 @@ async def sensys_evolv_snf_ui():
 async def sensys_admission_details_ui():
     return HTMLResponse(content=read_html(SENSYS_ADMISSION_DETAILS_HTML))
 
-# ✅ NEW: Home Health admissions list + trimmed details page
+# âœ… NEW: Home Health admissions list + trimmed details page
 @app.get("/sensys/home-health", response_class=HTMLResponse)
 async def sensys_home_health_ui():
     return HTMLResponse(content=read_html(SENSYS_HOME_HEALTH_HTML))
@@ -29598,7 +29598,7 @@ async def sensys_home_health_admission_details_ui():
 async def sensys_home_health_finalized_referrals_ui():
     return HTMLResponse(content=read_html(SENSYS_HOME_HEALTH_FINALIZED_HTML))
 
-# ✅ NEW: Provider E-Sign list page
+# âœ… NEW: Provider E-Sign list page
 @app.get("/sensys/provider-esign", response_class=HTMLResponse)
 async def sensys_provider_esign_ui():
     return HTMLResponse(content=read_html(SENSYS_PROVIDER_ESIGN_HTML))
@@ -29607,7 +29607,7 @@ async def sensys_provider_esign_ui():
 async def sensys_provider_landing_ui():
     return HTMLResponse(content=read_html(SENSYS_PROVIDER_LANDING_HTML))
     
-# ✅ CCC-PDW v1
+# âœ… CCC-PDW v1
 @app.get("/sensys/post-discharge", response_class=HTMLResponse)
 async def sensys_post_discharge_ui():
     return HTMLResponse(content=read_html(SENSYS_POST_DISCHARGE_HTML))
