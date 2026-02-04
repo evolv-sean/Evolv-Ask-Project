@@ -28603,121 +28603,203 @@ def sensys_dc_submission_services_set(payload: DcSubmissionServicesSet, request:
             elif st_code in ("dme", "durable medical equipment"):
                 _sensys_freq_inc(conn, admission_agency_id, "dme_service", int(r["id"]))
 
-    # Auto-create E-Sign orders once, when DC submission services are first added
-    if prev_count == 0 and service_ids:
-        qmarks = ",".join(["?"] * len(service_ids))
-        svc_rows = conn.execute(
-            f"""
-            SELECT
-                s.id AS service_id,
-                s.service_type_id,
-                st.name AS service_type_name,
-                st.code AS service_type_code
-            FROM sensys_services s
-            LEFT JOIN sensys_service_type st ON st.id = s.service_type_id AND st.deleted_at IS NULL
-            WHERE s.id IN ({qmarks})
+    # Sync E-Sign orders with DC submission services (update pending, create new if signed/declined)
+    if service_ids is not None:
+        grouped: dict[int, dict] = {}
+        if service_ids:
+            qmarks = ",".join(["?"] * len(service_ids))
+            svc_rows = conn.execute(
+                f"""
+                SELECT
+                    s.id AS service_id,
+                    s.service_type_id,
+                    st.name AS service_type_name,
+                    st.code AS service_type_code
+                FROM sensys_services s
+                LEFT JOIN sensys_service_type st ON st.id = s.service_type_id AND st.deleted_at IS NULL
+                WHERE s.id IN ({qmarks})
+                """,
+                tuple(service_ids),
+            ).fetchall()
+
+            for r in svc_rows:
+                st_id = int(r["service_type_id"] or 0)
+                if st_id <= 0:
+                    continue
+                group_key = _sensys_service_type_group_key(r["service_type_name"], r["service_type_code"])
+                if not group_key:
+                    continue
+                grouped.setdefault(st_id, {"service_type_id": st_id, "service_ids": []})
+                grouped[st_id]["service_ids"].append(int(r["service_id"]))
+
+        admission_id = int(row["admission_id"])
+        ct_row = conn.execute(
+            """
+            SELECT ct.id AS care_team_id
+            FROM sensys_admission_care_team act
+            JOIN sensys_care_team ct ON ct.id = act.care_team_id
+            WHERE act.admission_id = ?
+              AND act.deleted_at IS NULL
+              AND ct.deleted_at IS NULL
+              AND LOWER(ct.type) = LOWER('SNF Physician')
+            ORDER BY act.id DESC
+            LIMIT 1
             """,
-            tuple(service_ids),
+            (admission_id,),
+        ).fetchone()
+        care_team_id = int(ct_row["care_team_id"]) if ct_row and ct_row["care_team_id"] else None
+        patient_name = _sensys_patient_name_for_admission(conn, admission_id)
+
+        existing_rows = conn.execute(
+            """
+            SELECT
+              e.id,
+              e.service_type_id,
+              e.status,
+              e.signed_at,
+              e.declined_at,
+              st.name AS service_type_name,
+              st.code AS service_type_code
+            FROM sensys_admission_esigns e
+            LEFT JOIN sensys_service_type st ON st.id = e.service_type_id AND st.deleted_at IS NULL
+            WHERE e.admission_id = ?
+              AND e.deleted_at IS NULL
+            ORDER BY e.id DESC
+            """,
+            (admission_id,),
         ).fetchall()
 
-        grouped: dict[int, dict] = {}
-        for r in svc_rows:
+        existing_by_type: dict[int, list[dict]] = {}
+        for r in existing_rows:
             st_id = int(r["service_type_id"] or 0)
             if st_id <= 0:
                 continue
             group_key = _sensys_service_type_group_key(r["service_type_name"], r["service_type_code"])
             if not group_key:
                 continue
-            grouped.setdefault(st_id, {"service_type_id": st_id, "service_ids": []})
-            grouped[st_id]["service_ids"].append(int(r["service_id"]))
+            existing_by_type.setdefault(st_id, []).append(dict(r))
 
-        if grouped:
-            admission_id = int(row["admission_id"])
-            ct_row = conn.execute(
+        def _create_esign_for_group(st_id: int, service_ids: list[int]) -> int:
+            cur = conn.execute(
                 """
-                SELECT ct.id AS care_team_id
-                FROM sensys_admission_care_team act
-                JOIN sensys_care_team ct ON ct.id = act.care_team_id
-                WHERE act.admission_id = ?
-                  AND act.deleted_at IS NULL
-                  AND ct.deleted_at IS NULL
-                  AND LOWER(ct.type) = LOWER('SNF Physician')
-                ORDER BY act.id DESC
-                LIMIT 1
+                INSERT INTO sensys_admission_esigns
+                  (admission_id, care_team_id, service_type_id, comments, status, created_by_user_id, updated_by_user_id, deleted_at, updated_at)
+                VALUES
+                  (?, ?, ?, ?, ?, ?, ?, NULL, datetime('now'))
                 """,
-                (admission_id,),
-            ).fetchone()
-            care_team_id = int(ct_row["care_team_id"]) if ct_row and ct_row["care_team_id"] else None
-            patient_name = _sensys_patient_name_for_admission(conn, admission_id)
-
-            for g in grouped.values():
-                cur = conn.execute(
-                    """
-                    INSERT INTO sensys_admission_esigns
-                      (admission_id, care_team_id, service_type_id, comments, status, created_by_user_id, updated_by_user_id, deleted_at, updated_at)
-                    VALUES
-                      (?, ?, ?, ?, ?, ?, ?, NULL, datetime('now'))
-                    """,
-                    (
-                        admission_id,
-                        care_team_id,
-                        int(g["service_type_id"]),
-                        "",
-                        "Pending",
-                        int(u["user_id"]),
-                        int(u["user_id"]),
-                    ),
+                (
+                    admission_id,
+                    care_team_id,
+                    int(st_id),
+                    "",
+                    "Pending",
+                    int(u["user_id"]),
+                    int(u["user_id"]),
+                ),
+            )
+            esign_id = int(cur.lastrowid)
+            for sid in service_ids:
+                conn.execute(
+                    "INSERT INTO sensys_esign_services (esign_id, services_id) VALUES (?, ?)",
+                    (esign_id, int(sid)),
                 )
-                esign_id = int(cur.lastrowid)
-                for sid in g["service_ids"]:
-                    conn.execute(
-                        "INSERT INTO sensys_esign_services (esign_id, services_id) VALUES (?, ?)",
-                        (esign_id, int(sid)),
-                    )
 
-                if care_team_id:
-                    ct = conn.execute(
-                        "SELECT name FROM sensys_care_team WHERE id = ?",
-                        (int(care_team_id),),
-                    ).fetchone()
-                    care_team_name = ((ct["name"] if ct else "") or "").strip()
+            if care_team_id:
+                ct = conn.execute(
+                    "SELECT name FROM sensys_care_team WHERE id = ?",
+                    (int(care_team_id),),
+                ).fetchone()
+                care_team_name = ((ct["name"] if ct else "") or "").strip()
 
-                    st = conn.execute(
-                        "SELECT name, code FROM sensys_service_type WHERE id = ?",
-                        (int(g["service_type_id"]),),
-                    ).fetchone()
-                    service_label = ""
-                    if st:
-                        nm = ((st["name"] if "name" in st.keys() else "") or "").strip()
-                        cd = ((st["code"] if "code" in st.keys() else "") or "").strip()
-                        service_label = (nm or "")
-                        if cd:
-                            service_label = f"{service_label} ({cd})" if service_label else cd
+                st = conn.execute(
+                    "SELECT name, code FROM sensys_service_type WHERE id = ?",
+                    (int(st_id),),
+                ).fetchone()
+                service_label = ""
+                if st:
+                    nm = ((st["name"] if "name" in st.keys() else "") or "").strip()
+                    cd = ((st["code"] if "code" in st.keys() else "") or "").strip()
+                    service_label = (nm or "")
+                    if cd:
+                        service_label = f"{service_label} ({cd})" if service_label else cd
 
-                    title = "New E-Sign Order"
-                    if patient_name:
-                        title = f"{title} - {patient_name}"
+                title = "New E-Sign Order"
+                if patient_name:
+                    title = f"{title} - {patient_name}"
 
-                    body_bits = []
-                    if care_team_name:
-                        body_bits.append(f"Provider: {care_team_name}")
-                    if service_label:
-                        body_bits.append(f"Service Type: {service_label}")
-                    body = " - ".join(body_bits) if body_bits else "A new e-sign order was created."
+                body_bits = []
+                if care_team_name:
+                    body_bits.append(f"Provider: {care_team_name}")
+                if service_label:
+                    body_bits.append(f"Service Type: {service_label}")
+                body = " - ".join(body_bits) if body_bits else "A new e-sign order was created."
 
-                    user_ids = _sensys_user_ids_linked_to_care_team(conn, int(care_team_id))
-                    _sensys_fire_notification(
-                        conn,
-                        notif_key="new_esign_orders",
-                        user_ids=user_ids,
-                        admission_id=admission_id,
-                        related_table="sensys_admission_esigns",
-                        related_id=int(esign_id),
-                        title=title,
-                        body=body,
-                        ctx={"patient": patient_name},
-                        payload_json="",
-                    )
+                user_ids = _sensys_user_ids_linked_to_care_team(conn, int(care_team_id))
+                _sensys_fire_notification(
+                    conn,
+                    notif_key="new_esign_orders",
+                    user_ids=user_ids,
+                    admission_id=admission_id,
+                    related_table="sensys_admission_esigns",
+                    related_id=int(esign_id),
+                    title=title,
+                    body=body,
+                    ctx={"patient": patient_name},
+                    payload_json="",
+                )
+
+            return esign_id
+
+        # Update or create per service type group
+        for st_id, g in grouped.items():
+            existing = existing_by_type.get(int(st_id), [])
+            pending = []
+            for r in existing:
+                is_signed = _sensys_esign_is_signed(r.get("status"), r.get("signed_at"))
+                status_key = _sensys_esign_status_key(r.get("status"))
+                is_declined = bool(r.get("declined_at")) or status_key == "declined"
+                if not is_signed and not is_declined:
+                    pending.append(r)
+            pending.sort(key=lambda x: int(x.get("id") or 0), reverse=True)
+            primary = pending[0] if pending else None
+
+            # If we have a pending order, sync services. If no services, delete the pending order.
+            if primary:
+                esign_id = int(primary["id"])
+                if not g["service_ids"]:
+                    conn.execute("DELETE FROM sensys_esign_services WHERE esign_id = ?", (esign_id,))
+                    conn.execute("DELETE FROM sensys_admission_esigns WHERE id = ?", (esign_id,))
+                else:
+                    conn.execute("DELETE FROM sensys_esign_services WHERE esign_id = ?", (esign_id,))
+                    for sid in g["service_ids"]:
+                        conn.execute(
+                            "INSERT INTO sensys_esign_services (esign_id, services_id) VALUES (?, ?)",
+                            (esign_id, int(sid)),
+                        )
+                # Remove any extra pending orders for same group
+                for extra in pending[1:]:
+                    ex_id = int(extra["id"])
+                    conn.execute("DELETE FROM sensys_esign_services WHERE esign_id = ?", (ex_id,))
+                    conn.execute("DELETE FROM sensys_admission_esigns WHERE id = ?", (ex_id,))
+            else:
+                if g["service_ids"]:
+                    _create_esign_for_group(int(st_id), g["service_ids"])
+
+        # Remove pending orders for groups no longer present
+        if existing_by_type:
+            grouped_ids = {int(k) for k in grouped.keys()}
+            for st_id, rows in existing_by_type.items():
+                if int(st_id) in grouped_ids:
+                    continue
+                for r in rows:
+                    is_signed = _sensys_esign_is_signed(r.get("status"), r.get("signed_at"))
+                    status_key = _sensys_esign_status_key(r.get("status"))
+                    is_declined = bool(r.get("declined_at")) or status_key == "declined"
+                    if is_signed or is_declined:
+                        continue
+                    esign_id = int(r["id"])
+                    conn.execute("DELETE FROM sensys_esign_services WHERE esign_id = ?", (esign_id,))
+                    conn.execute("DELETE FROM sensys_admission_esigns WHERE id = ?", (esign_id,))
 
     conn.commit()
     return {"ok": True}
