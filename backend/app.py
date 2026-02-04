@@ -28272,6 +28272,18 @@ def _sensys_provider_linked_care_team_ids(conn, user_id: int) -> list[int]:
     ).fetchall()
     return [int(r["care_team_id"]) for r in rows]
 
+def _sensys_provider_linked_agency_ids(conn, user_id: int) -> list[int]:
+    rows = conn.execute(
+        """
+        SELECT agency_id
+        FROM sensys_user_agencies
+        WHERE user_id = ?
+        ORDER BY agency_id
+        """,
+        (int(user_id),),
+    ).fetchall()
+    return [int(r["agency_id"]) for r in rows]
+
 @app.get("/api/sensys/provider/esigns")
 def sensys_provider_esigns(request: Request):
     u = _sensys_require_user(request)
@@ -28281,11 +28293,13 @@ def sensys_provider_esigns(request: Request):
     user_id = int(u["user_id"])
 
     linked_ids = _sensys_provider_linked_care_team_ids(conn, user_id)
-    if not linked_ids:
+    linked_agencies = _sensys_provider_linked_agency_ids(conn, user_id)
+    if not linked_ids or not linked_agencies:
         return {"ok": True, "esigns": []}
 
     # build (?, ?, ?) list safely
     placeholders = ",".join(["?"] * len(linked_ids))
+    placeholders_ag = ",".join(["?"] * len(linked_agencies))
 
     rows = conn.execute(
         f"""
@@ -28339,6 +28353,7 @@ def sensys_provider_esigns(request: Request):
         LEFT JOIN sensys_users su ON su.id = ae.signed_by
         WHERE ae.deleted_at IS NULL
           AND ae.care_team_id IN ({placeholders})
+          AND a.agency_id IN ({placeholders_ag})
         ORDER BY
             CASE
               WHEN lower(COALESCE(ae.status,'')) = 'pending' THEN 0
@@ -28348,7 +28363,7 @@ def sensys_provider_esigns(request: Request):
             END,
             ae.updated_at DESC
         """,
-        tuple(linked_ids),
+        tuple(linked_ids + linked_agencies),
     ).fetchall()
 
     esigns = [dict(r) for r in rows]
@@ -28400,19 +28415,23 @@ def sensys_provider_esigns_update(payload: ProviderEsignUpdate, request: Request
     esign_id = int(payload.esign_id)
 
     linked_ids = set(_sensys_provider_linked_care_team_ids(conn, user_id))
+    linked_agencies = set(_sensys_provider_linked_agency_ids(conn, user_id))
+    if not linked_ids or not linked_agencies:
+        raise HTTPException(status_code=403, detail="Not linked to this E-Sign")
 
     row = conn.execute(
         """
-        SELECT id, care_team_id, status, signed_at
-        FROM sensys_admission_esigns
-        WHERE id = ? AND deleted_at IS NULL
+        SELECT e.id, e.care_team_id, e.status, e.signed_at, a.agency_id
+        FROM sensys_admission_esigns e
+        JOIN sensys_admissions a ON a.id = e.admission_id
+        WHERE e.id = ? AND e.deleted_at IS NULL
         """,
         (esign_id,),
     ).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="E-Sign not found")
 
-    if int(row["care_team_id"]) not in linked_ids:
+    if int(row["care_team_id"]) not in linked_ids or int(row["agency_id"] or 0) not in linked_agencies:
         raise HTTPException(status_code=403, detail="Not linked to this E-Sign")
 
     if _sensys_esign_is_signed(row["status"], row["signed_at"]):
@@ -28440,21 +28459,25 @@ def sensys_provider_esigns_sign(payload: ProviderEsignAction, request: Request):
     user_id = int(u["user_id"])
     esign_id = int(payload.esign_id)
 
-    # Must be linked via care_team_id
+    # Must be linked via care_team_id and agency
     linked_ids = set(_sensys_provider_linked_care_team_ids(conn, user_id))
+    linked_agencies = set(_sensys_provider_linked_agency_ids(conn, user_id))
+    if not linked_ids or not linked_agencies:
+        raise HTTPException(status_code=403, detail="Not linked to this E-Sign")
 
     row = conn.execute(
         """
-        SELECT id, admission_id, care_team_id, status, signed_at, declined_at
-        FROM sensys_admission_esigns
-        WHERE id = ? AND deleted_at IS NULL
+        SELECT e.id, e.admission_id, e.care_team_id, e.status, e.signed_at, e.declined_at, a.agency_id
+        FROM sensys_admission_esigns e
+        JOIN sensys_admissions a ON a.id = e.admission_id
+        WHERE e.id = ? AND e.deleted_at IS NULL
         """,
         (esign_id,),
     ).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="E-Sign not found")
 
-    if int(row["care_team_id"]) not in linked_ids:
+    if int(row["care_team_id"]) not in linked_ids or int(row["agency_id"] or 0) not in linked_agencies:
         raise HTTPException(status_code=403, detail="Not linked to this E-Sign")
 
     if _sensys_esign_is_signed(row["status"], row["signed_at"]):
@@ -28487,19 +28510,23 @@ def sensys_provider_esigns_decline(payload: ProviderEsignAction, request: Reques
     esign_id = int(payload.esign_id)
 
     linked_ids = set(_sensys_provider_linked_care_team_ids(conn, user_id))
+    linked_agencies = set(_sensys_provider_linked_agency_ids(conn, user_id))
+    if not linked_ids or not linked_agencies:
+        raise HTTPException(status_code=403, detail="Not linked to this E-Sign")
 
     row = conn.execute(
         """
-        SELECT id, admission_id, care_team_id, status, signed_at, declined_at
-        FROM sensys_admission_esigns
-        WHERE id = ? AND deleted_at IS NULL
+        SELECT e.id, e.admission_id, e.care_team_id, e.status, e.signed_at, e.declined_at, a.agency_id
+        FROM sensys_admission_esigns e
+        JOIN sensys_admissions a ON a.id = e.admission_id
+        WHERE e.id = ? AND e.deleted_at IS NULL
         """,
         (esign_id,),
     ).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="E-Sign not found")
 
-    if int(row["care_team_id"]) not in linked_ids:
+    if int(row["care_team_id"]) not in linked_ids or int(row["agency_id"] or 0) not in linked_agencies:
         raise HTTPException(status_code=403, detail="Not linked to this E-Sign")
 
     if _sensys_esign_is_signed(row["status"], row["signed_at"]):
