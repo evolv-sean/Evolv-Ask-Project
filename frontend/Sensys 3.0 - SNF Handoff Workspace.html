@@ -3935,9 +3935,8 @@
       const dcFrom = lastReportFilters.dc_from || (document.getElementById("report-dc-from") || {}).value || "";
       const dcTo = lastReportFilters.dc_to || (document.getElementById("report-dc-to") || {}).value || "";
       const status = lastReportFilters.status || (document.getElementById("report-status") || {}).value || "all";
-      const ignoreUnknown = (typeof lastReportFilters.ignore_unknown === "boolean")
-        ? lastReportFilters.ignore_unknown
-        : !!(document.getElementById("report-ignore-unknown") || {}).checked;
+      const ignoreUnknown = !!(document.getElementById("report-ignore-unknown") || {}).checked;
+      lastReportFilters.ignore_unknown = ignoreUnknown;
       if (!dcFrom || !dcTo) {
         if (msg) {
           msg.style.display = "block";
@@ -3977,9 +3976,8 @@
       const dcFrom = lastReportFilters.dc_from || (document.getElementById("report-dc-from") || {}).value || "";
       const dcTo = lastReportFilters.dc_to || (document.getElementById("report-dc-to") || {}).value || "";
       const status = lastReportFilters.status || (document.getElementById("report-status") || {}).value || "all";
-      const ignoreUnknown = (typeof lastReportFilters.ignore_unknown === "boolean")
-        ? lastReportFilters.ignore_unknown
-        : !!(document.getElementById("report-ignore-unknown") || {}).checked;
+      const ignoreUnknown = !!(document.getElementById("report-ignore-unknown") || {}).checked;
+      lastReportFilters.ignore_unknown = ignoreUnknown;
       if (!dcFrom || !dcTo) {
         showToast("Please select dates first.", "error");
         return;
