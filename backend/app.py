@@ -12377,6 +12377,69 @@ def admin_backfill_dc_dates_to_snf(payload: Dict[str, Any] = Body(...), admin=De
     finally:
         conn.close()
         
+@app.post("/admin/snf/manual-dc-date-fill/upload")
+async def admin_manual_dc_date_fill_upload(request: Request, file: UploadFile = File(...)):
+    """
+    One-off: overwrite snf_admissions.dc_date from an uploaded CSV file with visit_id, dc_date columns.
+    """
+    require_admin(request)
+    if not file:
+        raise HTTPException(status_code=400, detail="CSV file is required")
+
+    updated = 0
+    not_found = 0
+    invalid_rows = 0
+    skipped = 0
+
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8-sig", errors="replace")
+    except Exception:
+        text = raw.decode("utf-8", errors="replace")
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        reader = csv.DictReader(io.StringIO(text))
+        for row in reader:
+            visit_id = (row.get("visit_id") or "").strip()
+            dc_date_raw = (row.get("dc_date") or "").strip()
+            if not visit_id:
+                invalid_rows += 1
+                continue
+            if not dc_date_raw:
+                skipped += 1
+                continue
+            dc_date = normalize_date_to_iso(dc_date_raw)
+            if not dc_date:
+                invalid_rows += 1
+                continue
+
+            cur.execute("SELECT id FROM snf_admissions WHERE visit_id = ?", (visit_id,))
+            match = cur.fetchone()
+            if not match:
+                not_found += 1
+                continue
+
+            cur.execute(
+                "UPDATE snf_admissions SET dc_date = ?, updated_at = datetime('now') WHERE visit_id = ?",
+                (dc_date, visit_id),
+            )
+            updated += cur.rowcount or 0
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {
+        "ok": True,
+        "filename": file.filename or "",
+        "updated": updated,
+        "not_found": not_found,
+        "invalid_rows": invalid_rows,
+        "skipped": skipped,
+    }
+
 @app.post("/admin/snf/cm-notes/manual-add")
 def admin_manual_add_cm_note(payload: ManualCmNoteIn, admin=Depends(require_admin)):
     conn = get_db()
@@ -16640,6 +16703,44 @@ async def admin_snf_reports_export_csv(
     finally:
         conn.close()
 
+    first_email_by_snf_id: Dict[int, str] = {}
+    if rows:
+        snf_ids = set(int(r["snf_id"]) for r in rows if r["snf_id"] is not None)
+
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT sent_at, admission_ids
+                FROM snf_secure_links
+                WHERE sent_at IS NOT NULL AND sent_at <> ''
+                """
+            )
+            link_rows = cur.fetchall()
+        finally:
+            conn.close()
+
+        for lr in link_rows:
+            try:
+                ids = json.loads(lr["admission_ids"] or "[]")
+            except Exception:
+                continue
+            if not isinstance(ids, list):
+                continue
+            sent_at = (lr["sent_at"] or "").strip()
+            if not sent_at:
+                continue
+            for snf_id in ids:
+                if not str(snf_id).isdigit():
+                    continue
+                snf_id_int = int(snf_id)
+                if snf_id_int not in snf_ids:
+                    continue
+                prev = first_email_by_snf_id.get(snf_id_int)
+                if not prev or sent_at < prev:
+                    first_email_by_snf_id[snf_id_int] = sent_at
+
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
@@ -16654,6 +16755,7 @@ async def admin_snf_reports_export_csv(
         "notified_by_hospital",
         "emailed_at",
         "email_run_id",
+        "first_secure_email_sent_at",
         "current_snf_facility_id",
         "current_snf_facility_name",
         "final_snf_facility_id",
@@ -16674,6 +16776,7 @@ async def admin_snf_reports_export_csv(
             r["notified_by_hospital"],
             r["emailed_at"],
             r["email_run_id"],
+            first_email_by_snf_id.get(int(r["snf_id"])) if r["snf_id"] is not None else "",
             r["current_snf_facility_id"],
             r["current_snf_facility_name"],
             r["final_snf_facility_id"],
