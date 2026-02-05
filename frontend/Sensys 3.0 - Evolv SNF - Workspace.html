@@ -1195,7 +1195,9 @@ const openNotesDrawer = async (p) => {      if (!token()) {        showToast("Lo
       }
     };
     const openMessagePhysicianModal = async (p) => {
-      showToast("Message modal open", p && p.name ? p.name : "");
+      if (messagePhysicianModalEl && messagePhysicianModalEl.parentElement !== document.body) {
+        document.body.appendChild(messagePhysicianModalEl);
+      }
       if (!messagePhysicianModalEl) return;
       messagePhysicianModalEl.style.display = "flex";
       messagePhysicianModalEl.style.zIndex = "12000";
