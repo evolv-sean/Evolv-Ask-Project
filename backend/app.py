@@ -26486,7 +26486,7 @@ def sensys_note_templates(request: Request):
     return {"ok": True, "templates": tpl_list}
 
 @app.get("/api/sensys/admission-details/{admission_id}")
-  def sensys_admission_details(admission_id: int, request: Request):
+def sensys_admission_details(admission_id: int, request: Request):
     u = _sensys_require_user(request)
     conn = get_db()
     _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
