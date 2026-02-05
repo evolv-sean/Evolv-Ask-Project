@@ -26829,26 +26829,26 @@ def sensys_admission_details(admission_id: int, request: Request):
     except Exception:
         frequent = {"hh_services": [], "dme_services": [], "hh_agencies": []}
         
-      return {
-          "ok": True,
-          "admission": dict(admission),
-          "tasks": [dict(r) for r in tasks],
-          "notes": [dict(r) for r in notes],
-          "dc_submissions": dc_out,
-          "esigns": esign_out,
-          "care_team": [
-              {
-                  **dict(r),
-                  "esign_link_count": int(esign_link_counts.get(int(r["care_team_id"]), 0)),
-              }
-              for r in care_team_links
-          ],
-          "snf_physician_name": snf_physician_name,
-          "preferred_provider_ids": preferred_provider_ids,
-          "frequent": frequent,
-          "referrals": [dict(r) for r in referrals],
-          "appointments": [dict(r) for r in appointments],
-      }
+    return {
+        "ok": True,
+        "admission": dict(admission),
+        "tasks": [dict(r) for r in tasks],
+        "notes": [dict(r) for r in notes],
+        "dc_submissions": dc_out,
+        "esigns": esign_out,
+        "care_team": [
+            {
+                **dict(r),
+                "esign_link_count": int(esign_link_counts.get(int(r["care_team_id"]), 0)),
+            }
+            for r in care_team_links
+        ],
+        "snf_physician_name": snf_physician_name,
+        "preferred_provider_ids": preferred_provider_ids,
+        "frequent": frequent,
+        "referrals": [dict(r) for r in referrals],
+        "appointments": [dict(r) for r in appointments],
+    }
 
 @app.get("/api/sensys/admissions/{admission_id}/esign-recipients")
 def sensys_admission_esign_recipients(admission_id: int, request: Request):
@@ -29947,3 +29947,4 @@ if __name__ == "__main__":
 
     port = int(os.getenv("PORT", "8000"))
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
+
