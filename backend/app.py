@@ -26939,6 +26939,8 @@ def sensys_admission_esign_recipients(admission_id: int, request: Request):
 
     recipients = []
     seen = set()
+    user_emails = set()
+    user_phones = set()
 
     def add_recipient(rec):
         key = (
@@ -26955,12 +26957,18 @@ def sensys_admission_esign_recipients(admission_id: int, request: Request):
 
     for r in user_rows:
         label = (r["display_name"] or r["email"] or "User").strip()
+        email_val = (r["email"] or "").strip()
+        phone_val = (r["cell_phone"] or "").strip()
+        if email_val:
+            user_emails.add(email_val.lower())
+        if phone_val:
+            user_phones.add(phone_val)
         add_recipient(
             {
                 "id": f"user-{r['user_id']}",
                 "label": f"{label} (User)",
-                "email": (r["email"] or "").strip(),
-                "phone": (r["cell_phone"] or "").strip(),
+                "email": email_val,
+                "phone": phone_val,
                 "type": "user",
                 "care_team_id": int(r["care_team_id"]),
                 "user_id": int(r["user_id"]),
@@ -26970,6 +26978,9 @@ def sensys_admission_esign_recipients(admission_id: int, request: Request):
     for r in care_team_rows:
         email = (r["email1"] or r["email2"] or "").strip()
         phone = (r["phone1"] or r["phone2"] or "").strip()
+        email_norm = email.lower() if email else ""
+        if (email_norm and email_norm in user_emails) or (phone and phone in user_phones):
+            continue
         label = (r["name"] or "Care Team").strip()
         add_recipient(
             {
@@ -27050,6 +27061,8 @@ def sensys_admission_physician_message_send(
 
         recipients = []
         seen = set()
+        user_emails = set()
+        user_phones = set()
 
         def add_recipient(rec):
             key = (
@@ -27066,12 +27079,18 @@ def sensys_admission_physician_message_send(
 
         for r in user_rows:
             label = (r["display_name"] or r["email"] or "User").strip()
+            email_val = (r["email"] or "").strip()
+            phone_val = (r["cell_phone"] or "").strip()
+            if email_val:
+                user_emails.add(email_val.lower())
+            if phone_val:
+                user_phones.add(phone_val)
             add_recipient(
                 {
                     "id": f"user-{r['user_id']}",
                     "label": f"{label} (User)",
-                    "email": (r["email"] or "").strip(),
-                    "phone": (r["cell_phone"] or "").strip(),
+                    "email": email_val,
+                    "phone": phone_val,
                     "type": "user",
                     "care_team_id": int(r["care_team_id"]),
                     "user_id": int(r["user_id"]),
@@ -27081,6 +27100,9 @@ def sensys_admission_physician_message_send(
         for r in care_team_rows:
             email = (r["email1"] or r["email2"] or "").strip()
             phone = (r["phone1"] or r["phone2"] or "").strip()
+            email_norm = email.lower() if email else ""
+            if (email_norm and email_norm in user_emails) or (phone and phone in user_phones):
+                continue
             label = (r["name"] or "Care Team").strip()
             add_recipient(
                 {
@@ -27101,20 +27123,25 @@ def sensys_admission_physician_message_send(
 
         sent = 0
         skipped = 0
+        sent_emails = set()
+        sent_phones = set()
         for r in selected:
             if send_email:
                 to_email = (r.get("email") or "").strip()
-                if to_email:
+                email_key = to_email.lower() if to_email else ""
+                if to_email and email_key not in sent_emails:
                     _sensys_send_notification_email(to_email, subject, body, "")
+                    sent_emails.add(email_key)
                     sent += 1
                 else:
                     skipped += 1
             if send_sms:
                 to_phone = (r.get("phone") or "").strip()
-                if to_phone:
+                if to_phone and to_phone not in sent_phones:
                     _sensys_send_notification_sms(
                         conn, to_phone=to_phone, body=body, admission_id=admission_id
                     )
+                    sent_phones.add(to_phone)
                     sent += 1
                 else:
                     skipped += 1
