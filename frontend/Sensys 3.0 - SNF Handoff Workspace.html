@@ -1317,6 +1317,19 @@
               </div>
             </div>
 
+            <!-- SNF DC Date CSV Upload -->
+            <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa; margin-top:12px;">
+              <div style="font-weight:800; color:#111827; margin-bottom:6px;">SNF DC Date CSV Upload</div>
+              <div style="font-size:12px; color:#6b7280; margin-bottom:10px;">
+                CSV columns required: <strong>visit_id</strong>, <strong>dc_date</strong> (M/D/YYYY or YYYY-MM-DD).
+              </div>
+              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <input id="snf-dc-date-csv" type="file" accept=".csv" />
+                <button class="btn btn-primary btn-small" onclick="uploadSnfDcDateCsv()">Upload CSV</button>
+                <span id="snf-dc-date-status" class="message"></span>
+              </div>
+            </div>
+
             <!-- PAD Flow email notifications -->
             <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa; margin-top:12px;">
               <div style="font-weight:800; color:#111827; margin-bottom:6px;">PAD flow email notifications</div>
@@ -4088,6 +4101,38 @@
           <div class="report-kpi-sub">${escapeHtml(sub || "")}</div>
         </div>
       `;
+    }
+
+    async function uploadSnfDcDateCsv() {
+      const token = getAdminToken();
+      if (!token) {
+        showToast("Please paste your ADMIN_TOKEN first.", "error");
+        return;
+      }
+      const input = document.getElementById("snf-dc-date-csv");
+      const status = document.getElementById("snf-dc-date-status");
+      const file = input && input.files ? input.files[0] : null;
+      if (!file) {
+        if (status) status.textContent = "Choose a CSV file first.";
+        return;
+      }
+      if (status) status.textContent = "Uploading…";
+      const fd = new FormData();
+      fd.append("file", file);
+      try {
+        const resp = await fetch("/admin/snf/manual-dc-date-fill/upload", {
+          method: "POST",
+          headers: { "X-Admin-Token": token },
+          body: fd
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.ok) throw new Error(data.detail || data.message || ("HTTP " + resp.status));
+        if (status) {
+          status.textContent = `Done. updated=${data.updated || 0}, not_found=${data.not_found || 0}, invalid_rows=${data.invalid_rows || 0}, skipped=${data.skipped || 0}`;
+        }
+      } catch (err) {
+        if (status) status.textContent = "Error: " + (err?.message || err);
+      }
     }
 
     async function loadEmailLog() {
