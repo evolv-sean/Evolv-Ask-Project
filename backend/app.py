@@ -24880,6 +24880,14 @@ class SensysAdmissionSmsSend(BaseModel):
     text: str
     from_phone: Optional[str] = None  # optional override (rare)
 
+class SensysPhysicianMessageSend(BaseModel):
+    admission_id: int
+    recipient_ids: List[str] = []
+    send_email: bool = False
+    send_sms: bool = False
+    subject: Optional[str] = ""
+    body: str
+
 
 class SensysAdmissionFaxSend(BaseModel):
     admission_id: int
@@ -26976,6 +26984,150 @@ def sensys_admission_esign_recipients(admission_id: int, request: Request):
         )
 
     return {"ok": True, "recipients": recipients}
+
+@app.post("/api/sensys/admissions/{admission_id}/physician-message/send")
+def sensys_admission_physician_message_send(
+    admission_id: int, payload: SensysPhysicianMessageSend, request: Request
+):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    try:
+        admission_id = int(admission_id)
+        _sensys_assert_admission_access(conn, int(u["user_id"]), admission_id)
+
+        recipient_ids = payload.recipient_ids or []
+        send_email = bool(payload.send_email)
+        send_sms = bool(payload.send_sms)
+        body = (payload.body or "").strip()
+        subject = (payload.subject or "").strip() or "Physician Message"
+
+        if not recipient_ids:
+            raise HTTPException(status_code=400, detail="No recipients selected")
+        if not (send_email or send_sms):
+            raise HTTPException(status_code=400, detail="Select email and/or SMS")
+        if not body:
+            raise HTTPException(status_code=400, detail="Message body required")
+
+        ct_rows = conn.execute(
+            """
+            SELECT DISTINCT care_team_id
+            FROM sensys_admission_esigns
+            WHERE admission_id = ?
+              AND deleted_at IS NULL
+              AND care_team_id IS NOT NULL
+              AND care_team_id > 0
+            """,
+            (int(admission_id),),
+        ).fetchall()
+        care_team_ids = [int(r["care_team_id"]) for r in ct_rows]
+        if not care_team_ids:
+            raise HTTPException(status_code=400, detail="No e-sign recipients on this admission")
+
+        placeholders = ",".join(["?"] * len(care_team_ids))
+        care_team_rows = conn.execute(
+            f"""
+            SELECT id, name, type, email1, email2, phone1, phone2
+            FROM sensys_care_team
+            WHERE id IN ({placeholders})
+              AND deleted_at IS NULL
+            """,
+            tuple(care_team_ids),
+        ).fetchall()
+        user_rows = conn.execute(
+            f"""
+            SELECT
+                u.id AS user_id,
+                u.display_name,
+                u.email,
+                u.cell_phone,
+                l.care_team_id
+            FROM sensys_user_esign_links l
+            JOIN sensys_users u ON u.id = l.user_id
+            WHERE l.care_team_id IN ({placeholders})
+            """,
+            tuple(care_team_ids),
+        ).fetchall()
+
+        recipients = []
+        seen = set()
+
+        def add_recipient(rec):
+            key = (
+                str(rec.get("type") or ""),
+                str(rec.get("user_id") or ""),
+                str(rec.get("care_team_id") or ""),
+                str(rec.get("email") or ""),
+                str(rec.get("phone") or ""),
+            )
+            if key in seen:
+                return
+            seen.add(key)
+            recipients.append(rec)
+
+        for r in user_rows:
+            label = (r["display_name"] or r["email"] or "User").strip()
+            add_recipient(
+                {
+                    "id": f"user-{r['user_id']}",
+                    "label": f"{label} (User)",
+                    "email": (r["email"] or "").strip(),
+                    "phone": (r["cell_phone"] or "").strip(),
+                    "type": "user",
+                    "care_team_id": int(r["care_team_id"]),
+                    "user_id": int(r["user_id"]),
+                }
+            )
+
+        for r in care_team_rows:
+            email = (r["email1"] or r["email2"] or "").strip()
+            phone = (r["phone1"] or r["phone2"] or "").strip()
+            label = (r["name"] or "Care Team").strip()
+            add_recipient(
+                {
+                    "id": f"ct-{r['id']}",
+                    "label": f"{label} (Care Team)",
+                    "email": email,
+                    "phone": phone,
+                    "type": "care_team",
+                    "care_team_id": int(r["id"]),
+                    "user_id": None,
+                }
+            )
+
+        recipient_map = {r["id"]: r for r in recipients if r.get("id")}
+        selected = [recipient_map.get(rid) for rid in recipient_ids if recipient_map.get(rid)]
+        if not selected:
+            raise HTTPException(status_code=400, detail="Selected recipients not found")
+
+        sent = 0
+        skipped = 0
+        for r in selected:
+            if send_email:
+                to_email = (r.get("email") or "").strip()
+                if to_email:
+                    _sensys_send_notification_email(to_email, subject, body, "")
+                    sent += 1
+                else:
+                    skipped += 1
+            if send_sms:
+                to_phone = (r.get("phone") or "").strip()
+                if to_phone:
+                    _sensys_send_notification_sms(
+                        conn, to_phone=to_phone, body=body, admission_id=admission_id
+                    )
+                    sent += 1
+                else:
+                    skipped += 1
+
+        conn.commit()
+        return {
+            "ok": True,
+            "sent": sent,
+            "skipped": skipped,
+            "recipients": len(selected),
+        }
+    finally:
+        conn.close()
 
 
 class AdmissionTaskUpsert(BaseModel):
