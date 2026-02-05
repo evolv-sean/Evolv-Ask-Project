@@ -12377,6 +12377,69 @@ def admin_backfill_dc_dates_to_snf(payload: Dict[str, Any] = Body(...), admin=De
     finally:
         conn.close()
         
+@app.post("/admin/snf/manual-dc-date-fill/upload")
+async def admin_manual_dc_date_fill_upload(request: Request, file: UploadFile = File(...)):
+    """
+    One-off: overwrite snf_admissions.dc_date from an uploaded CSV file with visit_id, dc_date columns.
+    """
+    require_admin(request)
+    if not file:
+        raise HTTPException(status_code=400, detail="CSV file is required")
+
+    updated = 0
+    not_found = 0
+    invalid_rows = 0
+    skipped = 0
+
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8-sig", errors="replace")
+    except Exception:
+        text = raw.decode("utf-8", errors="replace")
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        reader = csv.DictReader(io.StringIO(text))
+        for row in reader:
+            visit_id = (row.get("visit_id") or "").strip()
+            dc_date_raw = (row.get("dc_date") or "").strip()
+            if not visit_id:
+                invalid_rows += 1
+                continue
+            if not dc_date_raw:
+                skipped += 1
+                continue
+            dc_date = normalize_date_to_iso(dc_date_raw)
+            if not dc_date:
+                invalid_rows += 1
+                continue
+
+            cur.execute("SELECT id FROM snf_admissions WHERE visit_id = ?", (visit_id,))
+            match = cur.fetchone()
+            if not match:
+                not_found += 1
+                continue
+
+            cur.execute(
+                "UPDATE snf_admissions SET dc_date = ?, updated_at = datetime('now') WHERE visit_id = ?",
+                (dc_date, visit_id),
+            )
+            updated += cur.rowcount or 0
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {
+        "ok": True,
+        "filename": file.filename or "",
+        "updated": updated,
+        "not_found": not_found,
+        "invalid_rows": invalid_rows,
+        "skipped": skipped,
+    }
+
 @app.post("/admin/snf/cm-notes/manual-add")
 def admin_manual_add_cm_note(payload: ManualCmNoteIn, admin=Depends(require_admin)):
     conn = get_db()
