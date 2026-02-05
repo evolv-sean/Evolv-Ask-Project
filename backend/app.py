@@ -25297,6 +25297,37 @@ def sensys_my_notifications(request: Request, limit: int = 50, offset: int = 0):
 
     return {"ok": True, "notifications": [dict(r) for r in rows]}
 
+@app.get("/api/sensys/notifications/templates")
+def sensys_notification_templates(request: Request, key_prefix: str = Query(default="")):
+    _sensys_require_user(request)
+    conn = get_db()
+
+    prefix = (key_prefix or "").strip()
+    where = "deleted_at IS NULL AND active = 1"
+    params = []
+    if prefix:
+        where += " AND notif_key LIKE ?"
+        params.append(f"{prefix}%")
+
+    rows = conn.execute(
+        f"""
+        SELECT
+            id,
+            notif_key,
+            name,
+            email_subject,
+            email_body,
+            sms_body,
+            dashboard_body
+        FROM sensys_notification_templates
+        WHERE {where}
+        ORDER BY name COLLATE NOCASE
+        """,
+        params,
+    ).fetchall()
+
+    return {"ok": True, "templates": [dict(r) for r in rows]}
+
 
 @app.post("/api/sensys/notifications/mark-read")
 def sensys_notifications_mark_read(payload: SensysNotificationMarkRead, request: Request):
