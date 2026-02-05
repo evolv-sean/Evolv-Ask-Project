@@ -25031,6 +25031,17 @@ def _sensys_patient_name_for_admission(conn, admission_id: int) -> str:
     ).fetchone()
     return ((r["patient_name"] if r else "") or "").strip()
 
+def _sensys_render_template_for_key(conn, notif_key: str, ctx: dict, fallback_subject: str, fallback_body: str) -> dict:
+    tpl = _sensys_get_notif_template(conn, notif_key)
+    sms_body = _sensys_render_placeholders((tpl.get("sms_body") if tpl else "") or "", ctx).strip()
+    email_subject = _sensys_render_placeholders((tpl.get("email_subject") if tpl else "") or "", ctx).strip()
+    email_body = _sensys_render_placeholders((tpl.get("email_body") if tpl else "") or "", ctx).strip()
+    return {
+        "sms_body": sms_body or fallback_body,
+        "email_subject": email_subject or fallback_subject,
+        "email_body": email_body or fallback_body,
+    }
+
 
 def _sensys_user_ids_linked_to_care_team(conn, care_team_id: int) -> list[int]:
     rows = conn.execute(
@@ -26995,6 +27006,169 @@ def sensys_admission_esign_recipients(admission_id: int, request: Request):
         )
 
     return {"ok": True, "recipients": recipients}
+
+@app.post("/api/sensys/admissions/{admission_id}/physician-message/nudge")
+def sensys_admission_physician_message_nudge(admission_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    try:
+        admission_id = int(admission_id)
+        _sensys_assert_admission_access(conn, int(u["user_id"]), admission_id)
+
+        ct_rows = conn.execute(
+            """
+            SELECT DISTINCT care_team_id
+            FROM sensys_admission_esigns
+            WHERE admission_id = ?
+              AND deleted_at IS NULL
+              AND care_team_id IS NOT NULL
+              AND care_team_id > 0
+            """,
+            (int(admission_id),),
+        ).fetchall()
+        care_team_ids = [int(r["care_team_id"]) for r in ct_rows]
+        if not care_team_ids:
+            raise HTTPException(status_code=400, detail="No e-sign recipients on this admission")
+
+        placeholders = ",".join(["?"] * len(care_team_ids))
+        care_team_rows = conn.execute(
+            f"""
+            SELECT id, name, type, email1, email2, phone1, phone2
+            FROM sensys_care_team
+            WHERE id IN ({placeholders})
+              AND deleted_at IS NULL
+            """,
+            tuple(care_team_ids),
+        ).fetchall()
+        user_rows = conn.execute(
+            f"""
+            SELECT
+                u.id AS user_id,
+                u.display_name,
+                u.email,
+                u.cell_phone,
+                l.care_team_id
+            FROM sensys_user_esign_links l
+            JOIN sensys_users u ON u.id = l.user_id
+            WHERE l.care_team_id IN ({placeholders})
+            """,
+            tuple(care_team_ids),
+        ).fetchall()
+
+        recipients = []
+        seen = set()
+        user_emails = set()
+        user_phones = set()
+
+        def add_recipient(rec):
+            key = (
+                str(rec.get("type") or ""),
+                str(rec.get("user_id") or ""),
+                str(rec.get("care_team_id") or ""),
+                str(rec.get("email") or ""),
+                str(rec.get("phone") or ""),
+            )
+            if key in seen:
+                return
+            seen.add(key)
+            recipients.append(rec)
+
+        for r in user_rows:
+            label = (r["display_name"] or r["email"] or "User").strip()
+            email_val = (r["email"] or "").strip()
+            phone_val = (r["cell_phone"] or "").strip()
+            if email_val:
+                user_emails.add(email_val.lower())
+            if phone_val:
+                user_phones.add(phone_val)
+            add_recipient(
+                {
+                    "id": f"user-{r['user_id']}",
+                    "label": f"{label} (User)",
+                    "email": email_val,
+                    "phone": phone_val,
+                    "type": "user",
+                    "care_team_id": int(r["care_team_id"]),
+                    "user_id": int(r["user_id"]),
+                }
+            )
+
+        for r in care_team_rows:
+            email = (r["email1"] or r["email2"] or "").strip()
+            phone = (r["phone1"] or r["phone2"] or "").strip()
+            email_norm = email.lower() if email else ""
+            if (email_norm and email_norm in user_emails) or (phone and phone in user_phones):
+                continue
+            label = (r["name"] or "Care Team").strip()
+            add_recipient(
+                {
+                    "id": f"ct-{r['id']}",
+                    "label": f"{label} (Care Team)",
+                    "email": email,
+                    "phone": phone,
+                    "type": "care_team",
+                    "care_team_id": int(r["id"]),
+                    "user_id": None,
+                }
+            )
+
+        ctx = {
+            "patient": _sensys_patient_name_for_admission(conn, admission_id),
+        }
+        esign_tpl = _sensys_render_template_for_key(
+            conn,
+            "nudge_orders_esign_1",
+            ctx,
+            "Physician Orders Nudge",
+            "Please review and sign the physician orders.",
+        )
+        emr_tpl = _sensys_render_template_for_key(
+            conn,
+            "nudge_orders_emr_1",
+            ctx,
+            "Physician Orders Nudge",
+            "Please review and sign the physician orders.",
+        )
+
+        sent_email = 0
+        sent_sms = 0
+        skipped = 0
+        sent_emails = set()
+        sent_phones = set()
+
+        for r in recipients:
+            is_user = (r.get("type") == "user")
+            tpl = esign_tpl if is_user else emr_tpl
+
+            to_email = (r.get("email") or "").strip()
+            email_key = to_email.lower() if to_email else ""
+            if to_email and email_key not in sent_emails:
+                _sensys_send_notification_email(to_email, tpl["email_subject"], tpl["email_body"], "")
+                sent_emails.add(email_key)
+                sent_email += 1
+            else:
+                skipped += 1
+
+            to_phone = (r.get("phone") or "").strip()
+            if to_phone and to_phone not in sent_phones:
+                _sensys_send_notification_sms(
+                    conn, to_phone=to_phone, body=tpl["sms_body"], admission_id=admission_id
+                )
+                sent_phones.add(to_phone)
+                sent_sms += 1
+            else:
+                skipped += 1
+
+        conn.commit()
+        return {
+            "ok": True,
+            "sent_email": sent_email,
+            "sent_sms": sent_sms,
+            "skipped": skipped,
+            "recipients": len(recipients),
+        }
+    finally:
+        conn.close()
 
 @app.post("/api/sensys/admissions/{admission_id}/physician-message/send")
 def sensys_admission_physician_message_send(
