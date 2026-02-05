@@ -3859,6 +3859,8 @@ def init_db():
     ensure_column(conn, "sensys_admissions", "docs_status", "docs_status TEXT DEFAULT 'not_started'")
     ensure_column(conn, "sensys_admissions", "docs_packet_generated", "docs_packet_generated INTEGER DEFAULT 0")
     ensure_column(conn, "sensys_admissions", "docs_completed_at", "docs_completed_at TEXT")
+    ensure_column(conn, "sensys_admissions", "orders_last_nudge_at", "orders_last_nudge_at TEXT")
+    ensure_column(conn, "sensys_admissions", "orders_nudge_count", "orders_nudge_count INTEGER DEFAULT 0")
 
     # -------------------------------------------------------------------
     # PDW v1 â€” Post-Discharge Workspace (Option B: Work Items + Attempts Log)
@@ -23360,6 +23362,8 @@ def sensys_my_admissions(request: Request, admitted_only: int = 0):
                 a.latest_pcp,
                 a.active,
                 a.updated_at,
+                a.orders_last_nudge_at,
+                a.orders_nudge_count,
                 a.docs_facesheet,
                 a.docs_dc_summary,
                 a.docs_physicians_added,
@@ -23484,6 +23488,8 @@ def sensys_my_admissions(request: Request, admitted_only: int = 0):
             a.latest_pcp,
             a.active,
             a.updated_at,
+            a.orders_last_nudge_at,
+            a.orders_nudge_count,
             a.docs_facesheet,
             a.docs_dc_summary,
             a.docs_physicians_added,
@@ -27159,6 +27165,35 @@ def sensys_admission_physician_message_nudge(admission_id: int, request: Request
             else:
                 skipped += 1
 
+        detail = f"Email {sent_email}, Phone {sent_sms}"
+        conn.execute(
+            """
+            UPDATE sensys_admissions
+               SET orders_last_nudge_at = datetime('now'),
+                   orders_nudge_count = COALESCE(orders_nudge_count, 0) + 1,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (int(admission_id),),
+        )
+        conn.execute(
+            """
+            INSERT INTO sensys_admission_notes
+                (admission_id, note_name, note_title, status, response1, note_comments, created_by, workspace_key)
+            VALUES
+                (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(admission_id),
+                "physician_nudge",
+                "Physician Nudge",
+                "Completed",
+                detail,
+                "",
+                int(u["user_id"]),
+                "evolv_snf",
+            ),
+        )
         conn.commit()
         return {
             "ok": True,
@@ -27320,6 +27355,35 @@ def sensys_admission_physician_message_send(
                 else:
                     skipped += 1
 
+        detail = "Email " + str(len(sent_emails)) + ", Phone " + str(len(sent_phones))
+        conn.execute(
+            """
+            UPDATE sensys_admissions
+               SET orders_last_nudge_at = datetime('now'),
+                   orders_nudge_count = COALESCE(orders_nudge_count, 0) + 1,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (int(admission_id),),
+        )
+        conn.execute(
+            """
+            INSERT INTO sensys_admission_notes
+                (admission_id, note_name, note_title, status, response1, note_comments, created_by, workspace_key)
+            VALUES
+                (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(admission_id),
+                "physician_message",
+                "Physician Message",
+                "Completed",
+                detail,
+                "",
+                int(u["user_id"]),
+                "evolv_snf",
+            ),
+        )
         conn.commit()
         return {
             "ok": True,
