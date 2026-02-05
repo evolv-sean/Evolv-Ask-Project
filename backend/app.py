@@ -26486,7 +26486,7 @@ def sensys_note_templates(request: Request):
     return {"ok": True, "templates": tpl_list}
 
 @app.get("/api/sensys/admission-details/{admission_id}")
-def sensys_admission_details(admission_id: int, request: Request):
+  def sensys_admission_details(admission_id: int, request: Request):
     u = _sensys_require_user(request)
     conn = get_db()
     _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
@@ -26829,26 +26829,122 @@ def sensys_admission_details(admission_id: int, request: Request):
     except Exception:
         frequent = {"hh_services": [], "dme_services": [], "hh_agencies": []}
         
-    return {
-        "ok": True,
-        "admission": dict(admission),
-        "tasks": [dict(r) for r in tasks],
-        "notes": [dict(r) for r in notes],
-        "dc_submissions": dc_out,
-        "esigns": esign_out,
-        "care_team": [
+      return {
+          "ok": True,
+          "admission": dict(admission),
+          "tasks": [dict(r) for r in tasks],
+          "notes": [dict(r) for r in notes],
+          "dc_submissions": dc_out,
+          "esigns": esign_out,
+          "care_team": [
+              {
+                  **dict(r),
+                  "esign_link_count": int(esign_link_counts.get(int(r["care_team_id"]), 0)),
+              }
+              for r in care_team_links
+          ],
+          "snf_physician_name": snf_physician_name,
+          "preferred_provider_ids": preferred_provider_ids,
+          "frequent": frequent,
+          "referrals": [dict(r) for r in referrals],
+          "appointments": [dict(r) for r in appointments],
+      }
+
+@app.get("/api/sensys/admissions/{admission_id}/esign-recipients")
+def sensys_admission_esign_recipients(admission_id: int, request: Request):
+    u = _sensys_require_user(request)
+    conn = get_db()
+    _sensys_assert_admission_access(conn, int(u["user_id"]), int(admission_id))
+
+    ct_rows = conn.execute(
+        """
+        SELECT DISTINCT care_team_id
+        FROM sensys_admission_esigns
+        WHERE admission_id = ?
+          AND deleted_at IS NULL
+          AND care_team_id IS NOT NULL
+          AND care_team_id > 0
+        """,
+        (int(admission_id),),
+    ).fetchall()
+    care_team_ids = [int(r["care_team_id"]) for r in ct_rows]
+    if not care_team_ids:
+        return {"ok": True, "recipients": []}
+
+    placeholders = ",".join(["?"] * len(care_team_ids))
+
+    care_team_rows = conn.execute(
+        f"""
+        SELECT id, name, type, email1, email2, phone1, phone2
+        FROM sensys_care_team
+        WHERE id IN ({placeholders})
+          AND deleted_at IS NULL
+        """,
+        tuple(care_team_ids),
+    ).fetchall()
+
+    user_rows = conn.execute(
+        f"""
+        SELECT
+            u.id AS user_id,
+            u.display_name,
+            u.email,
+            u.cell_phone,
+            l.care_team_id
+        FROM sensys_user_esign_links l
+        JOIN sensys_users u ON u.id = l.user_id
+        WHERE l.care_team_id IN ({placeholders})
+        """,
+        tuple(care_team_ids),
+    ).fetchall()
+
+    recipients = []
+    seen = set()
+
+    def add_recipient(rec):
+        key = (
+            str(rec.get("type") or ""),
+            str(rec.get("user_id") or ""),
+            str(rec.get("care_team_id") or ""),
+            str(rec.get("email") or ""),
+            str(rec.get("phone") or ""),
+        )
+        if key in seen:
+            return
+        seen.add(key)
+        recipients.append(rec)
+
+    for r in user_rows:
+        label = (r["display_name"] or r["email"] or "User").strip()
+        add_recipient(
             {
-                **dict(r),
-                "esign_link_count": int(esign_link_counts.get(int(r["care_team_id"]), 0)),
+                "id": f"user-{r['user_id']}",
+                "label": f"{label} (User)",
+                "email": (r["email"] or "").strip(),
+                "phone": (r["cell_phone"] or "").strip(),
+                "type": "user",
+                "care_team_id": int(r["care_team_id"]),
+                "user_id": int(r["user_id"]),
             }
-            for r in care_team_links
-        ],
-        "snf_physician_name": snf_physician_name,
-        "preferred_provider_ids": preferred_provider_ids,
-        "frequent": frequent,
-        "referrals": [dict(r) for r in referrals],
-        "appointments": [dict(r) for r in appointments],
-    }
+        )
+
+    for r in care_team_rows:
+        email = (r["email1"] or r["email2"] or "").strip()
+        phone = (r["phone1"] or r["phone2"] or "").strip()
+        label = (r["name"] or "Care Team").strip()
+        add_recipient(
+            {
+                "id": f"ct-{r['id']}",
+                "label": f"{label} (Care Team)",
+                "email": email,
+                "phone": phone,
+                "type": "care_team",
+                "care_team_id": int(r["id"]),
+                "user_id": None,
+            }
+        )
+
+    return {"ok": True, "recipients": recipients}
 
 
 class AdmissionTaskUpsert(BaseModel):
