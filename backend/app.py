@@ -26753,6 +26753,7 @@ def sensys_admission_details(admission_id: int, request: Request):
         SELECT
             ar.id,
             ar.agency_id,
+            ar.acceptance_status,
             ag.agency_name,
             ag.agency_type,
             ar.created_at,
