@@ -28697,7 +28697,7 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
         if (existing["declined_at"] or "") and mark_signed:
             raise HTTPException(status_code=400, detail="This E-Sign is already declined and cannot be signed.")
 
-if mark_signed:
+        if mark_signed:
             conn.execute(
                 """
                 UPDATE sensys_admission_esigns
@@ -28766,7 +28766,7 @@ if mark_signed:
         esign_id = int(payload.id)
 
     else:
-if mark_signed:
+        if mark_signed:
             cur = conn.execute(
                 """
                 INSERT INTO sensys_admission_esigns
