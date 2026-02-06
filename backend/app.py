@@ -28720,6 +28720,25 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
                     int(payload.id),
                 ),
             )
+            if status_key == "signed":
+                conn.execute(
+                    """
+                    INSERT INTO sensys_admission_notes
+                        (admission_id, note_name, note_title, status, response1, note_comments, created_by, workspace_key)
+                    VALUES
+                        (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        int(payload.admission_id),
+                        "physician_orders_signed_esign",
+                        "Physician Orders Signed E-Signed",
+                        "Completed",
+                        "",
+                        "",
+                        int(u["user_id"]),
+                        "evolv_snf",
+                    ),
+                )
         else:
             conn.execute(
                 """
@@ -28765,6 +28784,25 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
                     int(u["user_id"]),
                 ),
             )
+            if status_key == "signed":
+                conn.execute(
+                    """
+                    INSERT INTO sensys_admission_notes
+                        (admission_id, note_name, note_title, status, response1, note_comments, created_by, workspace_key)
+                    VALUES
+                        (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        int(payload.admission_id),
+                        "physician_orders_signed_esign",
+                        "Physician Orders Signed E-Signed",
+                        "Completed",
+                        "",
+                        "",
+                        int(u["user_id"]),
+                        "evolv_snf",
+                    ),
+                )
         else:
             cur = conn.execute(
                 """
