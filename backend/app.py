@@ -28676,6 +28676,9 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
     u = _sensys_require_user(request)
     conn = get_db()
     _sensys_assert_admission_access(conn, int(u["user_id"]), int(payload.admission_id))
+    care_team_id = int(payload.care_team_id) if payload.care_team_id else None
+    if not payload.id and not care_team_id:
+        raise HTTPException(status_code=400, detail="Care team is required for new E-Sign orders")
 
     status_val = (payload.status or "Pending").strip() or "Pending"
     status_key = _sensys_esign_status_key(status_val)
@@ -28694,10 +28697,7 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
         if (existing["declined_at"] or "") and mark_signed:
             raise HTTPException(status_code=400, detail="This E-Sign is already declined and cannot be signed.")
 
-        care_team_id = int(payload.care_team_id) if payload.care_team_id else None
-    if not payload.id and not care_team_id:
-        raise HTTPException(status_code=400, detail="Care team is required for new E-Sign orders")
-        if mark_signed:
+if mark_signed:
             conn.execute(
                 """
                 UPDATE sensys_admission_esigns
@@ -28766,10 +28766,7 @@ def sensys_admission_esigns_upsert(payload: AdmissionEsignUpsert, request: Reque
         esign_id = int(payload.id)
 
     else:
-        care_team_id = int(payload.care_team_id) if payload.care_team_id else None
-    if not payload.id and not care_team_id:
-        raise HTTPException(status_code=400, detail="Care team is required for new E-Sign orders")
-        if mark_signed:
+if mark_signed:
             cur = conn.execute(
                 """
                 INSERT INTO sensys_admission_esigns
