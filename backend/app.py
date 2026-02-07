@@ -4595,6 +4595,7 @@ def init_db():
             admission_id INTEGER NOT NULL,
             agency_id    INTEGER NOT NULL,
             acceptance_status TEXT DEFAULT 'New',
+            referral_comments TEXT,
             acceptance_decline_reason TEXT,
             acceptance_decline_other TEXT,
             soc_date TEXT,
@@ -6093,6 +6094,7 @@ def init_db():
 
     # âœ… ensure new columns exist (safe migration)
     ensure_column(conn, "sensys_admission_referrals", "acceptance_status", "acceptance_status TEXT DEFAULT 'New'")
+    ensure_column(conn, "sensys_admission_referrals", "referral_comments", "referral_comments TEXT")
     ensure_column(conn, "sensys_admission_referrals", "acceptance_decline_reason", "acceptance_decline_reason TEXT")
     ensure_column(conn, "sensys_admission_referrals", "acceptance_decline_other", "acceptance_decline_other TEXT")
     ensure_column(conn, "sensys_admission_referrals", "soc_date", "soc_date TEXT")
@@ -19406,6 +19408,7 @@ class AdmissionReferralUpsert(BaseModel):
     id: Optional[int] = None
     admission_id: int
     agency_id: int
+    referral_comments: Optional[str] = ""
 
 class AdmissionReferralStatusUpdate(BaseModel):
     id: int
@@ -19431,18 +19434,19 @@ def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request:
             """
             UPDATE sensys_admission_referrals
                SET agency_id = ?,
+                   referral_comments = ?,
                    updated_at = datetime('now')
              WHERE id = ?
             """,
-            (int(payload.agency_id), int(payload.id)),
+            (int(payload.agency_id), (payload.referral_comments or "").strip(), int(payload.id)),
         )
     else:
         conn.execute(
             """
-            INSERT INTO sensys_admission_referrals (admission_id, agency_id)
-            VALUES (?, ?)
+            INSERT INTO sensys_admission_referrals (admission_id, agency_id, referral_comments)
+            VALUES (?, ?, ?)
             """,
-            (int(payload.admission_id), int(payload.agency_id)),
+            (int(payload.admission_id), int(payload.agency_id), (payload.referral_comments or "").strip()),
         )
 
     new_id = payload.id
@@ -26754,6 +26758,7 @@ def sensys_admission_details(admission_id: int, request: Request):
             ar.id,
             ar.agency_id,
             ar.acceptance_status,
+            ar.referral_comments,
             ag.agency_name,
             ag.agency_type,
             ar.created_at,
