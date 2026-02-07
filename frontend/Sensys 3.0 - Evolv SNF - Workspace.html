@@ -1638,38 +1638,38 @@ const openNotesDrawer = async (p) => {      if (!token()) {        showToast("Lo
       const agencyOptions = agencies.filter(a => (isHh ? isHhAgency(a) : isDmeAgency(a)));
       const referrals = filterReferralRows(p.referralRows || [], kind);
       const servicesText = buildReferralServicesText(p, kind);
-      const ICON_PLUS = <svg class=\"zip-svg\" viewBox=\"0 0 218.13 218.13\" aria-hidden=\"true\"><line x1=\"109.07\" y1=\"2.75\" x2=\"109.07\" y2=\"215.38\"/><line x1=\"215.38\" y1=\"109.07\" x2=\"2.75\" y2=\"109.07\"/></svg>;
-      const ICON_PENCIL = <svg class=\"zip-svg\" viewBox=\"0 0 237.85 237.86\" aria-hidden=\"true\"><line x1=\"34.25\" y1=\"178.82\" x2=\"57.97\" y2=\"202.54\"/><path d=\"M68.74,219.9c-3.65,3.65-8.34,6.09-13.43,6.97l-47.25,8.18c-3.09.53-5.78-2.15-5.24-5.24l8.17-47.25c.88-5.09,3.31-9.78,6.97-13.44L173.79,13.27c14.02-14.02,36.76-14.03,50.78,0h0c14.02,14.02,14.03,36.76,0,50.79L68.74,219.9Z\"/></svg>;
-      const ICON_TRASH = <svg class=\"zip-svg\" viewBox=\"0 0 224.65 262.72\" aria-hidden=\"true\"><path d=\"M205.74,105.45v128.84c0,14.18-11.49,25.67-25.67,25.67H43.59c-14.18,0-25.67-11.49-25.67-25.67V105.45\"/><path d=\"M24.99,41.02h174.66c12.28,0,22.24,9.97,22.24,22.24v13.37c0,5.42-4.4,9.81-9.81,9.81H12.56c-5.42,0-9.81-4.4-9.81-9.81v-13.37c0-12.28,9.97-22.24,22.24-22.24Z\"/><path d=\"M63.83,39.75v-23.26c0-7.58,6.15-13.73,13.73-13.73h68.53c7.58,0,13.73,6.15,13.73,13.73v23.26\"/><line x1=\"80.17\" y1=\"125.24\" x2=\"80.17\" y2=\"217.29\"/><line x1=\"144.48\" y1=\"125.24\" x2=\"144.48\" y2=\"217.29\"/></svg>;
+      const ICON_PLUS = `<svg class="zip-svg" viewBox="0 0 218.13 218.13" aria-hidden="true"><line x1="109.07" y1="2.75" x2="109.07" y2="215.38"/><line x1="215.38" y1="109.07" x2="2.75" y2="109.07"/></svg>`;
+      const ICON_PENCIL = `<svg class="zip-svg" viewBox="0 0 237.85 237.86" aria-hidden="true"><line x1="34.25" y1="178.82" x2="57.97" y2="202.54"/><path d="M68.74,219.9c-3.65,3.65-8.34,6.09-13.43,6.97l-47.25,8.18c-3.09.53-5.78-2.15-5.24-5.24l8.17-47.25c.88-5.09,3.31-9.78,6.97-13.44L173.79,13.27c14.02-14.02,36.76-14.03,50.78,0h0c14.02,14.02,14.03,36.76,0,50.79L68.74,219.9Z"/></svg>`;
+      const ICON_TRASH = `<svg class="zip-svg" viewBox="0 0 224.65 262.72" aria-hidden="true"><path d="M205.74,105.45v128.84c0,14.18-11.49,25.67-25.67,25.67H43.59c-14.18,0-25.67-11.49-25.67-25.67V105.45"/><path d="M24.99,41.02h174.66c12.28,0,22.24,9.97,22.24,22.24v13.37c0,5.42-4.4,9.81-9.81,9.81H12.56c-5.42,0-9.81-4.4-9.81-9.81v-13.37c0-12.28,9.97-22.24,22.24-22.24Z"/><path d="M63.83,39.75v-23.26c0-7.58,6.15-13.73,13.73-13.73h68.53c7.58,0,13.73,6.15,13.73,13.73v23.26"/><line x1="80.17" y1="125.24" x2="80.17" y2="217.29"/><line x1="144.48" y1="125.24" x2="144.48" y2="217.29"/></svg>`;
       const rowsHtml = referrals.length ? referrals.map(r => {
         const statusLabel = formatReferralStatus(r.acceptance_status || "New");
         const statusKey = statusLabel.toLowerCase().replace(/\s+/g, "-");
         const stamp = r.created_at ? formatDateTime(r.created_at) : (r.updated_at ? formatDateTime(r.updated_at) : "-");
-        const label = r.id ? Referral # : "Referral";
-        return             <tr>
+        const label = r.id ? `Referral #${r.id}` : "Referral";
+        return `            <tr>
               <td>
-                <div class=\"orders-stack\">
-                  <div class=\"orders-stack-title\"></div>
+                <div class="orders-stack">
+                  <div class="orders-stack-title">${label}</div>
                 </div>
               </td>
               <td>
-                <span class=\"orders-status\" data-status=\"\"></span>
+                <span class="orders-status" data-status="${statusKey}">${statusLabel}</span>
               </td>
-              <td></td>
-              <td></td>
-              <td class=\"orders-table-actions\">
-                <button class=\"btn-icon\" data-referral-edit=\"\" aria-label=\"Edit\" title=\"Edit\"></button>
-                <button class=\"btn-icon danger\" data-referral-delete=\"\" aria-label=\"Delete\" title=\"Delete\"></button>
+              <td>${servicesText}</td>
+              <td>${stamp}</td>
+              <td class="orders-table-actions">
+                <button class="btn-icon" data-referral-edit="${r.id}" aria-label="Edit" title="Edit">${ICON_PENCIL}</button>
+                <button class="btn-icon danger" data-referral-delete="${r.id}" aria-label="Delete" title="Delete">${ICON_TRASH}</button>
               </td>
-            </tr>;
-      }).join("") :           <tr>
-            <td colspan=\"5\">No referrals created yet.</td>
-          </tr>;
-      drawerTarget.innerHTML =           <div class=\"drawer-header\">            <div>              <div class=\"drawer-title\"></div>              <div class=\"drawer-sub\"> - </div>            </div>            <div class=\"orders-header-actions\">              <button class=\"btn-icon\" id=\"referralAddBtn\" aria-label=\"Add Referral\" title=\"Add Referral\"></button>              <button class=\"btn btn-primary btn-small\" id=\"referralDoneBtn\">Done</button>            </div>          </div>          <div class=\"drawer-body\">            <div class=\"info-section\">              <div class=\"info-label\">Referrals</div>              <div class=\"orders-table-wrap\" style=\"overflow:auto;\">                <table class=\"table table-small\">                  <thead>                    <tr>                      <th>Referral</th>                      <th>Status</th>                      <th>Services</th>                      <th>Created</th>                      <th>Actions</th>                    </tr>                  </thead>                  <tbody>                                      </tbody>                </table>              </div>            </div>          </div>        ;
+            </tr>`;
+      }).join("") : `          <tr>
+            <td colspan="5">No referrals created yet.</td>
+          </tr>`;
+      drawerTarget.innerHTML = `          <div class="drawer-header">            <div>              <div class="drawer-title">${title}</div>              <div class="drawer-sub">${p.name} - ${p.facilityName}</div>            </div>            <div class="orders-header-actions">              <button class="btn-icon" id="referralAddBtn" aria-label="Add Referral" title="Add Referral">${ICON_PLUS}</button>              <button class="btn btn-primary btn-small" id="referralDoneBtn">Done</button>            </div>          </div>          <div class="drawer-body">            <div class="info-section">              <div class="info-label">Referrals</div>              <div class="orders-table-wrap" style="overflow:auto;">                <table class="table table-small">                  <thead>                    <tr>                      <th>Referral</th>                      <th>Status</th>                      <th>Services</th>                      <th>Created</th>                      <th>Actions</th>                    </tr>                  </thead>                  <tbody>                    ${rowsHtml}                  </tbody>                </table>              </div>            </div>          </div>        `;
       const ensureReferralModal = () => {
         let backdrop = document.getElementById("referralModalBackdrop");
         if (!backdrop) {
-          document.body.insertAdjacentHTML("beforeend",             <div id=\"referralModalBackdrop\" class=\"doc-modal-backdrop\" aria-live=\"polite\">              <div class=\"doc-modal\">                <div class=\"doc-modal-head\">                  <div>                    <div class=\"doc-modal-title\" id=\"referralModalTitle\">Add Referral</div>                    <div class=\"doc-modal-sub\" id=\"referralModalSub\"></div>                  </div>                </div>                <div class=\"doc-modal-body\">                  <div class=\"doc-modal-row\">                    <div style=\"flex:1;min-width:240px;\">                      <div class=\"info-label\">Referral Agency</div>                      <select class=\"doc-input\" id=\"referralAgencyModal\"></select>                    </div>                  </div>                  <div class=\"doc-modal-row\" style=\"margin-top:10px;\">                    <div style=\"flex:1;min-width:240px;\">                      <div class=\"info-label\">Acceptance Status</div>                      <select class=\"doc-input\" id=\"referralStatusModal\">                        <option>New</option>                        <option>Accepted</option>                        <option>Needs Info</option>                        <option>Declined</option>                      </select>                    </div>                  </div>                </div>                <div class=\"doc-modal-footer\">                  <button class=\"doc-modal-close\" id=\"referralModalCancel\">Cancel</button>                  <button class=\"btn btn-primary btn-small\" id=\"referralModalSave\">Save Referral</button>                </div>              </div>            </div>          );
+          document.body.insertAdjacentHTML("beforeend", `            <div id="referralModalBackdrop" class="doc-modal-backdrop" aria-live="polite">              <div class="doc-modal">                <div class="doc-modal-head">                  <div>                    <div class="doc-modal-title" id="referralModalTitle">Add Referral</div>                    <div class="doc-modal-sub" id="referralModalSub"></div>                  </div>                </div>                <div class="doc-modal-body">                  <div class="doc-modal-row">                    <div style="flex:1;min-width:240px;">                      <div class="info-label">Referral Agency</div>                      <select class="doc-input" id="referralAgencyModal"></select>                    </div>                  </div>                  <div class="doc-modal-row" style="margin-top:10px;">                    <div style="flex:1;min-width:240px;">                      <div class="info-label">Acceptance Status</div>                      <select class="doc-input" id="referralStatusModal">                        <option>New</option>                        <option>Accepted</option>                        <option>Needs Info</option>                        <option>Declined</option>                      </select>                    </div>                  </div>                </div>                <div class="doc-modal-footer">                  <button class="doc-modal-close" id="referralModalCancel">Cancel</button>                  <button class="btn btn-primary btn-small" id="referralModalSave">Save Referral</button>                </div>              </div>            </div>          `);
           backdrop = document.getElementById("referralModalBackdrop");
           backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeReferralModal(); });
         }
@@ -1688,8 +1688,12 @@ const openNotesDrawer = async (p) => {      if (!token()) {        showToast("Lo
         const selectedAgencyId = referral ? String(referral.agency_id || "") : "";
         const statusValue = referral ? formatReferralStatus(referral.acceptance_status || "New") : "New";
         titleEl.textContent = referral ? "Edit Referral" : "Add Referral";
-        subEl.textContent = ${p.name} - ;
-        agencyEl.innerHTML = agencyOptions.length ? agencyOptions.map(a => <option value=\"\"></option>).join("") : <option value=\"\">No agencies available</option>;
+        subEl.textContent = `${p.name} - ${p.facilityName || ""}`;
+        agencyEl.innerHTML = agencyOptions.length ? agencyOptions.map(a => {
+          const id = a.id || a.agency_id || "";
+          const label = escapeHtml(a.name || a.agency_name || "Agency");
+          return `<option value="${id}">${label}</option>`;
+        }).join("") : `<option value="">No agencies available</option>`;
         if (selectedAgencyId) agencyEl.value = selectedAgencyId;
         statusEl.value = statusValue;
         backdrop.style.display = "flex";
