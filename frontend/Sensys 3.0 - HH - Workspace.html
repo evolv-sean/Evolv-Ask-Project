@@ -1196,15 +1196,7 @@
   let DETAILS_DOCS = [];
   let ACTIVE_STATUS_REFERRAL_ID = null;
   let NOTIFS = [];
-  const SAMPLE_ROWS = [
-    { id: 1, referral_id: 101, patient_name: "Adams, Taylor", patient_dob: "1943-06-12", insurance_name1: "Aetna", insurance_number1: "AE-443201", admit_date: "2026-01-08", dc_date: "2026-01-28", admission_agency: "Evolv Home Health", referral_status: "new", acceptance_status: "New", acceptance_decline_reason: "", acceptance_decline_other: "", soc_date: "2026-01-15", admission_active: 1, hh_services: ["Skilled Nursing", "Physical Therapy"] },
-    { id: 2, referral_id: 102, patient_name: "Barnes, Jordan", patient_dob: "1938-11-04", insurance_name1: "UnitedHealthcare", insurance_number1: "UH-992144", admit_date: "2026-01-06", dc_date: "", admission_agency: "Horizon Home Health", referral_status: "pending", acceptance_status: "In Review", acceptance_decline_reason: "", acceptance_decline_other: "", soc_date: "", admission_active: 1, hh_services: ["Occupational Therapy"] },
-    { id: 3, referral_id: 103, patient_name: "Carter, Riley", patient_dob: "1949-03-19", insurance_name1: "Humana", insurance_number1: "HU-771209", admit_date: "2026-01-10", dc_date: "2026-02-02", admission_agency: "Blue Ridge HH", referral_status: "new", acceptance_status: "Accepted", acceptance_decline_reason: "", acceptance_decline_other: "", soc_date: "2026-01-18", admission_active: 1, hh_services: ["Skilled Nursing", "Speech Therapy"] },
-    { id: 4, referral_id: 104, patient_name: "Diaz, Morgan", patient_dob: "1951-09-22", insurance_name1: "Blue Cross", insurance_number1: "BC-110344", admit_date: "2026-01-02", dc_date: "", admission_agency: "Summit Home Health", referral_status: "pending", acceptance_status: "Declined", acceptance_decline_reason: "Out of Service Area", acceptance_decline_other: "", soc_date: "", admission_active: 1, hh_services: ["Home Health Aide"] },
-    { id: 5, referral_id: 105, patient_name: "Evans, Casey", patient_dob: "1940-01-30", insurance_name1: "Cigna", insurance_number1: "CI-556214", admit_date: "2026-01-04", dc_date: "2026-01-26", admission_agency: "Evolv Home Health", referral_status: "new", acceptance_status: "New", acceptance_decline_reason: "", acceptance_decline_other: "", soc_date: "", admission_active: 1, hh_services: ["Skilled Nursing", "Physical Therapy", "Occupational Therapy"] },
-    { id: 6, referral_id: 106, patient_name: "Foster, Avery", patient_dob: "1936-07-15", insurance_name1: "Kaiser", insurance_number1: "KA-889100", admit_date: "2026-01-11", dc_date: "", admission_agency: "Horizon Home Health", referral_status: "pending", acceptance_status: "In Review", acceptance_decline_reason: "", acceptance_decline_other: "", soc_date: "", admission_active: 1, hh_services: ["Skilled Nursing"] },
-    { id: 7, referral_id: 107, patient_name: "Garcia, Devin", patient_dob: "1947-05-03", insurance_name1: "Medicare", insurance_number1: "ME-330482", admit_date: "2026-01-12", dc_date: "", admission_agency: "Pinecrest Home Health", referral_status: "new", acceptance_status: "Accepted", acceptance_decline_reason: "", acceptance_decline_other: "", soc_date: "2026-01-19", admission_active: 1, hh_services: ["Skilled Nursing", "Medical Social Work"] }
-  ];
+  const SAMPLE_ROWS = [];
 
   function token(){
     return (localStorage.getItem("sensys_token") || "").trim();
@@ -1784,7 +1776,7 @@
   }
   async function load(){
     if(!token()){
-      ALL_ROWS = SAMPLE_ROWS.slice();
+      ALL_ROWS = [];
       renderAgencyOptions();
       renderCounts();
       applyFilters();
@@ -1794,7 +1786,7 @@
       const res = await fetch("/api/sensys/my-referrals", { headers: authHeaders() });
       const data = await res.json();
       if(!res.ok || !data.ok){
-        ALL_ROWS = SAMPLE_ROWS.slice();
+        ALL_ROWS = [];
         renderAgencyOptions();
         renderCounts();
         applyFilters();
@@ -1823,7 +1815,7 @@
       renderCounts();
       applyFilters();
     }catch(e){
-      ALL_ROWS = SAMPLE_ROWS.slice();
+      ALL_ROWS = [];
       renderAgencyOptions();
       renderCounts();
       applyFilters();
@@ -1994,6 +1986,7 @@
 </script>
 </body>
 </html>
+
 
 
 
