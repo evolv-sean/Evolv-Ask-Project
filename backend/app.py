@@ -19538,13 +19538,13 @@ def sensys_admission_referrals_upsert(payload: AdmissionReferralUpsert, request:
 
 
 @app.post("/api/sensys/admission-referrals/delete")
-def sensys_admission_referrals_delete(payload: IdOnly, request: Request):
+def sensys_admission_referrals_delete(id: int = Body(..., embed=True), request: Request = None):
     u = _sensys_require_user(request)
     conn = get_db()
 
     row = conn.execute(
         "SELECT admission_id FROM sensys_admission_referrals WHERE id = ? AND deleted_at IS NULL",
-        (int(payload.id),),
+        (int(id),),
     ).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Referral not found (or already deleted)")
@@ -19558,7 +19558,7 @@ def sensys_admission_referrals_delete(payload: IdOnly, request: Request):
                updated_at = datetime('now')
          WHERE id = ?
         """,
-        (int(payload.id),),
+        (int(id),),
     )
     conn.commit()
     return {"ok": True}
