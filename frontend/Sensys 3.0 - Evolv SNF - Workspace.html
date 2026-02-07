@@ -2060,11 +2060,18 @@ const openNotesDrawer = async (p) => {      if (!token()) {        showToast("Lo
             const id = Number(deleteBtn.getAttribute("data-referral-delete"));
             if (!id) return;
             try {
-              const resp = await fetch("/api/sensys/admission-referrals/delete", {
+              let resp = await fetch("/api/sensys/admission-referrals/delete", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...authHeaders() },
                 body: JSON.stringify({ id })
               });
+              if (!resp.ok && resp.status === 422) {
+                const qp = encodeURIComponent(JSON.stringify({ id }));
+                resp = await fetch(`/api/sensys/admission-referrals/delete?payload=${qp}`, {
+                  method: "POST",
+                  headers: { ...authHeaders() }
+                });
+              }
               if (!resp.ok) throw new Error("Delete failed");
               await loadAdmissionDetails(p);
               openReferralDrawer(p, kind);
