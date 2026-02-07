@@ -1800,7 +1800,7 @@
         applyFilters();
         return;
       }
-      ALL_ROWS = (data.referrals || []).map(r => ({
+      ALL_ROWS = (data.referrals || []).filter(r => !r.deleted_at).map(r => ({
         id: r.admission_id || r.id,
         referral_id: r.referral_id || r.id,
         patient_name: r.patient_name,
